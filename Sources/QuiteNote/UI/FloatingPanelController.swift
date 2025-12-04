@@ -101,6 +101,11 @@ final class FloatingPanelController {
     private var animationsEnabled: Bool = true
     private let focusProvider = WindowFocusProvider()
     private var launchEnsurer: Timer?
+    private var hoverActive: Bool = false
+    private var revertTimer: Timer?
+    private var lastSwitchAt: TimeInterval = 0
+    private var isInteracting: Bool = false // 跟踪用户是否正在交互（拖拽、点击等）
+    private var userHidden: Bool = false // 用户主动隐藏标记，防止自动前置
     
     var isVisible: Bool { panel.isVisible }
     
@@ -134,7 +139,7 @@ final class FloatingPanelController {
         panel.titleVisibility = .hidden  // 隐藏标题栏
         panel.titlebarAppearsTransparent = true  // 标题栏透明
         panel.backgroundColor = NSColor.clear.withAlphaComponent(0.9) // 设置为透明背景，让SwiftUI内容显示
-        panel.isMovableByWindowBackground = false // Disable global dragging
+        panel.isMovableByWindowBackground = !PreferencesManager.shared.windowLock
         panel.hasShadow = true // Ensure shadow is visible for borderless window
         
         // Hide system buttons
@@ -142,7 +147,16 @@ final class FloatingPanelController {
         panel.standardWindowButton(.miniaturizeButton)?.isHidden = true
         panel.standardWindowButton(.zoomButton)?.isHidden = true
         
-        hosting = NSHostingView(rootView: FloatingRootView(store: store, heatmapVM: heatmapVM, bluetooth: bluetooth, focus: focusProvider))
+        hosting = NSHostingView(rootView: FloatingRootView(store: store, heatmapVM: heatmapVM, bluetooth: bluetooth, focus: focusProvider, onHoverChanged: { [weak self] hovering in
+            guard let self else { return }
+            if hovering { self.requestRegularFocus(reason: "hover") } else { self.scheduleRevertToAccessory() }
+        }, onInteractionChanged: { [weak self] interacting in
+            guard let self else { return }
+            self.isInteracting = interacting
+            print("[DEBUG] 交互状态变更: \(interacting)")
+        }, onClose: { [weak self] in
+            self?.hide()
+        }))
         panel.contentView = hosting
         
         NotificationCenter.default.addObserver(self, selector: #selector(onWindowLock(_:)), name: .windowLockChanged, object: nil)
@@ -154,6 +168,7 @@ final class FloatingPanelController {
     /// 显示悬浮窗，带缩放+淡入动效
     func show() {
         print("[DEBUG] show() called")
+        userHidden = false
         
         // 1. 确保位置正确
         forceCenterWindow()
@@ -187,6 +202,7 @@ final class FloatingPanelController {
     /// 使用更稳健的策略：先尝试直接显示，如果失败则切换 Activation Policy
     func ensureVisibleOnLaunch() {
         print("[DEBUG] ensureVisibleOnLaunch() called - Force showing window")
+        userHidden = false
         
         // 停止之前的 Timer，避免冲突
         launchEnsurer?.invalidate()
@@ -206,48 +222,27 @@ final class FloatingPanelController {
         panel.orderFrontRegardless()
         NSApp.activate(ignoringOtherApps: true)
         
-        // 步骤 B: 延时强化 (解决启动时窗口未准备好的问题)
-        // 延迟一点点，给系统反应时间
+        // 步骤 B: 延时强化 (保持 Accessory，不切换到 Regular，避免 Dock 显示)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
             guard let self = self else { return }
-            
-            // 再次强制前置，确保在所有其他窗口之上
+            // 再次尝试激活并前置
+            NSApp.activate(ignoringOtherApps: true)
+            self.panel.makeKeyAndOrderFront(nil)
             self.panel.orderFrontRegardless()
-            
             let isKey = self.panel.isKeyWindow
             let isVisible = self.panel.isVisible
-            print("[DEBUG] 首次尝试后状态: visible=\(isVisible), key=\(isKey)")
-            
-            // 如果没有获取到焦点（KeyWindow），或者不可见，尝试切换 Policy 技巧
-            // 这是一个强力的 Hack，能解决大部分 Accessory App 无法获取焦点的问题
-            if !isKey || !isVisible {
-                print("[DEBUG] 窗口未完全激活，尝试切换 Activation Policy")
-                
-                // 切换到 Regular 模式以获取完全焦点
-                NSApp.setActivationPolicy(.regular)
-                
-                // 需要在下一个 RunLoop 执行激活，让 Policy 生效
-                DispatchQueue.main.async {
-                    NSApp.activate(ignoringOtherApps: true)
-                    self.panel.makeKeyAndOrderFront(nil)
-                    self.panel.orderFrontRegardless()
-                    
-                    // 稍后切回 Accessory，保持无 Dock 图标状态
-                    // 这个延迟需要足够长，让用户看到窗口并获取焦点
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                        NSApp.setActivationPolicy(.accessory)
-                        
-                        // 切回后再次确保前置，防止被系统隐藏
-                        self.panel.orderFrontRegardless()
-                        print("[DEBUG] 已切回 Accessory 模式，最终检查: visible=\(self.panel.isVisible)")
-                    }
-                }
-            }
+            print("[DEBUG] 强化后状态: visible=\(isVisible), key=\(isKey), policy=\(NSApp.activationPolicy())")
         }
     }
 
     /// 隐藏悬浮窗，带缩放+淡出动效
     func hide() {
+        // 标记为用户主动隐藏，并清理可能导致再次前置的定时器/状态
+        userHidden = true
+        hoverActive = false
+        revertTimer?.invalidate(); revertTimer = nil
+        launchEnsurer?.invalidate(); launchEnsurer = nil
+        
         if animationsEnabled {
             NSAnimationContext.runAnimationGroup { ctx in
                 ctx.duration = 0.4
@@ -266,7 +261,10 @@ final class FloatingPanelController {
     }
 
     @objc private func onWindowLock(_ note: Notification) {
-        if let lock = note.object as? Bool { panel.isMovable = !lock }
+        if let lock = note.object as? Bool {
+            panel.isMovable = !lock
+            panel.isMovableByWindowBackground = !lock
+        }
     }
 
     @objc private func onAnimations(_ note: Notification) {
@@ -275,6 +273,42 @@ final class FloatingPanelController {
     
     @objc private func onWindowKeyDidChange(_ note: Notification) {
         focusProvider.isKeyWindow = panel.isKeyWindow
+    }
+
+    /// 悬停请求切换到 Regular 获取 KeyWindow
+    func requestRegularFocus(reason: String) {
+        // 如果用户主动隐藏了窗口，则不进行任何前置操作
+        if userHidden { return }
+
+        let now = CFAbsoluteTimeGetCurrent()
+        if now - lastSwitchAt < 0.5 { return } // 节流 500ms
+        lastSwitchAt = now
+        hoverActive = true
+        print("[DEBUG] requestFocus(\(reason)) policy=\(NSApp.activationPolicy()) isKey=\(panel.isKeyWindow)")
+        // 保持 Accessory，直接激活并前置
+        DispatchQueue.main.async {
+            NSApp.activate(ignoringOtherApps: true)
+            self.panel.makeKeyAndOrderFront(nil)
+            self.panel.orderFrontRegardless()
+        }
+    }
+
+    /// 悬停离开后回退到 Accessory（防抖）
+    func scheduleRevertToAccessory() {
+        // 如果用户主动隐藏了窗口，则直接返回，不进行回退策略（避免前置）
+        if userHidden { return }
+
+        hoverActive = false
+        revertTimer?.invalidate()
+        revertTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { [weak self] _ in
+            guard let self else { return }
+            // 只有在非悬停且非交互状态下才回退到 Accessory
+            if !self.hoverActive && !self.isInteracting && !self.userHidden {
+                NSApp.setActivationPolicy(.accessory)
+                self.panel.orderFrontRegardless()
+                print("[DEBUG] revertToAccessory policy=\(NSApp.activationPolicy()) isKey=\(self.panel.isKeyWindow)")
+            }
+        }
     }
     
     /// 强制窗口居中显示（调试用）
@@ -301,6 +335,9 @@ struct FloatingRootView: View {
     @ObservedObject var heatmapVM: HeatmapViewModel
     @ObservedObject var bluetooth: BluetoothManager
     @ObservedObject var focus: WindowFocusProvider
+    var onHoverChanged: ((Bool) -> Void)? = nil
+    var onInteractionChanged: ((Bool) -> Void)? = nil
+    var onClose: (() -> Void)? = nil
     @State private var showSettings = false
     @State private var settingsTab: String = "ai"
     @State private var expandedId: UUID? = nil
@@ -330,7 +367,7 @@ struct FloatingRootView: View {
                             // Window Controls (Custom Red Dot)
                             HStack(spacing: 8) {
                                 // Close (Red)
-                                CloseButton()
+                                CloseButton(onClose: onClose)
                             }
                             .padding(.leading, 16)
                             
@@ -459,6 +496,12 @@ struct FloatingRootView: View {
         .shadow(color: Color.black.opacity(0.5), radius: 20, x: 0, y: 10)
         .ignoresSafeArea()
         .kerning(0.5)
+        .onHover { hovering in onHoverChanged?(hovering) }
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in onInteractionChanged?(true) }
+                .onEnded { _ in onInteractionChanged?(false) }
+        )
     }
 }
 
@@ -484,13 +527,14 @@ struct HoverButton: View {
 }
 
 struct CloseButton: View {
+    let onClose: (() -> Void)?
     @State private var hovering = false
     
     var body: some View {
         Circle()
             .fill(Color.themeRed500.opacity(hovering ? 1.0 : 0.8)) // bg-red-500/80
             .frame(width: 12, height: 12)
-            .onTapGesture { NSApp.hide(nil) }
+            .onTapGesture { onClose?() }
             .onHover { hovering = $0 }
             .pointingHandCursor()
             .help("关闭")
