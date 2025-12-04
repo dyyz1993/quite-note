@@ -9,97 +9,86 @@ struct SettingsOverlayView: View {
 
     /// 构建设置面板 UI，右上角浮层
     var body: some View {
-        HStack(spacing: 0) {
-            // Left Sidebar (Tabs)
-            VStack(spacing: 4) {
-                TabButton(key: "ai", label: "AI 提炼设置", icon: "sparkles", current: $tab)
-                TabButton(key: "history", label: "记录设置", icon: "server.rack", current: $tab)
-                TabButton(key: "bluetooth", label: "蓝牙设置", icon: "bluetooth", current: $tab)
-                TabButton(key: "window", label: "悬浮窗设置", icon: "macwindow", current: $tab)
+        VStack(spacing: 0) {
+            // 1. Header
+            HStack(spacing: 8) {
+                Button(action: { withAnimation { showSettings = false } }) {
+                    Image(systemName: "arrow.left")
+                        .font(.system(size: 18)) // size=18
+                        .foregroundColor(.themeGray400)
+                        .padding(4)
+                        .background(Color.clear)
+                }
+                .buttonStyle(.plain)
+                .pointingHandCursor()
+                
+                Text("偏好设置")
+                    .font(.system(size: 16, weight: .semibold)) // text-base
+                    .foregroundColor(.themeGray100)
+                
                 Spacer()
             }
-            .frame(width: 140)
-            .padding(12)
-            .background(Color.black.opacity(0.2)) // bg-black/20
-            .overlay(Rectangle().frame(width: 1).foregroundColor(Color.themeBorder), alignment: .trailing)
+            .padding(.horizontal, 24) // px-6
+            .padding(.vertical, 16) // py-4
+            .background(Color.themeGray900.opacity(0.8)) // bg-gray-900/80
+            .overlay(Rectangle().frame(height: 1).foregroundColor(Color.themeBorder), alignment: .bottom)
             
-            // Right Content
-            VStack(spacing: 0) {
-                // Header
-                HStack {
-                    Text("偏好设置")
-                        .font(.system(size: 14, weight: .semibold)) // text-sm font-semibold
-                        .foregroundColor(.themeTextPrimary)
-                    Spacer()
-                    Button(action: { withAnimation { showSettings = false } }) {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 14))
-                            .foregroundColor(.themeGray500)
-                    }
-                    .buttonStyle(.plain)
+            // 2. Horizontal Tabs
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) { // gap-2
+                    TabButton(key: "ai", label: "AI 提炼设置", icon: "sparkles", current: $tab)
+                    TabButton(key: "history", label: "记录设置", icon: "server.rack", current: $tab)
+                    TabButton(key: "bluetooth", label: "蓝牙设置", icon: "bluetooth", current: $tab)
+                    TabButton(key: "window", label: "悬浮窗设置", icon: "macwindow", current: $tab)
                 }
-                .padding(.horizontal, 24)
-                .frame(height: 48) // h-12
-                .background(Color.white.opacity(0.05)) // bg-white/5
-                .overlay(Rectangle().frame(height: 1).foregroundColor(Color.themeBorder), alignment: .bottom)
-                
-                // Scrollable Content
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 24) {
-                        switch tab {
-                        case "ai": aiTab
-                        case "history": historyTab
-                        case "bluetooth": bluetoothTab
-                        case "window": windowTab
-                        default: EmptyView()
-                        }
-                    }
-                    .padding(24)
-                }
-                
-                // Footer
-                HStack(spacing: 12) {
-                    Spacer()
-                    Button(action: { withAnimation { showSettings = false } }) {
-                        Text("取消")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(.themeGray400)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 8)
-                            .background(Color.white.opacity(0.05))
-                            .cornerRadius(6)
-                    }
-                    .buttonStyle(.plain)
-                    
-                    Button(action: {
-                        withAnimation { showSettings = false }
-                        // Save action is implicit with bindings, but we can add explicit save here if needed
-                    }) {
-                        HStack(spacing: 6) {
-                            Image(systemName: "square.and.arrow.down")
-                            Text("保存")
-                        }
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                        .background(Color.themeBlue600) // bg-blue-600
-                        .cornerRadius(6)
-                        .shadow(color: Color.themeBlue900.opacity(0.2), radius: 4, y: 2)
-                    }
-                    .buttonStyle(.plain)
-                }
-                .padding(.horizontal, 24)
-                .frame(height: 56) // h-14
-                .background(Color.black.opacity(0.2))
-                .overlay(Rectangle().frame(height: 1).foregroundColor(Color.themeBorder), alignment: .top)
+                .padding(.horizontal, 24) // px-6
+                .padding(.vertical, 12) // py-3
             }
+            .background(Color.themeGray800.opacity(0.8)) // bg-gray-800/80
+            .overlay(Rectangle().frame(height: 1).foregroundColor(Color.themeBorder), alignment: .bottom)
+            
+            // 3. Content
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    switch tab {
+                    case "ai": aiTab
+                    case "history": historyTab
+                    case "bluetooth": bluetoothTab
+                    case "window": windowTab
+                    default: EmptyView()
+                    }
+                }
+                .padding(24) // p-6
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity) // Fill available space
+            
+            // 4. Footer
+            HStack {
+                Spacer()
+                Button(action: {
+                    withAnimation { showSettings = false }
+                    store.postLightHint("配置已保存。")
+                }) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "square.and.arrow.down")
+                        Text("保存设置")
+                    }
+                    .font(.system(size: 14, weight: .medium)) // text-sm
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 16) // px-4
+                    .padding(.vertical, 8) // py-2
+                    .background(Color.themeAccent) // bg-blue-600
+                    .cornerRadius(8) // rounded-lg
+                    .shadow(color: Color.themeAccent.opacity(0.2), radius: 10, y: 5) // shadow-lg
+                }
+                .buttonStyle(.plain)
+                .pointingHandCursor()
+            }
+            .padding(16) // p-4
+            .background(Color.themeGray900.opacity(0.5)) // bg-gray-900/50
+            .overlay(Rectangle().frame(height: 1).foregroundColor(Color.themeBorder), alignment: .top)
         }
-        .frame(width: 600, height: 450)
-        .background(Color.themeBackground)
-        .cornerRadius(12)
-        .shadow(radius: 20)
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.themeBorder))
+        .background(Color.themeBackground.opacity(0.9)) // bg-gray-900/90
     }
 
     /// AI 设置内容
@@ -109,7 +98,7 @@ struct SettingsOverlayView: View {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 8) {
-                        Image(systemName: "sparkles").foregroundColor(.themeYellow400).font(.system(size: 14))
+                        Image(systemName: "sparkles").foregroundColor(.themeYellow500).font(.system(size: 14))
                         Text("AI 自动提炼")
                             .font(.system(size: 14, weight: .medium))
                             .foregroundColor(.themeTextPrimary)
@@ -160,7 +149,6 @@ struct SettingsOverlayView: View {
                         .foregroundColor(.themeGray400)
                     
                     HStack(spacing: 8) {
-                        ProviderButton(title: "Google Gemini", isSelected: store.aiProvider == .gemini) { store.setAIProvider(.gemini) }
                         ProviderButton(title: "OpenAI GPT", isSelected: store.aiProvider == .openai) { store.setAIProvider(.openai) }
                         ProviderButton(title: "Local LLM", isSelected: store.aiProvider == .local) { store.setAIProvider(.local) }
                     }
@@ -232,6 +220,7 @@ struct SettingsOverlayView: View {
                 .shadow(color: Color.themeRed500.opacity(0.2), radius: 4, y: 2)
             }
             .buttonStyle(.plain)
+            .pointingHandCursor()
         }
     }
 
@@ -243,7 +232,7 @@ struct SettingsOverlayView: View {
                     Text("连接状态").font(.system(size: 14, weight: .medium)).foregroundColor(.themeTextPrimary)
                     Text(bluetooth.connectedDeviceName != nil ? "已连接: \(bluetooth.connectedDeviceName!)" : (bluetooth.state == .poweredOn ? "未连接" : "蓝牙未开启"))
                         .font(.system(size: 10))
-                        .foregroundColor(bluetooth.connectedDeviceName != nil ? .themeGreen400 : .themeGray500)
+                        .foregroundColor(bluetooth.connectedDeviceName != nil ? .themeGreen : .themeGray500)
                 }
                 Spacer()
                 Button(action: {
@@ -253,7 +242,7 @@ struct SettingsOverlayView: View {
                         .font(.system(size: 12))
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)
-                        .background(Color.themeBlue600)
+                        .background(Color.themeAccent)
                         .foregroundColor(.white)
                         .cornerRadius(6)
                 }
@@ -299,120 +288,28 @@ struct TabButton: View {
     let label: String
     let icon: String
     @Binding var current: String
-
+    
     var body: some View {
-        Button(action: { withAnimation { current = key } }) {
-            HStack(spacing: 10) {
+        let isSelected = current == key
+        Button(action: { withAnimation(.easeInOut(duration: 0.2)) { current = key } }) {
+            HStack(spacing: 4) {
                 Image(systemName: icon)
-                    .font(.system(size: 14))
+                    .font(.system(size: 12))
                 Text(label)
-                    .font(.system(size: 12, weight: .medium))
-                Spacer()
+                    .font(.system(size: 12, weight: isSelected ? .medium : .regular))
             }
-            .foregroundColor(current == key ? .themeBlue400 : .themeGray400)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(current == key ? Color.themeBlue500.opacity(0.1) : Color.clear)
-            .cornerRadius(6)
-            .contentShape(Rectangle())
+            .padding(.horizontal, 12) // px-3
+            .padding(.vertical, 6) // py-1.5
+            .foregroundColor(isSelected ? .white : .themeGray400)
+            .background(isSelected ? Color.themeAccent : Color.white.opacity(0.05))
+            .cornerRadius(16) // rounded-full
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(Color.white.opacity(0.1), lineWidth: isSelected ? 0 : 1)
+            )
         }
         .buttonStyle(.plain)
-    }
-}
-
-struct ProviderButton: View {
-    let title: String
-    let isSelected: Bool
-    let action: () -> Void
-    
-    var body: some View {
-        Button(action: action) {
-            Text(title)
-                .font(.caption)
-                .frame(maxWidth: .infinity)
-                .foregroundColor(isSelected ? Color.themeAccentHover : .gray)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(isSelected ? Color.themeAccent.opacity(0.2) : Color.white.opacity(0.05))
-                .cornerRadius(6)
-                .overlay(RoundedRectangle(cornerRadius: 6).stroke(isSelected ? Color.themeAccent : Color.clear, lineWidth: 1))
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-struct CustomTextField: View {
-    let label: String
-    let placeholder: String
-    @Binding var text: String
-    var isSecure: Bool = false
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(label)
-                .font(.system(size: 10, weight: .bold)) // text-[10px] font-bold
-                .foregroundColor(.themeGray500) // text-gray-500
-                .textCase(.uppercase) // uppercase
-                .tracking(0.5) // tracking-wider
-            
-            if isSecure {
-                SecureField(placeholder, text: $text)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 12)) // text-xs
-                    .padding(8)
-                    .background(Color.black.opacity(0.4)) // bg-black/40
-                    .cornerRadius(8) // rounded-lg
-                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.themeBorder)) // border-white/10
-            } else {
-                TextField(placeholder, text: $text)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 12)) // text-xs
-                    .padding(8)
-                    .background(Color.black.opacity(0.4)) // bg-black/40
-                    .cornerRadius(8) // rounded-lg
-                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.themeBorder)) // border-white/10
-            }
-        }
-    }
-}
-
-struct CustomSlider: View {
-    let label: String
-    @Binding var value: Double
-    let range: ClosedRange<Double>
-    let displayValue: String
-    
-    var body: some View {
-        VStack(spacing: 8) {
-            HStack {
-                Text(label).font(.system(size: 12)).foregroundColor(.themeGray400)
-                Spacer()
-                Text(displayValue)
-                    .font(.system(size: 12, design: .monospaced)) // text-xs
-                    .foregroundColor(.themeBlue400) // text-blue-400
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 2)
-                    .background(Color.themeBlue400.opacity(0.1)) // bg-blue-400/10
-                    .cornerRadius(4)
-            }
-            // Custom Slider Implementation
-            GeometryReader { geometry in
-                ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(Color.themeGray700) // bg-gray-700
-                        .frame(height: 6)
-                    
-                    Capsule()
-                        .fill(Color.themeBlue500) // accent-blue-500
-                        .frame(width: geometry.size.width * CGFloat((value - range.lowerBound) / (range.upperBound - range.lowerBound)), height: 6)
-                }
-                .gesture(DragGesture(minimumDistance: 0).onChanged { value in
-                    let percent = min(max(0, value.location.x / geometry.size.width), 1)
-                    self.value = range.lowerBound + (range.upperBound - range.lowerBound) * Double(percent)
-                })
-            }
-            .frame(height: 6)
-        }
+        .pointingHandCursor()
     }
 }
 
@@ -434,6 +331,103 @@ struct CustomToggle: View {
             }
         }
         .buttonStyle(.plain)
+        .pointingHandCursor()
+    }
+}
+
+struct CustomSlider: View {
+    let label: String
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+    let displayValue: String
+    
+    var body: some View {
+        VStack(spacing: 6) {
+            HStack {
+                Label(label, systemImage: "slider.horizontal.3")
+                    .font(.system(size: 12)) // text-xs
+                    .foregroundColor(.themeGray400)
+                Spacer()
+                Text(displayValue)
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundColor(.themeBlue400)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 2)
+                    .background(Color.themeBlue500.opacity(0.1))
+                    .cornerRadius(4)
+            }
+            
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Color.themeGray700) // bg-gray-700
+                        .frame(height: 6)
+                    
+                    Capsule()
+                        .fill(Color.themeBlue500) // accent-blue-500
+                        .frame(width: geometry.size.width * CGFloat((value - range.lowerBound) / (range.upperBound - range.lowerBound)), height: 6)
+                }
+                .gesture(DragGesture(minimumDistance: 0).onChanged { v in
+                    let percent = min(max(0, v.location.x / geometry.size.width), 1)
+                    self.value = range.lowerBound + (range.upperBound - range.lowerBound) * Double(percent)
+                })
+                .pointingHandCursor()
+            }
+            .frame(height: 6)
+        }
+    }
+}
+
+struct ProviderButton: View {
+    let title: String
+    let isSelected: Bool
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 10, weight: isSelected ? .bold : .regular))
+                .foregroundColor(isSelected ? .white : .themeGray400)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(isSelected ? Color.themeAccent : Color.white.opacity(0.05))
+                .cornerRadius(4)
+                .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.white.opacity(0.1), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .pointingHandCursor()
+    }
+}
+
+struct CustomTextField: View {
+    let label: String
+    let placeholder: String
+    @Binding var text: String
+    var isSecure: Bool = false
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label)
+                .font(.system(size: 10, weight: .bold))
+                .foregroundColor(.themeGray500)
+                .textCase(.uppercase) // uppercase tracking-wider
+                .tracking(1)
+            
+            Group {
+                if isSecure {
+                    SecureField(placeholder, text: $text)
+                } else {
+                    TextField(placeholder, text: $text)
+                }
+            }
+            .textFieldStyle(.plain)
+            .font(.system(size: 12))
+            .foregroundColor(.themeGray200)
+            .padding(8)
+            .background(Color.black.opacity(0.4)) // bg-black/40
+            .cornerRadius(4)
+            .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.themeBorder))
+        }
     }
 }
 
@@ -445,19 +439,15 @@ struct ToggleRow: View {
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                    .font(.system(size: 14, weight: .medium)) // text-sm font-medium
-                    .foregroundColor(.themeTextPrimary) // text-gray-200
-                Text(subtitle)
-                    .font(.system(size: 10)) // text-[10px]
-                    .foregroundColor(.themeGray500) // text-gray-500
+                Text(title).font(.system(size: 14, weight: .medium)).foregroundColor(.themeTextPrimary)
+                Text(subtitle).font(.system(size: 10)).foregroundColor(.themeGray500)
             }
             Spacer()
             CustomToggle(isOn: $isOn)
         }
-        .padding(12)
-        .background(Color.white.opacity(0.05)) // bg-white/5
+        .padding(16)
+        .background(Color.white.opacity(0.05))
         .cornerRadius(8)
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.themeBorder))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.05)))
     }
 }

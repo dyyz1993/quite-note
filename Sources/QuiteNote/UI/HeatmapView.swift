@@ -43,55 +43,69 @@ struct HeatmapView: View {
 
     /// 构建热力图方格
     var body: some View {
+        VStack(alignment: .center, spacing: 6) {
+            headerView
+                .padding(.bottom, 24)
+            
+            cellsView
+        }
+        .padding(.top, 12) // Reduced top padding to move icon up
+        .padding(.bottom, 24)
+        .frame(width: 64)
+    }
+    
+    private var headerView: some View {
+        VStack(spacing: 4) {
+            Image(systemName: "waveform.path.ecg")
+                .font(.system(size: 22, weight: .black)) // Bolder and Wider
+                .foregroundColor(.themeGreen) // Brighter
+            Text("WEEK")
+                .font(.system(size: 8, weight: .bold))
+                .foregroundColor(Color.themeGreen.opacity(0.5))
+        }
+    }
+    
+    private var cellsView: some View {
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: Date())
         // Last 12 days to match design height
         let cells = (0..<12).map { i in calendar.date(byAdding: .day, value: -i, to: today)! }
         
-        VStack(alignment: .center, spacing: 6) {
-            VStack(spacing: 4) {
-                Image(systemName: "waveform.path.ecg")
-                    .font(.system(size: 20))
-                    .foregroundColor(.themeGray500)
-                Text("WEEK")
-                    .font(.system(size: 8, weight: .bold))
-                    .foregroundColor(Color.themeGreen.opacity(0.5))
-            }
-            .padding(.bottom, 24) // More padding to separate header from cells
-            
-            VStack(spacing: 6) { // gap-1.5 (6px)
-                ForEach(cells, id: \.self) { d in
-                    let count = vm.buckets[d] ?? 0
-                    
-                    cellView(date: d, count: count)
-                        .onTapGesture {
-                            // Toggle filter
-                            if vm.filterDate == d {
-                                vm.filterDate = nil
-                            } else {
-                                vm.filterDate = d
-                            }
+        return VStack(spacing: 6) { // gap-1.5 (6px)
+            ForEach(cells, id: \.self) { d in
+                let count = vm.buckets[d] ?? 0
+                
+                cellView(date: d, count: count)
+                    .onTapGesture {
+                        if vm.filterDate == d {
+                            vm.filterDate = nil
+                        } else {
+                            vm.filterDate = d
                         }
-                        .onHover { h in hoverDay = h ? d : nil }
-                        .overlay(alignment: .leading) {
-                            if hoverDay == d {
-                                Text("\(calendar.isDateInToday(d) ? "今日" : d.formatted(date: .abbreviated, time: .omitted))：\(count) 条")
-                                    .font(.system(size: 10))
-                                    .padding(4)
-                                    .background(Color.gray.opacity(0.9))
-                                    .foregroundColor(.white)
-                                    .clipShape(RoundedRectangle(cornerRadius: 4))
-                                    .offset(x: 24) // Adjusted offset
-                                    .fixedSize()
-                                    .transition(.opacity)
-                                    .zIndex(100)
-                            }
+                    }
+                    .onHover { h in hoverDay = h ? d : nil }
+                    .pointingHandCursor()
+                    .overlay(alignment: .leading) {
+                        if hoverDay == d {
+                            tooltipView(date: d, count: count)
                         }
-                }
+                    }
             }
         }
-        .padding(.vertical, 24) // py-6
-        .frame(width: 64)
+    }
+    
+    private func tooltipView(date: Date, count: Int) -> some View {
+        let calendar = Calendar.current
+        return Text("\(calendar.isDateInToday(date) ? "今日" : date.formatted(date: .abbreviated, time: .omitted))：\(count) 条")
+            .font(.system(size: 10))
+            .padding(4)
+            .background(Color.themeGray700) // bg-gray-700
+            .foregroundColor(.themeGray200) // text-gray-200
+            .clipShape(RoundedRectangle(cornerRadius: 4))
+            .offset(x: 24) // Adjusted offset
+            .fixedSize()
+            .transition(.opacity)
+            .zIndex(100)
     }
 
     private func cellView(date: Date, count: Int) -> some View {
@@ -130,7 +144,7 @@ struct HeatmapView: View {
             .shadow(color: shadowColor, radius: shadowRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: 2)
-                    .stroke(Color.white, lineWidth: isSelected ? 1.5 : 0)
+                    .stroke(Color.white.opacity(0.4), lineWidth: isSelected ? 1 : 0)
             )
             .scaleEffect(hoverDay == date ? 1.1 : 1.0) // hover:scale-110
             .animation(.spring(response: 0.3), value: hoverDay == date)

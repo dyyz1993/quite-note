@@ -4,6 +4,7 @@ final class KeyboardShortcutManager {
     private var globalMonitor: Any?
     var onTogglePanel: (() -> Void)?
     var onToggleAI: (() -> Void)?
+    var onForceCenter: (() -> Void)?
 
     func start() {
         globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] e in
@@ -12,6 +13,7 @@ final class KeyboardShortcutManager {
             if flags.contains(.command) && flags.contains(.option) {
                 if e.characters?.lowercased() == "r" { self.onTogglePanel?() }
                 if e.characters?.lowercased() == "a" { self.onToggleAI?() }
+                if e.characters?.lowercased() == "d" { self.onForceCenter?() } // 调试快捷键：⌥⌘D
             }
         }
     }
