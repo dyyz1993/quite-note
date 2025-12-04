@@ -8,13 +8,15 @@ final class StatusBarController {
     private let store: RecordStore
     private let bluetooth: BluetoothManager
     private let toggleAction: () -> Void
+    private let forceShowAction: () -> Void
     private var cancellables = Set<AnyCancellable>()
 
     /// 初始化状态栏与菜单结构
-    init(store: RecordStore, bluetooth: BluetoothManager, toggleAction: @escaping () -> Void) {
+    init(store: RecordStore, bluetooth: BluetoothManager, toggleAction: @escaping () -> Void, forceShowAction: @escaping () -> Void) {
         self.store = store
         self.bluetooth = bluetooth
         self.toggleAction = toggleAction
+        self.forceShowAction = forceShowAction
         setupMenu()
         
         store.$enableAI
@@ -36,6 +38,13 @@ final class StatusBarController {
         toggle.target = self
         toggle.isEnabled = true
         menu.addItem(toggle)
+        
+        let force = NSMenuItem(title: "强制显示并居中 (Reset)", action: #selector(onForceShow), keyEquivalent: "R")
+        force.keyEquivalentModifierMask = [.option, .command, .shift]
+        force.target = self
+        force.isEnabled = true
+        menu.addItem(force)
+        
         let capture = NSMenuItem(title: "采集当前剪贴板", action: #selector(onCapture), keyEquivalent: "c")
         capture.keyEquivalentModifierMask = [.option, .command]
         capture.target = self
@@ -69,7 +78,16 @@ final class StatusBarController {
     }
 
     /// 菜单：显示/隐藏悬浮窗
-    @objc private func onToggle() { toggleAction() }
+    @objc private func onToggle() {
+        print("[DEBUG] 状态栏菜单点击：显示/隐藏悬浮窗")
+        toggleAction()
+    }
+
+    /// 菜单：强制显示
+    @objc private func onForceShow() {
+        print("[DEBUG] 状态栏菜单点击：强制显示并居中")
+        forceShowAction()
+    }
 
     /// 菜单：打开设置
     @objc private func openSettings() { NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil) }

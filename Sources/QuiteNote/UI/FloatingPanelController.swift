@@ -86,6 +86,9 @@ class CustomPanel: NSWindow {
     override var canBecomeMain: Bool { true }
 }
 
+final class WindowFocusProvider: ObservableObject {
+    @Published var isKeyWindow: Bool = false
+}
 
 
 /// 管理悬浮窗 NSPanel 展示、置顶与动效
@@ -96,6 +99,8 @@ final class FloatingPanelController {
     private let bluetooth: BluetoothManager
     private var hosting: NSHostingView<FloatingRootView>!
     private var animationsEnabled: Bool = true
+    private let focusProvider = WindowFocusProvider()
+    private var launchEnsurer: Timer?
     
     var isVisible: Bool { panel.isVisible }
     
@@ -117,13 +122,17 @@ final class FloatingPanelController {
         // Use borderless to remove title bar completely, add fullSizeContentView to allow content to fill window
         // Remove .nonactivatingPanel to allow TextField input and key events
         panel = CustomPanel(contentRect: NSRect(x: centerX, y: centerY, width: windowWidth, height: windowHeight), 
-                       styleMask: [.borderless, .fullSizeContentView], 
+                       styleMask: [.titled, .fullSizeContentView], 
                        backing: .buffered, defer: false)
-        panel.level = .screenSaver  // 使用最高窗口级别确保显示在最前面
+        
+        panel.isOpaque = false
+        panel.level = .floating
+        // 恢复关键行为：允许在所有桌面显示，允许在全屏应用之上显示
+        // 去掉了 .moveToActiveSpace 以防止初始化卡死
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.hidesOnDeactivate = false
-        // panel.titleVisibility = .hidden // Not needed for borderless
-        // panel.titlebarAppearsTransparent = true // Not needed for borderless
+        panel.titleVisibility = .hidden  // 隐藏标题栏
+        panel.titlebarAppearsTransparent = true  // 标题栏透明
         panel.backgroundColor = NSColor.clear.withAlphaComponent(0.9) // 设置为透明背景，让SwiftUI内容显示
         panel.isMovableByWindowBackground = false // Disable global dragging
         panel.hasShadow = true // Ensure shadow is visible for borderless window
@@ -133,69 +142,107 @@ final class FloatingPanelController {
         panel.standardWindowButton(.miniaturizeButton)?.isHidden = true
         panel.standardWindowButton(.zoomButton)?.isHidden = true
         
-        hosting = NSHostingView(rootView: FloatingRootView(store: store, heatmapVM: heatmapVM, bluetooth: bluetooth))
+        hosting = NSHostingView(rootView: FloatingRootView(store: store, heatmapVM: heatmapVM, bluetooth: bluetooth, focus: focusProvider))
         panel.contentView = hosting
         
         NotificationCenter.default.addObserver(self, selector: #selector(onWindowLock(_:)), name: .windowLockChanged, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(onAnimations(_:)), name: .animationsEnabledChanged, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(onWindowKeyDidChange(_:)), name: NSWindow.didBecomeKeyNotification, object: panel)
+        NotificationCenter.default.addObserver(self, selector: #selector(onWindowKeyDidChange(_:)), name: NSWindow.didResignKeyNotification, object: panel)
     }
 
     /// 显示悬浮窗，带缩放+淡入动效
     func show() {
-        print("[DEBUG] 开始显示悬浮窗")
+        print("[DEBUG] show() called")
         
-        // 确保窗口在屏幕范围内
-        if let screen = NSScreen.main {
-            let screenFrame = screen.visibleFrame
-            let windowFrame = panel.frame
-            var adjustedFrame = windowFrame
-            
-            print("[DEBUG] 屏幕尺寸: \(screenFrame)")
-            print("[DEBUG] 窗口原始位置: \(windowFrame)")
-            
-            // 确保窗口不会超出屏幕边界
-            if adjustedFrame.maxX > screenFrame.maxX {
-                adjustedFrame.origin.x = screenFrame.maxX - adjustedFrame.width
-            }
-            if adjustedFrame.maxY > screenFrame.maxY {
-                adjustedFrame.origin.y = screenFrame.maxY - adjustedFrame.height
-            }
-            if adjustedFrame.minX < screenFrame.minX {
-                adjustedFrame.origin.x = screenFrame.minX
-            }
-            if adjustedFrame.minY < screenFrame.minY {
-                adjustedFrame.origin.y = screenFrame.minY
-            }
-            
-            if adjustedFrame != windowFrame {
-                panel.setFrame(adjustedFrame, display: false)
-            }
-            
-            print("[DEBUG] 窗口调整后位置: \(panel.frame)")
-        }
+        // 1. 确保位置正确
+        forceCenterWindow()
         
-        panel.alphaValue = 0
+        // 2. 重置透明度，防止动画状态残留
+        panel.alphaValue = 1
+        // 确保层级为浮动层级（比普通窗口高）
+        panel.level = .floating
+        
+        // 3. 激活应用和窗口
+        // 对于 Accessory app，顺序很重要：先激活 App，再 OrderFront
+        NSApp.activate(ignoringOtherApps: true)
         panel.makeKeyAndOrderFront(nil)
-        panel.orderFrontRegardless() // 确保窗口显示在最前面
+        panel.orderFrontRegardless()
         
-        // 延迟设置为关键窗口，确保窗口已经完全显示
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            self.panel.makeKey()
-            print("[DEBUG] 延迟后窗口是否为关键窗口: \(self.panel.isKeyWindow)")
+        // 4. 执行动画
+        if animationsEnabled {
+            panel.alphaValue = 0
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0.3
+                ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                panel.animator().alphaValue = 1
+            }
         }
         
-        print("[DEBUG] 窗口已显示，可见性: \(panel.isVisible)")
-        print("[DEBUG] 窗口级别: \(panel.level.rawValue)")
-        print("[DEBUG] 窗口是否为关键窗口: \(panel.isKeyWindow)")
+        focusProvider.isKeyWindow = panel.isKeyWindow
+        print("[DEBUG] show() 完成，isVisible: \(panel.isVisible), isKey: \(panel.isKeyWindow)")
+    }
+
+    /// 启动期强制确保悬浮窗可见并可在当前空间显示
+    /// 使用更稳健的策略：先尝试直接显示，如果失败则切换 Activation Policy
+    func ensureVisibleOnLaunch() {
+        print("[DEBUG] ensureVisibleOnLaunch() called - Force showing window")
         
-        if animationsEnabled {
-            NSAnimationContext.beginGrouping()
-            NSAnimationContext.current.duration = 0.5
-            NSAnimationContext.current.timingFunction = CAMediaTimingFunction(controlPoints: 0.34, 1.56, 0.64, 1)
-            panel.animator().alphaValue = 1
-            NSAnimationContext.endGrouping()
-        } else {
-            panel.alphaValue = 1
+        // 停止之前的 Timer，避免冲突
+        launchEnsurer?.invalidate()
+        launchEnsurer = nil
+        
+        // 1. 基础属性重置
+        panel.alphaValue = 1
+        panel.isOpaque = false
+        panel.level = .floating 
+        
+        // 2. 强制居中
+        forceCenterWindow()
+        
+        // 3. 强制显示策略 (Accessory App 核心显示逻辑)
+        // 步骤 A: 常规显示尝试
+        panel.makeKeyAndOrderFront(nil)
+        panel.orderFrontRegardless()
+        NSApp.activate(ignoringOtherApps: true)
+        
+        // 步骤 B: 延时强化 (解决启动时窗口未准备好的问题)
+        // 延迟一点点，给系统反应时间
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+            guard let self = self else { return }
+            
+            // 再次强制前置，确保在所有其他窗口之上
+            self.panel.orderFrontRegardless()
+            
+            let isKey = self.panel.isKeyWindow
+            let isVisible = self.panel.isVisible
+            print("[DEBUG] 首次尝试后状态: visible=\(isVisible), key=\(isKey)")
+            
+            // 如果没有获取到焦点（KeyWindow），或者不可见，尝试切换 Policy 技巧
+            // 这是一个强力的 Hack，能解决大部分 Accessory App 无法获取焦点的问题
+            if !isKey || !isVisible {
+                print("[DEBUG] 窗口未完全激活，尝试切换 Activation Policy")
+                
+                // 切换到 Regular 模式以获取完全焦点
+                NSApp.setActivationPolicy(.regular)
+                
+                // 需要在下一个 RunLoop 执行激活，让 Policy 生效
+                DispatchQueue.main.async {
+                    NSApp.activate(ignoringOtherApps: true)
+                    self.panel.makeKeyAndOrderFront(nil)
+                    self.panel.orderFrontRegardless()
+                    
+                    // 稍后切回 Accessory，保持无 Dock 图标状态
+                    // 这个延迟需要足够长，让用户看到窗口并获取焦点
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        NSApp.setActivationPolicy(.accessory)
+                        
+                        // 切回后再次确保前置，防止被系统隐藏
+                        self.panel.orderFrontRegardless()
+                        print("[DEBUG] 已切回 Accessory 模式，最终检查: visible=\(self.panel.isVisible)")
+                    }
+                }
+            }
         }
     }
 
@@ -209,10 +256,13 @@ final class FloatingPanelController {
             } completionHandler: { [weak panel] in
                 panel?.orderOut(nil)
                 panel?.alphaValue = 1
+                NSApp.setActivationPolicy(.accessory)
             }
         } else {
             panel.orderOut(nil)
+            NSApp.setActivationPolicy(.accessory)
         }
+        focusProvider.isKeyWindow = false
     }
 
     @objc private func onWindowLock(_ note: Notification) {
@@ -221,6 +271,10 @@ final class FloatingPanelController {
 
     @objc private func onAnimations(_ note: Notification) {
         if let enabled = note.object as? Bool { animationsEnabled = enabled }
+    }
+    
+    @objc private func onWindowKeyDidChange(_ note: Notification) {
+        focusProvider.isKeyWindow = panel.isKeyWindow
     }
     
     /// 强制窗口居中显示（调试用）
@@ -246,6 +300,7 @@ struct FloatingRootView: View {
     @ObservedObject var store: RecordStore
     @ObservedObject var heatmapVM: HeatmapViewModel
     @ObservedObject var bluetooth: BluetoothManager
+    @ObservedObject var focus: WindowFocusProvider
     @State private var showSettings = false
     @State private var expandedId: UUID? = nil
     @State private var searchTerm: String = ""
@@ -338,6 +393,7 @@ struct FloatingRootView: View {
                                         .textFieldStyle(.plain)
                                         .font(.system(size: 14)) // text-sm
                                         .foregroundColor(.themeGray100) // text-gray-100
+                                        .disabled(!focus.isKeyWindow)
                                 }
                                 .padding(12) // p-3
                                 .background(Color.black.opacity(0.1)) // bg-black/10
@@ -400,6 +456,7 @@ struct FloatingRootView: View {
         .cornerRadius(16)
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.themeBorder, lineWidth: 1))
         .shadow(color: Color.black.opacity(0.5), radius: 20, x: 0, y: 10)
+        .ignoresSafeArea()
     }
 }
 

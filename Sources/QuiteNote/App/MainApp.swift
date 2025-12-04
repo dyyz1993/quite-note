@@ -22,6 +22,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         print("[DEBUG] 应用启动中...")
         
+        NSApp.setActivationPolicy(.accessory)
+        
         let store = RecordStore()
         clipboard = ClipboardService(store: store)
         let bluetooth = BluetoothManager()
@@ -32,13 +34,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         print("[DEBUG] 创建状态栏控制器...")
         statusBarController = StatusBarController(store: store, bluetooth: bluetooth, toggleAction: { [weak self] in
             self?.toggleFloating()
+        }, forceShowAction: { [weak self] in
+            print("[DEBUG] 状态栏触发：强制显示")
+            self?.floatingPanelController?.ensureVisibleOnLaunch()
         })
 
         print("[DEBUG] 创建悬浮窗控制器...")
         floatingPanelController = FloatingPanelController(store: store, heatmapVM: heatmapVM, bluetooth: bluetooth)
+        if floatingPanelController == nil {
+            print("[DEBUG] FATAL: FloatingPanelController init failed (nil)")
+        } else {
+            print("[DEBUG] FloatingPanelController created successfully")
+        }
         
         print("[DEBUG] 自动显示悬浮窗...")
-        floatingPanelController?.show()
+        DispatchQueue.main.async {
+            if let controller = self.floatingPanelController {
+                print("[DEBUG] Calling ensureVisibleOnLaunch from startup")
+                controller.ensureVisibleOnLaunch()
+            } else {
+                print("[DEBUG] FATAL: Cannot show window, controller is nil")
+            }
+        }
         
         // 发送系统通知
         print("[DEBUG] 发送系统通知...")
@@ -64,11 +81,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// 切换悬浮窗显示/隐藏，包含动效
     private func toggleFloating() {
-        guard let floating = floatingPanelController else { return }
+        print("[DEBUG] toggleFloating called")
+        guard let floating = floatingPanelController else {
+            print("[DEBUG] ERROR: floatingPanelController is nil")
+            return 
+        }
+        print("[DEBUG] 状态栏触发：切换悬浮窗")
         if floating.isVisible {
+            print("[DEBUG] 当前可见，执行隐藏")
             floating.hide()
         } else {
-            floating.show()
+            print("[DEBUG] 当前不可见，执行确保可见并居中")
+            floating.ensureVisibleOnLaunch()
         }
     }
 
