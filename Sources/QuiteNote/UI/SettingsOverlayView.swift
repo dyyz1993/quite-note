@@ -5,7 +5,14 @@ struct SettingsOverlayView: View {
     @ObservedObject var store: RecordStore
     @ObservedObject var bluetooth: BluetoothManager
     @Binding var showSettings: Bool
-    @State private var tab: String = "ai"
+    @State private var tab: String
+
+    init(store: RecordStore, bluetooth: BluetoothManager, showSettings: Binding<Bool>, initialTab: String = "ai") {
+        self.store = store
+        self.bluetooth = bluetooth
+        self._showSettings = showSettings
+        self._tab = State(initialValue: initialTab)
+    }
 
     /// 构建设置面板 UI，右上角浮层
     var body: some View {
@@ -27,25 +34,48 @@ struct SettingsOverlayView: View {
                     .foregroundColor(.themeGray100)
                 
                 Spacer()
+                
+                // Bluetooth Status Icon (Added based on feedback)
+                HStack(spacing: 6) {
+                   if let name = bluetooth.connectedDeviceName {
+                       Image(systemName: "bluetooth")
+                           .foregroundColor(.themeBlue400)
+                       Text(name)
+                           .font(.system(size: 12))
+                           .foregroundColor(.themeBlue400)
+                   } else if bluetooth.state == .poweredOn {
+                       Image(systemName: "bluetooth")
+                           .foregroundColor(.themeYellow)
+                   } else {
+                       Image(systemName: "bluetooth.slash")
+                           .foregroundColor(.themeGray500)
+                   }
+                }
+                .font(.system(size: 14))
+                .padding(.trailing, 4)
+                .onTapGesture {
+                   withAnimation { tab = "bluetooth" }
+                }
+                .pointingHandCursor()
             }
             .padding(.horizontal, 24) // px-6
             .padding(.vertical, 16) // py-4
             .background(Color.themeGray900.opacity(0.8)) // bg-gray-900/80
-            .overlay(Rectangle().frame(height: 1).foregroundColor(Color.themeBorder), alignment: .bottom)
+            .overlay(Rectangle().frame(height: 1).foregroundColor(Color.themeBorder).allowsHitTesting(false), alignment: .bottom)
             
             // 2. Horizontal Tabs
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) { // gap-2
-                    TabButton(key: "ai", label: "AI 提炼设置", icon: "sparkles", current: $tab)
-                    TabButton(key: "history", label: "记录设置", icon: "server.rack", current: $tab)
-                    TabButton(key: "bluetooth", label: "蓝牙设置", icon: "bluetooth", current: $tab)
-                    TabButton(key: "window", label: "悬浮窗设置", icon: "macwindow", current: $tab)
+                    TabButtonLucide(key: "ai", label: "AI 提炼设置", icon: .sparkles, current: $tab)
+                    TabButtonLucide(key: "history", label: "记录设置", icon: .database, current: $tab)
+                    TabButtonLucide(key: "bluetooth", label: "蓝牙设置", icon: .bluetooth, current: $tab)
+                    TabButtonLucide(key: "window", label: "悬浮窗设置", icon: .appWindowMac, current: $tab)
                 }
                 .padding(.horizontal, 24) // px-6
                 .padding(.vertical, 12) // py-3
             }
             .background(Color.themeGray800.opacity(0.8)) // bg-gray-800/80
-            .overlay(Rectangle().frame(height: 1).foregroundColor(Color.themeBorder), alignment: .bottom)
+            .overlay(Rectangle().frame(height: 1).foregroundColor(Color.themeBorder).allowsHitTesting(false), alignment: .bottom)
             
             // 3. Content
             ScrollView {
@@ -64,13 +94,32 @@ struct SettingsOverlayView: View {
             
             // 4. Footer
             HStack {
+                // API Key / Status Info (Added based on feedback "缺少数据")
+                VStack(alignment: .leading, spacing: 2) {
+                    if tab == "ai" {
+                        Text("API: \(store.aiProvider == .openai ? "OpenAI" : "Local")")
+                             .font(.system(size: 10, design: .monospaced))
+                             .foregroundColor(.themeGray500)
+                        Text(store.aiProvider == .openai ? "Model: \((store.ai as? AIService)?.openAIModel ?? "unknown")" : "Local Service")
+                             .font(.system(size: 10, design: .monospaced))
+                             .foregroundColor(.themeGray600)
+                    } else if tab == "history" {
+                         Text("记录条数: \(store.records.count) (已过滤: 0)")
+                             .font(.system(size: 10))
+                             .foregroundColor(.themeGray500)
+                         Text("AI: \(store.enableAI ? "ON" : "OFF") (阈值 > \(store.summaryTrigger) 字符)")
+                             .font(.system(size: 10))
+                             .foregroundColor(.themeGray600)
+                    }
+                }
+                
                 Spacer()
                 Button(action: {
                     withAnimation { showSettings = false }
-                    store.postLightHint("配置已保存。")
+                    store.postToast("配置已保存。", type: "success")
                 }) {
                     HStack(spacing: 8) {
-                        Image(systemName: "square.and.arrow.down")
+                        LucideView(name: .save, size: 16, color: .white)
                         Text("保存设置")
                     }
                     .font(.system(size: 14, weight: .medium)) // text-sm
@@ -86,7 +135,7 @@ struct SettingsOverlayView: View {
             }
             .padding(16) // p-4
             .background(Color.themeGray900.opacity(0.5)) // bg-gray-900/50
-            .overlay(Rectangle().frame(height: 1).foregroundColor(Color.themeBorder), alignment: .top)
+            .overlay(Rectangle().frame(height: 1).foregroundColor(Color.themeBorder).allowsHitTesting(false), alignment: .top)
         }
         .background(Color.themeBackground.opacity(0.9)) // bg-gray-900/90
     }
@@ -98,7 +147,7 @@ struct SettingsOverlayView: View {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 8) {
-                        Image(systemName: "sparkles").foregroundColor(.themeYellow500).font(.system(size: 14))
+                        LucideView(name: .sparkles, size: 14, color: .themeYellow500)
                         Text("AI 自动提炼")
                             .font(.system(size: 14, weight: .medium))
                             .foregroundColor(.themeTextPrimary)
@@ -116,7 +165,7 @@ struct SettingsOverlayView: View {
             .padding(16)
             .background(Color.white.opacity(0.05))
             .cornerRadius(8)
-            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.05)))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.05)).allowsHitTesting(false))
             
             if store.enableAI {
                 // Sliders
@@ -140,11 +189,11 @@ struct SettingsOverlayView: View {
                 .padding(16)
                 .background(Color.black.opacity(0.2))
                 .cornerRadius(8)
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.05)))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.05)).allowsHitTesting(false))
                 
                 // Provider Selection
                 VStack(alignment: .leading, spacing: 8) {
-                    Label("模型服务商与连接", systemImage: "link")
+                    LucideLabel(icon: .link, text: "模型服务商与连接", size: 12, color: .themeGray400)
                         .font(.system(size: 12, weight: .medium))
                         .foregroundColor(.themeGray400)
                     
@@ -169,7 +218,7 @@ struct SettingsOverlayView: View {
                 .padding(16)
                 .background(Color.black.opacity(0.2))
                 .cornerRadius(8)
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.05)))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.05)).allowsHitTesting(false))
             }
         }
     }
@@ -190,34 +239,61 @@ struct SettingsOverlayView: View {
             .padding(16)
             .background(Color.white.opacity(0.05))
             .cornerRadius(8)
-            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.05)))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.05)).allowsHitTesting(false))
             
             VStack(spacing: 16) {
-                CustomSlider(label: "记录保留条数", value: Binding(
+                NativeSliderRow(label: "记录保留条数", value: Binding(
                     get: { Double(store.maxRecords) }, set: { store.maxRecords = Int($0); store.savePreferences() }
-                ), range: 50...1000, displayValue: "\(store.maxRecords) 条")
+                ), range: 50...1000, displayValue: "\(store.maxRecords) 条", step: 50)
+                
+                Text("当前版本模拟限制在 \(store.maxRecords) 条。生产版可配置。")
+                    .font(.system(size: 10))
+                    .foregroundColor(.themeGray500)
             }
             .padding(16)
             .background(Color.black.opacity(0.2))
             .cornerRadius(8)
-            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.05)))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.05)).allowsHitTesting(false))
+            
+            // Export Button
+            Button(action: {
+                store.postToast("导出功能正在开发中...", type: "warning")
+            }) {
+                HStack {
+                    LucideView(name: .fileText, size: 12, color: .themeGray400)
+                    Text("导出所有记录 (Markdown/TXT)")
+                }
+                .font(.system(size: 12, weight: .medium)) // text-xs
+                .foregroundColor(.themeGray400)
+                .padding(.vertical, 12)
+                .frame(maxWidth: .infinity)
+                .background(Color.clear)
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.1), lineWidth: 1).allowsHitTesting(false))
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .pointingHandCursor()
+            .onHover { isHovered in
+                if isHovered { NSCursor.pointingHand.push() } else { NSCursor.pop() }
+            }
             
             // Clear History Button
             Button(action: {
                 store.clearAll()
-                store.postLightHint("已清空所有记录")
+                store.postToast("已清空所有记录", type: "success")
             }) {
                 HStack {
-                    Image(systemName: "trash")
+                    LucideView(name: .trash2, size: 12, color: .themeRed)
                     Text("清空所有记录")
                 }
                 .font(.system(size: 12, weight: .medium))
-                .foregroundColor(.white)
+                .foregroundColor(.themeRed)
                 .padding(12)
                 .frame(maxWidth: .infinity)
-                .background(Color.themeRed500.opacity(0.8))
+                .background(Color.themeRed500.opacity(0.2))
                 .cornerRadius(8)
-                .shadow(color: Color.themeRed500.opacity(0.2), radius: 4, y: 2)
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.themeRed500.opacity(0.3), lineWidth: 1).allowsHitTesting(false))
+                .shadow(color: Color.themeRed500.opacity(0.1), radius: 4, y: 2)
             }
             .buttonStyle(.plain)
             .pointingHandCursor()
@@ -251,7 +327,7 @@ struct SettingsOverlayView: View {
             .padding(16)
             .background(Color.white.opacity(0.05))
             .cornerRadius(8)
-            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.05)))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.05)).allowsHitTesting(false))
             
             VStack(spacing: 16) {
                 CustomSlider(label: "硬件防抖 (秒)", value: Binding(
@@ -261,7 +337,7 @@ struct SettingsOverlayView: View {
             .padding(16)
             .background(Color.black.opacity(0.2))
             .cornerRadius(8)
-            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.05)))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.05)).allowsHitTesting(false))
         }
     }
 
@@ -313,6 +389,34 @@ struct TabButton: View {
     }
 }
 
+struct TabButtonLucide: View {
+    let key: String
+    let label: String
+    let icon: IconName
+    @Binding var current: String
+    
+    var body: some View {
+        let isSelected = current == key
+        Button(action: { withAnimation(.easeInOut(duration: 0.2)) { current = key } }) {
+            HStack(spacing: 4) {
+                LucideView(name: icon, size: 12, color: isSelected ? .white : .themeGray400)
+                Text(label)
+                    .font(.system(size: 12, weight: isSelected ? .medium : .regular))
+            }
+            .padding(.horizontal, 12) // px-3
+            .padding(.vertical, 6) // py-1.5
+            .foregroundColor(isSelected ? .white : .themeGray400)
+            .background(isSelected ? Color.themeAccent : Color.white.opacity(0.05))
+            .cornerRadius(16)
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(Color.white.opacity(0.1), lineWidth: isSelected ? 0 : 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .pointingHandCursor()
+    }
+}
 struct CustomToggle: View {
     @Binding var isOn: Bool
     
@@ -358,22 +462,37 @@ struct CustomSlider: View {
             }
             
             GeometryReader { geometry in
+                let width = geometry.size.width
+                let percent = CGFloat((value - range.lowerBound) / (range.upperBound - range.lowerBound))
+                
                 ZStack(alignment: .leading) {
+                    // Track Background
                     Capsule()
                         .fill(Color.themeGray700) // bg-gray-700
                         .frame(height: 6)
                     
+                    // Track Fill
                     Capsule()
                         .fill(Color.themeBlue500) // accent-blue-500
-                        .frame(width: geometry.size.width * CGFloat((value - range.lowerBound) / (range.upperBound - range.lowerBound)), height: 6)
+                        .frame(width: max(6, width * percent), height: 6)
+                    
+                    // Thumb (accent-blue-500)
+                    Circle()
+                        .fill(Color.themeBlue500)
+                        .overlay(Circle().stroke(Color.white.opacity(0.4), lineWidth: 1))
+                        .frame(width: 16, height: 16)
+                        .shadow(color: Color.black.opacity(0.3), radius: 2, x: 0, y: 1)
+                        .offset(x: max(0, min(width - 16, width * percent - 8)))
                 }
+                .frame(height: 16) // Container height to match Thumb
+                .contentShape(Rectangle()) // Make entire area draggable
                 .gesture(DragGesture(minimumDistance: 0).onChanged { v in
-                    let percent = min(max(0, v.location.x / geometry.size.width), 1)
-                    self.value = range.lowerBound + (range.upperBound - range.lowerBound) * Double(percent)
+                    let p = min(max(0, v.location.x / width), 1)
+                    self.value = range.lowerBound + (range.upperBound - range.lowerBound) * Double(p)
                 })
                 .pointingHandCursor()
             }
-            .frame(height: 6)
+            .frame(height: 16) // Ensure GeometryReader takes height
         }
     }
 }

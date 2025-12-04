@@ -31,6 +31,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let ai = AIService()
         store.attachAI(service: ai)
 
+        // Lucide 图标可用性诊断（启动时一次性输出）
+        LucideDiagnostics.run()
+
         print("[DEBUG] 创建状态栏控制器...")
         statusBarController = StatusBarController(store: store, bluetooth: bluetooth, toggleAction: { [weak self] in
             self?.toggleFloating()

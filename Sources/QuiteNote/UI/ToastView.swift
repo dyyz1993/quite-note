@@ -26,18 +26,18 @@ struct ToastView: View {
         }
     }
 
-    var iconName: String {
+    var iconNameLucide: IconName {
         switch message.type {
-        case "success": return "checkmark"
-        case "error": return "xmark"
-        case "warning": return "bolt.fill"
-        default: return "doc.on.clipboard"
+        case "success": return .check
+        case "error": return .x
+        case "warning": return .zap
+        default: return .clipboard
         }
     }
 
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: iconName)
+            LucideView(name: iconNameLucide, size: 16, color: textColor)
             Text(message.text).font(.system(size: 13, weight: .medium))
         }
         .foregroundColor(textColor)
@@ -49,4 +49,3 @@ struct ToastView: View {
         .transition(.move(edge: .trailing).combined(with: .opacity))
     }
 }
-

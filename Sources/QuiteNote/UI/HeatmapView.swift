@@ -56,12 +56,11 @@ struct HeatmapView: View {
     
     private var headerView: some View {
         VStack(spacing: 4) {
-            Image(systemName: "waveform.path.ecg")
-                .font(.system(size: 22, weight: .black)) // Bolder and Wider
-                .foregroundColor(.themeGreen) // Brighter
+            LucideView(name: .activity, size: 22, color: .white)
+                .shadow(color: .white.opacity(0.5), radius: 4, x: 0, y: 0)
             Text("WEEK")
                 .font(.system(size: 8, weight: .bold))
-                .foregroundColor(Color.themeGreen.opacity(0.5))
+                .foregroundColor(Color.white.opacity(0.5))
         }
     }
     
@@ -116,26 +115,21 @@ struct HeatmapView: View {
         
         // Exact Tailwind color mapping from note.jsx
         if count == 0 {
-            // bg-gray-700/50 -> themeGray700 is gray-700
-            color = Color.themeGray700.opacity(0.5)
+            color = Color.themeGray700
             shadowColor = .clear
             shadowRadius = 0
         } else if count < 3 {
-            // bg-green-900/60
-            color = Color.themeGreen900.opacity(0.6)
+            color = Color.themeGreen900
             shadowColor = .clear
             shadowRadius = 0
         } else if count < 8 {
-            // bg-green-600/80
-            color = Color.themeGreen600.opacity(0.8)
+            color = Color.themeGreen600
             shadowColor = .clear
             shadowRadius = 0
         } else {
-            // bg-green-400
             color = Color.themeGreen
-            // shadow-[0_0_8px_rgba(74,222,128,0.6)]
             shadowColor = Color.themeGreen.opacity(0.6)
-            shadowRadius = 4 // 8px blur / 2
+            shadowRadius = 4
         }
         
         return RoundedRectangle(cornerRadius: 2) // rounded-sm (2px)

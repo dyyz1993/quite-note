@@ -302,6 +302,7 @@ struct FloatingRootView: View {
     @ObservedObject var bluetooth: BluetoothManager
     @ObservedObject var focus: WindowFocusProvider
     @State private var showSettings = false
+    @State private var settingsTab: String = "ai"
     @State private var expandedId: UUID? = nil
     @State private var searchTerm: String = ""
 
@@ -341,29 +342,31 @@ struct FloatingRootView: View {
                             
                             Spacer()
                             
-                            // Bluetooth Icon
+                            // Bluetooth Icon (Lucide)
                             HStack(spacing: 12) {
                                 Group {
                                     if let name = bluetooth.connectedDeviceName {
-                                        Image(systemName: "bluetooth")
-                                            .foregroundColor(.themeBlue400) // text-blue-400
+                                        LucideView(name: .bluetoothConnected, size: 14, color: .themeBlue400)
                                             .help("已连接: \(name)")
                                     } else if bluetooth.state == .poweredOn {
-                                        Image(systemName: "bluetooth")
-                                            .foregroundColor(.themeYellow) // text-yellow-400
+                                        LucideView(name: .bluetooth, size: 14, color: .themeYellow)
                                             .help("蓝牙已开启，未连接")
                                     } else {
-                                        Image(systemName: "bluetooth.slash")
-                                            .foregroundColor(.themeGray500) // text-gray-500
+                                        LucideView(name: .bluetoothOff, size: 14, color: .themeGray500)
                                             .help("蓝牙未开启")
                                     }
                                 }
                                 .font(.system(size: 14))
                                 .frame(width: 16, height: 16) // Ensure it has size
                                 .contentShape(Rectangle()) // Make sure it's clickable/hoverable
+                                .onTapGesture {
+                                    settingsTab = "bluetooth"
+                                    withAnimation(.easeInOut(duration: 0.3)) { showSettings = true }
+                                }
                                 .pointingHandCursor()
                                 
-                                HoverButton(image: "gearshape", size: 16, isActive: showSettings) {
+                                HoverButton(icon: .settings, size: 16, isActive: showSettings) {
+                                    settingsTab = "ai"
                                     withAnimation(.easeInOut(duration: 0.3)) { showSettings.toggle() }
                                 }
                             }
@@ -379,16 +382,14 @@ struct FloatingRootView: View {
                         .overlay(Rectangle().frame(width: nil, height: 1, alignment: .bottom).foregroundColor(Color.themeBorder), alignment: .bottom)
                         
                         if showSettings {
-                            SettingsOverlayView(store: store, bluetooth: bluetooth, showSettings: $showSettings)
+                            SettingsOverlayView(store: store, bluetooth: bluetooth, showSettings: $showSettings, initialTab: settingsTab)
                                 .transition(.move(edge: .trailing))
                         } else {
                             // Main List
                             VStack(spacing: 0) {
                                 // Search Bar
                                 HStack {
-                                    Image(systemName: "magnifyingglass")
-                                        .foregroundColor(.themeGray500)
-                                        .font(.system(size: 16))
+                                    LucideView(name: .search, size: 16, color: .themeGray500)
                                     TextField("搜索标题或内容...", text: $searchTerm)
                                         .textFieldStyle(.plain)
                                         .font(.system(size: 14)) // text-sm
@@ -457,11 +458,12 @@ struct FloatingRootView: View {
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.themeBorder, lineWidth: 1))
         .shadow(color: Color.black.opacity(0.5), radius: 20, x: 0, y: 10)
         .ignoresSafeArea()
+        .kerning(0.5)
     }
 }
 
 struct HoverButton: View {
-    let image: String
+    let icon: IconName
     let size: CGFloat
     var isActive: Bool = false
     let action: () -> Void
@@ -469,9 +471,7 @@ struct HoverButton: View {
     
     var body: some View {
         Button(action: action) {
-            Image(systemName: image)
-                .font(.system(size: size))
-                .foregroundColor(isActive ? .white : (hovering ? .white : .themeGray400))
+            LucideView(name: icon, size: size, color: isActive ? .white : (hovering ? .white : .themeGray400))
                 .padding(6)
                 .background(isActive ? Color.white.opacity(0.2) : (hovering ? Color.white.opacity(0.1) : Color.clear))
                 .cornerRadius(6)
@@ -530,9 +530,7 @@ struct RecordCardView: View {
     private func cardHeader(isExpanded: Bool) -> some View {
         HStack(alignment: .top, spacing: 12) {
             // Icon
-            Image(systemName: statusIcon)
-                .font(.system(size: 16))
-                .foregroundColor(statusColor)
+            LucideView(name: statusIconLucide, size: 16, color: statusColor)
                 .frame(width: 20, height: 20)
                 .padding(.top, 4) // mt-1 (4px)
             
@@ -553,8 +551,7 @@ struct RecordCardView: View {
                     
                     // Status Badge
                     HStack(spacing: 2) {
-                        Image(systemName: statusIcon)
-                            .font(.system(size: 10))
+                        LucideView(name: statusIconLucide, size: 10, color: statusColor)
                         Text(statusText)
                     }
                     .foregroundColor(statusColor)
@@ -568,15 +565,13 @@ struct RecordCardView: View {
             // Actions
             if hovering || isExpanded {
                 HStack(spacing: 6) {
-                    IconButton(icon: record.starred ? "star.fill" : "star", color: record.starred ? .themeYellow : .themeGray500) {
+                    IconButton(icon: .star, color: record.starred ? .themeYellow : .themeGray500) {
                         store.toggleStar(record)
                     }
-                    IconButton(icon: "trash", color: .themeGray500) {
+                    IconButton(icon: .trash2, color: .themeGray500) {
                         store.delete(record)
                     }
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 14))
-                        .foregroundColor(.themeGray500)
+                    LucideView(name: .chevronRight, size: 14, color: .themeGray500)
                         .rotationEffect(.degrees(isExpanded ? 90 : 0))
                 }
                 .transition(.opacity)
@@ -599,10 +594,13 @@ struct RecordCardView: View {
                 // Raw Content Section
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
-                        Label("原文内容", systemImage: "text.alignleft")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundColor(.themeGray500)
-                            .textCase(.uppercase) // uppercase tracking-wider
+                        HStack(spacing: 4) {
+                            LucideView(name: .alignLeft, size: 10, color: .themeGray500)
+                            Text("原文内容")
+                        }
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(.themeGray500)
+                        .textCase(.uppercase) // uppercase tracking-wider
                         Spacer()
                         Button(action: {
                             NSPasteboard.general.clearContents()
@@ -610,7 +608,7 @@ struct RecordCardView: View {
                             store.postLightHint("已复制原文")
                         }) {
                             HStack(spacing: 4) {
-                                Image(systemName: "doc.on.doc")
+                                LucideView(name: .copy, size: 10, color: .themeGray400)
                                 Text("复制原文")
                             }
                             .font(.system(size: 10))
@@ -638,10 +636,13 @@ struct RecordCardView: View {
                 if record.summary != nil || record.aiStatus == "fail" {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
-                            Label("AI 智能总结", systemImage: "sparkles")
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundColor(record.aiStatus == "fail" ? .themeRed : .themePurple)
-                                .textCase(.uppercase)
+                            HStack(spacing: 4) {
+                                LucideView(name: .sparkles, size: 10, color: record.aiStatus == "fail" ? .themeRed : .themePurple)
+                                Text("AI 智能总结")
+                            }
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(record.aiStatus == "fail" ? .themeRed : .themePurple)
+                            .textCase(.uppercase)
                             Spacer()
                             if let s = record.summary {
                                 Button(action: {
@@ -650,7 +651,7 @@ struct RecordCardView: View {
                                     store.postLightHint("已复制总结")
                                 }) {
                                     HStack(spacing: 4) {
-                                        Image(systemName: "doc.on.doc")
+                                        LucideView(name: .copy, size: 10, color: .themePurple)
                                         Text("复制总结")
                                     }
                                     .font(.system(size: 10))
@@ -684,15 +685,13 @@ struct RecordCardView: View {
 }
 
 struct IconButton: View {
-    let icon: String
+    let icon: IconName
     let color: Color
     let action: () -> Void
     
     var body: some View {
         Button(action: action) {
-            Image(systemName: icon)
-                .font(.system(size: 14))
-                .foregroundColor(color)
+            LucideView(name: icon, size: 14, color: color)
                 .frame(width: 24, height: 24)
                 .background(Color.white.opacity(0.05))
                 .clipShape(Circle())
@@ -711,13 +710,12 @@ private extension RecordCardView {
         return String(record.content.prefix(30)) + (record.content.count > 30 ? "..." : "")
     }
     
-    var statusIcon: String {
-        // Matches note.jsx renderStatus logic
-        if record.summary != nil { return "sparkles" } // Summarized
-        if record.aiStatus == "pending" { return "bolt.fill" } // Processing
-        if record.aiStatus == "fail" { return "xmark.circle.fill" } // Failed
-        if record.title != nil { return "brain.head.profile" } // Title Only (Bot)
-        return "clock" // Default (Raw)
+    var statusIconLucide: IconName {
+        if record.summary != nil { return .sparkles }
+        if record.aiStatus == "pending" { return .zap }
+        if record.aiStatus == "fail" { return .x }
+        if record.title != nil { return .bot }
+        return .clock
     }
     
     var statusColor: Color {

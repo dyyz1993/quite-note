@@ -65,7 +65,7 @@ final class AIService: AIServiceProtocol {
 
         let session = URLSession(configuration: .default)
         let task = session.dataTask(with: req) { data, _, error in
-            if let error = error {
+            if error != nil {
                 self.summarizeLocally(titleLimit: titleLimit, summaryLimit: summaryLimit, content: content, completion: completion)
                 return
             }
