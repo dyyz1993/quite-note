@@ -2,19 +2,36 @@ import SwiftUI
 
 /// 偏好设置窗口：分标签页配置蓝牙、记录、AI、窗体与热力图
 struct PreferencesView: View {
-    @State private var enableAI: Bool = true
-    @State private var titleLimit: Int = 20
-    @State private var summaryTrigger: Int = 20
-    @State private var summaryLimit: Int = 100
+    @ObservedObject var store: RecordStore
+    @ObservedObject var bluetooth: BluetoothManager
+
+    init(store: RecordStore, bluetooth: BluetoothManager) {
+        self.store = store
+        self.bluetooth = bluetooth
+    }
 
     /// 构建偏好设置基本页面
     var body: some View {
         TabView {
             Form {
-                Toggle("启用 AI 自动提炼", isOn: $enableAI)
-                Stepper("标题长度限制：\(titleLimit)", value: $titleLimit, in: 15...30)
-                Stepper("总结触发长度：\(summaryTrigger)", value: $summaryTrigger, in: 0...200)
-                Stepper("总结长度限制：\(summaryLimit)", value: $summaryLimit, in: 50...200)
+                Toggle("启用 AI 自动提炼", isOn: Binding(
+                    get: { store.enableAI },
+                    set: { store.enableAI = $0; store.savePreferences() }
+                ))
+
+                if store.enableAI {
+                    NativeSliderRow(label: "标题长度限制", value: Binding(
+                        get: { Double(store.titleLimit) }, set: { store.titleLimit = Int($0); store.savePreferences() }
+                    ), range: 15...30, displayValue: "\(store.titleLimit) 字符")
+
+                    NativeSliderRow(label: "总结触发长度", value: Binding(
+                        get: { Double(store.summaryTrigger) }, set: { store.summaryTrigger = Int($0); store.savePreferences() }
+                    ), range: 0...200, displayValue: "> \(store.summaryTrigger) 字符")
+
+                    NativeSliderRow(label: "总结长度限制", value: Binding(
+                        get: { Double(store.summaryLimit) }, set: { store.summaryLimit = Int($0); store.savePreferences() }
+                    ), range: 50...200, displayValue: "\(store.summaryLimit) 字符")
+                }
             }
             .padding()
             .tabItem { Label("AI 提炼设置", systemImage: "sparkles") }

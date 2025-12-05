@@ -174,15 +174,15 @@ struct SettingsOverlayView: View {
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundColor(.themeGray300)
                         
-                    CustomSlider(label: "总结触发长度", value: Binding(
+                    NativeSliderRow(label: "总结触发长度", value: Binding(
                         get: { Double(store.summaryTrigger) }, set: { store.summaryTrigger = Int($0); store.savePreferences() }
                     ), range: 10...500, displayValue: "> \(store.summaryTrigger) 字符")
-                    
-                    CustomSlider(label: "标题长度限制", value: Binding(
+
+                    NativeSliderRow(label: "标题长度限制", value: Binding(
                         get: { Double(store.titleLimit) }, set: { store.titleLimit = Int($0); store.savePreferences() }
                     ), range: 10...40, displayValue: "\(store.titleLimit) 字符")
-                    
-                    CustomSlider(label: "总结长度限制", value: Binding(
+
+                    NativeSliderRow(label: "总结长度限制", value: Binding(
                         get: { Double(store.summaryLimit) }, set: { store.summaryLimit = Int($0); store.savePreferences() }
                     ), range: 50...300, displayValue: "\(store.summaryLimit) 字符")
                 }
@@ -330,7 +330,7 @@ struct SettingsOverlayView: View {
             .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.05)).allowsHitTesting(false))
             
             VStack(spacing: 16) {
-                CustomSlider(label: "硬件防抖 (秒)", value: Binding(
+                NativeSliderRow(label: "硬件防抖 (秒)", value: Binding(
                     get: { bluetooth.debounceInterval }, set: { bluetooth.debounceInterval = $0 }
                 ), range: 0.5...3.0, displayValue: String(format: "%.1f s", bluetooth.debounceInterval))
             }
@@ -436,64 +436,6 @@ struct CustomToggle: View {
         }
         .buttonStyle(.plain)
         .pointingHandCursor()
-    }
-}
-
-struct CustomSlider: View {
-    let label: String
-    @Binding var value: Double
-    let range: ClosedRange<Double>
-    let displayValue: String
-    
-    var body: some View {
-        VStack(spacing: 6) {
-            HStack {
-                Label(label, systemImage: "slider.horizontal.3")
-                    .font(.system(size: 12)) // text-xs
-                    .foregroundColor(.themeGray400)
-                Spacer()
-                Text(displayValue)
-                    .font(.system(size: 12, design: .monospaced))
-                    .foregroundColor(.themeBlue400)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 2)
-                    .background(Color.themeBlue500.opacity(0.1))
-                    .cornerRadius(4)
-            }
-            
-            GeometryReader { geometry in
-                let width = geometry.size.width
-                let percent = CGFloat((value - range.lowerBound) / (range.upperBound - range.lowerBound))
-                
-                ZStack(alignment: .leading) {
-                    // Track Background
-                    Capsule()
-                        .fill(Color.themeGray700) // bg-gray-700
-                        .frame(height: 6)
-                    
-                    // Track Fill
-                    Capsule()
-                        .fill(Color.themeBlue500) // accent-blue-500
-                        .frame(width: max(6, width * percent), height: 6)
-                    
-                    // Thumb (accent-blue-500)
-                    Circle()
-                        .fill(Color.themeBlue500)
-                        .overlay(Circle().stroke(Color.white.opacity(0.4), lineWidth: 1))
-                        .frame(width: 16, height: 16)
-                        .shadow(color: Color.black.opacity(0.3), radius: 2, x: 0, y: 1)
-                        .offset(x: max(0, min(width - 16, width * percent - 8)))
-                }
-                .frame(height: 16) // Container height to match Thumb
-                .contentShape(Rectangle()) // Make entire area draggable
-                .gesture(DragGesture(minimumDistance: 0).onChanged { v in
-                    let p = min(max(0, v.location.x / width), 1)
-                    self.value = range.lowerBound + (range.upperBound - range.lowerBound) * Double(p)
-                })
-                .pointingHandCursor()
-            }
-            .frame(height: 16) // Ensure GeometryReader takes height
-        }
     }
 }
 
