@@ -19,6 +19,10 @@ final class AIService: AIServiceProtocol {
     var openAIModel: String = "gpt-4o-mini"
     var timeout: TimeInterval = 5
 
+    // 延迟加载：避免重复访问 Keychain
+    private var hasCheckedAPIKey = false
+    private var cachedAPIKey: String? = nil
+
     /// 执行提炼任务，按提供商路由；失败或超时时降级为前 15 字标题与空总结
     func summarize(titleLimit: Int, summaryLimit: Int, content: String, completion: @escaping (Result<SummaryResult, Error>) -> Void) {
         switch provider {
@@ -27,6 +31,15 @@ final class AIService: AIServiceProtocol {
         case .openai:
             summarizeWithOpenAI(titleLimit: titleLimit, summaryLimit: summaryLimit, content: content, completion: completion)
         }
+    }
+
+    /// 获取 OpenAI API 密钥（延迟加载，避免重复访问 Keychain）
+    private func getOpenAIAPIKey() -> String? {
+        if !hasCheckedAPIKey {
+            cachedAPIKey = KeychainHelper.shared.read(service: "QuiteNote", account: "openai_api_key")
+            hasCheckedAPIKey = true
+        }
+        return cachedAPIKey
     }
 
     /// 本地规则提炼：根据长度与类型生成标题与总结
@@ -41,7 +54,7 @@ final class AIService: AIServiceProtocol {
 
     /// 使用 OpenAI Chat Completions 生成固定 JSON 输出
     private func summarizeWithOpenAI(titleLimit: Int, summaryLimit: Int, content: String, completion: @escaping (Result<SummaryResult, Error>) -> Void) {
-        guard let apiKey = KeychainHelper.shared.read(service: "QuiteNote", account: "openai_api_key") else {
+        guard let apiKey = getOpenAIAPIKey() else {
             summarizeLocally(titleLimit: titleLimit, summaryLimit: summaryLimit, content: content, completion: completion)
             return
         }
