@@ -8,6 +8,8 @@ struct SettingsOverlayView: View {
     @Binding var showSettings: Bool
     @State private var tab: String
     @State private var isTestingConnection = false
+    @State private var windowLock = false
+    @State private var animationsEnabled = true
 
     init(store: RecordStore, bluetooth: BluetoothManager, showSettings: Binding<Bool>, initialTab: String = "ai") {
         self.store = store
@@ -83,6 +85,7 @@ struct SettingsOverlayView: View {
                 TabButtonLucide(key: "history", label: "记录设置", icon: .database, current: $tab)
                 TabButtonLucide(key: "bluetooth", label: "蓝牙设置", icon: .bluetooth, current: $tab)
                 TabButtonLucide(key: "window", label: "悬浮窗设置", icon: .appWindowMac, current: $tab)
+                TabButtonLucide(key: "memory", label: "内存监控", icon: .cpu, current: $tab)
             }
             .padding(.horizontal, 24) // px-6
             .padding(.vertical, 12) // py-3
@@ -101,6 +104,7 @@ struct SettingsOverlayView: View {
                 case "history": historyTab
                 case "bluetooth": bluetoothTab
                 case "window": windowTab
+                case "memory": memoryTab
                 default: EmptyView()
                 }
             }
@@ -458,16 +462,29 @@ struct SettingsOverlayView: View {
     /// 悬浮窗设置内容
     private var windowTab: some View {
         VStack(alignment: .leading, spacing: 12) {
-            ToggleRow(title: "位置锁定", subtitle: "开启后悬浮窗不可拖拽移动", isOn: Binding(
-                get: { PreferencesManager.shared.windowLock },
-                set: { PreferencesManager.shared.setWindowLock($0); NotificationCenter.default.post(name: .windowLockChanged, object: $0) }
-            ))
+            ToggleRow(title: "位置锁定", subtitle: "开启后悬浮窗不可拖拽移动", isOn: $windowLock)
+                .onAppear {
+                    windowLock = PreferencesManager.shared.windowLock
+                }
+                .onChange(of: windowLock) { newValue in
+                    PreferencesManager.shared.setWindowLock(newValue)
+                    NotificationCenter.default.post(name: .windowLockChanged, object: newValue)
+                }
             
-            ToggleRow(title: "动效开关", subtitle: "开启/关闭窗口淡入淡出动画", isOn: Binding(
-                get: { PreferencesManager.shared.animationsEnabled },
-                set: { PreferencesManager.shared.setAnimationsEnabled($0); NotificationCenter.default.post(name: .animationsEnabledChanged, object: $0) }
-            ))
+            ToggleRow(title: "动效开关", subtitle: "开启/关闭窗口淡入淡出动画", isOn: $animationsEnabled)
+                .onAppear {
+                    animationsEnabled = PreferencesManager.shared.animationsEnabled
+                }
+                .onChange(of: animationsEnabled) { newValue in
+                    PreferencesManager.shared.setAnimationsEnabled(newValue)
+                    NotificationCenter.default.post(name: .animationsEnabledChanged, object: newValue)
+                }
         }
+    }
+    
+    /// 内存监控内容
+    private var memoryTab: some View {
+        MemoryMonitorView()
     }
     
     /// 导出记录功能
@@ -588,20 +605,23 @@ struct CustomToggle: View {
     @Binding var isOn: Bool
     
     var body: some View {
-        Button(action: { withAnimation(.spring(response: 0.3)) { isOn.toggle() } }) {
-            ZStack(alignment: isOn ? .trailing : .leading) {
-                Capsule()
-                    .fill(isOn ? Color.themeBlue500 : Color.themeGray600) // bg-blue-500 : bg-gray-600
-                    .frame(width: 40, height: 20) // w-10 h-5
-                
-                Circle()
-                    .fill(Color.white)
-                    .frame(width: 12, height: 12) // w-3 h-3
-                    .padding(4)
-                    .shadow(radius: 1)
+        ZStack(alignment: isOn ? .trailing : .leading) {
+            Capsule()
+                .fill(isOn ? Color.themeBlue500 : Color.themeGray600) // bg-blue-500 : bg-gray-600
+                .frame(width: 40, height: 20) // w-10 h-5
+            
+            Circle()
+                .fill(Color.white)
+                .frame(width: 12, height: 12) // w-3 h-3
+                .padding(4)
+                .shadow(radius: 1)
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            withAnimation(.spring(response: 0.3)) {
+                isOn.toggle()
             }
         }
-        .buttonStyle(.plain)
         .pointingHandCursor()
     }
 }

@@ -86,6 +86,44 @@ final class CoreDataStack {
         req.sortDescriptors = [sort]
         return try context.fetch(req)
     }
+    
+    /// 分页查询记录，提高性能和内存效率
+    /// - Parameters:
+    ///   - limit: 每页记录数，默认50条
+    ///   - offset: 偏移量，默认0
+    /// - Returns: 指定范围内的记录数组
+    func fetchRecords(limit: Int = 50, offset: Int = 0) throws -> [CDRecord] {
+        let req = NSFetchRequest<CDRecord>(entityName: "CDRecord")
+        let sort = NSSortDescriptor(key: "createdAt", ascending: false)
+        req.sortDescriptors = [sort]
+        req.fetchLimit = limit
+        req.fetchOffset = offset
+        return try context.fetch(req)
+    }
+    
+    /// 获取记录总数
+    /// - Returns: 记录总数
+    func getRecordsCount() throws -> Int {
+        let req = NSFetchRequest<CDRecord>(entityName: "CDRecord")
+        return try context.count(for: req)
+    }
+    
+    /// 根据日期范围查询记录
+    /// - Parameters:
+    ///   - startDate: 开始日期
+    ///   - endDate: 结束日期
+    ///   - limit: 每页记录数，默认50条
+    ///   - offset: 偏移量，默认0
+    /// - Returns: 指定日期范围内的记录数组
+    func fetchRecords(from startDate: Date, to endDate: Date, limit: Int = 50, offset: Int = 0) throws -> [CDRecord] {
+        let req = NSFetchRequest<CDRecord>(entityName: "CDRecord")
+        let sort = NSSortDescriptor(key: "createdAt", ascending: false)
+        req.sortDescriptors = [sort]
+        req.predicate = NSPredicate(format: "createdAt >= %@ AND createdAt <= %@", startDate as CVarArg, endDate as CVarArg)
+        req.fetchLimit = limit
+        req.fetchOffset = offset
+        return try context.fetch(req)
+    }
 
     func newRecord() -> CDRecord {
         CDRecord(context: context)

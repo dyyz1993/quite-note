@@ -55,6 +55,35 @@ final class FloatingPanelController {
     
     var isVisible: Bool { panel.isVisible }
     
+    /// 析构函数，确保清理所有资源
+    deinit {
+        cleanup()
+    }
+    
+    /// 清理所有资源，防止内存泄漏
+    private func cleanup() {
+        // 清理定时器
+        launchEnsurer?.invalidate()
+        launchEnsurer = nil
+        revertTimer?.invalidate()
+        revertTimer = nil
+        
+        // 移除通知观察者
+        NotificationCenter.default.removeObserver(self)
+        
+        // 清理hosting view
+        if hosting != nil {
+            hosting.removeFromSuperview()
+            hosting = nil
+        }
+        
+        // 清理panel
+        if panel != nil {
+            panel.close()
+            panel = nil
+        }
+    }
+    
     /// 初始化悬浮窗并配置置顶与多桌面行为
     init(store: RecordStore, heatmapVM: HeatmapViewModel, bluetooth: BluetoothManager) {
         self.store = store
@@ -311,6 +340,9 @@ struct FloatingRootView: View {
     @State private var settingsTab: String = "ai"
     @State private var expandedId: UUID? = nil
     @State private var searchTerm: String = ""
+    @State private var searchResults: [Record] = [] // 缓存搜索结果
+    @State private var isLoadingMore: Bool = false // 是否正在加载更多
+    @State private var hasMoreRecords: Bool = true // 是否还有更多记录
 
     var body: some View {
         baseContentView
@@ -498,37 +530,121 @@ struct FloatingRootView: View {
     
     /// 列表内容视图
     private var listContentView: some View {
-        // 使用RecordStore的搜索功能
-        let base = heatmapVM.filteredRecords()
+        // 使用分页加载的记录
         let items: [Record]
         
         if searchTerm.isEmpty {
-            items = Array(base.prefix(100))
+            // 使用 RecordStore 中的记录，已经通过分页加载
+            items = store.records
         } else {
-            items = Array(store.search(searchTerm).prefix(100))
+            // 搜索结果也使用分页
+            items = Array(searchResults.prefix(50))
         }
         
         return ScrollView {
-            VStack(spacing: 12) { // 回到 VStack，LazyVStack 在某些情况下可能导致性能问题
+            LazyVStack(spacing: 12) { // 使用LazyVStack提高性能，只渲染可见项
                 if items.isEmpty {
-                    VStack(spacing: 12) {
-                        Image(systemName: "magnifyingglass")
-                            .font(.system(size: 48))
-                            .opacity(0.2)
-                        Text("没有找到匹配的记录。")
-                            .font(.system(size: 14)) // text-sm
-                            .foregroundColor(.themeTextSecondary)
-                    }
-                    .frame(height: 300)
+                    emptyStateView
                 } else {
-                    ForEach(items, id: \.id) { record in // 明确指定 id
-                        RecordCardView(record: record, expandedId: $expandedId, store: store)
-                            .id(record.id) // 确保 SwiftUI 能正确识别和重用视图
+                    // 使用ViewBuilder优化条件渲染
+                    listViewContent(items: items)
+                    
+                    // 加载更多指示器
+                    if searchTerm.isEmpty && hasMoreRecords {
+                        loadMoreIndicatorView
+                            .onAppear {
+                                loadMoreRecords()
+                            }
                     }
                 }
             }
             .padding(16) // p-4
         }
+        .onChange(of: searchTerm) { newValue in
+            // 使用防抖搜索
+            store.debouncedSearch(newValue) { results in
+                searchResults = results
+                // 重置分页状态
+                hasMoreRecords = results.count >= 50
+            }
+        }
+        .onAppear {
+            // 初始化时设置搜索结果
+            if searchTerm.isEmpty {
+                // 确保记录已加载
+                if store.records.isEmpty {
+                    store.loadFromStore(pageSize: 50, offset: 0)
+                }
+                // 检查是否还有更多记录
+                hasMoreRecords = store.records.count >= 50
+            } else {
+                store.debouncedSearch(searchTerm) { results in
+                    searchResults = results
+                    hasMoreRecords = results.count >= 50
+                }
+            }
+        }
+    }
+    
+    /// 空状态视图
+    private var emptyStateView: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 48))
+                .opacity(0.2)
+            Text("没有找到匹配的记录。")
+                .font(.system(size: 14)) // text-sm
+                .foregroundColor(.themeTextSecondary)
+        }
+        .frame(height: 300)
+    }
+    
+    /// 列表内容视图
+    @ViewBuilder
+    private func listViewContent(items: [Record]) -> some View {
+        ForEach(items, id: \.id) { record in // 明确指定 id
+            RecordCardView(
+                record: record,
+                expandedId: $expandedId,
+                store: store
+            )
+            .equatable() // 使用 Equatable 减少重绘
+        }
+    }
+    
+    /// 加载更多记录的方法
+    private func loadMoreRecords() {
+        guard !isLoadingMore && hasMoreRecords else { return }
+        
+        isLoadingMore = true
+        
+        // 使用 RecordStore 的 loadMoreRecords 方法
+        let previousCount = store.records.count
+        store.loadMoreRecords()
+        
+        // 检查是否还有更多记录
+        hasMoreRecords = store.records.count > previousCount && store.records.count >= 50
+        isLoadingMore = false
+    }
+    
+    /// 加载更多指示器视图
+    private var loadMoreIndicatorView: some View {
+        HStack {
+            Spacer()
+            if isLoadingMore {
+                ProgressView()
+                    .scaleEffect(0.8)
+                Text("加载更多...")
+                    .font(.system(size: 14))
+                    .foregroundColor(.themeTextSecondary)
+            } else {
+                Text("向上滑动加载更多")
+                    .font(.system(size: 14))
+                    .foregroundColor(.themeTextSecondary)
+            }
+            Spacer()
+        }
+        .padding(.vertical, 8)
     }
     
     /// 状态栏视图
@@ -587,38 +703,43 @@ struct CloseButton: View {
 }
 
 /// 单条记录行
-struct RecordCardView: View {
+struct RecordCardView: View, Equatable {
     let record: Record
     @Binding var expandedId: UUID?
     let store: RecordStore
     @State private var hovering = false
-
+    
+    // 缓存计算结果，避免重复计算
+    private var isExpanded: Bool {
+        expandedId == record.id
+    }
+    
+    // 使用@ViewBuilder优化条件渲染
+    @ViewBuilder
     var body: some View {
-        let isExpanded = expandedId == record.id
-        
         VStack(alignment: .leading, spacing: 0) {
-            cardHeader(isExpanded: isExpanded)
+            cardHeader
             
             if isExpanded {
                 cardExpandedContent
             }
         }
-        // bg-white/5 hover:bg-white/10
-        .background(isExpanded ? Color.themeHover : (hovering ? Color.themeHover : Color.themeItem))
+        // 简化背景和边框，减少重绘
+        .background(Color.themeItem)
         .cornerRadius(8) // rounded-lg
         .overlay(
             RoundedRectangle(cornerRadius: 8)
-                .stroke(isExpanded ? Color.themeBlue500.opacity(0.3) : Color.themeBorderSubtle, lineWidth: 1)
+                .stroke(isExpanded ? Color.themeBlue500.opacity(0.3) : Color.clear, lineWidth: 1)
                 .allowsHitTesting(false)
         )
-        // 只在展开状态变化时应用阴影动画，减少悬停动画
-        .shadow(color: isExpanded ? Color.black.opacity(0.5) : .clear, radius: 30, x: 0, y: 8)
-        .animation(.easeOut(duration: 0.3), value: isExpanded) // 只对展开状态变化应用动画
+        // 只在展开状态时应用阴影，减少性能开销
+        .shadow(color: isExpanded ? Color.black.opacity(0.3) : .clear, radius: 10, x: 0, y: 2)
+        .animation(.easeOut(duration: 0.2), value: isExpanded) // 减少动画时长
         .onHover { hovering = $0 }
         .pointingHandCursor()
     }
     
-    private func cardHeader(isExpanded: Bool) -> some View {
+    private var cardHeader: some View {
         HStack(alignment: .top, spacing: 12) {
             // Icon
             LucideView(name: statusIconLucide, size: 16, color: statusColor)
@@ -680,10 +801,9 @@ struct RecordCardView: View {
                 .buttonStyle(.plain)
                 .pointingHandCursor()
             }
-            .opacity(hovering || isExpanded ? 1.0 : 0.7) // 悬停或展开时完全不透明，否则稍微透明
-            .scaleEffect(hovering || isExpanded ? 1.0 : 0.9) // 悬停或展开时正常大小，否则稍微缩小
-            .animation(.easeInOut(duration: 0.2), value: hovering)
-            .animation(.easeInOut(duration: 0.2), value: isExpanded)
+            .opacity(hovering || isExpanded ? 1.0 : 0.8) // 减少透明度变化
+            .scaleEffect(hovering || isExpanded ? 1.0 : 0.95) // 减少缩放幅度
+            .animation(.easeOut(duration: 0.15), value: hovering) // 减少动画时长
         }
         .padding(12) // p-3
         .contentShape(Rectangle())
@@ -806,6 +926,17 @@ struct RecordCardView: View {
             .padding(.top, 0)
         }
         .transition(.opacity)
+    }
+    
+    /// 实现Equatable协议，减少不必要的重绘
+    static func == (lhs: RecordCardView, rhs: RecordCardView) -> Bool {
+        return lhs.record.id == rhs.record.id &&
+               lhs.record.content == rhs.record.content &&
+               lhs.record.title == rhs.record.title &&
+               lhs.record.summary == rhs.record.summary &&
+               lhs.record.starred == rhs.record.starred &&
+               lhs.record.aiStatus == rhs.record.aiStatus &&
+               lhs.isExpanded == rhs.isExpanded
     }
 }
 

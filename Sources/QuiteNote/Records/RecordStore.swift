@@ -16,6 +16,15 @@ final class RecordStore: ObservableObject {
     @Published var searchCaseSensitive: Bool = false
     @Published var searchUseRegex: Bool = false
     var ai: AIServiceProtocol? = nil
+    
+    // 内存管理
+    private let memoryManager = MemoryManager.shared
+    private var memoryOptimizationCancellable: AnyCancellable?
+    
+    // 搜索防抖相关
+    private var searchWorkItem: DispatchWorkItem?
+    private var lastSearchQuery: String = ""
+    private var searchResults: [Record] = []
     @Published var titleLimit: Int = 20
     @Published var summaryTrigger: Int = 20
     @Published var summaryLimit: Int = 100
@@ -28,6 +37,7 @@ final class RecordStore: ObservableObject {
         loadFromStore()
         loadPreferences()
         loadSearchHistory()
+        setupMemoryOptimization()
         if records.isEmpty {
             addMockData()
         }
@@ -186,6 +196,50 @@ final class RecordStore: ObservableObject {
             
             return matches
         }
+    }
+    
+    /// 防抖搜索，减少频繁搜索带来的性能问题
+    /// - Parameters:
+    ///   - query: 搜索查询
+    ///   - delay: 防抖延迟时间，默认0.3秒
+    ///   - completion: 搜索完成回调
+    func debouncedSearch(_ query: String, delay: TimeInterval = 0.3, completion: @escaping ([Record]) -> Void) {
+        // 取消之前的搜索任务
+        searchWorkItem?.cancel()
+        
+        // 如果查询为空，直接返回所有记录
+        if query.isEmpty {
+            lastSearchQuery = ""
+            searchResults = records
+            completion(records)
+            return
+        }
+        
+        // 如果查询与上次相同，直接返回缓存结果
+        if query == lastSearchQuery && !searchResults.isEmpty {
+            completion(searchResults)
+            return
+        }
+        
+        // 创建新的搜索任务
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self = self else { return }
+            
+            // 执行搜索
+            let results = self.search(query)
+            
+            // 缓存结果
+            self.lastSearchQuery = query
+            self.searchResults = results
+            
+            // 返回结果
+            DispatchQueue.main.async {
+                completion(results)
+            }
+        }
+        
+        searchWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
     }
     
     /// 检查文本是否匹配查询（支持正则表达式和大小写敏感）
@@ -370,10 +424,69 @@ final class RecordStore: ObservableObject {
     }
 
     private func loadFromStore() {
-        let cds = (try? stack.fetchRecords()) ?? []
-        records = cds.map { r in
+        loadFromStore(pageSize: 50, offset: 0)
+    }
+    
+    /// 分页加载记录，提高性能
+    /// - Parameters:
+    ///   - pageSize: 每页记录数
+    ///   - offset: 偏移量
+    func loadFromStore(pageSize: Int = 50, offset: Int = 0) {
+        let cds = (try? stack.fetchRecords(limit: pageSize, offset: offset)) ?? []
+        let newRecords = cds.map { r in
             Record(id: r.id, title: r.title, content: r.content, createdAt: r.createdAt, hash: r.digest, aiStatus: r.aiStatus, summary: r.summary, summaryConfidence: r.summaryConfidence, starred: r.starred, copiedAt: r.copiedAt)
         }.sorted { $0.createdAt > $1.createdAt }
+        
+        // 如果是第一页，直接替换；否则追加
+        if offset == 0 {
+            records = newRecords
+        } else {
+            // 检查是否已经加载了这些记录，避免重复
+            let existingIds = Set(records.map { $0.id })
+            let uniqueNewRecords = newRecords.filter { !existingIds.contains($0.id) }
+            records.append(contentsOf: uniqueNewRecords)
+        }
+    }
+    
+    /// 加载更多记录
+    func loadMoreRecords() {
+        let currentCount = records.count
+        loadFromStore(pageSize: 50, offset: currentCount)
+        
+        // 限制内存中的记录数量，保留最新的 200 条记录
+        if records.count > 200 {
+            records = Array(records.prefix(200))
+        }
+    }
+    
+    /// 设置内存优化
+    private func setupMemoryOptimization() {
+        // 监听内存优化通知
+        memoryOptimizationCancellable = NotificationCenter.default.publisher(for: .memoryOptimizationNeeded)
+            .sink { [weak self] _ in
+                self?.performMemoryOptimization()
+            }
+    }
+    
+    /// 执行内存优化
+    private func performMemoryOptimization() {
+        // 清理搜索缓存
+        searchResults.removeAll()
+        lastSearchQuery = ""
+        
+        // 如果记录数量过多，只保留最近的记录
+        if records.count > 500 {
+            records = Array(records.prefix(200))
+        }
+        
+        // 取消所有待处理的搜索任务
+        searchWorkItem?.cancel()
+        searchWorkItem = nil
+        
+        // 清理搜索历史
+        if searchHistory.count > 50 {
+            searchHistory = Array(searchHistory.prefix(20))
+        }
     }
 
     private func updateCDRecord(id: UUID, title: String?, summary: String?, confidence: Double?, aiStatus: String?) {

@@ -22,15 +22,99 @@ final class AIService: AIServiceProtocol {
     // 延迟加载：避免重复访问 Keychain
     private var hasCheckedAPIKey = false
     private var cachedAPIKey: String? = nil
+    
+    // 请求队列管理
+    private var requestQueue: [AIRequest] = []
+    private var isProcessingRequest = false
+    private let maxConcurrentRequests = 2
+    private var activeRequests = 0
+    private let queueLock = NSLock()
+    
+    /// 请求结构
+    private struct AIRequest {
+        let id = UUID()
+        let titleLimit: Int
+        let summaryLimit: Int
+        let content: String
+        let completion: (Result<SummaryResult, Error>) -> Void
+        let timestamp = Date()
+    }
+    
+    /// 析构函数，确保清理资源
+    deinit {
+        queueLock.lock()
+        requestQueue.removeAll()
+        queueLock.unlock()
+    }
 
     /// 执行提炼任务，按提供商路由；失败或超时时降级为前 15 字标题与空总结
     func summarize(titleLimit: Int, summaryLimit: Int, content: String, completion: @escaping (Result<SummaryResult, Error>) -> Void) {
+        // 创建请求并加入队列
+        let request = AIRequest(
+            titleLimit: titleLimit,
+            summaryLimit: summaryLimit,
+            content: content,
+            completion: completion
+        )
+        
+        queueLock.lock()
+        requestQueue.append(request)
+        queueLock.unlock()
+        
+        // 尝试处理队列
+        processQueue()
+    }
+    
+    /// 处理请求队列
+    private func processQueue() {
+        queueLock.lock()
+        
+        // 如果正在处理请求数量已达上限，则等待
+        guard activeRequests < maxConcurrentRequests else {
+            queueLock.unlock()
+            return
+        }
+        
+        // 如果队列为空，则无需处理
+        guard !requestQueue.isEmpty else {
+            queueLock.unlock()
+            return
+        }
+        
+        // 取出下一个请求
+        let request = requestQueue.removeFirst()
+        activeRequests += 1
+        
+        queueLock.unlock()
+        
+        // 处理请求
+        processRequest(request)
+    }
+    
+    /// 处理单个请求
+    private func processRequest(_ request: AIRequest) {
         switch provider {
         case .local:
-            summarizeLocally(titleLimit: titleLimit, summaryLimit: summaryLimit, content: content, completion: completion)
+            summarizeLocally(titleLimit: request.titleLimit, summaryLimit: request.summaryLimit, content: request.content) { [weak self] result in
+                request.completion(result)
+                self?.requestCompleted()
+            }
         case .openai:
-            summarizeWithOpenAI(titleLimit: titleLimit, summaryLimit: summaryLimit, content: content, completion: completion)
+            summarizeWithOpenAI(titleLimit: request.titleLimit, summaryLimit: request.summaryLimit, content: request.content) { [weak self] result in
+                request.completion(result)
+                self?.requestCompleted()
+            }
         }
+    }
+    
+    /// 请求完成回调
+    private func requestCompleted() {
+        queueLock.lock()
+        activeRequests -= 1
+        queueLock.unlock()
+        
+        // 继续处理队列中的下一个请求
+        processQueue()
     }
 
     /// 获取 OpenAI API 密钥（延迟加载，避免重复访问 Keychain）

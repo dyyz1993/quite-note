@@ -7,16 +7,42 @@ final class HeatmapViewModel: ObservableObject {
     @Published var filterDate: Date? = nil
     private let store: RecordStore
     private var cancellables = Set<AnyCancellable>()
+    private var recomputeWorkItem: DispatchWorkItem?
 
     /// 通过记录更新每日计数
     init(store: RecordStore) {
         self.store = store
         recompute()
         
-        // Subscribe to store changes
+        // Subscribe to store changes，使用防抖机制减少频繁计算
         store.$records
-            .sink { [weak self] _ in self?.recompute() }
+            .debounce(for: .milliseconds(300), scheduler: DispatchQueue.main)
+            .sink { [weak self] _ in 
+                self?.debouncedRecompute()
+            }
             .store(in: &cancellables)
+    }
+    
+    /// 析构函数，确保清理资源
+    deinit {
+        cancellables.removeAll()
+        recomputeWorkItem?.cancel()
+        recomputeWorkItem = nil
+    }
+    
+    /// 防抖重新计算，减少频繁更新
+    private func debouncedRecompute() {
+        // 取消之前的计算任务
+        recomputeWorkItem?.cancel()
+        
+        // 创建新的计算任务
+        let workItem = DispatchWorkItem { [weak self] in
+            self?.recompute()
+        }
+        recomputeWorkItem = workItem
+        
+        // 延迟执行计算
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1, execute: workItem)
     }
 
     /// 重新聚合每日数量

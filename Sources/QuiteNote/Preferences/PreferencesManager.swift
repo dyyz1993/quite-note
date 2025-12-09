@@ -11,7 +11,7 @@ final class PreferencesManager {
     var dedupEnabled: Bool { d.object(forKey: "dedupEnabled") == nil ? true : d.bool(forKey: "dedupEnabled") }
     var maxRecords: Int { let v = d.integer(forKey: "maxRecords"); return v == 0 ? 100 : v }
     var debounceSeconds: Int { let v = d.integer(forKey: "debounceSeconds"); return v == 0 ? 1 : v }
-    var windowLock: Bool { d.bool(forKey: "windowLock") }
+    var windowLock: Bool { d.object(forKey: "windowLock") == nil ? false : d.bool(forKey: "windowLock") }
     var animationsEnabled: Bool { d.object(forKey: "animationsEnabled") == nil ? true : d.bool(forKey: "animationsEnabled") }
     var aiProvider: String { d.string(forKey: "aiProvider") ?? "local" }
     var openAIBaseURL: String { d.string(forKey: "openAIBaseURL") ?? "https://api.openai.com/v1" }
