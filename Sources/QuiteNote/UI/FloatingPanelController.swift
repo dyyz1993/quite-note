@@ -206,8 +206,22 @@ final class FloatingPanelController {
         if PreferencesManager.shared.rememberWindowPosition {
             // 尝试恢复上次保存的窗口位置
             if let savedFrame = PreferencesManager.shared.getWindowPosition() {
+                var targetScreen: NSScreen?
+                
+                // 首先尝试获取保存的屏幕
+                if let screenId = PreferencesManager.shared.getWindowScreenId() {
+                    targetScreen = PreferencesManager.shared.getScreenById(screenId)
+                    print("[DEBUG] 尝试恢复到屏幕: \(screenId)")
+                }
+                
+                // 如果找不到保存的屏幕，使用主屏幕
+                if targetScreen == nil {
+                    targetScreen = NSScreen.main
+                    print("[DEBUG] 使用主屏幕")
+                }
+                
                 // 确保窗口在屏幕范围内
-                if let screen = NSScreen.main {
+                if let screen = targetScreen {
                     let screenFrame = screen.visibleFrame
                     var adjustedFrame = savedFrame
                     
@@ -226,7 +240,8 @@ final class FloatingPanelController {
                     }
                     
                     panel.setFrame(adjustedFrame, display: true)
-                    print("[DEBUG] 恢复窗口位置: \(adjustedFrame)")
+                    let screenNumber = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber
+                    print("[DEBUG] 恢复窗口位置: \(adjustedFrame), 屏幕: \(screenNumber?.stringValue ?? "unknown")")
                 }
             } else {
                 // 没有保存的位置，则居中
@@ -297,18 +312,30 @@ final class FloatingPanelController {
     }
     
     @objc private func windowDidMove(_ note: Notification) {
-        // 窗口移动时保存位置
+        // 窗口移动时保存位置和屏幕信息
         if PreferencesManager.shared.rememberWindowPosition {
             PreferencesManager.shared.setWindowPosition(panel.frame)
-            print("[DEBUG] 保存窗口位置: \(panel.frame)")
+            
+            // 保存当前屏幕的ID
+            if let screen = panel.screen,
+               let screenNumber = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber {
+                PreferencesManager.shared.setWindowScreenId(screenNumber.stringValue)
+                print("[DEBUG] 保存窗口位置: \(panel.frame), 屏幕: \(screenNumber.stringValue)")
+            }
         }
     }
     
     @objc private func windowDidResize(_ note: Notification) {
-        // 窗口调整大小时保存位置
+        // 窗口调整大小时保存位置和屏幕信息
         if PreferencesManager.shared.rememberWindowPosition {
             PreferencesManager.shared.setWindowPosition(panel.frame)
-            print("[DEBUG] 保存窗口位置(调整大小): \(panel.frame)")
+            
+            // 保存当前屏幕的ID
+            if let screen = panel.screen,
+               let screenNumber = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber {
+                PreferencesManager.shared.setWindowScreenId(screenNumber.stringValue)
+                print("[DEBUG] 保存窗口位置(调整大小): \(panel.frame), 屏幕: \(screenNumber.stringValue)")
+            }
         }
     }
 
@@ -760,6 +787,9 @@ struct RecordCardView: View, Equatable {
     let store: RecordStore
     @State private var hovering = false
     @State private var showOriginalContent = false
+    @State private var showContent = false // 控制内容延迟显示
+    @State private var showFullContent = false // 控制是否显示完整内容
+    @State private var displayedContent = "" // 当前显示的内容
     
     // 缓存计算结果，避免重复计算
     private var isExpanded: Bool {
@@ -787,6 +817,20 @@ struct RecordCardView: View, Equatable {
         // 只在展开状态时应用阴影，减少性能开销
         .shadow(color: isExpanded ? Color.black.opacity(0.3) : .clear, radius: 10, x: 0, y: 2)
         .animation(.easeOut(duration: 0.2), value: isExpanded) // 减少动画时长
+        .onChange(of: isExpanded) { expanded in
+            // 当折叠时，重置内容显示状态，优化性能
+            if !expanded {
+                showContent = false
+                showFullContent = false
+                // 重新初始化显示内容
+                if record.content.count > 1000 {
+                    displayedContent = String(record.content.prefix(1000)) + "..."
+                } else {
+                    displayedContent = record.content
+                    showFullContent = true
+                }
+            }
+        }
         .onHover { hovering = $0 }
         .pointingHandCursor()
     }
@@ -894,6 +938,8 @@ struct RecordCardView: View, Equatable {
         VStack(alignment: .leading, spacing: 0) {
             // Expanded Content Area
             VStack(alignment: .leading, spacing: 12) {
+                // 延迟加载内容，提升展开性能
+                if showContent {
                 
                 // AI Summary Section - 优先显示
                 if record.summary != nil || record.aiStatus == "fail" {
@@ -992,11 +1038,13 @@ struct RecordCardView: View, Equatable {
                         }
                         
                         ScrollView {
-                            Text(record.content)
-                                .font(.system(size: 12, design: .monospaced))
-                                .foregroundColor(.themeGray300) // text-gray-300
-                                .padding(12) // p-3
-                                .frame(maxWidth: .infinity, alignment: .leading)
+                            VStack(alignment: .leading, spacing: 0) {
+                                Text(displayedContent)
+                                    .font(.system(size: 12, design: .monospaced))
+                                    .foregroundColor(.themeGray300) // text-gray-300
+                                    .padding(12) // p-3
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
                         }
                         .frame(maxHeight: 300) // 限制最大高度，避免过长内容导致性能问题
                         .background(Color.black.opacity(0.2)) // bg-black/20
@@ -1030,6 +1078,7 @@ struct RecordCardView: View, Equatable {
                         .pointingHandCursor()
                     }
                 }
+                } // 延迟加载内容的结束括号
             }
             .padding(12) // p-3
             .padding(.top, 0)
@@ -1038,6 +1087,28 @@ struct RecordCardView: View, Equatable {
             // 如果有总结，默认折叠原文
             if record.summary != nil {
                 showOriginalContent = false
+            }
+            
+            // 初始化显示内容
+            if record.content.count > 1000 {
+                displayedContent = String(record.content.prefix(1000)) + "..."
+                // 延迟1秒后自动显示完整内容
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        showFullContent = true
+                        displayedContent = record.content
+                    }
+                }
+            } else {
+                displayedContent = record.content
+                showFullContent = true
+            }
+            
+            // 延迟加载内容，提升展开性能
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    showContent = true
+                }
             }
         }
         .transition(.opacity)
@@ -1093,7 +1164,7 @@ private extension RecordCardView {
         
         // 调用AI服务生成总结
         store.ai?.summarizeSingle(record.content) { [weak store] result in
-            let workItem = DispatchWorkItem {
+            DispatchQueue.main.async {
                 switch result {
                 case .success(let summaryResult):
                     let title = summaryResult.title
@@ -1118,7 +1189,6 @@ private extension RecordCardView {
                     store?.postToast("总结生成失败: \(error.localizedDescription)", type: "error")
                 }
             }
-            DispatchQueue.main.async(execute: workItem)
         }
     }
     

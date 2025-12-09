@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 
 final class PreferencesManager {
     static let shared = PreferencesManager()
@@ -54,6 +55,29 @@ final class PreferencesManager {
         if let data = try? NSKeyedArchiver.archivedData(withRootObject: NSValue(rect: rect), requiringSecureCoding: false) {
             d.set(data, forKey: "windowPosition")
         }
+    }
+    
+    // 获取窗口所属屏幕的ID
+    func getWindowScreenId() -> String? {
+        return d.string(forKey: "windowScreenId")
+    }
+    
+    // 保存窗口所属屏幕的ID
+    func setWindowScreenId(_ screenId: String) {
+        d.set(screenId, forKey: "windowScreenId")
+    }
+    
+    // 根据屏幕ID查找对应的屏幕
+    func getScreenById(_ screenId: String) -> NSScreen? {
+        // 首先尝试通过屏幕的本地名称查找
+        for screen in NSScreen.screens {
+            if screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber == NSNumber(value: Int(screenId) ?? 0) {
+                return screen
+            }
+        }
+        
+        // 如果找不到，返回主屏幕
+        return NSScreen.main
     }
 }
 

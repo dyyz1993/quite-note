@@ -159,9 +159,19 @@ final class AIService: AIServiceProtocol {
     /// 使用 OpenAI Chat Completions 生成固定 JSON 输出
     private func summarizeWithOpenAI(titleLimit: Int, summaryLimit: Int, content: String, completion: @escaping (Result<SummaryResult, Error>) -> Void) {
         print("[AI] 开始处理总结请求，内容长度: \(content.count)")
+        
+        // 防止多次回调的标志
+        var hasCompleted = false
+        let safeCompletion: (Result<SummaryResult, Error>) -> Void = { result in
+            if !hasCompleted {
+                hasCompleted = true
+                completion(result)
+            }
+        }
+        
         guard let apiKey = getOpenAIAPIKey() else {
             print("[AI] 未找到API密钥，使用本地总结")
-            summarizeLocally(titleLimit: titleLimit, summaryLimit: summaryLimit, content: content, completion: completion)
+            summarizeLocally(titleLimit: titleLimit, summaryLimit: summaryLimit, content: content, completion: safeCompletion)
             return
         }
         print("[AI] 使用OpenAI API处理请求")
@@ -184,10 +194,10 @@ final class AIService: AIServiceProtocol {
         req.httpBody = try? JSONSerialization.data(withJSONObject: body)
 
         let session = URLSession(configuration: .default)
-        let task = session.dataTask(with: req) { data, response, error in
+        let task = session.dataTask(with: req) { [weak self] data, response, error in
             if error != nil {
                 print("[AI] API请求错误: \(error?.localizedDescription ?? "未知错误")")
-                self.summarizeLocally(titleLimit: titleLimit, summaryLimit: summaryLimit, content: content, completion: completion)
+                self?.summarizeLocally(titleLimit: titleLimit, summaryLimit: summaryLimit, content: content, completion: safeCompletion)
                 return
             }
             
@@ -197,7 +207,7 @@ final class AIService: AIServiceProtocol {
             
             guard let data else {
                 print("[AI] API响应数据为空")
-                self.summarizeLocally(titleLimit: titleLimit, summaryLimit: summaryLimit, content: content, completion: completion)
+                self?.summarizeLocally(titleLimit: titleLimit, summaryLimit: summaryLimit, content: content, completion: safeCompletion)
                 return
             }
             
@@ -213,7 +223,7 @@ final class AIService: AIServiceProtocol {
                   let msg = first["message"] as? [String: Any],
                   let contentStr = msg["content"] as? String else {
                 print("[AI] 无法解析API响应JSON")
-                self.summarizeLocally(titleLimit: titleLimit, summaryLimit: summaryLimit, content: content, completion: completion)
+                self?.summarizeLocally(titleLimit: titleLimit, summaryLimit: summaryLimit, content: content, completion: safeCompletion)
                 return
             }
             
@@ -226,7 +236,7 @@ final class AIService: AIServiceProtocol {
             
             print("[AI] 解析结果 - 标题: \(title), 总结: \(summary), 置信度: \(conf)")
             
-            completion(.success(SummaryResult(title: title, summary: summary, confidence: conf)))
+            safeCompletion(.success(SummaryResult(title: title, summary: summary, confidence: conf)))
         }
         task.resume()
 
@@ -234,7 +244,7 @@ final class AIService: AIServiceProtocol {
         DispatchQueue.global().asyncAfter(deadline: .now() + timeout) { [weak self] in
             if task.state == URLSessionTask.State.running {
                 task.cancel()
-                self?.summarizeLocally(titleLimit: titleLimit, summaryLimit: summaryLimit, content: content, completion: completion)
+                self?.summarizeLocally(titleLimit: titleLimit, summaryLimit: summaryLimit, content: content, completion: safeCompletion)
             }
         }
     }
@@ -242,6 +252,15 @@ final class AIService: AIServiceProtocol {
     /// 使用自定义API（如智谱AI）生成总结
     private func summarizeWithCustomAPI(titleLimit: Int, summaryLimit: Int, content: String, apiKey: String, completion: @escaping (Result<SummaryResult, Error>) -> Void) {
         print("[AI] 使用自定义API处理请求: \(openAIBaseURL)")
+        
+        // 防止多次回调的标志
+        var hasCompleted = false
+        let safeCompletion: (Result<SummaryResult, Error>) -> Void = { result in
+            if !hasCompleted {
+                hasCompleted = true
+                completion(result)
+            }
+        }
         
         // 构建请求URL，智谱AI的API端点处理
         var urlString = openAIBaseURL
@@ -252,7 +271,7 @@ final class AIService: AIServiceProtocol {
         
         guard let url = URL(string: urlString) else {
             print("[AI] 无效的API URL: \(urlString)")
-            summarizeLocally(titleLimit: titleLimit, summaryLimit: summaryLimit, content: content, completion: completion)
+            summarizeLocally(titleLimit: titleLimit, summaryLimit: summaryLimit, content: content, completion: safeCompletion)
             return
         }
         
@@ -283,7 +302,7 @@ final class AIService: AIServiceProtocol {
             req.httpBody = try JSONSerialization.data(withJSONObject: body, options: [])
         } catch {
             print("[AI] JSON序列化错误: \(error.localizedDescription)")
-            summarizeLocally(titleLimit: titleLimit, summaryLimit: summaryLimit, content: content, completion: completion)
+            summarizeLocally(titleLimit: titleLimit, summaryLimit: summaryLimit, content: content, completion: safeCompletion)
             return
         }
 
@@ -297,7 +316,7 @@ final class AIService: AIServiceProtocol {
         let task = session.dataTask(with: req) { [weak self] data, response, error in
             if error != nil {
                 print("[AI] 自定义API请求错误: \(error?.localizedDescription ?? "未知错误")")
-                self?.summarizeLocally(titleLimit: titleLimit, summaryLimit: summaryLimit, content: content, completion: completion)
+                self?.summarizeLocally(titleLimit: titleLimit, summaryLimit: summaryLimit, content: content, completion: safeCompletion)
                 return
             }
             
@@ -307,7 +326,7 @@ final class AIService: AIServiceProtocol {
             
             guard let data else {
                 print("[AI] 自定义API响应数据为空")
-                self?.summarizeLocally(titleLimit: titleLimit, summaryLimit: summaryLimit, content: content, completion: completion)
+                self?.summarizeLocally(titleLimit: titleLimit, summaryLimit: summaryLimit, content: content, completion: safeCompletion)
                 return
             }
             
@@ -323,7 +342,7 @@ final class AIService: AIServiceProtocol {
                   let msg = first["message"] as? [String: Any],
                   let contentStr = msg["content"] as? String else {
                 print("[AI] 无法解析自定义API响应JSON")
-                self?.summarizeLocally(titleLimit: titleLimit, summaryLimit: summaryLimit, content: content, completion: completion)
+                self?.summarizeLocally(titleLimit: titleLimit, summaryLimit: summaryLimit, content: content, completion: safeCompletion)
                 return
             }
             
@@ -336,7 +355,7 @@ final class AIService: AIServiceProtocol {
             
             print("[AI] 自定义API解析结果 - 标题: \(title), 总结: \(summary), 置信度: \(conf)")
             
-            completion(.success(SummaryResult(title: title, summary: summary, confidence: conf)))
+            safeCompletion(.success(SummaryResult(title: title, summary: summary, confidence: conf)))
         }
         task.resume()
 
@@ -344,7 +363,7 @@ final class AIService: AIServiceProtocol {
         DispatchQueue.global().asyncAfter(deadline: .now() + timeout) { [weak self] in
             if task.state == URLSessionTask.State.running {
                 task.cancel()
-                self?.summarizeLocally(titleLimit: titleLimit, summaryLimit: summaryLimit, content: content, completion: completion)
+                self?.summarizeLocally(titleLimit: titleLimit, summaryLimit: summaryLimit, content: content, completion: safeCompletion)
             }
         }
     }
