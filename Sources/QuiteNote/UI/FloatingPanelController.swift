@@ -875,7 +875,7 @@ struct RecordCardView: View, Equatable {
             
             // Actions - 始终显示按钮，提高可用性
             HStack(spacing: 6) {
-                IconButton(icon: .star, color: record.starred ? .themeYellow500 : .themeTextSecondary) {
+                IconButton(icon: record.starred ? .star : .starOff, color: record.starred ? .themeYellow500 : .themeTextSecondary) {
                     store.toggleStar(record)
                 }
                 // 单独总结按钮 - 根据状态显示不同样式

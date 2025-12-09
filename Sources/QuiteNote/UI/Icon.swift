@@ -19,7 +19,7 @@ enum IconName: String {
     case rss = "rss"
     case trash2 = "trash-2"
     case star = "star"
-    case starFilled = "star-filled"
+    case starOff = "star-off"
     case search = "search"
     case minimize2 = "minimize-2"
     case maximize2 = "maximize-2"
