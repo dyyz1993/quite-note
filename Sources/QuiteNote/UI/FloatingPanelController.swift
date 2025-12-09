@@ -1012,7 +1012,7 @@ struct RecordCardView: View, Equatable {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
                             HStack(spacing: 4) {
-                                LucideView(name: .alignLeft, size: 10, color: .themeGray500)
+                                LucideView(name: .rss, size: 10, color: .themeGray500)
                                 Text("原文内容")
                             }
                             .font(.system(size: 10, weight: .bold))

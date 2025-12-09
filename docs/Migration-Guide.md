@@ -270,7 +270,7 @@ struct RecordCard: View {
                     VStack(alignment: .leading, spacing: ThemeSpacing.p2.rawValue) {
                         HStack {
                             HStack(spacing: 4) {
-                                LucideView(name: .alignLeft, size: 10, color: .themeTextTertiary)
+                                LucideView(name: .rss, size: 10, color: .themeTextTertiary)
                                 Text("原文内容")
                             }
                             .textCase(.uppercase)

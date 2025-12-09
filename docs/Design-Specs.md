@@ -275,7 +275,7 @@
 | copy | 复制 | 复制操作 |
 | settings | 设置 | 偏好设置 |
 | search | 搜索 | 搜索功能 |
-| alignLeft | 左对齐 | 文本对齐 |
+| rss | 左对齐 | 文本对齐 |
 | chevronRight | 右箭头 | 展开/折叠 |
 | maximize2 | 最大化 | 窗口操作 |
 | database | 数据库 | 数据存储 |

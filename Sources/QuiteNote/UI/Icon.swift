@@ -16,9 +16,10 @@ enum IconName: String {
     case check = "check"
     case save = "save"
     case fileText = "file-text"
-    case alignLeft = "align-left"
+    case rss = "rss"
     case trash2 = "trash-2"
     case star = "star"
+    case starFilled = "star-filled"
     case search = "search"
     case minimize2 = "minimize-2"
     case maximize2 = "maximize-2"
@@ -38,6 +39,11 @@ enum IconName: String {
     case eye = "eye"
     case eyeOff = "eye-off"
     case alertTriangle = "alert-triangle"
+    case filter = "filter"
+    case slidersHorizontal = "sliders-horizontal"
+    case funnelPlus = "funnel-plus"
+    case eraser = "eraser"
+    case circleX = "circle-x"
 }
 
 /// SwiftUI 包装，渲染 Lucide 图标（不使用 SF Symbols 回退）

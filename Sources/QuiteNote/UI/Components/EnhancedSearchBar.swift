@@ -7,9 +7,7 @@ struct EnhancedSearchBar: View {
     @Binding var searchTerm: String
     @State private var showHistory = false
     @State private var showAdvancedOptions = false
-    @State private var showAISummary = false
-    @State private var aiSummary: String? = nil
-    @State private var isGeneratingSummary = false
+
     @FocusState private var isSearchFieldFocused: Bool
     
     // 防抖处理相关
@@ -22,7 +20,6 @@ struct EnhancedSearchBar: View {
             searchBarView
             searchHistoryView
             advancedOptionsView
-            aiSummaryView
         }
         .onAppear {
             isSearchFieldFocused = true
@@ -39,6 +36,7 @@ struct EnhancedSearchBar: View {
             // 立即更新UI状态
             if !newValue.isEmpty {
                 showHistory = true
+                showAdvancedOptions = false
             } else {
                 showHistory = false
             }
@@ -77,35 +75,41 @@ struct EnhancedSearchBar: View {
                 .onChange(of: searchTerm) { newValue in
                     if !newValue.isEmpty {
                         showHistory = true
+                        showAdvancedOptions = false
                     } else {
                         showHistory = false
                     }
                 }
             
+            // 清空按钮
+            if !searchTerm.isEmpty {
+                Button(action: {
+                    searchWorkItem?.cancel()
+                    searchTerm = ""
+                    debouncedSearchTerm = ""
+                    showHistory = false
+                }) {
+                    LucideView(name: .circleX, size: 14, color: .themeTextSecondary)
+                }
+                .buttonStyle(.plain)
+                .pointingHandCursor()
+                .help("清空搜索")
+            }
+            
             // 高级搜索按钮
-            Button(action: { showAdvancedOptions.toggle() }) {
-                LucideView(name: .settings, size: 14, color: showAdvancedOptions ? .themeBlue500 : .themeTextSecondary)
+            Button(action: {
+                showAdvancedOptions.toggle()
+                if showAdvancedOptions {
+                    showHistory = false
+                }
+            }) {
+                LucideView(name: .slidersHorizontal, size: 14, color: showAdvancedOptions ? .themeBlue500 : .themeTextSecondary)
             }
             .buttonStyle(.plain)
             .pointingHandCursor()
             .help("高级搜索选项")
             
-            // AI总结按钮
-            if !searchTerm.isEmpty && store.enableAI {
-                Button(action: { generateAISummary() }) {
-                    if isGeneratingSummary {
-                        ProgressView()
-                            .scaleEffect(0.8)
-                            .progressViewStyle(CircularProgressViewStyle(tint: .themeBlue500))
-                    } else {
-                        LucideView(name: .sparkles, size: 14, color: .themeBlue500)
-                    }
-                }
-                .buttonStyle(.plain)
-                .pointingHandCursor()
-                .help("生成搜索结果AI总结")
-                .disabled(isGeneratingSummary)
-            }
+
         }
         .padding(ThemeSpacing.px3)
         .background(Color.black.opacity(0.1))
@@ -193,75 +197,56 @@ struct EnhancedSearchBar: View {
     @ViewBuilder
     private var advancedOptionsView: some View {
         if showAdvancedOptions {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("搜索选项")
-                    .font(.themeH2)
-                    .foregroundColor(.themeTextPrimary)
-                
-                // 搜索范围
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("搜索范围")
-                        .font(.themeCaption)
-                        .foregroundColor(.themeTextSecondary)
-                    
-                    ToggleRow(title: "标题", subtitle: "", isOn: $store.searchInTitles)
-                    ToggleRow(title: "内容", subtitle: "", isOn: $store.searchInContent)
-                    ToggleRow(title: "AI总结", subtitle: "", isOn: $store.searchInSummaries)
-                }
-                
-                // 搜索选项
-                VStack(alignment: .leading, spacing: 8) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
                     Text("搜索选项")
-                        .font(.themeCaption)
-                        .foregroundColor(.themeTextSecondary)
+                        .font(.themeH2)
+                        .foregroundColor(.themeTextPrimary)
                     
-                    ToggleRow(title: "区分大小写", subtitle: "", isOn: $store.searchCaseSensitive)
-                    ToggleRow(title: "正则表达式", subtitle: "", isOn: $store.searchUseRegex)
+                    Divider()
+                        .background(Color.themeBorder)
+                    
+                    // 搜索范围
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("搜索范围")
+                            .font(.themeCaption)
+                            .foregroundColor(.themeTextSecondary)
+                        
+                        ToggleRow(title: "标题", subtitle: "", isOn: $store.searchInTitles)
+                        ToggleRow(title: "内容", subtitle: "", isOn: $store.searchInContent)
+                        ToggleRow(title: "AI总结", subtitle: "", isOn: $store.searchInSummaries)
+                    }
+                    
+                    Divider()
+                        .background(Color.themeBorder)
+                    
+                    // 搜索选项
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("搜索选项")
+                            .font(.themeCaption)
+                            .foregroundColor(.themeTextSecondary)
+                        
+                        ToggleRow(title: "区分大小写", subtitle: "", isOn: $store.searchCaseSensitive)
+                        ToggleRow(title: "正则表达式", subtitle: "", isOn: $store.searchUseRegex)
+                    }
                 }
+                .padding(ThemeSpacing.px4)
             }
-            .padding(16)
-            .background(Color.black.opacity(0.2))
+            .frame(maxHeight: 250) // 限制最大高度，确保内容可滚动
+            .background(Color.themeBackground)
             .cornerRadius(8)
-            .padding(.top, 8)
-            .transition(.opacity.combined(with: .scale))
+            .shadow(color: Color.black.opacity(0.1), radius: 8, x: 0, y: 4)
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color.themeBorder, lineWidth: 0.5)
+            )
+            .padding(.top, 4)
+            .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .topTrailing)))
+            .zIndex(20)
         }
     }
     
-    /// AI总结显示视图
-    @ViewBuilder
-    private var aiSummaryView: some View {
-        if showAISummary, let summary = aiSummary {
-            HStack(alignment: .top, spacing: 12) {
-                LucideView(name: .sparkles, size: 16, color: .themeBlue500)
-                
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("搜索结果总结")
-                        .font(.themeCaption)
-                        .foregroundColor(.themeTextSecondary)
-                    
-                    Text(summary)
-                        .font(.themeBody)
-                        .foregroundColor(.themeTextPrimary)
-                }
-                
-                Spacer()
-                
-                Button(action: {
-                    showAISummary = false
-                    aiSummary = nil
-                }) {
-                    LucideView(name: .x, size: 14, color: .themeTextSecondary)
-                }
-                .buttonStyle(.plain)
-                .pointingHandCursor()
-            }
-            .padding(12)
-            .background(Color.themeBlue500.opacity(0.1))
-            .cornerRadius(8)
-            .padding(.top, 8)
-            .transition(.opacity.combined(with: .scale))
-        }
-    }
+
     
     /// 执行搜索
     private func performSearch() {
@@ -271,16 +256,7 @@ struct EnhancedSearchBar: View {
         debouncedSearchTerm = searchTerm
     }
     
-    /// 生成AI总结
-    private func generateAISummary() {
-        isGeneratingSummary = true
-        // 使用防抖后的搜索词，确保是基于实际搜索内容生成总结
-        store.generateSearchSummary(for: debouncedSearchTerm) { summary in
-            self.isGeneratingSummary = false
-            self.aiSummary = summary
-            self.showAISummary = true
-        }
-    }
+
 }
 
 /// 扩展View以支持点击外部区域
