@@ -379,8 +379,19 @@ final class RecordStore: ObservableObject {
     func loadFromStore(pageSize: Int = 50, offset: Int = 0) {
         let cds = (try? stack.fetchRecords(limit: pageSize, offset: offset)) ?? []
         let newRecords = cds.map { r in
-            Record(id: r.id, title: r.title, content: r.content, createdAt: r.createdAt, hash: r.digest, aiStatus: r.aiStatus, summary: r.summary, summaryConfidence: r.summaryConfidence, starred: r.starred, copiedAt: r.copiedAt)
+            // 检查并重置pending状态的记录
+            let aiStatus = r.aiStatus == "pending" ? nil : r.aiStatus
+            if r.aiStatus == "pending" {
+                // 更新数据库中的状态
+                r.aiStatus = nil
+            }
+            return Record(id: r.id, title: r.title, content: r.content, createdAt: r.createdAt, hash: r.digest, aiStatus: aiStatus, summary: r.summary, summaryConfidence: r.summaryConfidence, starred: r.starred, copiedAt: r.copiedAt)
         }.sorted { $0.createdAt > $1.createdAt }
+        
+        // 如果有pending状态的记录被重置，保存更改
+        if cds.contains(where: { $0.aiStatus == "pending" }) {
+            stack.save()
+        }
         
         // 如果是第一页，直接替换；否则追加
         if offset == 0 {

@@ -231,9 +231,14 @@ struct SettingsOverlayView: View {
                         set: { KeychainHelper.shared.write(service: "QuiteNote", account: "openai_api_key", value: $0) }
                     ), isSecure: true)
                     
-                    CustomTextField(label: "Base URL / Model", placeholder: "https://api.openai.com/v1", text: Binding(
+                    CustomTextField(label: "Base URL", placeholder: "https://api.openai.com/v1", text: Binding(
                         get: { (store.ai as? AIService)?.openAIBaseURL ?? "https://api.openai.com/v1" },
                         set: { store.configureOpenAI(apiKey: KeychainHelper.shared.read(service: "QuiteNote", account: "openai_api_key") ?? "", baseURL: $0, model: (store.ai as? AIService)?.openAIModel ?? "gpt-4o-mini") }
+                    ))
+                    
+                    CustomTextField(label: "Model", placeholder: "gpt-4o-mini", text: Binding(
+                        get: { (store.ai as? AIService)?.openAIModel ?? "gpt-4o-mini" },
+                        set: { store.configureOpenAI(apiKey: KeychainHelper.shared.read(service: "QuiteNote", account: "openai_api_key") ?? "", baseURL: (store.ai as? AIService)?.openAIBaseURL ?? "https://api.openai.com/v1", model: $0) }
                     ))
                     
                     // API测试按钮

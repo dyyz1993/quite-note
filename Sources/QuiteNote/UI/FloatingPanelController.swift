@@ -759,6 +759,7 @@ struct RecordCardView: View, Equatable {
     @Binding var expandedId: UUID?
     let store: RecordStore
     @State private var hovering = false
+    @State private var showOriginalContent = false
     
     // 缓存计算结果，避免重复计算
     private var isExpanded: Bool {
@@ -830,18 +831,29 @@ struct RecordCardView: View, Equatable {
                 IconButton(icon: .star, color: record.starred ? .themeYellow500 : .themeTextSecondary) {
                     store.toggleStar(record)
                 }
-                // 单独总结按钮
+                // 单独总结按钮 - 根据状态显示不同样式
                 Button(action: {
                     generateIndividualSummary()
                 }) {
-                    LucideView(name: .sparkles, size: 14, color: record.aiStatus == "pending" ? .themePurple500.opacity(0.7) : .themeBlue500)
-                        .frame(width: 24, height: 24)
-                        .background(Color.white.opacity(0.05))
-                        .clipShape(Circle())
+                    Group {
+                        if record.aiStatus == "fail" {
+                            // 失败状态：显示警告图标
+                            LucideView(name: .alertTriangle, size: 14, color: .themeRed500)
+                                .frame(width: 24, height: 24)
+                                .background(Color.themeRed500.opacity(0.1))
+                                .clipShape(Circle())
+                        } else {
+                            // 正常或处理中状态
+                            LucideView(name: .sparkles, size: 14, color: record.aiStatus == "pending" ? .themePurple500.opacity(0.7) : .themeBlue500)
+                                .frame(width: 24, height: 24)
+                                .background(Color.white.opacity(0.05))
+                                .clipShape(Circle())
+                        }
+                    }
                 }
                 .buttonStyle(.plain)
                 .pointingHandCursor()
-                .help("单独总结此消息")
+                .help(record.aiStatus == "fail" ? "总结失败，点击重试" : "单独总结此消息")
                 IconButton(icon: .trash2, color: .themeTextSecondary) {
                     store.delete(record)
                 }
@@ -871,7 +883,8 @@ struct RecordCardView: View, Equatable {
         .padding(12) // p-3
         .contentShape(Rectangle())
         .onTapGesture {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+            // 使用更快的动画减少卡顿
+            withAnimation(.easeInOut(duration: 0.25)) {
                 expandedId = isExpanded ? nil : record.id
             }
         }
@@ -882,49 +895,7 @@ struct RecordCardView: View, Equatable {
             // Expanded Content Area
             VStack(alignment: .leading, spacing: 12) {
                 
-                // Raw Content Section
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        HStack(spacing: 4) {
-                            LucideView(name: .alignLeft, size: 10, color: .themeGray500)
-                            Text("原文内容")
-                        }
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(.themeGray500)
-                        .textCase(.uppercase) // uppercase tracking-wider
-                        Spacer()
-                        Button(action: {
-                            NSPasteboard.general.clearContents()
-                            NSPasteboard.general.setString(record.content, forType: .string)
-                            HapticFeedbackManager.shared.lightImpact()
-                            store.postToast("已复制原文", type: "success")
-                        }) {
-                            HStack(spacing: 4) {
-                                LucideView(name: .copy, size: 10, color: .themeGray400)
-                                Text("复制原文")
-                            }
-                            .font(.system(size: 10))
-                            .foregroundColor(.themeGray400)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 2)
-                            .background(Color.white.opacity(0.05))
-                            .cornerRadius(4)
-                        }
-                        .buttonStyle(.plain)
-                        .pointingHandCursor()
-                    }
-                    
-                    Text(record.content)
-                        .font(.system(size: 12, design: .monospaced))
-                        .foregroundColor(.themeGray300) // text-gray-300
-                        .padding(12) // p-3
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color.black.opacity(0.2)) // bg-black/20
-                        .cornerRadius(4)
-                        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.themeBorder, lineWidth: 1).allowsHitTesting(false))
-                }
-                
-                // AI Summary Section
+                // AI Summary Section - 优先显示
                 if record.summary != nil || record.aiStatus == "fail" {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
@@ -986,9 +957,88 @@ struct RecordCardView: View, Equatable {
                             .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.themePurple500.opacity(0.2), lineWidth: 1).allowsHitTesting(false))
                     }
                 }
+                
+                // Raw Content Section - 如果有总结则默认折叠
+                if record.summary == nil || showOriginalContent {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            HStack(spacing: 4) {
+                                LucideView(name: .alignLeft, size: 10, color: .themeGray500)
+                                Text("原文内容")
+                            }
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(.themeGray500)
+                            .textCase(.uppercase) // uppercase tracking-wider
+                            Spacer()
+                            Button(action: {
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.setString(record.content, forType: .string)
+                                HapticFeedbackManager.shared.lightImpact()
+                                store.postToast("已复制原文", type: "success")
+                            }) {
+                                HStack(spacing: 4) {
+                                    LucideView(name: .copy, size: 10, color: .themeGray400)
+                                    Text("复制原文")
+                                }
+                                .font(.system(size: 10))
+                                .foregroundColor(.themeGray400)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 2)
+                                .background(Color.white.opacity(0.05))
+                                .cornerRadius(4)
+                            }
+                            .buttonStyle(.plain)
+                            .pointingHandCursor()
+                        }
+                        
+                        ScrollView {
+                            Text(record.content)
+                                .font(.system(size: 12, design: .monospaced))
+                                .foregroundColor(.themeGray300) // text-gray-300
+                                .padding(12) // p-3
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .frame(maxHeight: 300) // 限制最大高度，避免过长内容导致性能问题
+                        .background(Color.black.opacity(0.2)) // bg-black/20
+                        .cornerRadius(4)
+                        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.themeBorder, lineWidth: 1).allowsHitTesting(false))
+                    }
+                }
+                
+                // 如果有总结，添加显示/隐藏原文的切换按钮
+                if record.summary != nil {
+                    HStack {
+                        Spacer()
+                        Button(action: {
+                            // 使用更快的动画减少卡顿
+                            withAnimation(.easeInOut(duration: 0.15)) {
+                                showOriginalContent.toggle()
+                            }
+                        }) {
+                            HStack(spacing: 4) {
+                                LucideView(name: showOriginalContent ? .eyeOff : .eye, size: 10, color: .themeGray400)
+                                Text(showOriginalContent ? "隐藏原文" : "显示原文")
+                            }
+                            .font(.system(size: 10))
+                            .foregroundColor(.themeGray400)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.white.opacity(0.05))
+                            .cornerRadius(4)
+                        }
+                        .buttonStyle(.plain)
+                        .pointingHandCursor()
+                    }
+                }
             }
             .padding(12) // p-3
             .padding(.top, 0)
+        }
+        .onAppear {
+            // 如果有总结，默认折叠原文
+            if record.summary != nil {
+                showOriginalContent = false
+            }
         }
         .transition(.opacity)
     }

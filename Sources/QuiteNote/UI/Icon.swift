@@ -35,6 +35,9 @@ enum IconName: String {
     case cpu = "cpu"
     case appWindowMac = "app-window-mac"
     case refreshCw = "refresh-cw"
+    case eye = "eye"
+    case eyeOff = "eye-off"
+    case alertTriangle = "alert-triangle"
 }
 
 /// SwiftUI 包装，渲染 Lucide 图标（不使用 SF Symbols 回退）
