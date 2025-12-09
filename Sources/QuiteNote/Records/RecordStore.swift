@@ -206,6 +206,11 @@ final class RecordStore: ObservableObject {
     
     /// 添加搜索词到历史记录
     private func addToSearchHistory(_ query: String) {
+        // 避免频繁更新，如果查询已在历史记录顶部，则不更新
+        if let first = searchHistory.first, first == query {
+            return
+        }
+        
         // 移除重复项
         searchHistory.removeAll { $0 == query }
         // 添加到开头
@@ -214,8 +219,11 @@ final class RecordStore: ObservableObject {
         if searchHistory.count > 20 {
             searchHistory = Array(searchHistory.prefix(20))
         }
-        // 保存到偏好设置
-        saveSearchHistory()
+        
+        // 异步保存到偏好设置，避免阻塞UI
+        DispatchQueue.global(qos: .utility).async {
+            self.saveSearchHistory()
+        }
     }
     
     /// 清空搜索历史

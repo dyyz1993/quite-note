@@ -640,11 +640,12 @@ struct FloatingRootView: View {
             .padding(16) // p-4
         }
         .onChange(of: searchTerm) { newValue in
-            // 直接搜索，因为 EnhancedSearchBar 已经实现了防抖
-            let results = store.search(newValue)
-            searchResults = results
-            // 重置分页状态
-            hasMoreRecords = results.count >= 50
+            // 使用防抖搜索，避免频繁搜索
+            store.debouncedSearch(newValue) { results in
+                searchResults = results
+                // 重置分页状态
+                hasMoreRecords = results.count >= 50
+            }
         }
         .onAppear {
             // 初始化时设置搜索结果
@@ -656,10 +657,11 @@ struct FloatingRootView: View {
                 // 检查是否还有更多记录
                 hasMoreRecords = store.records.count >= 50
             } else {
-                // 直接搜索，因为 EnhancedSearchBar 已经实现了防抖
-                let results = store.search(searchTerm)
-                searchResults = results
-                hasMoreRecords = results.count >= 50
+                // 使用防抖搜索，避免频繁搜索
+                store.debouncedSearch(searchTerm) { results in
+                    searchResults = results
+                    hasMoreRecords = results.count >= 50
+                }
             }
         }
     }
@@ -728,7 +730,8 @@ struct FloatingRootView: View {
     /// 状态栏视图
     private var statusBarView: some View {
         let base = heatmapVM.filteredRecords()
-        let items = searchTerm.isEmpty ? base : store.search(searchTerm)
+        // 使用缓存的搜索结果，避免重复搜索
+        let items = searchTerm.isEmpty ? base : searchResults
         
         return HStack {
             Text("记录条数: \(store.records.count) 条 (已过滤: \(store.records.count - items.count))")
