@@ -1,0 +1,466 @@
+# Code Review Prompt
+
+## Context
+- **Project**: QuiteNote - macOS menu bar application
+- **Architecture**: Layered architecture (Presentation/Business/Data/Infrastructure)
+- **Design Principles**: SOLID, Protocol-oriented, Dependency Injection
+- **Theme System**: Tailwind CSS inspired design system
+- **Target Platform**: macOS 12.0+
+
+## Task Description
+Please perform a comprehensive code review of the provided code following QuiteNote's code review guidelines.
+
+## Review Checklist
+
+### 1. Architecture and Design (Weight: 25%)
+
+#### 1.1 Layered Architecture
+- [ ] **Layer Separation**: Verify clear separation between Presentation, Business, Data, and Infrastructure layers
+- [ ] **Dependency Direction**: Ensure dependencies flow downward (Presentation → Business → Data)
+- [ ] **Cross-layer Dependencies**: Identify any violations of layer boundaries
+- [ ] **Layer Responsibilities**: Confirm each layer has well-defined responsibilities
+
+**Questions to ask:**
+- Does this code belong in the correct layer?
+- Are there any dependencies that violate the layer architecture?
+- Is the separation of concerns properly maintained?
+
+#### 1.2 Protocol Design
+- [ ] **Protocol Usage**: Are protocols used instead of concrete implementations?
+- [ ] **Protocol Design**: Are protocols focused and well-designed?
+- [ ] **Protocol Naming**: Are protocol names clear and appropriate?
+- [ ] **Protocol Implementation**: Are implementations complete and correct?
+
+**Questions to ask:**
+- Does this protocol follow the dependency inversion principle?
+- Is the protocol interface stable and version-tolerant?
+- Are there any circular dependencies?
+
+#### 1.3 Dependency Injection
+- [ ] **DI Pattern**: Is dependency injection properly implemented?
+- [ ] **Service Container**: Is the Service Container used correctly?
+- [ ] **Constructor Injection**: Are dependencies injected via constructors?
+- [ ] **Mocking Support**: Can dependencies be easily mocked for testing?
+
+**Questions to ask:**
+- Are all dependencies properly injected?
+- Is the Service Container configuration correct?
+- Can this code be easily unit tested?
+
+#### 1.4 SOLID Principles
+- [ ] **Single Responsibility**: Does each class have only one reason to change?
+- [ ] **Open/Closed**: Are classes open for extension but closed for modification?
+- [ ] **Liskov Substitution**: Can subclasses be substituted for their base classes?
+- [ ] **Interface Segregation**: Are interfaces focused and not bloated?
+- [ ] **Dependency Inversion**: Do high-level modules depend on abstractions?
+
+### 2. Code Quality (Weight: 20%)
+
+#### 2.1 Code Clarity
+- [ ] **Readability**: Is the code easy to read and understand?
+- [ ] **Naming Conventions**: Are variable, function, and class names descriptive?
+- [ ] **Code Structure**: Is the code well-organized and structured?
+- [ ] **Comments**: Are complex algorithms or business logic properly documented?
+
+**Naming Convention Check:**
+- Classes/Structs: PascalCase (✅ `RecordService`, ❌ `record_service`)
+- Variables/Functions: camelCase (✅ `recordCount`, ❌ `RECORD_COUNT`)
+- Constants: PascalCase (✅ `MaxRetries`, ❌ `max_retries`)
+- Protocols: PascalCase without suffix (✅ `Service`, ❌ `ServiceProtocol`)
+
+#### 2.2 Code Duplication
+- [ ] **DRY Principle**: Identify duplicate code that should be extracted
+- [ ] **Reusable Components**: Suggest opportunities for code reuse
+- [ ] **Common Patterns**: Look for patterns that could be abstracted
+
+#### 2.3 Function Complexity
+- [ ] **Function Length**: Are functions concise (ideally < 50 lines)?
+- [ ] **Cyclomatic Complexity**: Are control flow structures overly complex?
+- [ ] **Nested Structures**: Are there too many levels of nesting?
+
+**Guidelines:**
+- Functions: < 50 lines
+- Nesting levels: < 4 levels
+- Parameters: < 5 parameters (consider using parameter objects)
+
+#### 2.4 Error Handling
+- [ ] **Error Propagation**: Are errors properly propagated up the call stack?
+- [ ] **Error Types**: Are custom error types defined and used?
+- [ ] **Error Messages**: Are error messages user-friendly and actionable?
+- [ ] **Error Recovery**: Is there a way to recover from errors?
+
+### 3. Swift Best Practices (Weight: 15%)
+
+#### 3.1 Optional Handling
+- [ ] **Safe Unwrapping**: Are optionals safely unwrapped using if-let or guard-let?
+- [ ] **Force Unwrapping**: Identify any dangerous force unwrapping (!)
+- [ ] **Optional Chaining**: Is optional chaining used appropriately?
+- [ ] **Nil Coalescing**: Are nil coalescing operators (??) used for defaults?
+
+**Examples:**
+```swift
+// ✅ Good
+if let value = optionalValue {
+    // Use value
+}
+
+// ❌ Bad
+let value = optionalValue!  // Can crash
+
+// ✅ Good
+let result = optionalValue ?? defaultValue
+```
+
+#### 3.2 Memory Management
+- [ ] **Weak References**: Are weak references used to avoid retain cycles?
+- [ ] **Unowned References**: Are unowned references used appropriately?
+- [ ] **Capture Lists**: Are capture lists used in closures to prevent memory leaks?
+- [ ] **Resource Cleanup**: Are resources properly cleaned up in deinit?
+
+**Examples:**
+```swift
+// ✅ Good - Weak capture
+button.action = { [weak self] in
+    self?.handleAction()
+}
+
+// ✅ Good - Unowned when safe
+Timer.scheduledTimer(withTimeInterval: 1.0) { [unowned self] _ in
+    self.updateUI()
+}
+```
+
+#### 3.3 Error Handling
+- [ ] **Do-Catch Blocks**: Are errors properly caught and handled?
+- [ ] **Try Operators**: Is try? and try! used appropriately?
+- [ ] **Error Types**: Are enum error types used for better error handling?
+- [ ] **Error Context**: Are errors wrapped with additional context?
+
+```swift
+// ✅ Good
+enum NetworkError: Error {
+    case invalidURL
+    case requestFailed(Error)
+    case invalidResponse
+}
+
+// ❌ Bad
+func fetchData() throws -> Data {
+    // No specific error types
+}
+```
+
+#### 3.4 Concurrency
+- [ ] **@MainActor**: Is @MainActor used for UI updates?
+- [ ] **Async/Await**: Are async functions used correctly?
+- [ ] **Task Management**: Are Tasks properly managed and cancelled?
+- [ ] **Thread Safety**: Is shared state access thread-safe?
+
+### 4. Performance (Weight: 15%)
+
+#### 4.1 View Performance
+- [ ] **Lazy Loading**: Are views lazily loaded when possible?
+- [ ] **View Updates**: Are unnecessary view updates minimized?
+- [ ] **List Performance**: Are lists optimized with proper identifiers?
+- [ ] **Image Loading**: Are images loaded efficiently?
+
+**SwiftUI Performance Tips:**
+```swift
+// ✅ Good - LazyVStack
+LazyVStack {
+    ForEach(items) { item in
+        ItemView(item: item)
+    }
+}
+
+// ✅ Good - Equatable to prevent updates
+struct ItemView: View, Equatable {
+    let item: Item
+
+    static func == (lhs: ItemView, rhs: ItemView) -> Bool {
+        lhs.item == rhs.item
+    }
+}
+```
+
+#### 4.2 Data Processing
+- [ ] **Algorithm Efficiency**: Are algorithms efficient (avoid O(n²) when possible)?
+- [ ] **Data Structures**: Are appropriate data structures used?
+- [ ] **Caching**: Is caching used to avoid redundant calculations?
+- [ ] **Memory Usage**: Is memory usage optimized?
+
+#### 4.3 Network Performance
+- [ ] **Request Optimization**: Are network requests optimized?
+- [ ] **Caching Strategy**: Is there an appropriate caching strategy?
+- [ ] **Background Processing**: Is heavy processing done in the background?
+
+#### 4.4 Memory Performance
+- [ ] **Memory Leaks**: Identify potential memory leaks
+- [ ] **Object Lifetime**: Are object lifetimes properly managed?
+- [ ] **Resource Management**: Are resources (files, connections) properly closed?
+
+### 5. Security (Weight: 10%)
+
+#### 5.1 Data Security
+- [ ] **Sensitive Data**: Is sensitive data properly protected?
+- [ ] **Keychain Usage**: Is Keychain used for sensitive information?
+- [ ] **Data Encryption**: Is data encrypted when necessary?
+- [ ] **Input Validation**: Is all input properly validated?
+
+#### 5.2 API Security
+- [ ] **Authentication**: Is proper authentication implemented?
+- [ ] **Authorization**: Are permissions properly checked?
+- [ ] **Rate Limiting**: Is rate limiting implemented for APIs?
+- [ ] **HTTPS**: Are all network requests using HTTPS?
+
+#### 5.3 Code Security
+- [ ] **Injection Attacks**: Is the code protected against injection attacks?
+- [ ] **Buffer Overflows**: Are array bounds properly checked?
+- [ ] **Unsafe Code**: Is unsafe code used only when necessary?
+
+### 6. Testability (Weight: 10%)
+
+#### 6.1 Unit Testability
+- [ ] **Dependency Injection**: Can dependencies be easily mocked?
+- [ ] **Test Isolation**: Can the code be tested in isolation?
+- [ ] **Test Coverage**: Are the main code paths testable?
+- [ ] **Test Data**: Can easily create test data?
+
+#### 6.2 Integration Testing
+- [ ] **Interface Testing**: Can接口 easily测试?
+- [ ] **Mock Objects**: 是否需要创建 mock 对象?
+- [ ] **测试桩**: 是否使用测试桩隔离依赖?
+
+#### 6.3 UI Testing
+- [ ] **UI 元素标识**: UI 元素是否有明确的标识符?
+- [ ] **交互测试**: 用户交互是否可测试?
+- [ ] **状态验证**: UI 状态是否可验证?
+
+### 7. Documentation (Weight: 5%)
+
+#### 7.1 Code 注释
+- [ ] **文档注释**: 公共 API 是否有完整的文档注释?
+- [ ] **复杂逻辑**: 复杂算法是否有解释?
+- [ ] **业务逻辑**: 业务逻辑是否有说明?
+- [ ] **TODO/FIXME**: 是否有未完成的工作项?
+
+#### 7.2 API 文档
+- [ ] **方法文档**: 方法的功能、参数、返回值是否清晰?
+- [ ] **类文档**: 类的职责和用途是否明确?
+- [ ] **示例代码**: 是否提供使用示例?
+- [ ] **错误文档**: 可能抛出的错误是否有说明?
+
+### 8. UI/UX Consistency (Weight: 5%)
+
+#### 8.1 Theme System
+- [ ] **颜色使用**: 是否使用主题颜色而非硬编码颜色?
+- [ ] **字体系统**: 是否使用主题字体?
+- [ ] **间距系统**: 是否使用主题间距?
+- [ ] **动画系统**: 是否使用主题动画?
+
+**检查清单:**
+```swift
+// ✅ Good
+Color.themeBlue500
+ThemeSpacing.p4.rawValue
+Animation.easeOut
+Font.themeBody
+
+// ❌ Bad
+Color(red: 0.235, green: 0.510, blue: 0.969)
+16
+Animation.easeOut(duration: 0.3)
+.font(.system(size: 14))
+```
+
+#### 8.2 Accessibility
+- [ ] **VoiceOver**: 是否支持 VoiceOver?
+- [ ] **键盘导航**: 是否支持键盘导航?
+- [ ] **动态字体**: 是否支持动态字体大小?
+- [ ] **对比度**: 颜色对比度是否足够?
+
+**Accessibility 检查:**
+```swift
+// ✅ Good
+Text("Save")
+    .accessibilityElement()
+    .accessibilityLabel(Text("Save document"))
+    .accessibilityAddTraits(.isButton)
+
+// ✅ Good
+Button("Save") {
+    saveAction()
+}
+.keyboardShortcut(.defaultAction)  // Cmd+S
+```
+
+#### 8.3 响应式设计
+- [ ] **屏幕适配**: 是否适配不同屏幕尺寸?
+- [ ] **布局弹性**: 布局是否具有弹性?
+- [ ] **内容溢出**: 是否处理内容溢出情况?
+
+## Review Output Format
+
+### 发现的问题
+
+按严重程度分类（高/中/低）：
+
+#### 🔴 高优先级问题
+
+1. **[架构] 循环依赖**
+   - **位置**: `ServiceA.swift:25`
+   - **问题**: ServiceA 依赖 ServiceB，ServiceB 又依赖 ServiceA
+   - **影响**: 可能导致初始化失败和内存泄漏
+   - **建议**: 引入抽象层或使用依赖注入容器解决
+
+2. **[安全] 敏感信息硬编码**
+   - **位置**: `NetworkManager.swift:15`
+   - **问题**: API 密钥硬编码在代码中
+   - **影响**: 安全风险，密钥可能泄露
+   - **建议**: 使用 Keychain 存储敏感信息
+
+3. **[性能] 内存泄漏**
+   - **位置**: `ViewController.swift:42`
+   - **问题**: 闭包中强引用 self 导致循环引用
+   - **影响**: 内存泄漏，可能导致应用崩溃
+   - **建议**: 使用 [weak self] 或 [unowned self] 打破循环引用
+
+#### 🟡 中优先级问题
+
+1. **[代码质量] 函数过长**
+   - **位置**: `DataProcessor.swift:100-200`
+   - **问题**: 函数超过 100 行，职责不单一
+   - **影响**: 代码难以理解和维护
+   - **建议**: 拆分为多个小函数，每个函数职责单一
+
+2. **[UI] 硬编码颜色**
+   - **位置**: `CustomView.swift:25`
+   - **问题**: 使用硬编码颜色而非主题颜色
+   - **影响**: UI 不一致，难以维护
+   - **建议**: 使用 Color.themeBlue500 等主题颜色
+
+#### 🟢 低优先级问题
+
+1. **[文档] 缺少注释**
+   - **位置**: `Utility.swift:15`
+   - **问题**: 复杂算法缺少注释说明
+   - **影响**: 代码难以理解
+   - **建议**: 添加算法说明和关键步骤注释
+
+### 优点
+
+1. ✅ **良好的命名**: 变量和函数命名清晰易懂
+2. ✅ **协议设计**: 协议设计合理，遵循依赖倒置原则
+3. ✅ **错误处理**: 错误处理完善，有自定义错误类型
+4. ✅ **类型安全**: 充分利用 Swift 的类型系统
+
+### 总体评价
+
+**代码质量**: [优秀/良好/一般/需要改进]
+
+**主要优点**:
+- [列出 3-5 个主要优点]
+
+**主要问题**:
+- [列出 3-5 个主要问题]
+
+**改进建议**:
+1. [建议 1]
+2. [建议 2]
+3. [建议 3]
+
+### 修复优先级
+
+1. **立即修复**（影响功能或安全）:
+   - [问题列表]
+
+2. **下次迭代修复**（影响维护性）:
+   - [问题列表]
+
+3. **长期改进**（代码质量提升）:
+   - [问题列表]
+
+## 评分标准
+
+### 架构设计 (25分)
+- 层次清晰，职责明确: 20-25分
+- 基本清晰但有改进空间: 15-19分
+- 层次混乱，需要重构: 10-14分
+- 架构设计严重问题: 0-9分
+
+### 代码质量 (20分)
+- 代码优雅，易于理解: 16-20分
+- 代码清晰，偶有冗余: 12-15分
+- 代码混乱，需要重构: 8-11分
+- 代码质量差，难以维护: 0-7分
+
+### Swift 最佳实践 (15分)
+- 充分利用 Swift 特性: 12-15分
+- 基本符合 Swift 风格: 8-11分
+- 有改进空间: 4-7分
+- 未遵循 Swift 最佳实践: 0-3分
+
+### 性能 (15分)
+- 性能优化良好: 12-15分
+- 性能良好: 8-11分
+- 有性能问题: 4-7分
+- 性能问题严重: 0-3分
+
+### 安全性 (10分)
+- 安全措施完善: 8-10分
+- 基本安全: 5-7分
+- 有安全风险: 2-4分
+- 安全问题严重: 0-1分
+
+### 可测试性 (10分)
+- 易于测试: 8-10分
+- 基本可测试: 5-7分
+- 测试困难: 2-4分
+- 难以测试: 0-1分
+
+### 文档 (5分)
+- 文档完善: 4-5分
+- 文档基本完整: 2-3分
+- 文档不足: 1分
+- 无文档: 0分
+
+### UI/UX (5分)
+- UI 一致，符合设计规范: 4-5分
+- UI 基本一致: 2-3分
+- UI 不一致: 1分
+- UI 严重不一致: 0分
+
+**总分: __ / 100**
+
+## 代码审查总结模板
+
+```
+## 代码审查报告
+
+**文件**: [文件名]
+**审查人**: [姓名]
+**审查日期**: [日期]
+
+### 总体评价
+[总体评价和建议]
+
+### 问题统计
+- 🔴 高优先级: [数量] 个
+- 🟡 中优先级: [数量] 个
+- 🟢 低优先级: [数量] 个
+- ✅ 优点: [数量] 个
+
+### 关键问题
+[描述最关键的问题和修复建议]
+
+### 改进计划
+[建议的改进步骤和时间安排]
+```
+
+## 注意事项
+
+1. **保持建设性**: 批评代码而非程序员
+2. **提供解决方案**: 不仅指出问题，还要提供解决方案
+3. **关注重点**: 优先关注架构、安全、性能等关键问题
+4. **记录优点**: 不仅要指出问题，还要肯定优点
+5. **跟踪改进**: 确保问题得到解决

@@ -1,57 +1,6 @@
 import SwiftUI
 import AppKit
 
-// MARK: - Colors & Theme
-extension Color {
-    // Tailwind Colors Exact Match
-    // Gray Scale
-    static let themeBackground = Color(red: 17/255, green: 24/255, blue: 39/255) // gray-900
-    static let themeSidebar = Color(red: 31/255, green: 41/255, blue: 55/255)    // gray-800 (used for sidebar/tab bar in note.jsx often or similar dark)
-    // Note: note.jsx uses bg-black/20 for sidebar, but let's keep a variable for it.
-    
-    static let themeGray900 = Color(red: 17/255, green: 24/255, blue: 39/255)
-    static let themeGray800 = Color(red: 31/255, green: 41/255, blue: 55/255)
-    static let themeGray700 = Color(red: 55/255, green: 65/255, blue: 81/255)
-    static let themeGray600 = Color(red: 75/255, green: 85/255, blue: 99/255)
-    static let themeGray500 = Color(red: 107/255, green: 114/255, blue: 128/255)
-    static let themeGray400 = Color(red: 156/255, green: 163/255, blue: 175/255)
-    static let themeGray300 = Color(red: 209/255, green: 213/255, blue: 221/255)
-    static let themeGray200 = Color(red: 229/255, green: 231/255, blue: 235/255)
-    static let themeGray100 = Color(red: 243/255, green: 244/255, blue: 246/255)
-    
-    static let themeTextPrimary = themeGray200
-    static let themeTextSecondary = themeGray400
-    static let themeTextTertiary = themeGray500
-
-    // Transparents
-    static let themeCard = Color.white.opacity(0.05)       // bg-white/5
-    static let themeBorder = Color.white.opacity(0.1)      // border-white/10
-    static let themeBorderSubtle = Color.white.opacity(0.05) // border-white/5
-    static let themeHover = Color.white.opacity(0.1)       // hover:bg-white/10
-    static let themeItem = Color.white.opacity(0.05)       // bg-white/5
-    static let themeInput = Color.black.opacity(0.4)       // bg-black/40 (inputs)
-    static let themePanel = Color.black.opacity(0.2)       // bg-black/20 (sidebar/panels)
-
-    // Accents
-    static let themeAccent = Color(red: 37/255, green: 99/255, blue: 235/255)    // blue-600
-    static let themeBlue500 = Color(red: 59/255, green: 130/255, blue: 246/255)
-    static let themeBlue400 = Color(red: 96/255, green: 165/255, blue: 250/255)
-    
-    static let themePurple500 = Color(red: 168/255, green: 85/255, blue: 247/255)
-    static let themePurple = Color(red: 192/255, green: 132/255, blue: 252/255)  // purple-400
-    
-    static let themeGreen900 = Color(red: 20/255, green: 83/255, blue: 45/255)
-    static let themeGreen600 = Color(red: 22/255, green: 163/255, blue: 74/255)
-    static let themeGreen500 = Color(red: 34/255, green: 197/255, blue: 94/255)
-    static let themeGreen = Color(red: 74/255, green: 222/255, blue: 128/255)    // green-400
-    
-    static let themeRed500 = Color(red: 239/255, green: 68/255, blue: 68/255)
-    static let themeRed = Color(red: 248/255, green: 113/255, blue: 113/255)     // red-400
-    
-    static let themeYellow500 = Color(red: 234/255, green: 179/255, blue: 8/255)
-    static let themeYellow = Color(red: 250/255, green: 204/255, blue: 21/255)   // yellow-400
-}
-
 // MARK: - Window Dragging Helper
 struct DraggableArea<Content: View>: View {
     let content: Content
@@ -75,10 +24,6 @@ struct WindowDragHandler: NSViewRepresentable {
 
 class DraggableNSView: NSView {
     override var mouseDownCanMoveWindow: Bool { true }
-    
-    override func mouseDown(with event: NSEvent) {
-        self.window?.performDrag(with: event)
-    }
 }
 
 class CustomPanel: NSWindow {
@@ -105,6 +50,7 @@ final class FloatingPanelController {
     private var revertTimer: Timer?
     private var lastSwitchAt: TimeInterval = 0
     private var isInteracting: Bool = false // 跟踪用户是否正在交互（拖拽、点击等）
+    private var lastInteractionChange: TimeInterval = 0 // 记录上次交互状态变更时间
     private var userHidden: Bool = false // 用户主动隐藏标记，防止自动前置
     
     var isVisible: Bool { panel.isVisible }
@@ -118,6 +64,7 @@ final class FloatingPanelController {
         // 计算屏幕中心位置
         let screen = NSScreen.main ?? NSScreen.screens.first!
         let screenFrame = screen.visibleFrame
+        // 使用主题文件中的尺寸定义
         let windowWidth: CGFloat = 520
         let windowHeight: CGFloat = 640
         let centerX = screenFrame.midX - (windowWidth / 2)
@@ -152,8 +99,17 @@ final class FloatingPanelController {
             if hovering { self.requestRegularFocus(reason: "hover") } else { self.scheduleRevertToAccessory() }
         }, onInteractionChanged: { [weak self] interacting in
             guard let self else { return }
+            // 添加防抖机制，避免频繁的状态变更
+            let now = CFAbsoluteTimeGetCurrent()
+            // 增加防抖时间到 0.5 秒，减少状态更新频率
+            if now - self.lastInteractionChange < 0.5 && self.isInteracting == interacting { return }
+            
+            self.lastInteractionChange = now
             self.isInteracting = interacting
-            print("[DEBUG] 交互状态变更: \(interacting)")
+            // 减少日志输出，只在状态真正改变时打印
+            if self.isInteracting != interacting {
+                print("[DEBUG] 交互状态变更: \(interacting)")
+            }
         }, onClose: { [weak self] in
             self?.hide()
         }))
@@ -188,7 +144,7 @@ final class FloatingPanelController {
         if animationsEnabled {
             panel.alphaValue = 0
             NSAnimationContext.runAnimationGroup { ctx in
-                ctx.duration = 0.3
+                ctx.duration = ThemeDuration._300.rawValue
                 ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
                 panel.animator().alphaValue = 1
             }
@@ -245,7 +201,7 @@ final class FloatingPanelController {
         
         if animationsEnabled {
             NSAnimationContext.runAnimationGroup { ctx in
-                ctx.duration = 0.4
+                ctx.duration = ThemeDuration._500.rawValue
                 ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.4, 0.0, 0.6, 1.0)
                 panel.animator().alphaValue = 0
             } completionHandler: { [weak panel] in
@@ -281,7 +237,11 @@ final class FloatingPanelController {
         if userHidden { return }
 
         let now = CFAbsoluteTimeGetCurrent()
-        if now - lastSwitchAt < 0.5 { return } // 节流 500ms
+        // 增加节流时间到 1 秒，减少频繁的焦点切换
+        if now - lastSwitchAt < 1.0 { return }
+        // 如果已经是关键窗口，不需要再次请求焦点
+        if panel.isKeyWindow { return }
+        
         lastSwitchAt = now
         hoverActive = true
         print("[DEBUG] requestFocus(\(reason)) policy=\(NSApp.activationPolicy()) isKey=\(panel.isKeyWindow)")
@@ -300,10 +260,12 @@ final class FloatingPanelController {
 
         hoverActive = false
         revertTimer?.invalidate()
-        revertTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { [weak self] _ in
+        // 增加延迟时间，减少频繁的状态切换
+        revertTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { [weak self] _ in
             guard let self else { return }
             // 只有在非悬停且非交互状态下才回退到 Accessory
-            if !self.hoverActive && !self.isInteracting && !self.userHidden {
+            // 增加额外检查：确保窗口不是关键窗口
+            if !self.hoverActive && !self.isInteracting && !self.userHidden && !self.panel.isKeyWindow {
                 NSApp.setActivationPolicy(.accessory)
                 self.panel.orderFrontRegardless()
                 print("[DEBUG] revertToAccessory policy=\(NSApp.activationPolicy()) isKey=\(self.panel.isKeyWindow)")
@@ -315,6 +277,7 @@ final class FloatingPanelController {
     func forceCenterWindow() {
         guard let screen = NSScreen.main else { return }
         let screenFrame = screen.visibleFrame
+        // 使用主题文件中的尺寸定义
         let windowWidth: CGFloat = 520
         let windowHeight: CGFloat = 640
         let centerX = screenFrame.midX - (windowWidth / 2)
@@ -326,6 +289,12 @@ final class FloatingPanelController {
         panel.orderFrontRegardless()
         
         print("[DEBUG] 强制窗口居中，新位置: \(newFrame)")
+    }
+    
+    /// 显示设置界面
+    func showSettings() {
+        // 通过 NotificationCenter 通知 FloatingRootView 显示设置界面
+        NotificationCenter.default.post(name: .showSettings, object: nil)
     }
 }
 
@@ -344,164 +313,240 @@ struct FloatingRootView: View {
     @State private var searchTerm: String = ""
 
     var body: some View {
+        baseContentView
+            .background(Color.themeBackground.opacity(0.9))
+            .cornerRadius(16)
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.themeBorder, lineWidth: 1).allowsHitTesting(false))
+            .shadow(color: Color.black.opacity(0.5), radius: 20, x: 0, y: 10)
+            .ignoresSafeArea()
+            .onHover { hovering in onHoverChanged?(hovering) }
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 10, coordinateSpace: .local)
+                    .onChanged { _ in onInteractionChanged?(true) }
+                    .onEnded { _ in onInteractionChanged?(false) }
+            )
+            .allowsHitTesting(true)
+            .onReceive(NotificationCenter.default.publisher(for: .showSettings)) { _ in
+                // 响应显示设置界面的通知
+                showSettings = true
+                settingsTab = "ai"
+            }
+            .onReceive(NotificationCenter.default.publisher(for: Notification.Name("expandRecord"))) { notification in
+                // 响应展开特定记录的通知
+                if let recordId = notification.object as? UUID {
+                    expandedId = recordId
+                    showSettings = false // 确保不在设置界面
+                }
+            }
+            .modifier(KeyboardHandlerModifier(
+                expandedId: $expandedId,
+                showSettings: $showSettings,
+                onClose: onClose
+            ))
+    }
+    
+    // MARK: - 子视图组件
+    
+    /// 基础内容视图，包含主要的布局结构
+    private var baseContentView: some View {
         ZStack(alignment: .topTrailing) {
             HStack(spacing: 0) {
                 // Left Sidebar (Activity)
-                ZStack(alignment: .top) {
-                    Color.black.opacity(0.2) // bg-black/20
-                    WindowDragHandler() // Allow dragging on sidebar background
-                    
-                    HeatmapView(vm: heatmapVM)
-                }
-                .frame(width: 64) // w-16
-                .zIndex(10) // Fix Tooltip Z-Index (Ensure it renders above Main Content)
-                .overlay(Rectangle().frame(width: 1, height: nil, alignment: .trailing).foregroundColor(Color.themeBorder), alignment: .trailing)
-
+                sidebarView
+                
                 // Right Main Content
-                ZStack {
-                    Color.themeBackground.opacity(0.9) // bg-gray-900/90
-                    
-                    VStack(spacing: 0) {
-                        // Header (Drag area)
-                        HStack {
-                            // Window Controls (Custom Red Dot)
-                            HStack(spacing: 8) {
-                                // Close (Red)
-                                CloseButton(onClose: onClose)
-                            }
-                            .padding(.leading, 16)
-                            
-                            Spacer()
-                            
-                            Text(showSettings ? "偏好设置" : "剪切板历史")
-                                .font(.system(size: 14, weight: .semibold)) // text-sm font-semibold
-                                .foregroundColor(.themeGray200) // text-gray-200
-                            
-                            Spacer()
-                            
-                            // Bluetooth Icon (Lucide)
-                            HStack(spacing: 12) {
-                                Group {
-                                    if let name = bluetooth.connectedDeviceName {
-                                        LucideView(name: .bluetoothConnected, size: 14, color: .themeBlue400)
-                                            .help("已连接: \(name)")
-                                    } else if bluetooth.state == .poweredOn {
-                                        LucideView(name: .bluetooth, size: 14, color: .themeYellow)
-                                            .help("蓝牙已开启，未连接")
-                                    } else {
-                                        LucideView(name: .bluetoothOff, size: 14, color: .themeGray500)
-                                            .help("蓝牙未开启")
-                                    }
-                                }
-                                .font(.system(size: 14))
-                                .frame(width: 16, height: 16) // Ensure it has size
-                                .contentShape(Rectangle()) // Make sure it's clickable/hoverable
-                                .onTapGesture {
-                                    settingsTab = "bluetooth"
-                                    withAnimation(.easeInOut(duration: 0.3)) { showSettings = true }
-                                }
-                                .pointingHandCursor()
-                                
-                                HoverButton(icon: .settings, size: 16, isActive: showSettings) {
-                                    settingsTab = "ai"
-                                    withAnimation(.easeInOut(duration: 0.3)) { showSettings.toggle() }
-                                }
-                            }
-                            .padding(.trailing, 16)
-                        }
-                        .frame(height: 48) // h-12
-                        .background(
-                            ZStack {
-                                Color.themeBackground.opacity(0.5) // bg-gray-900/50
-                                WindowDragHandler() // Allow dragging on header background
-                            }
-                        )
-                        .overlay(Rectangle().frame(width: nil, height: 1, alignment: .bottom).foregroundColor(Color.themeBorder), alignment: .bottom)
-                        
-                        if showSettings {
-                            SettingsOverlayView(store: store, bluetooth: bluetooth, showSettings: $showSettings, initialTab: settingsTab)
-                                .transition(.move(edge: .trailing))
-                        } else {
-                            // Main List
-                            VStack(spacing: 0) {
-                                // Search Bar
-                                HStack {
-                                    LucideView(name: .search, size: 16, color: .themeGray500)
-                                    TextField("搜索标题或内容...", text: $searchTerm)
-                                        .textFieldStyle(.plain)
-                                        .font(.system(size: 14)) // text-sm
-                                        .foregroundColor(.themeGray100) // text-gray-100
-                                        .disabled(!focus.isKeyWindow)
-                                }
-                                .padding(12) // p-3
-                                .background(Color.black.opacity(0.1)) // bg-black/10
-                                .overlay(Rectangle().frame(height: 1).foregroundColor(Color.themeBorder), alignment: .bottom)
-                                
-                                let base = heatmapVM.filteredRecords()
-                                let items = searchTerm.isEmpty ? base : base.filter { r in
-                                    (r.title ?? "").lowercased().contains(searchTerm.lowercased()) || r.content.lowercased().contains(searchTerm.lowercased())
-                                }
-                                
-                                ScrollView {
-                                    VStack(spacing: 12) {
-                                        if items.isEmpty {
-                                            VStack(spacing: 12) {
-                                                Image(systemName: "magnifyingglass")
-                                                    .font(.system(size: 48))
-                                                    .opacity(0.2)
-                                                Text("没有找到匹配的记录。")
-                                                    .font(.system(size: 14)) // text-sm
-                                                    .foregroundColor(.themeGray500)
-                                            }
-                                            .frame(height: 300)
-                                        } else {
-                                            ForEach(items.prefix(100)) { record in
-                                                RecordCardView(record: record, expandedId: $expandedId, store: store)
-                                            }
-                                        }
-                                    }
-                                    .padding(16) // p-4
-                                }
-                                
-                                // Bottom Status Bar
-                                HStack {
-                                    Text("记录条数: \(store.records.count) 条 (已过滤: \(store.records.count - items.count))")
-                                    Spacer()
-                                    Text("AI: \(store.enableAI ? "ON (阈值 > \(store.summaryTrigger) 字符)" : "OFF")")
-                                }
-                                .font(.system(size: 10)) // text-[10px]
-                                .foregroundColor(.themeGray500) // text-gray-500
-                                .padding(.horizontal, 16)
-                                .frame(height: 32) // h-8
-                                .background(Color.black.opacity(0.2)) // bg-black/20
-                                .overlay(Rectangle().frame(height: 1).foregroundColor(Color.themeBorder), alignment: .top)
-                            }
-                        }
-                    }
-                }
+                mainContentView
             }
             
             // Toast Overlay (Elevated to top level)
-            if let toast = store.toast {
-                ToastView(message: toast)
-                    .padding(.top, 32)
-                    .padding(.trailing, 32)
-                    .transition(.move(edge: .top).combined(with: .opacity))
-                    .zIndex(100)
+            toastOverlayView
+        }
+    }
+    
+    /// Toast 覆盖层视图
+    @ViewBuilder
+    private var toastOverlayView: some View {
+        if let toast = store.toast {
+            ToastView(message: toast)
+                .padding(.top, 32)
+                .padding(.trailing, 32)
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .zIndex(100)
+        }
+    }
+    
+    // MARK: - 辅助视图
+    
+    /// 左侧边栏视图
+    private var sidebarView: some View {
+        ZStack(alignment: .top) {
+            Color.themePanel // 使用主题文件中的面板颜色
+            WindowDragHandler() // Allow dragging on sidebar background
+            
+            HeatmapView(vm: heatmapVM)
+        }
+        .frame(width: ThemeSpacing.w16.rawValue) // 使用主题文件中的宽度定义
+        .zIndex(10) // Fix Tooltip Z-Index (Ensure it renders above Main Content)
+        .overlay(Rectangle().frame(width: ThemeSpacing.border1, height: nil, alignment: .trailing).foregroundColor(Color.themeBorder).allowsHitTesting(false), alignment: .trailing)
+    }
+    
+    /// 右侧主内容视图
+    private var mainContentView: some View {
+        ZStack {
+            Color.themeBackground.opacity(0.9) // bg-gray-900/90
+            
+            VStack(spacing: 0) {
+                headerView
+                contentView
             }
         }
-        .background(Color.themeBackground.opacity(0.9))
-        .cornerRadius(16)
-        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.themeBorder, lineWidth: 1))
-        .shadow(color: Color.black.opacity(0.5), radius: 20, x: 0, y: 10)
-        .ignoresSafeArea()
-        .kerning(0.5)
-        .onHover { hovering in onHoverChanged?(hovering) }
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 0)
-                .onChanged { _ in onInteractionChanged?(true) }
-                .onEnded { _ in onInteractionChanged?(false) }
+    }
+    
+    /// 头部视图
+    private var headerView: some View {
+        HStack {
+            // Window Controls (Custom Red Dot)
+            HStack(spacing: ThemeSpacing.px2.rawValue) {
+                // Close (Red)
+                CloseButton(onClose: onClose)
+            }
+            .padding(.leading, ThemeSpacing.px4.rawValue)
+            
+            Spacer()
+            
+            Text(showSettings ? "偏好设置" : "剪切板历史")
+                .font(.themeH2) // 使用主题文件中的字体定义
+                .foregroundColor(.themeTextPrimary) // 使用主题文件中的文本颜色
+            
+            Spacer()
+            
+            // Bluetooth Icon (Lucide)
+            bluetoothView
+        }
+        .frame(height: ThemeSpacing.h12.rawValue) // 使用主题文件中的高度定义
+        .background(
+            ZStack {
+                Color.themeBackground.opacity(0.5) // bg-gray-900/50
+                WindowDragHandler() // Allow dragging on header background
+            }
         )
+        .overlay(Rectangle().frame(width: nil, height: ThemeSpacing.border1, alignment: .bottom).foregroundColor(Color.themeBorder).allowsHitTesting(false), alignment: .bottom)
+    }
+    
+    /// 蓝牙视图
+    private var bluetoothView: some View {
+        HStack(spacing: ThemeSpacing.px3.rawValue) {
+            Group {
+                if let name = bluetooth.connectedDeviceName {
+                    LucideView(name: .bluetoothConnected, size: 14, color: .themeBlue400)
+                        .help("已连接: \(name)")
+                } else if bluetooth.state == .poweredOn {
+                    LucideView(name: .bluetooth, size: 14, color: .themeYellow500)
+                        .help("蓝牙已开启，未连接")
+                } else {
+                    LucideView(name: .bluetoothOff, size: 14, color: .themeTextTertiary)
+                        .help("蓝牙未开启")
+                }
+            }
+            .font(.themeBody)
+            .frame(width: ThemeSpacing.px4.rawValue, height: ThemeSpacing.px4.rawValue) // Ensure it has size
+            .contentShape(Rectangle()) // Make sure it's clickable/hoverable
+            .onTapGesture {
+                settingsTab = "bluetooth"
+                withAnimation(.easeInOut(duration: ThemeDuration._300.rawValue)) { showSettings = true }
+            }
+            .pointingHandCursor()
+            
+            HoverButton(icon: .settings, size: 16, isActive: showSettings) {
+                settingsTab = "ai"
+                withAnimation(.easeInOut(duration: ThemeDuration._300.rawValue)) { showSettings.toggle() }
+            }
+        }
+        .padding(.trailing, ThemeSpacing.px4.rawValue)
+    }
+    
+    /// 内容视图
+    @ViewBuilder
+    private var contentView: some View {
+        if showSettings {
+            SettingsOverlayView(store: store, bluetooth: bluetooth, showSettings: $showSettings, initialTab: settingsTab)
+                .transition(.slideRight) // 使用主题文件中的过渡动画
+        } else {
+            mainListView
+        }
+    }
+    
+    /// 主列表视图
+    private var mainListView: some View {
+        VStack(spacing: 0) {
+            // Search Bar
+            searchBarView
+            
+            // List Content
+            listContentView
+            
+            // Bottom Status Bar
+            statusBarView
+        }
+    }
+    
+    /// 搜索栏视图
+    private var searchBarView: some View {
+        EnhancedSearchBar(store: store, searchTerm: $searchTerm)
+            .disabled(!focus.isKeyWindow)
+    }
+    
+    /// 列表内容视图
+    private var listContentView: some View {
+        // 使用RecordStore的搜索功能
+        let base = heatmapVM.filteredRecords()
+        let items: [Record]
+        
+        if searchTerm.isEmpty {
+            items = Array(base.prefix(100))
+        } else {
+            items = Array(store.search(searchTerm).prefix(100))
+        }
+        
+        return ScrollView {
+            VStack(spacing: 12) { // 回到 VStack，LazyVStack 在某些情况下可能导致性能问题
+                if items.isEmpty {
+                    VStack(spacing: 12) {
+                        Image(systemName: "magnifyingglass")
+                            .font(.system(size: 48))
+                            .opacity(0.2)
+                        Text("没有找到匹配的记录。")
+                            .font(.system(size: 14)) // text-sm
+                            .foregroundColor(.themeTextSecondary)
+                    }
+                    .frame(height: 300)
+                } else {
+                    ForEach(items, id: \.id) { record in // 明确指定 id
+                        RecordCardView(record: record, expandedId: $expandedId, store: store)
+                            .id(record.id) // 确保 SwiftUI 能正确识别和重用视图
+                    }
+                }
+            }
+            .padding(16) // p-4
+        }
+    }
+    
+    /// 状态栏视图
+    private var statusBarView: some View {
+        let base = heatmapVM.filteredRecords()
+        let items = searchTerm.isEmpty ? base : store.search(searchTerm)
+        
+        return HStack {
+            Text("记录条数: \(store.records.count) 条 (已过滤: \(store.records.count - items.count))")
+            Spacer()
+            Text("AI: \(store.enableAI ? "ON (阈值 > \(store.summaryTrigger) 字符)" : "OFF")")
+        }
+        .font(.system(size: 10)) // text-[10px]
+        .foregroundColor(.themeTextSecondary) // 使用主题文件中的文本颜色
+        .padding(.horizontal, 16)
+        .frame(height: 32) // h-8
+        .background(Color.black.opacity(0.2)) // bg-black/20
+        .overlay(Rectangle().frame(height: 1).foregroundColor(Color.themeBorder).allowsHitTesting(false), alignment: .top)
     }
 }
 
@@ -564,9 +609,11 @@ struct RecordCardView: View {
         .overlay(
             RoundedRectangle(cornerRadius: 8)
                 .stroke(isExpanded ? Color.themeBlue500.opacity(0.3) : Color.themeBorderSubtle, lineWidth: 1)
+                .allowsHitTesting(false)
         )
+        // 只在展开状态变化时应用阴影动画，减少悬停动画
         .shadow(color: isExpanded ? Color.black.opacity(0.5) : .clear, radius: 30, x: 0, y: 8)
-        .animation(.easeOut(duration: 0.2), value: hovering)
+        .animation(.easeOut(duration: 0.3), value: isExpanded) // 只对展开状态变化应用动画
         .onHover { hovering = $0 }
         .pointingHandCursor()
     }
@@ -583,7 +630,7 @@ struct RecordCardView: View {
                 // Title
                 Text(displayTitle)
                     .font(.system(size: 14, weight: .medium)) // text-sm font-medium
-                    .foregroundColor(record.aiStatus == "pending" ? Color.themePurple.opacity(0.7) : Color.themeGray200)
+                    .foregroundColor(record.aiStatus == "pending" ? Color.themePurple500.opacity(0.7) : Color.themeTextPrimary)
                     .lineLimit(1)
                 
                 // Meta Info
@@ -606,20 +653,37 @@ struct RecordCardView: View {
             
             Spacer()
             
-            // Actions
-            if hovering || isExpanded {
-                HStack(spacing: 6) {
-                    IconButton(icon: .star, color: record.starred ? .themeYellow : .themeGray500) {
-                        store.toggleStar(record)
-                    }
-                    IconButton(icon: .trash2, color: .themeGray500) {
-                        store.delete(record)
-                    }
-                    LucideView(name: .chevronRight, size: 14, color: .themeGray500)
-                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
+            // Actions - 始终显示按钮，提高可用性
+            HStack(spacing: 6) {
+                IconButton(icon: .star, color: record.starred ? .themeYellow500 : .themeTextSecondary) {
+                    store.toggleStar(record)
                 }
-                .transition(.opacity)
+                IconButton(icon: .trash2, color: .themeTextSecondary) {
+                    store.delete(record)
+                }
+                // 展开/收起按钮始终显示
+                Button(action: {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        if isExpanded {
+                            expandedId = nil
+                        } else {
+                            expandedId = record.id
+                        }
+                    }
+                }) {
+                    LucideView(name: .chevronRight, size: 14, color: .themeTextSecondary)
+                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                        .frame(width: 24, height: 24)
+                        .background(Color.white.opacity(0.05))
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .pointingHandCursor()
             }
+            .opacity(hovering || isExpanded ? 1.0 : 0.7) // 悬停或展开时完全不透明，否则稍微透明
+            .scaleEffect(hovering || isExpanded ? 1.0 : 0.9) // 悬停或展开时正常大小，否则稍微缩小
+            .animation(.easeInOut(duration: 0.2), value: hovering)
+            .animation(.easeInOut(duration: 0.2), value: isExpanded)
         }
         .padding(12) // p-3
         .contentShape(Rectangle())
@@ -673,7 +737,7 @@ struct RecordCardView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .background(Color.black.opacity(0.2)) // bg-black/20
                         .cornerRadius(4)
-                        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.themeBorder, lineWidth: 1))
+                        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.themeBorder, lineWidth: 1).allowsHitTesting(false))
                 }
                 
                 // AI Summary Section
@@ -681,11 +745,11 @@ struct RecordCardView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
                             HStack(spacing: 4) {
-                                LucideView(name: .sparkles, size: 10, color: record.aiStatus == "fail" ? .themeRed : .themePurple)
+                                LucideView(name: .sparkles, size: 10, color: record.aiStatus == "fail" ? .themeRed500 : .themePurple500)
                                 Text("AI 智能总结")
                             }
                             .font(.system(size: 10, weight: .bold))
-                            .foregroundColor(record.aiStatus == "fail" ? .themeRed : .themePurple)
+                            .foregroundColor(record.aiStatus == "fail" ? .themeRed500 : .themePurple500)
                             .textCase(.uppercase)
                             Spacer()
                             if let s = record.summary {
@@ -695,14 +759,31 @@ struct RecordCardView: View {
                                     store.postLightHint("已复制总结")
                                 }) {
                                     HStack(spacing: 4) {
-                                        LucideView(name: .copy, size: 10, color: .themePurple)
+                                        LucideView(name: .copy, size: 10, color: .themePurple500)
                                         Text("复制总结")
                                     }
                                     .font(.system(size: 10))
-                                    .foregroundColor(.themePurple)
+                                    .foregroundColor(.themePurple500)
                                     .padding(.horizontal, 6)
                                     .padding(.vertical, 2)
-                                    .background(Color.themePurple.opacity(0.1))
+                                    .background(Color.themePurple500.opacity(0.1))
+                                    .cornerRadius(4)
+                                }
+                                .buttonStyle(.plain)
+                                .pointingHandCursor()
+                            } else if record.aiStatus == "fail" {
+                                Button(action: {
+                                    store.resummarize(record: record)
+                                }) {
+                                    HStack(spacing: 4) {
+                                        LucideView(name: .refreshCw, size: 10, color: .themeRed500)
+                                        Text("重试")
+                                    }
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.themeRed500)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Color.themeRed500.opacity(0.1))
                                     .cornerRadius(4)
                                 }
                                 .buttonStyle(.plain)
@@ -712,12 +793,12 @@ struct RecordCardView: View {
                         
                         Text(record.summary ?? "提炼失败")
                             .font(.system(size: 12))
-                            .foregroundColor(Color.themePurple.opacity(0.8)) // text-purple-200
+                            .foregroundColor(Color.themePurple400.opacity(0.8)) // text-purple-200
                             .padding(10)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Color.themePurple.opacity(0.1))
+                            .background(Color.themePurple500.opacity(0.1))
                             .cornerRadius(8)
-                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.themePurple.opacity(0.2), lineWidth: 1))
+                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.themePurple500.opacity(0.2), lineWidth: 1).allowsHitTesting(false))
                     }
                 }
             }
@@ -732,50 +813,69 @@ struct IconButton: View {
     let icon: IconName
     let color: Color
     let action: () -> Void
+    @State private var isHovering = false
     
     var body: some View {
         Button(action: action) {
             LucideView(name: icon, size: 14, color: color)
                 .frame(width: 24, height: 24)
-                .background(Color.white.opacity(0.05))
+                .background(isHovering ? Color.white.opacity(0.1) : Color.white.opacity(0.05))
                 .clipShape(Circle())
         }
         .buttonStyle(.plain)
         .pointingHandCursor()
+        .onHover { isHovering = $0 }
+        .scaleEffect(isHovering ? 1.1 : 1.0)
+        .animation(.easeInOut(duration: 0.15), value: isHovering)
     }
 }
 
 private extension RecordCardView {
+    // 缓存计算结果，避免重复计算
     var displayTitle: String {
-        if let t = record.title, !t.isEmpty { return t }
-        // 标题显示逻辑：优先使用 AI 标题，其次是去重/提炼失败/原始
-        if record.aiStatus == "fail" { return "提炼失败" }
-        if record.aiStatus == "pending" { return "AI 正在分析内容..." }
-        return String(record.content.prefix(30)) + (record.content.count > 30 ? "..." : "")
+        // 使用更高效的条件判断顺序
+        switch record.aiStatus {
+        case "fail":
+            return "提炼失败"
+        case "pending":
+            return "AI 正在分析内容..."
+        default:
+            if let t = record.title, !t.isEmpty { return t }
+            return record.content.count > 30 ? String(record.content.prefix(30)) + "..." : record.content
+        }
     }
     
     var statusIconLucide: IconName {
+        // 使用更高效的条件判断顺序
         if record.summary != nil { return .sparkles }
-        if record.aiStatus == "pending" { return .zap }
-        if record.aiStatus == "fail" { return .x }
-        if record.title != nil { return .bot }
-        return .clock
+        switch record.aiStatus {
+        case "pending": return .zap
+        case "fail": return .x
+        default:
+            return record.title != nil ? .bot : .clock
+        }
     }
     
     var statusColor: Color {
-        if record.summary != nil { return .themePurple }
-        if record.aiStatus == "pending" { return .themeYellow }
-        if record.aiStatus == "fail" { return .themeRed }
-        if record.title != nil { return .themeAccent } // Blue
-        return .gray
+        // 使用更高效的条件判断顺序
+        if record.summary != nil { return .themePurple500 }
+        switch record.aiStatus {
+        case "pending": return .themeYellow500
+        case "fail": return .themeRed500
+        default:
+            return record.title != nil ? .themeBlue600 : .gray
+        }
     }
     
     var statusText: String {
+        // 使用更高效的条件判断顺序
         if record.summary != nil { return "已总结" }
-        if record.aiStatus == "pending" { return "提炼中..." }
-        if record.aiStatus == "fail" { return "提炼失败" }
-        if record.title != nil { return "仅标题" }
-        return "原始记录"
+        switch record.aiStatus {
+        case "pending": return "提炼中..."
+        case "fail": return "提炼失败"
+        default:
+            return record.title != nil ? "仅标题" : "原始记录"
+        }
     }
 }
 
@@ -787,6 +887,37 @@ extension View {
             } else {
                 NSCursor.pop()
             }
+        }
+    }
+}
+
+// MARK: - 键盘事件处理修饰符
+
+/// 键盘事件处理修饰符，处理不同 macOS 版本的兼容性
+struct KeyboardHandlerModifier: ViewModifier {
+    @Binding var expandedId: UUID?
+    @Binding var showSettings: Bool
+    var onClose: (() -> Void)?
+    
+    func body(content: Content) -> some View {
+        if #available(macOS 14.0, *) {
+            content
+                .onKeyPress(.escape) {
+                    // ESC键关闭面板或取消展开
+                    if expandedId != nil {
+                        expandedId = nil
+                        return .handled
+                    } else if showSettings {
+                        showSettings = false
+                        return .handled
+                    } else {
+                        onClose?()
+                        return .handled
+                    }
+                }
+        } else {
+            // 对于旧版本 macOS，暂时不提供键盘快捷键支持
+            content
         }
     }
 }

@@ -90,6 +90,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.floatingPanelController?.forceCenterWindow()
             print("[DEBUG] 已触发强制窗口居中快捷键")
         }
+        shortcuts?.onCaptureClipboard = { 
+            NotificationCenter.default.post(name: .bluetoothCaptureClipboard, object: nil)
+        }
+        shortcuts?.onBulkSummarize = { 
+            store.bulkResummarize()
+        }
+        shortcuts?.onExport = { 
+            let md = store.exportMarkdown()
+            let desktop = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first!
+            let url = desktop.appendingPathComponent("QuiteNote_Export.md")
+            try? md.write(to: url, atomically: true, encoding: .utf8)
+            store.postLightHint("已导出到桌面：QuiteNote_Export.md")
+        }
+        shortcuts?.onOpenSettings = { [weak self] in
+            self?.floatingPanelController?.showSettings()
+        }
+        shortcuts?.onQuit = { 
+            NSApp.terminate(nil)
+        }
         shortcuts?.start()
         
         print("[DEBUG] 应用启动完成")

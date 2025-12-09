@@ -1,0 +1,135 @@
+# Create Feature Module Prompt
+
+## Context
+- **Project**: QuiteNote - macOS menu bar application
+- **Architecture**: Layered architecture (Presentation/Business/Data/Infrastructure)
+- **Design Principles**: SOLID, Protocol-oriented, Dependency Injection
+- **Theme System**: Tailwind CSS inspired design system
+- **Target Platform**: macOS 12.0+
+
+## Task Description
+Please create a new feature module for the QuiteNote application.
+
+## Module Requirements
+- **Module Name**: [USER_INPUT_MODULE_NAME]
+- **Module Type**: [USER_INPUT_TYPE] (Service/Manager/View/ViewModel/Repository)
+- **Main Functionality**: [USER_INPUT_FUNCTIONALITY]
+
+## Architecture Requirements
+1. **Layered Architecture**: Follow the 4-layer architecture pattern
+2. **Protocol Definition**: Define clear protocols for interfaces
+3. **Dependency Injection**: Implement using Service Container pattern
+4. **SOLID Principles**: Ensure single responsibility and dependency inversion
+
+## Code Specifications
+1. **Naming Convention**:
+   - PascalCase for classes/structs
+   - camelCase for variables/functions
+   - Protocol names without suffixes (e.g., `Service` not `ServiceProtocol`)
+
+2. **Documentation**: Add complete XML documentation with examples
+3. **Theme System**: Use theme colors, fonts, spacing, and animations
+4. **Error Handling**: Implement proper error handling with custom error types
+5. **Thread Safety**: Use @MainActor for UI-related operations
+
+## Output Requirements
+1. **Create all necessary files** for the module
+2. **Implement protocol and concrete classes**
+3. **Add unit tests** with mocking
+4. **Update Service Container** configuration
+5. **Include usage examples**
+
+## Example Template
+
+### For Service Module:
+```swift
+// MARK: - Protocol Definition
+/// [Module description] protocol
+protocol [ModuleName]Service {
+    /// [Method description]
+    func [methodName]([parameters]) async throws -> [ReturnType]
+}
+
+// MARK: - Implementation
+@MainActor
+final class [ModuleName]ServiceImpl: [ModuleName]Service {
+    // Dependencies
+    private let [dependency1]: [Dependency1]Protocol
+    private let [dependency2]: [Dependency2]Protocol
+
+    init([dependency1]: [Dependency1]Protocol, [dependency2]: [Dependency2]Protocol) {
+        self.[dependency1] = [dependency1]
+        self.[dependency2] = [dependency2]
+    }
+
+    // Implementation
+}
+
+// MARK: - Error Handling
+enum [ModuleName]Error: Error {
+    case [errorCases]
+}
+
+// MARK: - Service Registration
+extension ServiceContainer {
+    func configure[ModuleName]() {
+        register([ModuleName]Service.self) {
+            [ModuleName]ServiceImpl(
+                [dependency1]: resolve(),
+                [dependency2]: resolve()
+            )
+        }
+    }
+}
+```
+
+### For View Module:
+```swift
+// MARK: - View
+struct [ModuleName]View: View {
+    @StateObject private var viewModel: [ModuleName]ViewModel
+
+    init(viewModel: [ModuleName]ViewModel? = nil) {
+        let vm = viewModel ?? ServiceContainer.shared.resolve()
+        _viewModel = StateObject(wrappedValue: vm)
+    }
+
+    var body: some View {
+        [Content]
+            .onAppear { viewModel.load() }
+    }
+}
+
+// MARK: - ViewModel
+@MainActor
+final class [ModuleName]ViewModel: ObservableObject {
+    @Published var [state]: [Type] = []
+    private let service: [ModuleName]Service
+
+    init(service: [ModuleName]Service) {
+        self.service = service
+    }
+
+    func load() async {
+        // Implementation
+    }
+}
+```
+
+## Validation Checklist
+- [ ] Files follow project naming conventions
+- [ ] All protocols are properly defined
+- [ ] Dependencies are injected correctly
+- [ ] Error handling is implemented
+- [ ] Documentation includes usage examples
+- [ ] Theme system is used consistently
+- [ ] Thread safety is ensured
+- [ ] Unit tests are comprehensive
+- [ ] Service Container is updated
+
+## Notes
+- Ensure the module integrates well with existing architecture
+- Consider future extensibility
+- Follow existing code style and patterns
+- Add appropriate accessibility labels
+- Optimize for performance

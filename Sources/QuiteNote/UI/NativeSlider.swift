@@ -47,9 +47,31 @@ struct NativeSliderRow: View {
     let label: String
     @Binding var value: Double
     let range: ClosedRange<Double>
-    let displayValue: String
+    var displayValue: String? = nil
     var step: Double? = nil
     var onChange: ((Double) -> Void)? = nil
+    
+    /**
+     * 计算当前值的显示文本
+     * 根据不同的 label 显示不同的单位
+     */
+    private var currentValueText: String {
+        if let displayValue = displayValue {
+            return displayValue
+        } else {
+            if label.contains("触发长度") {
+                return "> \(Int(value)) 字符"
+            } else if label.contains("长度限制") {
+                return "\(Int(value)) 字符"
+            } else if label.contains("保留条数") {
+                return "\(Int(value)) 条"
+            } else if label.contains("防抖") {
+                return String(format: "%.1f 秒", value)
+            } else {
+                return "\(Int(value))"
+            }
+        }
+    }
 
     var body: some View {
         VStack(spacing: 6) {
@@ -58,7 +80,7 @@ struct NativeSliderRow: View {
                     .font(.system(size: 12))
                     .foregroundColor(.themeGray400)
                 Spacer()
-                Text(displayValue)
+                Text(currentValueText)
                     .font(.system(size: 12, design: .monospaced))
                     .foregroundColor(.themeBlue400)
                     .padding(.horizontal, 8)

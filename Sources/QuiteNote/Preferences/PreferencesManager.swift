@@ -29,5 +29,14 @@ final class PreferencesManager {
     func setAIProvider(_ v: String) { d.set(v, forKey: "aiProvider") }
     func setOpenAIBaseURL(_ v: String) { d.set(v, forKey: "openAIBaseURL") }
     func setOpenAIModel(_ v: String) { d.set(v, forKey: "openAIModel") }
+    
+    // 搜索历史相关方法
+    func stringArray(forKey key: String) -> [String]? {
+        return d.stringArray(forKey: key)
+    }
+    
+    func set(_ value: [String], forKey key: String) {
+        d.set(value, forKey: key)
+    }
 }
 

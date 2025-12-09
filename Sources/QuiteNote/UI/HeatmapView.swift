@@ -127,8 +127,8 @@ struct HeatmapView: View {
             shadowColor = .clear
             shadowRadius = 0
         } else {
-            color = Color.themeGreen
-            shadowColor = Color.themeGreen.opacity(0.6)
+            color = Color.themeGreen500
+            shadowColor = Color.themeGreen500.opacity(0.6)
             shadowRadius = 4
         }
         

@@ -22,15 +22,15 @@ struct PreferencesView: View {
                 if store.enableAI {
                     NativeSliderRow(label: "标题长度限制", value: Binding(
                         get: { Double(store.titleLimit) }, set: { store.titleLimit = Int($0); store.savePreferences() }
-                    ), range: 15...30, displayValue: "\(store.titleLimit) 字符")
+                    ), range: 15...30)
 
                     NativeSliderRow(label: "总结触发长度", value: Binding(
                         get: { Double(store.summaryTrigger) }, set: { store.summaryTrigger = Int($0); store.savePreferences() }
-                    ), range: 0...200, displayValue: "> \(store.summaryTrigger) 字符")
+                    ), range: 0...200)
 
                     NativeSliderRow(label: "总结长度限制", value: Binding(
                         get: { Double(store.summaryLimit) }, set: { store.summaryLimit = Int($0); store.savePreferences() }
-                    ), range: 50...200, displayValue: "\(store.summaryLimit) 字符")
+                    ), range: 50...200)
                 }
             }
             .padding()

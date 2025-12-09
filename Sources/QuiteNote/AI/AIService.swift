@@ -107,6 +107,54 @@ final class AIService: AIServiceProtocol {
         }
     }
 
+    /// 测试API连接
+    func testConnection(completion: @escaping (Result<Bool, Error>) -> Void) {
+        guard provider == .openai else {
+            // 本地提供商总是可用的
+            completion(.success(true))
+            return
+        }
+        
+        guard let apiKey = getOpenAIAPIKey() else {
+            completion(.failure(NSError(domain: "AIService", code: 401, userInfo: [NSLocalizedDescriptionKey: "未设置API密钥"])))
+            return
+        }
+        
+        let url = URL(string: "\(openAIBaseURL)/models")!
+        var req = URLRequest(url: url)
+        req.httpMethod = "GET"
+        req.addValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        
+        let session = URLSession(configuration: .default)
+        let task = session.dataTask(with: req) { data, response, error in
+            if let error = error {
+                completion(.failure(error))
+                return
+            }
+            
+            guard let httpResponse = response as? HTTPURLResponse else {
+                completion(.failure(NSError(domain: "AIService", code: 0, userInfo: [NSLocalizedDescriptionKey: "无效的响应"])))
+                return
+            }
+            
+            if httpResponse.statusCode == 200 {
+                completion(.success(true))
+            } else {
+                completion(.failure(NSError(domain: "AIService", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: "HTTP错误: \(httpResponse.statusCode)"])))
+            }
+        }
+        
+        task.resume()
+        
+        // 超时处理
+        DispatchQueue.global().asyncAfter(deadline: .now() + timeout) {
+            if task.state == .running {
+                task.cancel()
+                completion(.failure(NSError(domain: "AIService", code: 408, userInfo: [NSLocalizedDescriptionKey: "请求超时"])))
+            }
+        }
+    }
+
     /// 解析模型返回的字符串为 JSON 结构
     private static func parseJSONText(_ text: String) -> SummaryResult? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)

@@ -1,0 +1,347 @@
+{
+  "name": "QuiteNote Developer Assistant",
+  "version": "2.0",
+  "description": "专门用于开发和维护 QuiteNote macOS 应用的 AI 助手",
+  "author": "Claude Code",
+  "project_type": "macOS menu bar application",
+  "tech_stack": [
+    "Swift",
+    "SwiftUI",
+    "Core Data",
+    "CoreBluetooth",
+    "URLSession",
+    "Keychain"
+  ],
+  "architecture": "layered architecture with dependency injection",
+  "design_principles": [
+    "SOLID",
+    "protocol-oriented",
+    "MVVM",
+    "dependency injection",
+    "separation of concerns"
+  ],
+  "theme_system": "Tailwind CSS inspired design system",
+  "triggers": [
+    {
+      "id": "create-feature-module",
+      "pattern": "(?i)(创建|实现|新建|添加).*功能模块|feature.*module|new.*module",
+      "skill": "generate-code",
+      "description": "创建新功能模块",
+      "prompt_file": "./prompts/create-feature-module.prompt",
+      "context_aware": true,
+      "requires_code": false
+    },
+    {
+      "id": "implement-swiftui-view",
+      "pattern": "(?i)(实现|创建|编写|写).*swiftui.*view|swiftui.*视图",
+      "skill": "generate-code",
+      "description": "实现 SwiftUI 视图",
+      "prompt_file": "./prompts/implement-swiftui-view.prompt",
+      "context_aware": true,
+      "requires_code": false
+    },
+    {
+      "id": "create-data-model",
+      "pattern": "(?i)(创建|定义|设计).*数据模型|data.*model|core.*data",
+      "skill": "generate-code",
+      "description": "创建数据模型",
+      "prompt_file": "./prompts/create-data-model.prompt",
+      "context_aware": true,
+      "requires_code": false
+    },
+    {
+      "id": "implement-service",
+      "pattern": "(?i)(实现|创建|编写).*service|服务.*实现",
+      "skill": "generate-code",
+      "description": "实现服务类",
+      "prompt_file": "./prompts/implement-service.prompt",
+      "context_aware": true,
+      "requires_code": false
+    },
+    {
+      "id": "code-review-general",
+      "pattern": "(?i)(审查|review|检查|audit).*代码|code.*review",
+      "skill": "code-review",
+      "description": "通用代码审查",
+      "prompt_file": "./prompts/code-review-general.prompt",
+      "context_aware": true,
+      "requires_code": true
+    },
+    {
+      "id": "code-review-swiftui",
+      "pattern": "(?i)(审查|review|检查).*swiftui|swiftui.*review",
+      "skill": "code-review",
+      "description": "SwiftUI 视图审查",
+      "prompt_file": "./prompts/code-review-swiftui.prompt",
+      "context_aware": true,
+      "requires_code": true
+    },
+    {
+      "id": "architecture-review",
+      "pattern": "(?i)(架构|architecture|设计|design).*评估|architecture.*review",
+      "skill": "architecture-design",
+      "description": "架构评估",
+      "prompt_file": "./prompts/architecture-review.prompt",
+      "context_aware": true,
+      "requires_code": false
+    },
+    {
+      "id": "module-design",
+      "pattern": "(?i)(设计|design|架构|architecture).*模块|module.*design",
+      "skill": "architecture-design",
+      "description": "模块设计",
+      "prompt_file": "./prompts/module-design.prompt",
+      "context_aware": true,
+      "requires_code": false
+    },
+    {
+      "id": "write-unit-tests",
+      "pattern": "(?i)(编写|写|生成|create).*单元测试|unit.*test",
+      "skill": "write-tests",
+      "description": "编写单元测试",
+      "prompt_file": "./prompts/write-unit-tests.prompt",
+      "context_aware": true,
+      "requires_code": true
+    },
+    {
+      "id": "write-ui-tests",
+      "pattern": "(?i)(编写|写|生成|create).*ui.*test|界面.*测试",
+      "skill": "write-tests",
+      "description": "编写 UI 测试",
+      "prompt_file": "./prompts/write-ui-tests.prompt",
+      "context_aware": true,
+      "requires_code": true
+    },
+    {
+      "id": "generate-api-docs",
+      "pattern": "(?i)(生成|写|创建).*api.*文档|api.*doc|文档.*生成",
+      "skill": "generate-docs",
+      "description": "生成 API 文档",
+      "prompt_file": "./prompts/generate-api-docs.prompt",
+      "context_aware": true,
+      "requires_code": true
+    },
+    {
+      "id": "generate-changelog",
+      "pattern": "(?i)(生成|写|创建).*changelog|change.*log|更新日志",
+      "skill": "generate-docs",
+      "description": "生成 CHANGELOG",
+      "prompt_file": "./prompts/generate-changelog.prompt",
+      "context_aware": true,
+      "requires_code": false
+    },
+    {
+      "id": "troubleshooting",
+      "pattern": "(?i)(为什么|why|原因|reason|问题|issue|bug|错误|error)",
+      "skill": "troubleshooting",
+      "description": "问题诊断",
+      "prompt_file": "./prompts/troubleshooting.prompt",
+      "context_aware": true,
+      "requires_code": true
+    },
+    {
+      "id": "implementation-guide",
+      "pattern": "(?i)(如何|how.*to|怎样|怎么).*实现|implement|做|do",
+      "skill": "implementation-guide",
+      "description": "实现指导",
+      "prompt_file": "./prompts/implementation-guide.prompt",
+      "context_aware": true,
+      "requires_code": false
+    }
+  ],
+  "skills": [
+    {
+      "name": "generate-code",
+      "description": "生成符合项目规范的代码",
+      "steps": [
+        "分析需求和上下文",
+        "检查现有代码避免重复",
+        "生成符合架构的代码",
+        "添加必要的测试",
+        "生成文档说明"
+      ],
+      "validation": [
+        "语法检查",
+        "规范符合性检查",
+        "依赖关系检查"
+      ]
+    },
+    {
+      "name": "code-review",
+      "description": "审查代码质量",
+      "steps": [
+        "解析代码结构",
+        "应用审查清单",
+        "识别潜在问题",
+        "提供改进建议",
+        "生成审查报告"
+      ],
+      "checklists": [
+        "architecture",
+        "code_quality",
+        "swift_best_practices",
+        "performance",
+        "security",
+        "testability",
+        "documentation",
+        "ui_ux"
+      ]
+    },
+    {
+      "name": "architecture-design",
+      "description": "设计和评估架构",
+      "steps": [
+        "分析需求",
+        "评估现有架构",
+        "设计新模块",
+        "绘制架构图",
+        "定义接口和依赖"
+      ],
+      "outputs": [
+        "architecture_diagram",
+        "interface_definitions",
+        "data_flow_diagram"
+      ]
+    },
+    {
+      "name": "write-tests",
+      "description": "编写测试代码",
+      "steps": [
+        "分析测试需求",
+        "设计测试用例",
+        "实现测试代码",
+        "验证测试覆盖率",
+        "生成测试文档"
+      ],
+      "types": [
+        "unit_tests",
+        "ui_tests",
+        "integration_tests"
+      ]
+    },
+    {
+      "name": "generate-docs",
+      "description": "生成技术文档",
+      "steps": [
+        "分析代码结构",
+        "提取关键信息",
+        "生成文档内容",
+        "格式化输出",
+        "验证文档质量"
+      ],
+      "formats": [
+        "markdown",
+        "api_reference",
+        "usage_guide"
+      ]
+    },
+    {
+      "name": "troubleshooting",
+      "description": "诊断和解决问题",
+      "steps": [
+        "分析问题现象",
+        "识别可能原因",
+        "提供解决方案",
+        "验证修复效果",
+        "记录解决方案"
+      ],
+      "categories": [
+        "compilation_errors",
+        "runtime_errors",
+        "performance_issues",
+        "ui_issues"
+      ]
+    },
+    {
+      "name": "implementation-guide",
+      "description": "提供实现指导",
+      "steps": [
+        "理解需求",
+        "分析技术栈",
+        "提供实现方案",
+        "说明注意事项",
+        "推荐最佳实践"
+      ],
+      "output_types": [
+        "step_by_step_guide",
+        "code_examples",
+        "architecture_patterns"
+      ]
+    }
+  ],
+  "context": {
+    "project_overview": "QuiteNote 是一款 macOS 菜单栏应用，通过蓝牙硬件按钮一键采集剪贴板内容，使用 AI 进行智能提炼，并提供悬浮窗快速管理和查看。",
+    "core_features": [
+      "蓝牙设备连接和事件处理",
+      "剪贴板监控和内容采集",
+      "AI 智能提炼和总结",
+      "悬浮窗界面管理",
+      "记录的增删改查",
+      "数据持久化",
+      "通知系统"
+    ],
+    "architecture_details": {
+      "layers": [
+        "Presentation (SwiftUI Views, ViewModels)",
+        "Business (Services, Managers, State)",
+        "Data (Repositories, Persistence, Core Data)",
+        "Infrastructure (Utils, Extensions, Platform Abstraction)"
+      ],
+      "dependency_injection": "Service Container pattern",
+      "state_management": "ObservableObject + @Published",
+      "threading": "@MainActor for UI, background queues for data"
+    },
+    "theme_system": {
+      "colors": "Tailwind CSS inspired color palette",
+      "spacing": "4px base unit system",
+      "fonts": "SF Pro with predefined sizes",
+      "animations": "Consistent timing and easing",
+      "shapes": "Rounded corners and shadows"
+    },
+    "best_practices": [
+      "SOLID principles",
+      "Protocol-oriented programming",
+      "Dependency injection",
+      "Error handling",
+      "Thread safety",
+      "Performance optimization",
+      "Accessibility",
+      "Code documentation"
+    ]
+  },
+  "prompts_directory": "./prompts",
+  "templates_directory": "./templates",
+  "examples_directory": "./examples",
+  "version_history": [
+    {
+      "version": "1.0",
+      "date": "2025-11-01",
+      "changes": "Initial release with basic prompts"
+    },
+    {
+      "version": "2.0",
+      "date": "2025-12-09",
+      "changes": "Complete rewrite with comprehensive prompts and skills"
+    }
+  ],
+  "usage_examples": [
+    {
+      "scenario": "Create a new feature module",
+      "input": "请为 QuiteNote 创建一个通知服务模块",
+      "triggered_skill": "generate-code",
+      "expected_output": "完整的通知服务协议、实现、测试和文档"
+    },
+    {
+      "scenario": "Review SwiftUI code",
+      "input": "请审查以下 SwiftUI 代码：[代码]",
+      "triggered_skill": "code-review",
+      "expected_output": "SwiftUI 特定的代码审查报告"
+    },
+    {
+      "scenario": "Generate API documentation",
+      "input": "为以下代码生成 API 文档：[代码]",
+      "triggered_skill": "generate-docs",
+      "expected_output": "完整的 API 参考文档和使用示例"
+    }
+  ]
+}

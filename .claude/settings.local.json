@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cat:*)",
+      "Bash(swift build)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(swift build:*)",
+      "Bash(swift run)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

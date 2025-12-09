@@ -9,18 +9,25 @@ final class RecordStore: ObservableObject {
     @Published var toast: ToastMessage? = nil
     @Published var aiProvider: AIProvider = .local
     @Published var enableAI: Bool = true
+    @Published var searchHistory: [String] = []
+    @Published var searchInSummaries: Bool = false
+    @Published var searchInTitles: Bool = true
+    @Published var searchInContent: Bool = true
+    @Published var searchCaseSensitive: Bool = false
+    @Published var searchUseRegex: Bool = false
     var ai: AIServiceProtocol? = nil
-    var titleLimit: Int = 20
-    var summaryTrigger: Int = 20
-    var summaryLimit: Int = 100
-    var dedupEnabled: Bool = true
-    var maxRecords: Int = 100
+    @Published var titleLimit: Int = 20
+    @Published var summaryTrigger: Int = 20
+    @Published var summaryLimit: Int = 100
+    @Published var dedupEnabled: Bool = true
+    @Published var maxRecords: Int = 100
     private let stack = CoreDataStack.shared
     private let prefs = PreferencesManager.shared
 
     init() {
         loadFromStore()
         loadPreferences()
+        loadSearchHistory()
         if records.isEmpty {
             addMockData()
         }
@@ -145,15 +152,121 @@ final class RecordStore: ObservableObject {
         records.removeAll()
         let req = NSFetchRequest<NSFetchRequestResult>(entityName: "CDRecord")
         let deleteReq = NSBatchDeleteRequest(fetchRequest: req)
-        try? stack.context.execute(deleteReq)
+        _ = try? stack.context.execute(deleteReq)
         stack.save()
     }
 
-    /// 搜索记录（标题、内容模糊匹配）
+    /// 搜索记录（支持高级搜索选项）
     func search(_ query: String) -> [Record] {
         guard !query.isEmpty else { return records }
-        let q = query.lowercased()
-        return records.filter { ($0.title ?? "").lowercased().contains(q) || $0.content.lowercased().contains(q) }
+        
+        // 添加到搜索历史
+        addToSearchHistory(query)
+        
+        // 根据搜索选项进行过滤
+        return records.filter { record in
+            var matches = false
+            
+            // 搜索标题
+            if searchInTitles {
+                let title = record.title ?? ""
+                matches = matches || matchesQuery(text: title, query: query)
+            }
+            
+            // 搜索内容
+            if searchInContent {
+                matches = matches || matchesQuery(text: record.content, query: query)
+            }
+            
+            // 搜索AI总结
+            if searchInSummaries {
+                let summary = record.summary ?? ""
+                matches = matches || matchesQuery(text: summary, query: query)
+            }
+            
+            return matches
+        }
+    }
+    
+    /// 检查文本是否匹配查询（支持正则表达式和大小写敏感）
+    private func matchesQuery(text: String, query: String) -> Bool {
+        if searchUseRegex {
+            do {
+                let options: NSRegularExpression.Options = searchCaseSensitive ? [] : .caseInsensitive
+                let regex = try NSRegularExpression(pattern: query, options: options)
+                let range = NSRange(location: 0, length: text.utf16.count)
+                return regex.firstMatch(in: text, options: [], range: range) != nil
+            } catch {
+                // 如果正则表达式无效，回退到普通搜索
+                return searchCaseSensitive ? text.contains(query) : text.lowercased().contains(query.lowercased())
+            }
+        } else {
+            return searchCaseSensitive ? text.contains(query) : text.lowercased().contains(query.lowercased())
+        }
+    }
+    
+    /// 添加搜索词到历史记录
+    private func addToSearchHistory(_ query: String) {
+        // 移除重复项
+        searchHistory.removeAll { $0 == query }
+        // 添加到开头
+        searchHistory.insert(query, at: 0)
+        // 限制历史记录数量
+        if searchHistory.count > 20 {
+            searchHistory = Array(searchHistory.prefix(20))
+        }
+        // 保存到偏好设置
+        saveSearchHistory()
+    }
+    
+    /// 清空搜索历史
+    func clearSearchHistory() {
+        searchHistory.removeAll()
+        saveSearchHistory()
+    }
+    
+    /// 从偏好设置加载搜索历史
+    private func loadSearchHistory() {
+        searchHistory = prefs.stringArray(forKey: "searchHistory") ?? []
+    }
+    
+    /// 保存搜索历史到偏好设置
+    private func saveSearchHistory() {
+        prefs.set(searchHistory, forKey: "searchHistory")
+    }
+    
+    /// 生成搜索结果总结
+    func generateSearchSummary(for query: String, completion: @escaping (String?) -> Void) {
+        guard enableAI, let ai = ai else {
+            completion(nil)
+            return
+        }
+        
+        let results = search(query)
+        guard !results.isEmpty else {
+            completion("没有找到匹配的记录")
+            return
+        }
+        
+        // 准备用于总结的内容
+        let content = results.prefix(10).map { record in
+            let title = record.title ?? "无标题"
+            let summary = record.summary ?? ""
+            return "标题: \(title)\n总结: \(summary)"
+        }.joined(separator: "\n\n")
+        
+        let prompt = "请为以下搜索结果生成一个简短的总结，不超过100字。搜索关键词: \(query)\n\n搜索结果:\n\(content)"
+        
+        ai.summarize(titleLimit: 50, summaryLimit: 100, content: prompt) { result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let summaryResult):
+                    completion(summaryResult.summary)
+                case .failure:
+                    completion("生成搜索总结失败")
+                }
+            }
+        }
     }
 
     /// 发送轻量提示（悬浮窗右下角气泡）

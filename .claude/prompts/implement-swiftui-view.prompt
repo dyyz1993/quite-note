@@ -1,0 +1,451 @@
+# SwiftUI View Implementation Prompt
+
+## Context
+- **Project**: QuiteNote - macOS menu bar application
+- **UI Framework**: SwiftUI with AppKit integration
+- **Theme System**: Tailwind CSS inspired design system
+- **Target Platform**: macOS 12.0+
+- **Architecture**: MVVM pattern with dependency injection
+
+## Task Description
+Implement or modify a SwiftUI view following QuiteNote's best practices and design guidelines.
+
+## Basic Requirements
+
+### 1. SwiftUI Best Practices
+- Use SwiftUI idiomatic patterns
+- Follow MVVM architecture
+- Implement responsive design
+- Support accessibility features
+- Optimize performance
+
+### 2. View Structure Template
+```swift
+import SwiftUI
+
+/// [View description]
+///
+/// This view is used for [purpose description]
+///
+/// # Example
+/// ```swift
+/// [ViewName]View()
+///     .preferredColorScheme(.dark)
+/// ```
+///
+/// - Note: [Important notes]
+/// - Warning: [Warning information]
+struct [ViewName]View: View {
+    // MARK: - Properties
+
+    // Dependency injection
+    @StateObject private var viewModel: [ViewModelName]ViewModel
+
+    // Environment variables
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dismiss) private var dismiss
+
+    // State management
+    @State private var isEditing = false
+    @State private var searchText = ""
+
+    // MARK: - Init
+    init(viewModel: [ViewModelName]ViewModel? = nil) {
+        let vm = viewModel ?? ServiceContainer.shared.resolve()
+        _viewModel = StateObject(wrappedValue: vm)
+    }
+
+    // MARK: - Body
+    var body: some View {
+        [Content]
+            .onAppear {
+                viewModel.load()
+            }
+    }
+
+    // MARK: - Private Views
+    @ViewBuilder
+    private var content: some View {
+        // Conditional rendering based on state
+        if viewModel.isLoading {
+            LoadingView()
+        } else if viewModel.items.isEmpty {
+            EmptyStateView()
+        } else {
+            listView
+        }
+    }
+
+    private var listView: some View {
+        List {
+            ForEach(viewModel.items) { item in
+                ItemRowView(item: item)
+            }
+            .onDelete(perform: deleteItems)
+        }
+    }
+}
+
+// MARK: - Previews
+#preview {
+    [ViewName]View()
+        .preferredColorScheme(.dark)
+}
+```
+
+### 3. Theme System Usage
+**Color System:**
+- Background: `Color.themeBackground`
+- Cards: `Color.themeCard`
+- Primary text: `Color.themeTextPrimary`
+- Secondary text: `Color.themeTextSecondary`
+- Borders: `Color.themeBorder`
+- Primary actions: `Color.themeBlue500`
+- Success: `Color.themeGreen500`
+- Error: `Color.themeRed500`
+- Warning: `Color.themeYellow500`
+
+**Spacing System:**
+- Use `ThemeSpacing` enum values:
+  - `ThemeSpacing.p2.rawValue` (8px) - compact spacing
+  - `ThemeSpacing.p4.rawValue` (16px) - standard spacing
+  - `ThemeSpacing.p6.rawValue` (24px) - loose spacing
+  - `ThemeSpacing.p8.rawValue` (32px) - extra spacing
+
+**Font System:**
+- Headers: `.themeH1` (16pt, semibold)
+- Subheaders: `.themeH2` (14pt, semibold)
+- Body: `.themeBody` (14pt, regular)
+- Captions: `.themeCaption` (12pt, regular)
+- Small text: `.themeCaptionSmall` (10pt, regular)
+
+**Animation System:**
+- Standard: `.easeOut(duration: 0.3)`
+- Quick: `.easeOut(duration: 0.1)`
+- Spring: `.spring(response: 0.2, dampingFraction: 0.8)`
+- Slow: `.easeOut(duration: 0.5)`
+
+### 4. Performance Optimization
+1. **Use Lazy Containers:**
+   ```swift
+   LazyVStack {
+       ForEach(items) { item in
+           ItemView(item: item)
+       }
+   }
+   ```
+
+2. **Implement ViewBuilder:**
+   ```swift
+   @ViewBuilder
+   private var conditionalContent: some View {
+       if condition {
+           ContentView()
+       } else {
+           EmptyView()
+       }
+   }
+   ```
+
+3. **Optimize ForEach:**
+   ```swift
+   ForEach(viewModel.items, id: \.id) { item in
+       ItemRowView(item: item)
+   }
+   ```
+
+4. **Use Equatable to prevent unnecessary updates:**
+   ```swift
+   struct ItemRowView: View, Equatable {
+       let item: Item
+
+       var body: some View {
+           // View implementation
+       }
+
+       static func == (lhs: ItemRowView, rhs: ItemRowView) -> Bool {
+           lhs.item == rhs.item
+       }
+   }
+   ```
+
+5. **Prefer .task over .onAppear for async operations:**
+   ```swift
+   .task {
+       await viewModel.loadData()
+   }
+   ```
+
+### 5. Accessibility Requirements
+1. **Add accessibility labels:**
+   ```swift
+   Button(action: action) {
+       Text(title)
+   }
+   .accessibilityElement()
+   .accessibilityLabel(Text(title))
+   .accessibilityAddTraits(.isButton)
+   ```
+
+2. **Support dynamic fonts:**
+   ```swift
+   Text(content)
+       .font(.body) // Uses system font scaling
+   ```
+
+3. **Provide sufficient contrast:**
+   - Use theme colors that meet WCAG AA standards
+   - Avoid pure black on white (use theme colors)
+
+4. **Support keyboard navigation:**
+   ```swift
+   .keyboardShortcut(.defaultAction) // For important buttons
+   ```
+
+### 6. State Management
+1. **Use appropriate state modifiers:**
+   - `@StateObject` - For ViewModels created in views
+   - `@ObservedObject` - For ViewModels passed as parameters
+   - `@State` - For local view state
+   - `@Environment` - For system/environment values
+
+2. **ViewModel integration:**
+   ```swift
+   @MainActor
+   final class [ViewModelName]ViewModel: ObservableObject {
+       @Published var items: [Item] = []
+       @Published var isLoading = false
+       @Published var errorMessage: String?
+
+       private let service: [ServiceName]Protocol
+
+       init(service: [ServiceName]Protocol) {
+           self.service = service
+       }
+
+       @MainActor
+       func load() async {
+           isLoading = true
+           errorMessage = nil
+
+           do {
+               items = try await service.getItems()
+           } catch {
+               errorMessage = error.localizedDescription
+           } finally {
+               isLoading = false
+           }
+       }
+   }
+   ```
+
+### 7. Error Handling
+```swift
+@ViewBuilder
+private var content: some View {
+    if viewModel.isLoading {
+        LoadingView()
+    } else if let errorMessage = viewModel.errorMessage {
+        ErrorView(message: errorMessage) {
+            Task { await viewModel.load() }
+        }
+    } else if viewModel.items.isEmpty {
+        EmptyStateView()
+    } else {
+        successContent
+    }
+}
+```
+
+### 8. Integration with AppKit (when needed)
+```swift
+struct AppKitWrapper<Content: NSView>: NSViewRepresentable {
+    let content: Content
+
+    func makeNSView(context: Context) -> NSView {
+        return content
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        // Update logic
+    }
+}
+```
+
+## Code Review Checklist
+
+### Before submitting your SwiftUI view:
+- [ ] Follows MVVM pattern correctly
+- [ ] Uses dependency injection
+- [ ] Implements proper error handling
+- [ ] Uses theme system consistently
+- [ ] Supports accessibility features
+- [ ] Optimized for performance
+- [ ] Has proper documentation
+- [ ] Includes preview providers
+- [ ] Handles loading/error/empty states
+- [ ] Uses appropriate state management
+- [ ] Supports responsive design
+- [ ] Has no hardcoded values (colors, spacing, etc.)
+- [ ] Uses proper accessibility labels
+- [ ] Follows naming conventions
+- [ ] Has no memory leaks (proper cleanup in deinit)
+
+## Common Patterns
+
+### 1. Modal/Sheet Presentation
+```swift
+@State private var isPresentingSheet = false
+
+var body: some View {
+    Button("Open Sheet") {
+        isPresentingSheet = true
+    }
+    .sheet(isPresented: $isPresentingSheet) {
+        SheetView()
+    }
+}
+```
+
+### 2. Pull to Refresh
+```swift
+.refreshable {
+    await viewModel.refresh()
+}
+```
+
+### 3. Search Integration
+```swift
+@State private var searchText = ""
+
+var body: some View {
+    NavigationView {
+        VStack {
+            SearchBar(text: $searchText)
+            List {
+                ForEach(viewModel.filteredItems(matching: searchText)) { item in
+                    ItemRowView(item: item)
+                }
+            }
+        }
+    }
+}
+```
+
+### 4. Context Menu
+```swift
+.contextMenu {
+    Button(action: editAction) {
+        Label("Edit", systemImage: "pencil")
+    }
+    Button(action: deleteAction) {
+        Label("Delete", systemImage: "trash")
+    }
+}
+```
+
+### 5. Drag and Drop
+```swift
+.onDrop(of: ["public.file-url"], delegate: DropDelegate(items: $items))
+```
+
+## Performance Tips
+
+1. **Avoid computations in body:**
+   ```swift
+   // ❌ Bad
+   var body: some View {
+       Text(complexCalculation()) // Recalculates on every update
+   }
+
+   // ✅ Good
+   @State private var calculatedValue = ""
+
+   var body: some View {
+       Text(calculatedValue)
+           .task {
+               calculatedValue = await complexCalculation()
+           }
+   }
+   ```
+
+2. **Use @ViewBuilder for conditional views:**
+   ```swift
+   // ✅ Efficient conditional rendering
+   @ViewBuilder
+   private var conditionalView: some View {
+       if shouldShowContent {
+           ContentView()
+       }
+   }
+   ```
+
+3. **Minimize view hierarchy depth:**
+   - Avoid deeply nested views
+   - Use VStack/HStack instead of nested ZStack when possible
+   - Use Spacer() instead of fixed padding when flexible spacing is acceptable
+
+4. **Cache expensive computations:**
+   ```swift
+   @State private var cachedResults: [Result] = []
+
+   private func getCachedResults() -> [Result] {
+       if cachedResults.isEmpty {
+           cachedResults = expensiveCalculation()
+       }
+       return cachedResults
+   }
+   ```
+
+## Theme System Reference
+
+### Colors
+```swift
+// Semantic colors
+Color.themeBackground     // Main background
+Color.themeCard          // Card backgrounds
+Color.themeTextPrimary   // Primary text
+Color.themeTextSecondary // Secondary text
+Color.themeBorder        // Borders
+
+// Functional colors
+Color.themeBlue500       // Primary actions
+Color.themeGreen500      // Success states
+Color.themeRed500        // Error states
+Color.themeYellow500     // Warning states
+```
+
+### Typography
+```swift
+Font.themeH1     // 16pt, semibold - Main headings
+Font.themeH2     // 14pt, semibold - Subheadings
+Font.themeBody   // 14pt, regular - Body text
+Font.themeCaption   // 12pt, regular - Captions
+Font.themeCaptionSmall // 10pt, regular - Small text
+```
+
+### Spacing
+```swift
+ThemeSpacing.p2.rawValue  // 8px - Compact
+ThemeSpacing.p4.rawValue  // 16px - Standard
+ThemeSpacing.p6.rawValue  // 24px - Loose
+ThemeSpacing.p8.rawValue  // 32px - Extra
+```
+
+### Animations
+```swift
+Animation.easeOut    // 300ms, ease-out
+Animation.easeIn     // 300ms, ease-in
+Animation.easeInOut  // 300ms, ease-in-out
+Animation.spring     // Spring animation
+Animation.quick      // 100ms, fast
+Animation.slow       // 500ms, slow
+```
+
+## Final Notes
+- Always test on different screen sizes
+- Verify accessibility with VoiceOver
+- Check performance with large datasets
+- Test error states and edge cases
+- Ensure proper cleanup in deinitializers
+- Use preview providers for different states

@@ -22,6 +22,11 @@ final class StatusBarController {
         store.$enableAI
             .sink { [weak self] _ in self?.setupMenu() }
             .store(in: &cancellables)
+        
+        // 监听记录变化，更新菜单
+        store.$records
+            .sink { [weak self] _ in self?.setupMenu() }
+            .store(in: &cancellables)
     }
 
     /// 构建菜单与状态更新
@@ -29,10 +34,22 @@ final class StatusBarController {
         statusItem.button?.title = "📝"
         let menu = NSMenu()
         menu.autoenablesItems = false
+        
+        // 蓝牙状态信息
         let btTitle = bluetooth.connectedDeviceName != nil ? "蓝牙：已连接 \(bluetooth.connectedDeviceName!)" : "蓝牙：未连接"
-        let info = NSMenuItem(title: btTitle, action: nil, keyEquivalent: "")
-        info.isEnabled = false
-        menu.addItem(info)
+        let btInfo = NSMenuItem(title: btTitle, action: nil, keyEquivalent: "")
+        btInfo.isEnabled = false
+        menu.addItem(btInfo)
+        
+        // 记录统计信息
+        let today = Calendar.current.startOfDay(for: Date())
+        let todayRecords = store.records.filter { $0.createdAt >= today }
+        let statsTitle = "记录：共 \(store.records.count) 条，今日 \(todayRecords.count) 条"
+        let statsInfo = NSMenuItem(title: statsTitle, action: nil, keyEquivalent: "")
+        statsInfo.isEnabled = false
+        menu.addItem(statsInfo)
+        
+        menu.addItem(NSMenuItem.separator())
         let toggle = NSMenuItem(title: "显示/隐藏悬浮窗", action: #selector(onToggle), keyEquivalent: "r")
         toggle.keyEquivalentModifierMask = [.option, .command]
         toggle.target = self
@@ -66,10 +83,40 @@ final class StatusBarController {
         export.isEnabled = true
         menu.addItem(export)
         menu.addItem(NSMenuItem.separator())
+        
+        // 最近记录快速访问
+        let recentRecords = Array(store.records.sorted(by: { $0.createdAt > $1.createdAt }).prefix(5))
+        if !recentRecords.isEmpty {
+            let recentHeader = NSMenuItem(title: "最近记录", action: nil, keyEquivalent: "")
+            recentHeader.isEnabled = false
+            menu.addItem(recentHeader)
+            
+            for (index, record) in recentRecords.enumerated() {
+                let preview = String(record.content.prefix(30))
+                let title = (record.summary?.isEmpty ?? true) ? preview : "\(record.summary?.prefix(30) ?? "")"
+                let menuItem = NSMenuItem(title: "\(index + 1). \(title)", action: #selector(onOpenRecentRecord(_:)), keyEquivalent: "")
+                menuItem.target = self
+                menuItem.tag = index // 使用tag存储记录索引
+                menuItem.toolTip = record.content
+                menu.addItem(menuItem)
+            }
+            menu.addItem(NSMenuItem.separator())
+        }
+        
+        // 高级功能
+        let clearAll = NSMenuItem(title: "清空所有记录", action: #selector(onClearAll), keyEquivalent: "")
+        clearAll.target = self
+        clearAll.isEnabled = !store.records.isEmpty
+        menu.addItem(clearAll)
+        
+        menu.addItem(NSMenuItem.separator())
         let prefs = NSMenuItem(title: "偏好设置", action: #selector(openSettings), keyEquivalent: ",")
         prefs.target = self
         prefs.isEnabled = true
         menu.addItem(prefs)
+        let about = NSMenuItem(title: "关于 QuiteNote", action: #selector(onAbout), keyEquivalent: "")
+        about.target = self
+        menu.addItem(about)
         let quit = NSMenuItem(title: "退出应用", action: #selector(quit), keyEquivalent: "q")
         quit.target = self
         quit.isEnabled = true
@@ -90,7 +137,9 @@ final class StatusBarController {
     }
 
     /// 菜单：打开设置
-    @objc private func openSettings() { NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil) }
+    @objc private func openSettings() { 
+        NotificationCenter.default.post(name: .showSettings, object: nil)
+    }
 
     /// 菜单：退出应用
     @objc private func quit() { NSApp.terminate(nil) }
@@ -115,5 +164,47 @@ final class StatusBarController {
         store.savePreferences()
         store.postToast(store.enableAI ? "AI 已开启" : "AI 已关闭")
         setupMenu()
+    }
+    
+    /// 菜单：打开最近记录
+    @objc private func onOpenRecentRecord(_ sender: NSMenuItem) {
+        let recentRecords = Array(store.records.sorted(by: { $0.createdAt > $1.createdAt }).prefix(5))
+        guard sender.tag < recentRecords.count else { return }
+        
+        let record = recentRecords[sender.tag]
+        
+        // 显示悬浮窗并展开特定记录
+        forceShowAction()
+        
+        // 通过通知展开特定记录
+        NotificationCenter.default.post(
+            name: NSNotification.Name("expandRecord"),
+            object: record.id
+        )
+    }
+    
+    /// 菜单：清空所有记录
+    @objc private func onClearAll() {
+        let alert = NSAlert()
+        alert.messageText = "确认清空所有记录"
+        alert.informativeText = "此操作不可撤销，将永久删除所有记录。"
+        alert.alertStyle = .critical
+        alert.addButton(withTitle: "取消")
+        alert.addButton(withTitle: "清空")
+        
+        if alert.runModal() == .alertSecondButtonReturn {
+            store.clearAll()
+            setupMenu() // 更新菜单状态
+        }
+    }
+    
+    /// 菜单：关于应用
+    @objc private func onAbout() {
+        let alert = NSAlert()
+        alert.messageText = "QuiteNote"
+        alert.informativeText = "版本 1.0.0\n\n一个简洁的剪切板历史记录和AI提炼工具\n\n© 2025 QuiteNote Team"
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "确定")
+        alert.runModal()
     }
 }

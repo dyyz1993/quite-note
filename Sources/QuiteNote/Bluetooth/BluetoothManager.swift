@@ -5,13 +5,14 @@ import CoreBluetooth
 final class BluetoothManager: NSObject, ObservableObject {
     @Published var state: CBManagerState = .unknown
     @Published var connectedDeviceName: String? = nil
+    @Published var discoveredPeripherals: [CBPeripheral] = []
 
     private var central: CBCentralManager!
     private var peripheral: CBPeripheral?
     private var buttonChar: CBCharacteristic?
     private var ackChar: CBCharacteristic?
     private var lastEvent: (id: UInt8, seq: UInt8, time: Date)?
-    var debounceInterval: TimeInterval = 1.0
+    @Published var debounceInterval: TimeInterval = 1.0
 
     /// 初始化 CoreBluetooth 中心管理器
     override init() {
@@ -19,9 +20,17 @@ final class BluetoothManager: NSObject, ObservableObject {
         central = CBCentralManager(delegate: self, queue: .main)
     }
 
-    /// 开始扫描并尝试连接自定义服务设备
+    /// 开始扫描并发现自定义服务设备
     func startScanning() {
+        discoveredPeripherals.removeAll()
         central.scanForPeripherals(withServices: [CBUUID(string: "12345678-1234-5678-1234-567812345678")], options: nil)
+    }
+    
+    /// 连接指定的外围设备
+    func connect(to peripheral: CBPeripheral) {
+        self.peripheral = peripheral
+        peripheral.delegate = self
+        central.connect(peripheral, options: nil)
     }
 
     /// 断开当前连接并停止扫描
@@ -70,12 +79,12 @@ extension BluetoothManager: CBCentralManagerDelegate {
         if state == .poweredOn { startScanning() }
     }
 
-    /// 扫描到设备回调：尝试连接
+    /// 扫描到设备回调：添加到发现列表
     func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String : Any], rssi RSSI: NSNumber) {
-        self.peripheral = peripheral
-        peripheral.delegate = self
-        central.stopScan()
-        central.connect(peripheral, options: nil)
+        // 避免重复添加
+        if !discoveredPeripherals.contains(where: { $0.identifier == peripheral.identifier }) {
+            discoveredPeripherals.append(peripheral)
+        }
     }
 
     /// 连接成功回调：发现服务
