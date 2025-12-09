@@ -109,11 +109,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         shortcuts?.onQuit = { 
             NSApp.terminate(nil)
         }
+        shortcuts?.onGlobalPaste = { [weak self] in
+            self?.handleGlobalPaste()
+        }
         shortcuts?.start()
         
         print("[DEBUG] 应用启动完成")
     }
 
+    /// 处理粘贴事件（无输入框聚焦时）
+    private func handleGlobalPaste() {
+        // 检查当前焦点是否在文本输入框中
+        if let focusedView = NSApp.keyWindow?.firstResponder,
+           focusedView is NSTextView || focusedView is NSTextField {
+            // 如果焦点在文本输入框中，不处理，让系统默认粘贴行为生效
+            return
+        }
+        
+        // 获取剪贴板内容
+        let pasteboard = NSPasteboard.general
+        guard let text = pasteboard.string(forType: .string), !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return
+        }
+        
+        // 创建新记录
+        let hash = ClipboardService.sha1(text)
+        if recordStore.dedupEnabled, recordStore.isRecentDuplicate(hash: hash, withinMinutes: 10) {
+            // 如果是重复内容，更新时间戳
+            recordStore.updateTimestampForHash(hash)
+            recordStore.postToast("记录已去重，更新了时间戳", type: "info")
+        } else {
+            // 添加新记录
+            recordStore.addRecord(content: text, hash: hash)
+            recordStore.postToast("已自动创建新记录", type: "success")
+        }
+        
+        // 显示悬浮窗（如果当前未显示）
+        DispatchQueue.main.async { [weak self] in
+            self?.floatingPanelController?.ensureVisibleOnLaunch()
+        }
+    }
+    
     /// 切换悬浮窗显示/隐藏，包含动效
     private func toggleFloating() {
         print("[DEBUG] toggleFloating called")

@@ -4,6 +4,7 @@ import AppKit
 final class KeyboardShortcutManager {
     private var globalMonitor: Any?
     private var localMonitor: Any?
+    private var pasteMonitor: Any?
     
     // 回调函数
     var onTogglePanel: (() -> Void)?
@@ -14,9 +15,23 @@ final class KeyboardShortcutManager {
     var onExport: (() -> Void)?
     var onOpenSettings: (() -> Void)?
     var onQuit: (() -> Void)?
+    var onGlobalPaste: (() -> Void)?
     
     /// 启动全局快捷键监听
     func start() {
+        // 全局粘贴事件监听（当应用没有焦点时）
+        pasteMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] e in
+            guard let self = self else { return }
+            
+            // 检测 Cmd+V 粘贴快捷键
+            if e.modifierFlags.contains(.command) && e.characters?.lowercased() == "v" {
+                // 延迟一小段时间，确保粘贴内容已经更新到剪贴板
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    self.onGlobalPaste?()
+                }
+            }
+        }
+        
         // 全局快捷键监听（应用内外都有效）
         globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] e in
             guard let self else { return }
@@ -49,6 +64,22 @@ final class KeyboardShortcutManager {
             guard let self else { return e }
             let flags = e.modifierFlags
             
+            // Cmd+V 粘贴快捷键（应用内无输入框聚焦时）
+            if flags.contains(.command) && e.characters?.lowercased() == "v" {
+                // 检查当前焦点是否在文本输入框中
+                if let focusedView = NSApp.keyWindow?.firstResponder,
+                   focusedView is NSTextView || focusedView is NSTextField {
+                    // 如果焦点在文本输入框中，不处理，让系统默认粘贴行为生效
+                    return e
+                } else {
+                    // 如果焦点不在文本输入框中，处理粘贴事件
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        self.onGlobalPaste?()
+                    }
+                    return nil // 消费事件，防止系统默认粘贴行为
+                }
+            }
+            
             // Cmd+, 打开设置
             if flags.contains(.command) && e.characters == "," {
                 self.onOpenSettings?()
@@ -69,6 +100,7 @@ final class KeyboardShortcutManager {
     func stop() {
         if let m = globalMonitor { NSEvent.removeMonitor(m) }
         if let m = localMonitor { NSEvent.removeMonitor(m) }
+        if let m = pasteMonitor { NSEvent.removeMonitor(m) }
     }
     
     deinit { 

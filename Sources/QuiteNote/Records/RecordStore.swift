@@ -38,64 +38,9 @@ final class RecordStore: ObservableObject {
         loadPreferences()
         loadSearchHistory()
         setupMemoryOptimization()
-        if records.isEmpty {
-            addMockData()
-        }
     }
 
-    private func addMockData() {
-        let mockTexts = [
-            "const [count, setCount] = useState(0);",
-            "https://www.google.com/search?q=react+hooks",
-            "Rust 是一种系统级编程语言，专注于安全性，尤其是并发安全。它支持函数式和命令式以及泛型等编程范式的多范式语言。Rust 在语法上和 C++ 类似，但是设计者想要在保证性能的同时提供更好的内存安全。Rust 最初是由 Mozilla 研究院的 Graydon Hoare 设计创造，然后在 Dave Herman, Brendan Eich 以及众多社区成员的贡献下发展壮大。Rust 的设计目标之一是使设计大型的互联网客户端和服务器的任务变得更容易。",
-            "TODO: Fix the header layout on mobile screens.",
-            "Docker run -p 8080:80 nginx",
-            "Meeting notes: 1. Review Q3 goals, 2. Team lunch",
-            "rgb(255, 99, 71)",
-            "这是一个非常棒的产品构思！结合了硬件交互。",
-            "import { motion } from 'framer-motion';\n// 这是一个多行代码注释\n// 用于测试行数统计",
-            "git commit -m 'feat: add bluetooth listener'",
-            "Email: contact@example.com",
-            "MacBook Pro M3 Max"
-        ]
-        
-        let now = Date()
-        for (index, text) in mockTexts.enumerated() {
-            let cd = stack.newRecord()
-            cd.id = UUID()
-            cd.content = text
-            // Spread out timestamps over the last few hours
-            cd.createdAt = now.addingTimeInterval(Double(-index * 3600))
-            cd.digest = ClipboardService.sha1(text)
-            cd.starred = index == 0
-            
-            // Mock AI results for some items
-            if text.contains("Rust") {
-                cd.title = "Rust 语言深度介绍与应用"
-                cd.summary = "Rust 是一种注重安全与性能的系统级编程语言，解决了 C++ 在内存安全和并发性上的痛点。其设计目标是简化大型互联网应用的开发。"
-                cd.summaryConfidence = 0.95
-                cd.aiStatus = "success"
-            } else if text.contains("useState") {
-                cd.title = "React Hook: useState 定义"
-                cd.aiStatus = "success"
-            } else if text.contains("http") {
-                cd.title = "外部链接资源"
-                cd.aiStatus = "success"
-            } else if text.contains("Docker") {
-                cd.title = "Docker 运行命令"
-                cd.aiStatus = "success"
-            } else if text.contains("MacBook") {
-                cd.title = "MacBook Pro M3 Max 产品名"
-                cd.aiStatus = "success"
-            } else if text.count > 20 {
-                cd.title = "关于 \"\(text.prefix(15))...\" 的内容提炼"
-                cd.aiStatus = "success"
-            }
-            
-            stack.save()
-        }
-        loadFromStore() // Reload to update UI
-    }
+    
 
     /// 添加一条记录并触发 UI 刷新
     func addRecord(content: String, hash: String) {
@@ -486,6 +431,27 @@ final class RecordStore: ObservableObject {
         // 清理搜索历史
         if searchHistory.count > 50 {
             searchHistory = Array(searchHistory.prefix(20))
+        }
+    }
+    
+    /// 更新记录的AI状态和内容
+    func updateRecordAI(id: UUID, title: String?, summary: String?, confidence: Double?, aiStatus: String?) {
+        updateCDRecord(id: id, title: title, summary: summary, confidence: confidence, aiStatus: aiStatus)
+        
+        // 更新内存中的记录
+        if let index = records.firstIndex(where: { $0.id == id }) {
+            if let title = title {
+                records[index].title = title
+            }
+            if let summary = summary {
+                records[index].summary = summary
+            }
+            if let confidence = confidence {
+                records[index].summaryConfidence = confidence
+            }
+            if let aiStatus = aiStatus {
+                records[index].aiStatus = aiStatus
+            }
         }
     }
 

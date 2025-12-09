@@ -146,6 +146,10 @@ final class FloatingPanelController {
         
         NotificationCenter.default.addObserver(self, selector: #selector(onWindowLock(_:)), name: .windowLockChanged, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(onAnimations(_:)), name: .animationsEnabledChanged, object: nil)
+        
+        // 监听窗口位置和大小变化
+        NotificationCenter.default.addObserver(self, selector: #selector(windowDidMove(_:)), name: NSWindow.didMoveNotification, object: panel)
+        NotificationCenter.default.addObserver(self, selector: #selector(windowDidResize(_:)), name: NSWindow.didResizeNotification, object: panel)
         NotificationCenter.default.addObserver(self, selector: #selector(onWindowKeyDidChange(_:)), name: NSWindow.didBecomeKeyNotification, object: panel)
         NotificationCenter.default.addObserver(self, selector: #selector(onWindowKeyDidChange(_:)), name: NSWindow.didResignKeyNotification, object: panel)
     }
@@ -198,8 +202,40 @@ final class FloatingPanelController {
         panel.isOpaque = false
         panel.level = .floating 
         
-        // 2. 强制居中
-        forceCenterWindow()
+        // 2. 设置窗口位置
+        if PreferencesManager.shared.rememberWindowPosition {
+            // 尝试恢复上次保存的窗口位置
+            if let savedFrame = PreferencesManager.shared.getWindowPosition() {
+                // 确保窗口在屏幕范围内
+                if let screen = NSScreen.main {
+                    let screenFrame = screen.visibleFrame
+                    var adjustedFrame = savedFrame
+                    
+                    // 确保窗口不完全超出屏幕范围
+                    if adjustedFrame.maxX < screenFrame.minX + 100 {
+                        adjustedFrame.origin.x = screenFrame.minX + 100
+                    }
+                    if adjustedFrame.minX > screenFrame.maxX - 100 {
+                        adjustedFrame.origin.x = screenFrame.maxX - adjustedFrame.width - 100
+                    }
+                    if adjustedFrame.maxY < screenFrame.minY + 100 {
+                        adjustedFrame.origin.y = screenFrame.minY + 100
+                    }
+                    if adjustedFrame.minY > screenFrame.maxY - 100 {
+                        adjustedFrame.origin.y = screenFrame.maxY - adjustedFrame.height - 100
+                    }
+                    
+                    panel.setFrame(adjustedFrame, display: true)
+                    print("[DEBUG] 恢复窗口位置: \(adjustedFrame)")
+                }
+            } else {
+                // 没有保存的位置，则居中
+                forceCenterWindow()
+            }
+        } else {
+            // 不记忆位置，则居中
+            forceCenterWindow()
+        }
         
         // 3. 强制显示策略 (Accessory App 核心显示逻辑)
         // 步骤 A: 常规显示尝试
@@ -258,6 +294,22 @@ final class FloatingPanelController {
     
     @objc private func onWindowKeyDidChange(_ note: Notification) {
         focusProvider.isKeyWindow = panel.isKeyWindow
+    }
+    
+    @objc private func windowDidMove(_ note: Notification) {
+        // 窗口移动时保存位置
+        if PreferencesManager.shared.rememberWindowPosition {
+            PreferencesManager.shared.setWindowPosition(panel.frame)
+            print("[DEBUG] 保存窗口位置: \(panel.frame)")
+        }
+    }
+    
+    @objc private func windowDidResize(_ note: Notification) {
+        // 窗口调整大小时保存位置
+        if PreferencesManager.shared.rememberWindowPosition {
+            PreferencesManager.shared.setWindowPosition(panel.frame)
+            print("[DEBUG] 保存窗口位置(调整大小): \(panel.frame)")
+        }
     }
 
     /// 悬停请求切换到 Regular 获取 KeyWindow
@@ -561,12 +613,11 @@ struct FloatingRootView: View {
             .padding(16) // p-4
         }
         .onChange(of: searchTerm) { newValue in
-            // 使用防抖搜索
-            store.debouncedSearch(newValue) { results in
-                searchResults = results
-                // 重置分页状态
-                hasMoreRecords = results.count >= 50
-            }
+            // 直接搜索，因为 EnhancedSearchBar 已经实现了防抖
+            let results = store.search(newValue)
+            searchResults = results
+            // 重置分页状态
+            hasMoreRecords = results.count >= 50
         }
         .onAppear {
             // 初始化时设置搜索结果
@@ -578,10 +629,10 @@ struct FloatingRootView: View {
                 // 检查是否还有更多记录
                 hasMoreRecords = store.records.count >= 50
             } else {
-                store.debouncedSearch(searchTerm) { results in
-                    searchResults = results
-                    hasMoreRecords = results.count >= 50
-                }
+                // 直接搜索，因为 EnhancedSearchBar 已经实现了防抖
+                let results = store.search(searchTerm)
+                searchResults = results
+                hasMoreRecords = results.count >= 50
             }
         }
     }
@@ -779,6 +830,18 @@ struct RecordCardView: View, Equatable {
                 IconButton(icon: .star, color: record.starred ? .themeYellow500 : .themeTextSecondary) {
                     store.toggleStar(record)
                 }
+                // 单独总结按钮
+                Button(action: {
+                    generateIndividualSummary()
+                }) {
+                    LucideView(name: .sparkles, size: 14, color: record.aiStatus == "pending" ? .themePurple500.opacity(0.7) : .themeBlue500)
+                        .frame(width: 24, height: 24)
+                        .background(Color.white.opacity(0.05))
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .pointingHandCursor()
+                .help("单独总结此消息")
                 IconButton(icon: .trash2, color: .themeTextSecondary) {
                     store.delete(record)
                 }
@@ -833,7 +896,8 @@ struct RecordCardView: View, Equatable {
                         Button(action: {
                             NSPasteboard.general.clearContents()
                             NSPasteboard.general.setString(record.content, forType: .string)
-                            store.postLightHint("已复制原文")
+                            HapticFeedbackManager.shared.lightImpact()
+                            store.postToast("已复制原文", type: "success")
                         }) {
                             HStack(spacing: 4) {
                                 LucideView(name: .copy, size: 10, color: .themeGray400)
@@ -876,7 +940,8 @@ struct RecordCardView: View, Equatable {
                                 Button(action: {
                                     NSPasteboard.general.clearContents()
                                     NSPasteboard.general.setString(s, forType: .string)
-                                    store.postLightHint("已复制总结")
+                                    HapticFeedbackManager.shared.lightImpact()
+                                    store.postToast("已复制总结", type: "success")
                                 }) {
                                     HStack(spacing: 4) {
                                         LucideView(name: .copy, size: 10, color: .themePurple500)
@@ -962,6 +1027,51 @@ struct IconButton: View {
 }
 
 private extension RecordCardView {
+    /// 为当前记录生成单独的AI总结
+    func generateIndividualSummary() {
+        // 如果已经在处理中，不重复请求
+        guard record.aiStatus != "pending" else { return }
+        
+        // 更新状态为处理中
+        store.updateRecordAI(
+            id: record.id,
+            title: "AI 正在分析内容...",
+            summary: nil,
+            confidence: 0,
+            aiStatus: "pending"
+        )
+        
+        // 调用AI服务生成总结
+        store.ai?.summarizeSingle(record.content) { [weak store] result in
+            let workItem = DispatchWorkItem {
+                switch result {
+                case .success(let summaryResult):
+                    let title = summaryResult.title
+                    let summary = summaryResult.summary
+                    let confidence = summaryResult.confidence
+                    store?.updateRecordAI(
+                        id: record.id,
+                        title: title,
+                        summary: summary,
+                        confidence: confidence,
+                        aiStatus: "success"
+                    )
+                    store?.postToast("总结已生成", type: "success")
+                case .failure(let error):
+                    store?.updateRecordAI(
+                        id: record.id,
+                        title: "提炼失败",
+                        summary: nil,
+                        confidence: 0,
+                        aiStatus: "fail"
+                    )
+                    store?.postToast("总结生成失败: \(error.localizedDescription)", type: "error")
+                }
+            }
+            DispatchQueue.main.async(execute: workItem)
+        }
+    }
+    
     // 缓存计算结果，避免重复计算
     var displayTitle: String {
         // 使用更高效的条件判断顺序

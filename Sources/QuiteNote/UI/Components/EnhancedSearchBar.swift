@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 
 /// 增强的搜索栏组件，支持搜索历史、高级搜索选项和AI总结
 struct EnhancedSearchBar: View {
@@ -11,6 +12,11 @@ struct EnhancedSearchBar: View {
     @State private var isGeneratingSummary = false
     @FocusState private var isSearchFieldFocused: Bool
     
+    // 防抖处理相关
+    @State private var debouncedSearchTerm: String = ""
+    @State private var searchWorkItem: DispatchWorkItem?
+    private let searchDebounceInterval: TimeInterval = 0.3
+    
     var body: some View {
         VStack(spacing: 0) {
             searchBarView
@@ -20,10 +26,38 @@ struct EnhancedSearchBar: View {
         }
         .onAppear {
             isSearchFieldFocused = true
+            debouncedSearchTerm = searchTerm
         }
         .onOutsideTap {
             showHistory = false
             showAdvancedOptions = false
+        }
+        .onChange(of: searchTerm) { newValue in
+            // 防抖处理，避免大量数据粘贴时卡死
+            searchWorkItem?.cancel()
+            
+            // 立即更新UI状态
+            if !newValue.isEmpty {
+                showHistory = true
+            } else {
+                showHistory = false
+            }
+            
+            // 使用防抖更新实际搜索词
+            let workItem = DispatchWorkItem {
+                DispatchQueue.main.async {
+                    debouncedSearchTerm = newValue
+                }
+            }
+            
+            searchWorkItem = workItem
+            DispatchQueue.main.asyncAfter(deadline: .now() + searchDebounceInterval, execute: workItem)
+        }
+        .onChange(of: debouncedSearchTerm) { newValue in
+            // 只有当防抖后的搜索词与实际搜索词不同时才更新
+            if newValue != searchTerm {
+                searchTerm = newValue
+            }
         }
     }
     
@@ -127,9 +161,10 @@ struct EnhancedSearchBar: View {
                 .lineLimit(1)
             Spacer()
             Button(action: {
+                searchWorkItem?.cancel()
                 searchTerm = historyItem
+                debouncedSearchTerm = historyItem
                 showHistory = false
-                performSearch()
             }) {
                 LucideView(name: .arrowLeft, size: 12, color: .themeTextSecondary)
             }
@@ -140,9 +175,10 @@ struct EnhancedSearchBar: View {
         .padding(.vertical, 8)
         .contentShape(Rectangle())
         .onTapGesture {
+            searchWorkItem?.cancel()
             searchTerm = historyItem
+            debouncedSearchTerm = historyItem
             showHistory = false
-            performSearch()
         }
         .onHover { isHovering in
             if isHovering {
@@ -230,13 +266,16 @@ struct EnhancedSearchBar: View {
     /// 执行搜索
     private func performSearch() {
         showHistory = false
-        // 搜索会自动触发，因为searchTerm是@Binding
+        // 立即更新防抖搜索词，确保搜索立即执行
+        searchWorkItem?.cancel()
+        debouncedSearchTerm = searchTerm
     }
     
     /// 生成AI总结
     private func generateAISummary() {
         isGeneratingSummary = true
-        store.generateSearchSummary(for: searchTerm) { summary in
+        // 使用防抖后的搜索词，确保是基于实际搜索内容生成总结
+        store.generateSearchSummary(for: debouncedSearchTerm) { summary in
             self.isGeneratingSummary = false
             self.aiSummary = summary
             self.showAISummary = true

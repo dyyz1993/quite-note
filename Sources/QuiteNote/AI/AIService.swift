@@ -4,6 +4,9 @@ import Foundation
 protocol AIServiceProtocol {
     /// 执行提炼任务：输入限制与原文；completion 返回结构化结果或错误
     func summarize(titleLimit: Int, summaryLimit: Int, content: String, completion: @escaping (Result<SummaryResult, Error>) -> Void)
+    
+    /// 为单个记录生成总结
+    func summarizeSingle(_ content: String, completion: @escaping (Result<SummaryResult, Error>) -> Void)
 }
 
 /// 提供商类型：本地或 OpenAI
@@ -45,6 +48,12 @@ final class AIService: AIServiceProtocol {
         queueLock.lock()
         requestQueue.removeAll()
         queueLock.unlock()
+    }
+    
+    /// 为单个记录生成总结
+    func summarizeSingle(_ content: String, completion: @escaping (Result<SummaryResult, Error>) -> Void) {
+        // 使用默认限制值调用 summarize 方法
+        summarize(titleLimit: 30, summaryLimit: 100, content: content, completion: completion)
     }
 
     /// 执行提炼任务，按提供商路由；失败或超时时降级为前 15 字标题与空总结

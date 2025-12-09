@@ -13,6 +13,7 @@ final class PreferencesManager {
     var debounceSeconds: Int { let v = d.integer(forKey: "debounceSeconds"); return v == 0 ? 1 : v }
     var windowLock: Bool { d.object(forKey: "windowLock") == nil ? false : d.bool(forKey: "windowLock") }
     var animationsEnabled: Bool { d.object(forKey: "animationsEnabled") == nil ? true : d.bool(forKey: "animationsEnabled") }
+    var rememberWindowPosition: Bool { d.object(forKey: "rememberWindowPosition") == nil ? true : d.bool(forKey: "rememberWindowPosition") }
     var aiProvider: String { d.string(forKey: "aiProvider") ?? "local" }
     var openAIBaseURL: String { d.string(forKey: "openAIBaseURL") ?? "https://api.openai.com/v1" }
     var openAIModel: String { d.string(forKey: "openAIModel") ?? "gpt-4o-mini" }
@@ -26,6 +27,7 @@ final class PreferencesManager {
     func setDebounceSeconds(_ v: Int) { d.set(v, forKey: "debounceSeconds") }
     func setWindowLock(_ v: Bool) { d.set(v, forKey: "windowLock") }
     func setAnimationsEnabled(_ v: Bool) { d.set(v, forKey: "animationsEnabled") }
+    func setRememberWindowPosition(_ v: Bool) { d.set(v, forKey: "rememberWindowPosition") }
     func setAIProvider(_ v: String) { d.set(v, forKey: "aiProvider") }
     func setOpenAIBaseURL(_ v: String) { d.set(v, forKey: "openAIBaseURL") }
     func setOpenAIModel(_ v: String) { d.set(v, forKey: "openAIModel") }
@@ -37,6 +39,21 @@ final class PreferencesManager {
     
     func set(_ value: [String], forKey key: String) {
         d.set(value, forKey: key)
+    }
+    
+    // 窗口位置相关方法
+    func getWindowPosition() -> NSRect? {
+        if let data = d.data(forKey: "windowPosition"),
+           let rect = try? NSKeyedUnarchiver.unarchivedObject(ofClass: NSValue.self, from: data) {
+            return rect.rectValue
+        }
+        return nil
+    }
+    
+    func setWindowPosition(_ rect: NSRect) {
+        if let data = try? NSKeyedArchiver.archivedData(withRootObject: NSValue(rect: rect), requiringSecureCoding: false) {
+            d.set(data, forKey: "windowPosition")
+        }
     }
 }
 

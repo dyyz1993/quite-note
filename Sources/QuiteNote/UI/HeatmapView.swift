@@ -1,6 +1,15 @@
 import SwiftUI
 import Combine
 
+/// Array 扩展，用于将数组分割成指定大小的子数组
+extension Array {
+    func chunked(into size: Int) -> [[Element]] {
+        return stride(from: 0, to: count, by: size).map {
+            Array(self[$0..<Swift.min($0 + size, count)])
+        }
+    }
+}
+
 /// 热力图视图模型：统计记录数量并提供筛选
 final class HeatmapViewModel: ObservableObject {
     @Published var buckets: [Date: Int] = [:]
@@ -93,35 +102,48 @@ struct HeatmapView: View {
     private var cellsView: some View {
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: Date())
-        // Last 12 days to match design height
-        let cells = (0..<12).map { i in calendar.date(byAdding: .day, value: -i, to: today)! }
+        // Last 21 days to match design height (7 rows x 3 columns)
+        let cells = (0..<21).map { i in calendar.date(byAdding: .day, value: -i, to: today)! }
         
-        return VStack(spacing: 6) { // gap-1.5 (6px)
-            ForEach(cells, id: \.self) { d in
-                let count = vm.buckets[d] ?? 0
-                
-                cellView(date: d, count: count)
-                    .onTapGesture {
-                        if vm.filterDate == d {
-                            vm.filterDate = nil
-                        } else {
-                            vm.filterDate = d
-                        }
+        // 将日期分组为每行3个
+        let rows = cells.chunked(into: 3)
+        
+        return VStack(spacing: 4) { // 减小间距以适应更多列
+            ForEach(rows, id: \.self) { row in
+                HStack(spacing: 4) { // 减小间距以适应更多列
+                    ForEach(row, id: \.self) { d in
+                        let count = vm.buckets[d] ?? 0
+                        
+                        cellView(date: d, count: count)
+                            .onTapGesture {
+                                if vm.filterDate == d {
+                                    vm.filterDate = nil
+                                } else {
+                                    vm.filterDate = d
+                                }
+                            }
+                            .onHover { h in hoverDay = h ? d : nil }
+                            .pointingHandCursor()
+                            .overlay(alignment: .leading) {
+                                if hoverDay == d {
+                                    tooltipView(date: d, count: count)
+                                }
+                            }
                     }
-                    .onHover { h in hoverDay = h ? d : nil }
-                    .pointingHandCursor()
-                    .overlay(alignment: .leading) {
-                        if hoverDay == d {
-                            tooltipView(date: d, count: count)
-                        }
-                    }
+                }
             }
         }
     }
     
     private func tooltipView(date: Date, count: Int) -> some View {
         let calendar = Calendar.current
-        return Text("\(calendar.isDateInToday(date) ? "今日" : date.formatted(date: .abbreviated, time: .omitted))：\(count) 条")
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEEE" // 星期几的完整格式
+        let weekday = formatter.string(from: date)
+        
+        let dateText = calendar.isDateInToday(date) ? "今日" : date.formatted(date: .abbreviated, time: .omitted)
+        
+        return Text("\(dateText) (\(weekday))：\(count) 条")
             .font(.system(size: 10))
             .padding(4)
             .background(Color.themeGray700) // bg-gray-700
@@ -158,15 +180,15 @@ struct HeatmapView: View {
             shadowRadius = 4
         }
         
-        return RoundedRectangle(cornerRadius: 2) // rounded-sm (2px)
+        return RoundedRectangle(cornerRadius: 1) // 调整圆角以适应更小的方块
             .fill(color)
-            .frame(width: 12, height: 12)
+            .frame(width: 6, height: 6) // 调整方块大小以适应3列布局
             .shadow(color: shadowColor, radius: shadowRadius)
             .overlay(
-                RoundedRectangle(cornerRadius: 2)
+                RoundedRectangle(cornerRadius: 1)
                     .stroke(Color.white.opacity(0.4), lineWidth: isSelected ? 1 : 0)
             )
-            .scaleEffect(hoverDay == date ? 1.1 : 1.0) // hover:scale-110
+            .scaleEffect(hoverDay == date ? 1.2 : 1.0) // 增加悬停缩放效果以补偿更小的尺寸
             .animation(.spring(response: 0.3), value: hoverDay == date)
     }
 }

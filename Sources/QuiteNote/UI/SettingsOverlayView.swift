@@ -10,6 +10,7 @@ struct SettingsOverlayView: View {
     @State private var isTestingConnection = false
     @State private var windowLock = false
     @State private var animationsEnabled = true
+    @State private var rememberWindowPosition = true
 
     init(store: RecordStore, bluetooth: BluetoothManager, showSettings: Binding<Bool>, initialTab: String = "ai") {
         self.store = store
@@ -478,6 +479,14 @@ struct SettingsOverlayView: View {
                 .onChange(of: animationsEnabled) { newValue in
                     PreferencesManager.shared.setAnimationsEnabled(newValue)
                     NotificationCenter.default.post(name: .animationsEnabledChanged, object: newValue)
+                }
+            
+            ToggleRow(title: "记忆位置", subtitle: "开启后记住并恢复窗口上次的位置", isOn: $rememberWindowPosition)
+                .onAppear {
+                    rememberWindowPosition = PreferencesManager.shared.rememberWindowPosition
+                }
+                .onChange(of: rememberWindowPosition) { newValue in
+                    PreferencesManager.shared.setRememberWindowPosition(newValue)
                 }
         }
     }
