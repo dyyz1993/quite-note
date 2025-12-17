@@ -1,0 +1,110 @@
+name: Build macOS App
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+  workflow_dispatch:
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+    
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+      
+    - name: 设置Xcode
+      uses: maxim-lobanov/setup-xcode@v1
+      with:
+        xcode-version: latest-stable
+        
+    - name: 安装ImageMagick（用于图标转换）
+      run: |
+        brew install imagemagick
+        
+    - name: 验证Swift Package
+      run: |
+        swift package resolve
+        
+    - name: 构建Release版本
+      run: |
+        swift build -c release --product QuiteNote
+        
+    - name: 创建应用包结构
+      run: |
+        chmod +x build-app.sh
+        ./build-app.sh
+        
+    - name: 验证应用包
+      run: |
+        ls -la "Quite Note.app/Contents/"
+        file "Quite Note.app/Contents/MacOS/QuiteNote"
+        
+    - name: 创建DMG安装包
+      run: |
+        if [ -f "create-dmg.sh" ]; then
+          chmod +x create-dmg.sh
+          ./create-dmg.sh
+        else
+          echo "DMG创建脚本不存在，跳过DMG生成"
+        fi
+        
+    - name: 上传构建产物
+      uses: actions/upload-artifact@v4
+      with:
+        name: QuiteNote-macOS
+        path: |
+          Quite Note.app
+          *.dmg
+        retention-days: 30
+        
+    - name: 获取版本信息
+      id: version
+      run: |
+        if [ -f "Package.swift" ]; then
+          VERSION=$(grep -o 'version: "[^"]*"' Package.swift | head -1 | cut -d'"' -f2)
+        else
+          VERSION="1.0.0"
+        fi
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        
+    - name: 生成发布标签
+      if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
+      run: |
+        TAG="v${{ steps.version.outputs.version }}-$(date +%Y%m%d-%H%M%S)"
+        echo "tag=$TAG" >> $GITHUB_OUTPUT
+        
+    - name: 创建Release
+      if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ steps.version.outputs.tag }}
+        name: QuiteNote ${{ steps.version.outputs.tag }}
+        body: |
+          ## QuiteNote macOS 应用构建
+          
+          ### 新功能
+          - 🎨 自定义剪切板+AI闪光主题图标
+          - 🔧 改进的LucideIcons加载机制
+          - 📱 优化的状态栏图标显示
+          
+          ### 安装说明
+          1. 下载 `Quite Note.app` 或 `QuiteNote.dmg`
+          2. 如果下载了DMG，双击挂载并拖拽应用到Applications文件夹
+          3. 首次运行可能需要在"系统偏好设置 > 安全性与隐私"中允许运行
+          
+          ### 系统要求
+          - macOS 12.0 或更高版本
+          
+          ### 构建信息
+          - 构建时间: ${{ github.event.head_commit.timestamp }}
+          - 提交哈希: ${{ github.sha }}
+        files: |
+          Quite Note.app
+          *.dmg
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
