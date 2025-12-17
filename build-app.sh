@@ -96,6 +96,12 @@ cat > "$CONTENTS/Info.plist" << EOF
         <key>NSAllowsArbitraryLoads</key>
         <true/>
     </dict>
+    <key>NSBluetoothAlwaysUsageDescription</key>
+    <string>Quite Note 需要访问蓝牙来发现和连接附近的设备，用于设备间数据同步和分享功能。</string>
+    <key>NSBluetoothPeripheralUsageDescription</key>
+    <string>Quite Note 使用蓝牙来与周边设备通信，实现剪切板内容的快速分享和同步。</string>
+    <key>NSSystemAdministrationUsageDescription</key>
+    <string>Quite Note 需要系统管理权限来监听全局键盘快捷键，实现快速调用剪切板历史功能。</string>
 </dict>
 </plist>
 EOF
