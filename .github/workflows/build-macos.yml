@@ -92,6 +92,56 @@ jobs:
         fi
         echo "version=$VERSION" >> $GITHUB_OUTPUT
         
+    - name: 创建GitHub Release
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v2
+      with:
+        files: |
+          Quite Note.app
+          *.dmg
+        generate_release_notes: true
+        draft: false
+        prerelease: false
+        name: Quite Note ${{ github.ref_name }}
+        body: |
+          🎉 **Quite Note ${{ github.ref_name }} 发布**
+          
+          基于SwiftUI的macOS剪切板历史记录和AI提炼工具
+          
+          ## 📦 下载文件
+          - `Quite Note.app` - 完整的macOS应用包
+          - `QuiteNote-*.dmg` - DMG安装包（推荐用户使用）
+          
+          ## 🚀 安装说明
+          ### DMG安装（推荐）
+          1. 下载DMG文件
+          2. 双击挂载
+          3. 拖拽应用到Applications文件夹
+          4. 首次运行需要在"系统偏好设置 > 安全性与隐私"中允许
+          
+          ### 应用包安装
+          1. 下载应用包
+          2. 移动到Applications文件夹
+          3. 双击运行
+          
+          ## ✨ 主要功能
+          - 🎨 自定义剪切板+AI闪光主题图标
+          - 🔧 改进的LucideIcons加载机制
+          - 📱 优化的状态栏图标显示
+          - 📋 完整的剪切板历史记录管理
+          - 🤖 AI内容提炼功能
+          
+          ## 🔧 系统要求
+          - macOS 12.0 或更高版本
+          - 支持Intel和Apple Silicon
+          
+          ---
+          📅 构建时间: ${{ github.event.head_commit.timestamp }}
+          🔗 提交哈希: ${{ github.sha }}
+          🏷️ 构建编号: ${{ github.run_number }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
     - name: 构建信息
       if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
       run: |
