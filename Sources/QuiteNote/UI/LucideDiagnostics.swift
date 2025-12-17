@@ -16,7 +16,7 @@ struct LucideDiagnostics {
         let ids = [
             "bluetooth","bluetooth-connected","bluetooth-off",
             "copy","chevron-right","clipboard","activity","x","cpu","settings","arrow-left",
-            "sparkles","bot","check","save","align-left","trash-2","star","search",
+            "sparkles","bot","check","save","align-start-horizontal","trash-2","star","search",
             "maximize-2","database","link","zap","clock","app-window-mac"
         ]
         var missing: [String] = []
@@ -54,6 +54,12 @@ struct LucideDiagnostics {
     
     /// 直接从已知的 LucideIcons bundle 路径加载图标
     private static func loadFromKnownBundle(_ id: String) -> NSImage? {
+        // 首先尝试从 Resources 目录中的 icons.xcassets 加载
+        if let imagePath = Bundle.main.path(forResource: id, ofType: "pdf", inDirectory: "icons.xcassets/\(id).imageset") {
+            return NSImage(contentsOfFile: imagePath)
+        }
+        
+        // 然后尝试从 Frameworks 目录中的 bundle 加载
         let lucideBundleURL = Bundle.main.bundleURL.appendingPathComponent("Contents/Frameworks/LucideIcons_LucideIcons.bundle")
         if let lucideBundle = Bundle(url: lucideBundleURL) {
             return lucideBundle.image(forResource: NSImage.Name(id))

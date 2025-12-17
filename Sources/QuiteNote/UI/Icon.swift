@@ -94,10 +94,19 @@ struct LucideView: View {
     
     /// 直接从已知的 LucideIcons bundle 路径加载图标
     private func loadFromKnownBundle(_ id: String) -> NSImage? {
+        // 首先尝试从 Resources 目录中的 icons.xcassets 加载
+        if let imagePath = Bundle.main.path(forResource: id, ofType: "pdf", inDirectory: "icons.xcassets/\(id).imageset") {
+            print("[DEBUG] 从 icons.xcassets 加载图标: \(id) -> \(imagePath)")
+            return NSImage(contentsOfFile: imagePath)
+        }
+        
+        // 然后尝试从 Frameworks 目录中的 bundle 加载
         let lucideBundleURL = Bundle.main.bundleURL.appendingPathComponent("Contents/Frameworks/LucideIcons_LucideIcons.bundle")
         if let lucideBundle = Bundle(url: lucideBundleURL) {
+            print("[DEBUG] 从 Frameworks bundle 加载图标: \(id)")
             return lucideBundle.image(forResource: NSImage.Name(id))
         }
+        print("[DEBUG] 无法找到图标: \(id)")
         return nil
     }
 
