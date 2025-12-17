@@ -81,11 +81,24 @@ struct LucideView: View {
         #if canImport(AppKit)
         // 1) 首选 Lucide 扩展按 id 访问
         if let img = NSImage.image(lucideId: lucideId) { return img }
-        // 2) swift run 场景：手动扫描 .build 目录下的 Lucide 资源 bundle
+        
+        // 2) 直接从已知的 LucideIcons bundle 路径加载图标
+        if let img = loadFromKnownBundle(lucideId) { return img }
+        
+        // 3) swift run 场景：手动扫描 .build 目录下的 Lucide 资源 bundle
         return searchLucideImageInBuild(lucideId)
         #else
         return nil
         #endif
+    }
+    
+    /// 直接从已知的 LucideIcons bundle 路径加载图标
+    private func loadFromKnownBundle(_ id: String) -> NSImage? {
+        let lucideBundleURL = Bundle.main.bundleURL.appendingPathComponent("Contents/Frameworks/LucideIcons_LucideIcons.bundle")
+        if let lucideBundle = Bundle(url: lucideBundleURL) {
+            return lucideBundle.image(forResource: NSImage.Name(id))
+        }
+        return nil
     }
 
     /// 在 swift run 的 .build 目录中寻找 Lucide 资源 bundle 并加载图标
@@ -94,7 +107,8 @@ struct LucideView: View {
         let candidates: [URL] = [
             URL(fileURLWithPath: fm.currentDirectoryPath).appendingPathComponent(".build"),
             Bundle.main.bundleURL,
-            Bundle.main.bundleURL.deletingLastPathComponent()
+            // 显式检查 Frameworks 目录
+        Bundle.main.bundleURL.appendingPathComponent("Contents/Frameworks")
         ]
         for root in candidates {
             if !fm.fileExists(atPath: root.path) { continue }

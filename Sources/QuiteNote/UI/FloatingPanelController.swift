@@ -762,7 +762,7 @@ struct HoverButton: View {
                 .cornerRadius(6)
         }
         .buttonStyle(.plain)
-        .focusable(false) // Fix outline issue
+        .focusable(false)
         .onHover { hovering = $0 }
         .pointingHandCursor()
     }
@@ -900,6 +900,7 @@ struct RecordCardView: View, Equatable {
                 }
                 .buttonStyle(.plain)
                 .pointingHandCursor()
+                .focusable(false)
                 .help(record.aiStatus == "fail" ? "总结失败，点击重试" : "单独总结此消息")
                 IconButton(icon: .trash2, color: .themeTextSecondary) {
                     store.delete(record)
@@ -1144,6 +1145,7 @@ struct IconButton: View {
         }
         .buttonStyle(.plain)
         .pointingHandCursor()
+        .focusable(false)
         .onHover { isHovering = $0 }
         .scaleEffect(isHovering ? 1.1 : 1.0)
         .animation(.easeInOut(duration: 0.15), value: isHovering)

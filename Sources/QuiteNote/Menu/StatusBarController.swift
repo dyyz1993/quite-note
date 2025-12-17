@@ -31,7 +31,19 @@ final class StatusBarController {
 
     /// 构建菜单与状态更新
     private func setupMenu() {
-        statusItem.button?.title = "📝"
+        // 设置自定义图标
+        if let iconPath = Bundle.main.path(forResource: "StatusBarIcon", ofType: "png"),
+           let icon = NSImage(contentsOfFile: iconPath) {
+            icon.size = NSSize(width: 18, height: 18) // 调整图标大小以适应状态栏
+            statusItem.button?.image = icon
+        } else if let iconPath = Bundle.main.path(forResource: "AppIcon", ofType: "png"),
+                  let icon = NSImage(contentsOfFile: iconPath) {
+            icon.size = NSSize(width: 18, height: 18) // 调整图标大小以适应状态栏
+            statusItem.button?.image = icon
+        } else {
+            // 如果无法加载自定义图标，使用 emoji 作为后备
+            statusItem.button?.title = "📝"
+        }
         let menu = NSMenu()
         menu.autoenablesItems = false
         

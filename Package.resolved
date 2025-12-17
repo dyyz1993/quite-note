@@ -5,8 +5,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/JakubMazur/lucide-icons-swift",
       "state" : {
-        "revision" : "03b0d199d60358bacb93028045609e6b3168b6c1",
-        "version" : "0.555.0"
+        "revision" : "4a431042c41a6028508063096b387a883d717b86",
+        "version" : "0.556.0"
       }
     }
   ],

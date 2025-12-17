@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <!-- 背景圆形 -->
+  <circle cx="512" cy="512" r="480" fill="#4A6FFF" stroke="#2E4BC7" stroke-width="20"/>
+  
+  <!-- 剪切板主体 -->
+  <rect x="280" y="200" width="464" height="600" rx="20" ry="20" fill="#FFFFFF" stroke="#D1D5DB" stroke-width="8"/>
+  
+  <!-- 剪切板夹子 -->
+  <rect x="420" y="160" width="184" height="80" rx="12" ry="12" fill="#6B7280" stroke="#4B5563" stroke-width="6"/>
+  <rect x="460" y="180" width="104" height="40" rx="6" ry="6" fill="#9CA3AF"/>
+  
+  <!-- 文档线条 -->
+  <rect x="320" y="300" width="280" height="12" rx="6" fill="#E5E7EB"/>
+  <rect x="320" y="340" width="340" height="12" rx="6" fill="#E5E7EB"/>
+  <rect x="320" y="380" width="320" height="12" rx="6" fill="#E5E7EB"/>
+  <rect x="320" y="420" width="300" height="12" rx="6" fill="#E5E7EB"/>
+  
+  <!-- AI 闪光 (Sparkle) -->
+  <g transform="translate(650, 550)">
+    <!-- 闪光主体 -->
+    <path d="M0,-40 L10,-10 L40,0 L10,10 L0,40 L-10,10 L-40,0 L-10,-10 Z" fill="#FFD700" stroke="#FFA500" stroke-width="3"/>
+    <!-- 内部亮点 -->
+    <circle cx="0" cy="0" r="8" fill="#FFF8DC"/>
+    <!-- 光线 -->
+    <path d="M0,-60 L0,-40 M60,0 L40,0 M0,60 L0,40 M-60,0 L-40,0" stroke="#FFD700" stroke-width="4" stroke-linecap="round"/>
+  </g>
+  
+  <!-- 装饰性小闪光 -->
+  <g transform="translate(350, 500)">
+    <path d="M0,-15 L3,-5 L15,0 L3,5 L0,15 L-3,5 L-15,0 L-3,-5 Z" fill="#FFD700" opacity="0.8"/>
+  </g>
+  
+  <g transform="translate(600, 350)">
+    <path d="M0,-12 L2,-4 L12,0 L2,4 L0,12 L-2,4 L-12,0 L-2,-4 Z" fill="#FFD700" opacity="0.6"/>
+  </g>
+</svg>

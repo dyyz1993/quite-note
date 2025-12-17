@@ -3,3 +3,5 @@
 .swiftpm
 node_modules
 note.jsx
+Quite Note.app/
+*.dmg

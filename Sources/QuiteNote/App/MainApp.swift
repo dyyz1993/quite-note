@@ -44,6 +44,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let ai = AIService()
         store.attachAI(service: ai)
 
+        // 在 LucideDiagnostics.run() 之前，尝试显式加载 LucideIcons 框架的 bundle
+        // 使用 Bundle.main.bundleURL 直接构建到 Contents/Frameworks 的路径
+        let lucideBundleURL = Bundle.main.bundleURL.appendingPathComponent("Contents/Frameworks/LucideIcons_LucideIcons.bundle")
+        if let lucideBundle = Bundle(url: lucideBundleURL) {
+            lucideBundle.load()
+            print("[DEBUG] LucideIcons bundle loaded explicitly from Contents/Frameworks.")
+        } else {
+            print("[DEBUG] Failed to explicitly load LucideIcons bundle from Contents/Frameworks.")
+        }
+
         // Lucide 图标可用性诊断（启动时一次性输出）
         LucideDiagnostics.run()
 

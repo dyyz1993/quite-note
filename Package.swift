@@ -11,7 +11,7 @@ let package = Package(
     ],
     dependencies: [
         // Lucide-Swift 图标库
-        .package(url: "https://github.com/JakubMazur/lucide-icons-swift", from: "0.555.0")
+        .package(url: "https://github.com/JakubMazur/lucide-icons-swift", from: "0.556.0")
     ],
     targets: [
         .executableTarget(
