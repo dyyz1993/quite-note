@@ -5,9 +5,11 @@ set -e
 
 APP_NAME="Quite Note"
 DMG_NAME="QuiteNote"
-VERSION="1.0.0"
 
-echo "创建 DMG 安装包..."
+# 版本号参数，默认为 1.0.0
+VERSION=${1:-"1.0.0"}
+
+echo "创建 DMG 安装包 (版本: $VERSION)..."
 
 # 检查应用是否存在
 if [ ! -d "$APP_NAME.app" ]; then

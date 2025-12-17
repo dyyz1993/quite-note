@@ -44,19 +44,26 @@ jobs:
         
     - name: 创建DMG安装包
       run: |
-        echo "🔍 检查DMG创建脚本..."
+        # 获取版本号
+        if [[ $GITHUB_REF == refs/tags/* ]]; then
+          VERSION=${GITHUB_REF#refs/tags/v}
+        else
+          VERSION="1.0.0"
+        fi
+        echo "🔍 检查DMG创建脚本... (版本: $VERSION)"
         if [ -f "create-dmg.sh" ]; then
           echo "✅ 找到DMG创建脚本"
           chmod +x create-dmg.sh
           echo "🚀 开始创建DMG..."
-          ./create-dmg.sh
+          ./create-dmg.sh $VERSION
           echo "🔍 检查DMG文件..."
-          if [ -f "QuiteNote-1.0.0.dmg" ]; then
+          DMG_FILE="QuiteNote-$VERSION.dmg"
+          if [ -f "$DMG_FILE" ]; then
             echo "✅ DMG创建成功:"
             ls -la QuiteNote-*.dmg
             # 验证DMG文件
             echo "🔍 验证DMG文件完整性..."
-            hdiutil attach -quiet -readonly -mountpoint /tmp/dmg_test QuiteNote-1.0.0.dmg
+            hdiutil attach -quiet -readonly -mountpoint /tmp/dmg_test "$DMG_FILE"
             if [ -d "/tmp/dmg_test/Quite Note.app" ]; then
               echo "✅ DMG文件验证成功，应用包完整"
             else
@@ -74,6 +81,12 @@ jobs:
         
     - name: 检查构建产物
       run: |
+        # 获取版本号
+        if [[ $GITHUB_REF == refs/tags/* ]]; then
+          VERSION=${GITHUB_REF#refs/tags/v}
+        else
+          VERSION="1.0.0"
+        fi
         echo "📁 当前目录内容:"
         ls -la
         echo ""
@@ -86,11 +99,14 @@ jobs:
         fi
         echo ""
         echo "🔍 检查DMG文件:"
-        if [ -f "QuiteNote-1.0.0.dmg" ]; then
-          echo "✅ DMG文件存在:"
+        DMG_FILE="QuiteNote-$VERSION.dmg"
+        if [ -f "$DMG_FILE" ]; then
+          echo "✅ DMG文件存在 ($DMG_FILE):"
           ls -la QuiteNote-*.dmg
         else
-          echo "❌ DMG文件不存在"
+          echo "❌ DMG文件不存在 ($DMG_FILE)"
+          echo "🔍 查找所有DMG文件:"
+          find . -name "*.dmg" -ls 2>/dev/null || echo "没有找到任何DMG文件"
         fi
         
     - name: 上传构建产物
