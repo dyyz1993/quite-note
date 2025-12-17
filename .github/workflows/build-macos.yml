@@ -65,9 +65,9 @@ jobs:
         fi
         echo ""
         echo "🔍 检查DMG文件:"
-        if [ -f "*.dmg" ]; then
+        if [ -f "QuiteNote-1.0.0.dmg" ]; then
           echo "✅ DMG文件存在:"
-          ls -la *.dmg
+          ls -la QuiteNote-*.dmg
         else
           echo "❌ DMG文件不存在"
         fi
@@ -78,7 +78,7 @@ jobs:
         name: QuiteNote-macOS-${{ github.run_number }}
         path: |
           Quite Note.app
-          *.dmg
+          QuiteNote-*.dmg
         retention-days: 30
       continue-on-error: true
         
@@ -98,7 +98,7 @@ jobs:
       with:
         files: |
           Quite Note.app
-          *.dmg
+          QuiteNote-*.dmg
         generate_release_notes: true
         draft: false
         prerelease: false
@@ -149,8 +149,8 @@ jobs:
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### 📦 构建产物" >> $GITHUB_STEP_SUMMARY
         echo "- ✅ 应用包: Quite Note.app" >> $GITHUB_STEP_SUMMARY
-        if [ -f "*.dmg" ]; then
-          echo "- ✅ 安装包: $(ls *.dmg)" >> $GITHUB_STEP_SUMMARY
+        if [ -f "QuiteNote-1.0.0.dmg" ]; then
+          echo "- ✅ 安装包: $(ls QuiteNote-*.dmg)" >> $GITHUB_STEP_SUMMARY
         fi
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### 🔧 构建信息" >> $GITHUB_STEP_SUMMARY
