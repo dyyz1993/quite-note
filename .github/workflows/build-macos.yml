@@ -122,7 +122,7 @@ jobs:
         fi
         echo "version=$VERSION" >> $GITHUB_OUTPUT
         
-    - name: 创建GitHub Release
+    - name: 创建GitHub Release (Tag推送)
       if: startsWith(github.ref, 'refs/tags/')
       uses: softprops/action-gh-release@v2
       with:
@@ -176,6 +176,64 @@ jobs:
           🏷️ 构建编号: ${{ github.run_number }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: 创建自动Release (主分支推送)
+      if: (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main') && github.event_name == 'push'
+      uses: softprops/action-gh-release@v2
+      with:
+        files: |
+          QuiteNote-*.dmg
+          Quite Note.app
+        generate_release_notes: true
+        draft: false
+        prerelease: false
+        name: Quite Note Auto-Build ${{ github.run_number }}
+        tag_name: auto-build-${{ github.run_number }}
+        body: |
+          🚀 **Quite Note 自动构建版本 ${{ github.run_number }}**
+          
+          基于SwiftUI的macOS剪切板历史记录和AI提炼工具
+          
+          ## 📦 下载文件（推荐顺序）
+          ### 🥇 **DMG安装包（推荐用户使用）**
+          - `QuiteNote-*.dmg` - 一键安装包，包含应用程序和Applications快捷方式
+          
+          ### 🥈 **应用包（高级用户）**
+          - `Quite Note.app` - 完整的macOS应用包
+          
+          ## 🚀 安装说明
+          ### DMG安装（推荐）⭐
+          1. 下载 `QuiteNote-*.dmg` 文件
+          2. 双击DMG文件挂载
+          3. 将 "Quite Note.app" 拖拽到 "Applications" 文件夹
+          4. 在 Launchpad 或 Applications 文件夹中启动应用
+          5. 首次运行时，如遇安全提示，请在 "系统偏好设置 > 安全性与隐私" 中允许
+          
+          ### 应用包安装（高级用户）
+          1. 下载 `Quite Note.app` 文件
+          2. 手动移动到 Applications 文件夹
+          3. 右键点击应用，选择"打开"
+          
+          ## ✨ 主要功能
+          - 🎨 自定义剪切板+AI闪光主题图标
+          - 🔧 改进的LucideIcons加载机制（修复第三方图标打包问题）
+          - 📱 优化的状态栏图标显示
+          - 📋 完整的剪切板历史记录管理
+          - 🤖 AI内容提炼功能
+          - 🔒 完整的代码签名，避免"损坏"提示
+          
+          ## 🔧 系统要求
+          - macOS 12.0 或更高版本
+          - 支持Intel和Apple Silicon（通用二进制）
+          
+          ---
+          📅 构建时间: ${{ github.event.head_commit.timestamp }}
+          🔗 提交哈希: ${{ github.sha }}
+          🏷️ 构建编号: ${{ github.run_number }}
+          📋 分支: ${{ github.ref_name }}
+          
+          ---
+          💡 **注意**: 这是自动构建版本，包含最新的功能和修复。如需稳定版本，请查看带版本号的 Release。
 
     - name: 构建信息
       if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
