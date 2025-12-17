@@ -48,20 +48,16 @@ elif [ -f "AppIcon.svg" ]; then
     convert AppIcon.svg -resize 36x36 "$RESOURCES_DIR/AppIcon.png"
 fi
 
-# 复制 LucideIcons 资源包
-# 注意：对于 macOS 应用，框架和资源包通常应放置在 Contents/Frameworks 目录下
-# 这样才能被应用程序正确加载。
-FRAMEWORKS_DIR="$CONTENTS/Frameworks"
-mkdir -p "$FRAMEWORKS_DIR"
-
-if [ -d ".build/arm64-apple-macosx/release/LucideIcons_LucideIcons.bundle" ]; then
-    echo "复制 LucideIcons 资源包到 Frameworks 目录..."
-    cp -R ".build/arm64-apple-macosx/release/LucideIcons_LucideIcons.bundle" "$FRAMEWORKS_DIR/"
-elif [ -d ".build/release/LucideIcons_LucideIcons.bundle" ]; then
-    echo "复制 LucideIcons 资源包到 Frameworks 目录 (通用路径)..."
-    cp -R ".build/release/LucideIcons_LucideIcons.bundle" "$FRAMEWORKS_DIR/"
+# 复制 LucideIcons 资源
+# 直接复制资源文件到 Resources 目录，避免 bundle 签名问题
+if [ -d ".build/arm64-apple-macosx/release/LucideIcons_LucideIcons.bundle/icons.xcassets" ]; then
+    echo "复制 LucideIcons 资源到 Resources 目录..."
+    cp -R ".build/arm64-apple-macosx/release/LucideIcons_LucideIcons.bundle/icons.xcassets" "$RESOURCES_DIR/"
+elif [ -d ".build/release/LucideIcons_LucideIcons.bundle/icons.xcassets" ]; then
+    echo "复制 LucideIcons 资源到 Resources 目录 (通用路径)..."
+    cp -R ".build/release/LucideIcons_LucideIcons.bundle/icons.xcassets" "$RESOURCES_DIR/"
 else
-    echo "警告：未找到 LucideIcons 资源包，请检查构建配置。"
+    echo "警告：未找到 LucideIcons 资源，请检查构建配置。"
 fi
 
 # 创建 Info.plist
@@ -106,6 +102,19 @@ EOF
 
 # 设置权限
 chmod +x "$MACOS_DIR/$EXECUTABLE_NAME"
+
+# 代码签名 (使用临时签名，避免"损坏"问题)
+echo "正在对应用进行代码签名..."
+if command -v codesign >/dev/null 2>&1; then
+    # 签名可执行文件
+    codesign --force --sign - "$MACOS_DIR/$EXECUTABLE_NAME"
+    
+    # 最后签名整个应用包
+    codesign --force --sign - "$APP_PATH"
+    echo "代码签名完成"
+else
+    echo "警告：未找到 codesign 工具，跳过代码签名"
+fi
 
 echo "应用构建完成！"
 echo "应用位置: $APP_PATH"
