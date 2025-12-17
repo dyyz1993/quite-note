@@ -51,14 +51,36 @@ jobs:
           echo "DMG创建脚本不存在，跳过DMG生成"
         fi
         
+    - name: 检查构建产物
+      run: |
+        echo "📁 当前目录内容:"
+        ls -la
+        echo ""
+        echo "🔍 检查应用包:"
+        if [ -d "Quite Note.app" ]; then
+          echo "✅ 应用包存在: Quite Note.app"
+          ls -la "Quite Note.app/Contents/"
+        else
+          echo "❌ 应用包不存在"
+        fi
+        echo ""
+        echo "🔍 检查DMG文件:"
+        if [ -f "*.dmg" ]; then
+          echo "✅ DMG文件存在:"
+          ls -la *.dmg
+        else
+          echo "❌ DMG文件不存在"
+        fi
+        
     - name: 上传构建产物
       uses: actions/upload-artifact@v4
       with:
-        name: QuiteNote-macOS
+        name: QuiteNote-macOS-${{ github.run_number }}
         path: |
           Quite Note.app
           *.dmg
         retention-days: 30
+      continue-on-error: true
         
     - name: 获取版本信息
       id: version
@@ -70,37 +92,24 @@ jobs:
         fi
         echo "version=$VERSION" >> $GITHUB_OUTPUT
         
-    - name: 创建Release
+    - name: 构建信息
       if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
-      uses: softprops/action-gh-release@v2
-      with:
-        tag_name: v${{ steps.version.outputs.version }}-${{ github.run_number }}
-        name: QuiteNote v${{ steps.version.outputs.version }}-${{ github.run_number }}
-        body: |
-          ## QuiteNote macOS 应用构建
-          
-          ### 新功能
-          - 🎨 自定义剪切板+AI闪光主题图标
-          - 🔧 改进的LucideIcons加载机制
-          - 📱 优化的状态栏图标显示
-          
-          ### 安装说明
-          1. 下载 `Quite Note.app` 或 `QuiteNote.dmg`
-          2. 如果下载了DMG，双击挂载并拖拽应用到Applications文件夹
-          3. 首次运行可能需要在"系统偏好设置 > 安全性与隐私"中允许运行
-          
-          ### 系统要求
-          - macOS 12.0 或更高版本
-          
-          ### 构建信息
-          - 构建时间: ${{ github.event.head_commit.timestamp }}
-          - 提交哈希: ${{ github.sha }}
-          - 构建编号: ${{ github.run_number }}
-        files: |
-          Quite Note.app
-          *.dmg
-        draft: false
-        prerelease: false
-        generate_release_notes: true
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        echo "## 🚀 QuiteNote macOS 应用构建完成" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 📦 构建产物" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ 应用包: Quite Note.app" >> $GITHUB_STEP_SUMMARY
+        if [ -f "*.dmg" ]; then
+          echo "- ✅ 安装包: $(ls *.dmg)" >> $GITHUB_STEP_SUMMARY
+        fi
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 🔧 构建信息" >> $GITHUB_STEP_SUMMARY
+        echo "- 📅 构建时间: ${{ github.event.head_commit.timestamp }}" >> $GITHUB_STEP_SUMMARY
+        echo "- 🔗 提交哈希: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+        echo "- 🏷️ 构建编号: ${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
+        echo "- 📱 版本号: ${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 📥 下载方式" >> $GITHUB_STEP_SUMMARY
+        echo "1. 访问 Actions 页面" >> $GITHUB_STEP_SUMMARY
+        echo "2. 点击此工作流的构建任务" >> $GITHUB_STEP_SUMMARY
+        echo "3. 在 'Artifacts' 部分下载构建产物" >> $GITHUB_STEP_SUMMARY
