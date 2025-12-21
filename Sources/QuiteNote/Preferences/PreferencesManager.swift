@@ -1,9 +1,12 @@
 import Foundation
 import AppKit
+import Combine
 
-final class PreferencesManager {
+final class PreferencesManager: ObservableObject {
     static let shared = PreferencesManager()
     private let d = UserDefaults.standard
+    
+    private init() {}
 
     var enableAI: Bool { d.object(forKey: "enableAI") == nil ? true : d.bool(forKey: "enableAI") }
     var titleLimit: Int { max(15, d.integer(forKey: "titleLimit")) }
@@ -18,6 +21,14 @@ final class PreferencesManager {
 
     var openAIBaseURL: String { d.string(forKey: "openAIBaseURL") ?? "https://api.openai.com/v1" }
     var openAIModel: String { d.string(forKey: "openAIModel") ?? "gpt-4o-mini" }
+    
+    // AI 提示词配置
+    var aiSystemPrompt: String { 
+        d.string(forKey: "aiSystemPrompt") ?? "你是一个专业的问题分析助手。请仔细分析以下文本，提炼出其中的核心问题或关键点。严格输出以下 JSON 字段，不要包含多余文本：{\"title\":不超过{titleLimit}字的问题标题,\"summary\":不超过{summaryLimit}字的问题总结,\"confidence\":0-1 之间置信度，仅数字}" 
+    }
+    var aiUserPrompt: String { 
+        d.string(forKey: "aiUserPrompt") ?? "请分析以下文本，提炼出其中的问题或关键点：\n\n{content}\n\n只返回 JSON，确保标题和总结都聚焦于问题本身。" 
+    }
 
     func setEnableAI(_ v: Bool) { d.set(v, forKey: "enableAI") }
     func setTitleLimit(_ v: Int) { d.set(v, forKey: "titleLimit") }
@@ -32,6 +43,26 @@ final class PreferencesManager {
 
     func setOpenAIBaseURL(_ v: String) { d.set(v, forKey: "openAIBaseURL") }
     func setOpenAIModel(_ v: String) { d.set(v, forKey: "openAIModel") }
+    func setAISystemPrompt(_ v: String) { 
+        objectWillChange.send()
+        d.set(v, forKey: "aiSystemPrompt") 
+    }
+    func setAIUserPrompt(_ v: String) { 
+        objectWillChange.send()
+        d.set(v, forKey: "aiUserPrompt") 
+    }
+    
+    /// 重置系统提示词为默认值
+    func resetAISystemPrompt() {
+        objectWillChange.send()
+        d.removeObject(forKey: "aiSystemPrompt")
+    }
+    
+    /// 重置用户提示词为默认值
+    func resetAIUserPrompt() {
+        objectWillChange.send()
+        d.removeObject(forKey: "aiUserPrompt")
+    }
     
     // 搜索历史相关方法
     func stringArray(forKey key: String) -> [String]? {

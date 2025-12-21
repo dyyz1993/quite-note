@@ -74,20 +74,26 @@ struct NativeSliderRow: View {
     }
 
     var body: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: 8) {
             HStack {
-                Label(label, systemImage: "slider.horizontal.3")
-                    .font(.system(size: 12))
-                    .foregroundColor(.themeGray400)
+                HStack(spacing: 6) {
+                    LucideView(name: .slidersHorizontal, size: 12, color: .themeTextSecondary)
+                    Text(label)
+                        .font(.themeCaption)
+                        .foregroundColor(.themeTextSecondary)
+                }
                 Spacer()
                 Text(currentValueText)
-                    .font(.system(size: 12, design: .monospaced))
+                    .font(.themeMono)
                     .foregroundColor(.themeBlue400)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 2)
-                    .background(Color.themeBlue500.opacity(0.1))
+                    .background(Color.themeBlue400.opacity(0.1))
                     .cornerRadius(4)
-                    .allowsHitTesting(false)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 4)
+                            .stroke(Color.themeBlue400.opacity(0.2), lineWidth: 0.5)
+                    )
             }
             NativeSlider(value: $value, range: range, step: step, onChange: onChange)
                 .frame(height: 16)

@@ -23,7 +23,7 @@ extension Font {
 
     // 字体族
     static let themeSans = Font.system(.body)                         // font-sans
-    static let themeMono = Font.monospaced                        // font-mono
+    static let themeMono = Font.system(size: 14, design: .monospaced)  // font-mono
 
     // 字重
     static let themeWeightLight = Font.system(.body, weight: .light)         // font-light
@@ -37,7 +37,7 @@ extension Font {
     static let themeTrackingWide = Font.system(size: 14)              // tracking-wider (需手动调整)
 
     // Monospace (代码字体)
-    static let themeMono2 = Font.monospaced                   // font-mono
+    static let themeMono2 = Font.system(size: 12, design: .monospaced) // font-mono
 
     // 字体变体
     static let themeUppercase = Font.system(size: 10, weight: .bold)  // uppercase (需手动转换)

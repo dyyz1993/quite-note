@@ -65,7 +65,13 @@ final class RecordStore: ObservableObject {
         Self.logger.info("开始调用AI总结，内容长度: \(content.count)")
         let index = 0
         records[index].aiStatus = "pending"
-        ai.summarize(titleLimit: titleLimit, summaryLimit: summaryLimit, content: content) { [weak self] result in
+        ai.summarize(
+            titleLimit: titleLimit, 
+            summaryLimit: summaryLimit, 
+            content: content,
+            systemPrompt: prefs.aiSystemPrompt,
+            userPrompt: prefs.aiUserPrompt
+        ) { [weak self] result in
             DispatchQueue.main.async {
                 guard let self else { return }
                 switch result {
@@ -395,7 +401,13 @@ final class RecordStore: ObservableObject {
             }
             
             records[index].aiStatus = "pending"
-            ai.summarize(titleLimit: titleLimit, summaryLimit: summaryLimit, content: r.content) { [weak self] result in
+            ai.summarize(
+                titleLimit: titleLimit, 
+                summaryLimit: summaryLimit, 
+                content: r.content,
+                systemPrompt: prefs.aiSystemPrompt,
+                userPrompt: prefs.aiUserPrompt
+            ) { [weak self] result in
                 DispatchQueue.main.async {
                     guard let self else { return }
                     switch result {

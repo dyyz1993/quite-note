@@ -13,6 +13,9 @@ protocol AIServiceProtocol {
     /// 执行提炼任务：输入限制与原文；completion 返回结构化结果或错误
     func summarize(titleLimit: Int, summaryLimit: Int, content: String, completion: @escaping (Result<SummaryResult, Error>) -> Void)
     
+    /// 使用自定义提示词执行提炼任务
+    func summarize(titleLimit: Int, summaryLimit: Int, content: String, systemPrompt: String?, userPrompt: String?, completion: @escaping (Result<SummaryResult, Error>) -> Void)
+    
     /// 为单个记录生成总结
     func summarizeSingle(_ content: String, completion: @escaping (Result<SummaryResult, Error>) -> Void)
 }
@@ -41,6 +44,8 @@ final class AIService: AIServiceProtocol {
         let titleLimit: Int
         let summaryLimit: Int
         let content: String
+        let systemPrompt: String?
+        let userPrompt: String?
         let completion: (Result<SummaryResult, Error>) -> Void
         let timestamp = Date()
     }
@@ -60,11 +65,18 @@ final class AIService: AIServiceProtocol {
 
     /// 执行提炼任务，失败或超时时降级为前 15 字标题与空总结
     func summarize(titleLimit: Int, summaryLimit: Int, content: String, completion: @escaping (Result<SummaryResult, Error>) -> Void) {
+        summarize(titleLimit: titleLimit, summaryLimit: summaryLimit, content: content, systemPrompt: nil, userPrompt: nil, completion: completion)
+    }
+    
+    /// 使用自定义提示词执行提炼任务
+    func summarize(titleLimit: Int, summaryLimit: Int, content: String, systemPrompt: String?, userPrompt: String?, completion: @escaping (Result<SummaryResult, Error>) -> Void) {
         // 创建请求并加入队列
         let request = AIRequest(
             titleLimit: titleLimit,
             summaryLimit: summaryLimit,
             content: content,
+            systemPrompt: systemPrompt,
+            userPrompt: userPrompt,
             completion: completion
         )
         
@@ -99,7 +111,13 @@ final class AIService: AIServiceProtocol {
         queueLock.unlock()
         
         // 处理请求 - 仅使用OpenAI
-        summarizeWithOpenAI(titleLimit: request.titleLimit, summaryLimit: request.summaryLimit, content: request.content) { [weak self] result in
+        summarizeWithOpenAI(
+            titleLimit: request.titleLimit, 
+            summaryLimit: request.summaryLimit, 
+            content: request.content,
+            systemPrompt: request.systemPrompt,
+            userPrompt: request.userPrompt
+        ) { [weak self] result in
             request.completion(result)
             self?.requestCompleted()
         }
@@ -126,7 +144,7 @@ final class AIService: AIServiceProtocol {
     }
 
     /// 使用 OpenAI Chat Completions 生成固定 JSON 输出
-    private func summarizeWithOpenAI(titleLimit: Int, summaryLimit: Int, content: String, completion: @escaping (Result<SummaryResult, Error>) -> Void) {
+    private func summarizeWithOpenAI(titleLimit: Int, summaryLimit: Int, content: String, systemPrompt: String? = nil, userPrompt: String? = nil, completion: @escaping (Result<SummaryResult, Error>) -> Void) {
         
         // 防止多次回调的标志
         var hasCompleted = false
@@ -150,8 +168,16 @@ final class AIService: AIServiceProtocol {
         req.addValue("application/json", forHTTPHeaderField: "Content-Type")
         req.addValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
 
-        let sys = "你是一个专业的问题分析助手。请仔细分析以下文本，提炼出其中的核心问题或关键点。严格输出以下 JSON 字段，不要包含多余文本：{\"title\":不超过\(titleLimit)字的问题标题,\"summary\":不超过\(summaryLimit)字的问题总结,\"confidence\":0-1 之间置信度，仅数字}";
-        let user = "请分析以下文本，提炼出其中的问题或关键点：\n\n\(content)\n\n只返回 JSON，确保标题和总结都聚焦于问题本身。"
+        // 使用默认或自定义提示词，并替换占位符
+        let defaultSys = "你是一个专业的问题分析助手。请仔细分析以下文本，提炼出其中的核心问题或关键点。严格输出以下 JSON 字段，不要包含多余文本：{\"title\":不超过\(titleLimit)字的问题标题,\"summary\":不超过\(summaryLimit)字的问题总结,\"confidence\":0-1 之间置信度，仅数字}";
+        let defaultUser = "请分析以下文本，提炼出其中的问题或关键点：\n\n\(content)\n\n只返回 JSON，确保标题和总结都聚焦于问题本身。"
+        
+        var sys = systemPrompt ?? defaultSys
+        sys = sys.replacingOccurrences(of: "{titleLimit}", with: "\(titleLimit)")
+        sys = sys.replacingOccurrences(of: "{summaryLimit}", with: "\(summaryLimit)")
+        
+        var user = userPrompt ?? defaultUser
+        user = user.replacingOccurrences(of: "{content}", with: content)
 
         let body: [String: Any] = [
             "model": openAIModel,
@@ -160,7 +186,8 @@ final class AIService: AIServiceProtocol {
                 ["role": "user", "content": user]
             ],
             "temperature": 0.3,
-            "max_tokens": 500
+            "max_tokens": 5000,
+            "response_format": ["type": "json_object"]
         ]
 
         do {
