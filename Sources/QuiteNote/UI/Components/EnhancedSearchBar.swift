@@ -9,6 +9,7 @@ struct EnhancedSearchBar: View {
     @State private var showAdvancedOptions = false
 
     @FocusState private var isSearchFieldFocused: Bool
+    @State private var searchBarWidth: CGFloat = 0
     
     // 防抖处理相关
     @State private var debouncedSearchTerm: String = ""
@@ -16,29 +17,85 @@ struct EnhancedSearchBar: View {
     private let searchDebounceInterval: TimeInterval = 0.3
     
     var body: some View {
-        VStack(spacing: 0) {
-            searchBarView
-            searchHistoryView
-            advancedOptionsView
-        }
-        .onAppear {
-            isSearchFieldFocused = true
-            debouncedSearchTerm = searchTerm
-        }
-        .onOutsideTap {
-            showHistory = false
-            showAdvancedOptions = false
-        }
+        searchBarView
+            .background(
+                GeometryReader { proxy in
+                    Color.clear
+                        .onAppear {
+                            searchBarWidth = proxy.size.width
+                        }
+                        .onChange(of: proxy.size.width) { newValue in
+                            searchBarWidth = newValue
+                        }
+                }
+            )
+            .overlay(
+                ZStack(alignment: .topLeading) {
+                    if showHistory || showAdvancedOptions {
+                        // 点击外部区域自动关闭的透明层
+                        Color.black.opacity(0.001)
+                            .frame(width: 3000, height: 3000)
+                            .onTapGesture {
+                                withAnimation(.spring) {
+                                    showHistory = false
+                                    showAdvancedOptions = false
+                                }
+                            }
+                        
+                        // 浮层内容
+                        VStack(spacing: 0) {
+                            // 顶部分隔线，使其与搜索框融合
+                            Rectangle()
+                                .fill(Color.themeBorder)
+                                .frame(height: 1)
+                            
+                            ScrollView {
+                                VStack(spacing: 0) {
+                                    if showHistory {
+                                        searchHistoryContent
+                                    }
+                                    if showAdvancedOptions {
+                                        advancedOptionsContent
+                                    }
+                                }
+                                .padding(.vertical, 4)
+                            }
+                            .frame(maxHeight: 350)
+                        }
+                        .frame(width: searchBarWidth) // 完全对齐搜索栏宽度
+                        .background(Color.themeBackground)
+                        .clipShape(RoundedCorner(radius: 12, corners: [.bottomLeft, .bottomRight]))
+                        .shadow(color: Color.black.opacity(0.3), radius: 15, x: 0, y: 10)
+                        .overlay(
+                            RoundedCorner(radius: 12, corners: [.bottomLeft, .bottomRight])
+                                .stroke(Color.themeBorder, lineWidth: 1)
+                        )
+                        .offset(y: 40) // 调整到搜索栏下方
+                        .transition(.asymmetric(
+                            insertion: .opacity.combined(with: .offset(y: -5)),
+                            removal: .opacity.combined(with: .scale(scale: 0.98, anchor: .top))
+                        ))
+                    }
+                },
+                alignment: .topLeading
+            )
+            .zIndex(100)
+            .onAppear {
+                isSearchFieldFocused = true
+                debouncedSearchTerm = searchTerm
+            }
         .onChange(of: searchTerm) { newValue in
             // 防抖处理，避免大量数据粘贴时卡死
             searchWorkItem?.cancel()
             
             // 立即更新UI状态
-            if !newValue.isEmpty {
-                showHistory = true
-                showAdvancedOptions = false
-            } else {
-                showHistory = false
+            withAnimation(.spring) {
+                if !newValue.isEmpty {
+                    showHistory = true
+                    showAdvancedOptions = false
+                } else {
+                    showHistory = false
+                }
             }
             
             // 使用防抖更新实际搜索词
@@ -98,9 +155,11 @@ struct EnhancedSearchBar: View {
             
             // 高级搜索按钮
             Button(action: {
-                showAdvancedOptions.toggle()
-                if showAdvancedOptions {
-                    showHistory = false
+                withAnimation(.spring) {
+                    showAdvancedOptions.toggle()
+                    if showAdvancedOptions {
+                        showHistory = false
+                    }
                 }
             }) {
                 LucideView(name: .slidersHorizontal, size: 14, color: showAdvancedOptions ? .themeBlue500 : .themeTextSecondary)
@@ -116,42 +175,164 @@ struct EnhancedSearchBar: View {
         .overlay(Rectangle().frame(height: 1).foregroundColor(Color.themeBorder).allowsHitTesting(false), alignment: .bottom)
     }
     
-    /// 搜索历史下拉视图
-    @ViewBuilder
-    private var searchHistoryView: some View {
-        if showHistory && !store.searchHistory.isEmpty {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    ForEach(store.searchHistory.prefix(5), id: \.self) { historyItem in
-                        historyItemView(historyItem)
-                    }
-                    
-                    // 清空历史按钮
-                    Button(action: {
-                        store.clearSearchHistory()
-                        showHistory = false
-                    }) {
-                        HStack {
-                            LucideView(name: .trash2, size: 12, color: .themeRed500)
-                            Text("清空搜索历史")
-                                .font(.themeCaption)
-                                .foregroundColor(.themeRed500)
-                            Spacer()
+    /// 搜索历史下拉视图内容
+    private var searchHistoryContent: some View {
+        Group {
+            if !store.searchHistory.isEmpty {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(store.searchHistory.prefix(5), id: \.self) { historyItem in
+                            historyItemView(historyItem)
                         }
-                        .padding(.horizontal, ThemeSpacing.px3.rawValue)
-                        .padding(.vertical, 8)
+                        
+                        // 清空历史按钮
+                        Button(action: {
+                            store.clearSearchHistory()
+                            showHistory = false
+                        }) {
+                            HStack {
+                                LucideView(name: .trash2, size: 12, color: .themeRed500)
+                                Text("清空搜索历史")
+                                    .font(.themeCaption)
+                                    .foregroundColor(.themeRed500)
+                                Spacer()
+                            }
+                            .padding(.horizontal, ThemeSpacing.px3.rawValue)
+                            .padding(.vertical, 8)
+                        }
+                        .buttonStyle(.plain)
+                        .pointingHandCursor()
                     }
-                    .buttonStyle(.plain)
-                    .pointingHandCursor()
+                }
+                .frame(maxHeight: 200)
+            }
+        }
+    }
+    
+    /// 高级搜索选项视图内容
+    private var advancedOptionsContent: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            // 搜索范围
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    LucideView(name: .filter, size: 12, color: .themeTextSecondary)
+                    Text("搜索范围")
+                        .font(.themeCaption)
+                        .foregroundColor(.themeTextSecondary)
+                }
+                
+                HStack(spacing: 8) {
+                    ChipItem(title: "标题", isOn: $store.searchInTitles)
+                    ChipItem(title: "内容", isOn: $store.searchInContent)
+                    ChipItem(title: "AI总结", isOn: $store.searchInSummaries)
                 }
             }
-            .frame(maxHeight: 200)
-            .background(Color.themeBackground)
-            .cornerRadius(8)
-            .shadow(color: Color.black.opacity(0.2), radius: 10, x: 0, y: 5)
-            .padding(.top, 4)
-            .transition(.opacity.combined(with: .scale))
-            .zIndex(10)
+            .padding(.horizontal, 4)
+            
+            Divider()
+                .background(Color.white.opacity(0.05))
+            
+            // 搜索配置
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    LucideView(name: .settings2, size: 12, color: .themeTextSecondary)
+                    Text("搜索配置")
+                        .font(.themeCaption)
+                        .foregroundColor(.themeTextSecondary)
+                }
+                
+                VStack(spacing: 2) {
+                    SelectionRow(title: "区分大小写", icon: .caseSensitive, isOn: $store.searchCaseSensitive)
+                    SelectionRow(title: "正则表达式", icon: .regex, isOn: $store.searchUseRegex)
+                }
+            }
+            .padding(.horizontal, 4)
+        }
+        .padding(ThemeSpacing.px4)
+    }
+    
+    /// Chip 样式选择项
+    struct ChipItem: View {
+        let title: String
+        @Binding var isOn: Bool
+        @State private var isHovering = false
+        
+        var body: some View {
+            Text(title)
+                .font(.system(size: 11, weight: .medium))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(
+                    Capsule()
+                        .fill(isOn ? Color.themeBlue500.opacity(0.9) : (isHovering ? Color.white.opacity(0.1) : Color.white.opacity(0.05)))
+                )
+                .foregroundColor(isOn ? .white : .themeTextSecondary)
+                .onTapGesture {
+                    withAnimation(.spring(response: 0.3)) {
+                        isOn.toggle()
+                    }
+                }
+                .onHover { isHovering = $0 }
+                .pointingHandCursor()
+        }
+    }
+    
+    /// 简单的流式布局容器
+    struct FlowLayout: View {
+        let spacing: CGFloat
+        let content: [AnyView]
+        
+        init<Views>(spacing: CGFloat, @ViewBuilder content: () -> Views) where Views: View {
+            self.spacing = spacing
+            // 这里为了简单，我们直接用 HStack。如果项很多，可以使用更复杂的 Flow 实现。
+            // 对于 3 个项，HStack 足够了。
+            self.content = [] // 这种方式在 SwiftUI 中不太好用，改用普通布局
+        }
+        
+        var body: some View {
+            EmptyView()
+        }
+    }
+    
+    /// 搜索范围/选项选择行
+    struct SelectionRow: View {
+        let title: String
+        let icon: IconName
+        @Binding var isOn: Bool
+        @State private var isHovering = false
+        
+        var body: some View {
+            HStack(spacing: 12) {
+                LucideView(name: icon, size: 14, color: isOn ? .themeBlue500 : .themeTextSecondary)
+                
+                Text(title)
+                    .font(.themeBody)
+                    .foregroundColor(isOn ? .themeTextPrimary : .themeTextSecondary)
+                
+                Spacer()
+                
+                if isOn {
+                    LucideView(name: .check, size: 12, color: .themeBlue500)
+                } else {
+                    Circle()
+                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                        .frame(width: 12, height: 12)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(isHovering ? Color.white.opacity(0.05) : Color.clear)
+            )
+            .contentShape(Rectangle())
+            .onTapGesture {
+                withAnimation(.spring(response: 0.3)) {
+                    isOn.toggle()
+                }
+            }
+            .onHover { isHovering = $0 }
+            .pointingHandCursor()
         }
     }
     
@@ -193,57 +374,16 @@ struct EnhancedSearchBar: View {
         }
     }
     
-    /// 高级搜索选项视图
+    /// 搜索历史下拉视图 (保留兼容性，但不再直接使用)
+    @ViewBuilder
+    private var searchHistoryView: some View {
+        EmptyView()
+    }
+    
+    /// 高级搜索选项视图 (保留兼容性，但不再直接使用)
     @ViewBuilder
     private var advancedOptionsView: some View {
-        if showAdvancedOptions {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("搜索选项")
-                        .font(.themeH2)
-                        .foregroundColor(.themeTextPrimary)
-                    
-                    Divider()
-                        .background(Color.themeBorder)
-                    
-                    // 搜索范围
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("搜索范围")
-                            .font(.themeCaption)
-                            .foregroundColor(.themeTextSecondary)
-                        
-                        ToggleRow(title: "标题", subtitle: "", isOn: $store.searchInTitles)
-                        ToggleRow(title: "内容", subtitle: "", isOn: $store.searchInContent)
-                        ToggleRow(title: "AI总结", subtitle: "", isOn: $store.searchInSummaries)
-                    }
-                    
-                    Divider()
-                        .background(Color.themeBorder)
-                    
-                    // 搜索选项
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("搜索选项")
-                            .font(.themeCaption)
-                            .foregroundColor(.themeTextSecondary)
-                        
-                        ToggleRow(title: "区分大小写", subtitle: "", isOn: $store.searchCaseSensitive)
-                        ToggleRow(title: "正则表达式", subtitle: "", isOn: $store.searchUseRegex)
-                    }
-                }
-                .padding(ThemeSpacing.px4)
-            }
-            .frame(maxHeight: 250) // 限制最大高度，确保内容可滚动
-            .background(Color.themeBackground)
-            .cornerRadius(8)
-            .shadow(color: Color.black.opacity(0.1), radius: 8, x: 0, y: 4)
-            .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(Color.themeBorder, lineWidth: 0.5)
-            )
-            .padding(.top, 4)
-            .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .topTrailing)))
-            .zIndex(20)
-        }
+        EmptyView()
     }
     
 

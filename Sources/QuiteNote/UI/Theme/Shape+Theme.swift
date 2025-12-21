@@ -215,6 +215,61 @@ struct ThemeShapes {
     }
 }
 
+// MARK: - Custom Shapes
+
+/// 自定义圆角形状，支持指定特定角 (macOS 兼容实现)
+struct RoundedCorner: Shape {
+    var radius: CGFloat = .infinity
+    var corners: RectCorner = .allCorners
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        
+        let width = rect.size.width
+        let height = rect.size.height
+        
+        // 确保半径不超过宽高的一半
+        let r = min(min(radius, width/2), height/2)
+        
+        let tr = corners.contains(.topRight) ? r : 0
+        let br = corners.contains(.bottomRight) ? r : 0
+        let bl = corners.contains(.bottomLeft) ? r : 0
+        let tl = corners.contains(.topLeft) ? r : 0
+        
+        path.move(to: CGPoint(x: width / 2, y: 0))
+        path.addLine(to: CGPoint(x: width - tr, y: 0))
+        path.addArc(center: CGPoint(x: width - tr, y: tr), radius: tr,
+                   startAngle: Angle(degrees: -90), endAngle: Angle(degrees: 0), clockwise: false)
+        
+        path.addLine(to: CGPoint(x: width, y: height - br))
+        path.addArc(center: CGPoint(x: width - br, y: height - br), radius: br,
+                   startAngle: Angle(degrees: 0), endAngle: Angle(degrees: 90), clockwise: false)
+        
+        path.addLine(to: CGPoint(x: bl, y: height))
+        path.addArc(center: CGPoint(x: bl, y: height - bl), radius: bl,
+                   startAngle: Angle(degrees: 90), endAngle: Angle(degrees: 180), clockwise: false)
+        
+        path.addLine(to: CGPoint(x: 0, y: tl))
+        path.addArc(center: CGPoint(x: tl, y: tl), radius: tl,
+                   startAngle: Angle(degrees: 180), endAngle: Angle(degrees: 270), clockwise: false)
+        path.closeSubpath()
+        
+        return path
+    }
+}
+
+/// 矩形圆角枚举
+struct RectCorner: OptionSet {
+    let rawValue: Int
+    
+    static let topLeft = RectCorner(rawValue: 1 << 0)
+    static let topRight = RectCorner(rawValue: 1 << 1)
+    static let bottomLeft = RectCorner(rawValue: 1 << 2)
+    static let bottomRight = RectCorner(rawValue: 1 << 3)
+    
+    static let allCorners: RectCorner = [.topLeft, .topRight, .bottomLeft, .bottomRight]
+}
+
 // MARK: - Border Utilities
 //
 // Additional utilities for working with borders.
