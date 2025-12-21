@@ -693,7 +693,7 @@ struct FloatingRootView: View {
             
             Spacer()
             
-            Text(showSettings ? "偏好设置" : "剪切板历史")
+            Text(showSettings ? "偏好设置" : "闪记")
                 .font(.themeH2) // 使用主题文件中的字体定义
                 .foregroundColor(.themeTextPrimary) // 使用主题文件中的文本颜色
             
@@ -1760,7 +1760,7 @@ private extension RecordCardView {
     
     /// 开始删除倒计时
     func startDeleteTimer() {
-        deleteCountdown = 5
+        deleteCountdown = 3
         deleteTimer?.invalidate()
         deleteTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
             if deleteCountdown > 1 {
