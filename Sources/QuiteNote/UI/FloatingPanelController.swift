@@ -777,31 +777,44 @@ struct FloatingRootView: View {
     
     /// 列表内容视图
     private var listContentView: some View {
-        // 使用分页加载的记录
-        let items: [Record]
-        
-        if searchTerm.isEmpty {
-            // 使用 RecordStore 中的记录，已经通过分页加载
-            items = store.records
-        } else {
-            // 搜索结果也使用分页
-            items = Array(searchResults.prefix(50))
-        }
-        
-        return ScrollView {
-            LazyVStack(spacing: 12) { // 使用LazyVStack提高性能，只渲染可见项
-                if items.isEmpty {
-                    emptyStateView
-                } else {
-                    // 使用ViewBuilder优化条件渲染
-                    listViewContent(items: items)
-                    
-                    // 加载更多指示器
-                    if searchTerm.isEmpty && hasMoreRecords {
-                        loadMoreIndicatorView
-                            .onAppear {
-                                loadMoreRecords()
+        ScrollView {
+            LazyVStack(spacing: 12, pinnedViews: [.sectionHeaders]) { // 使用LazyVStack提高性能，并固定Header
+                if searchTerm.isEmpty {
+                    if store.records.isEmpty {
+                        emptyStateView
+                    } else {
+                        let starred = store.records.filter { $0.starred }
+                        let others = store.records.filter { !$0.starred }
+                        
+                        // 收藏部分
+                        if !starred.isEmpty {
+                            Section(header: starredSectionHeader(count: starred.count)) {
+                                // 使用动画包裹收藏列表内容，根据收藏数量调整动画时间
+                                animatedStarredListView(starred: starred)
                             }
+                        }
+                        
+                        // 其他记录部分
+                        if !others.isEmpty {
+                            Section(header: !starred.isEmpty ? otherSectionHeader : nil) {
+                                listViewContent(items: others)
+                            }
+                        }
+                        
+                        // 加载更多指示器
+                        if hasMoreRecords {
+                            loadMoreIndicatorView
+                                .onAppear {
+                                    loadMoreRecords()
+                                }
+                        }
+                    }
+                } else {
+                    let items = Array(searchResults.prefix(50))
+                    if items.isEmpty {
+                        emptyStateView
+                    } else {
+                        listViewContent(items: items)
                     }
                 }
             }
@@ -834,6 +847,50 @@ struct FloatingRootView: View {
         }
     }
     
+    /// 收藏部分 Header
+    private func starredSectionHeader(count: Int) -> some View {
+        Button(action: {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                store.isStarredCollapsed.toggle()
+            }
+        }) {
+            HStack(spacing: 8) {
+                LucideView(name: .star, size: 14, color: .themeYellow500)
+                Text("已收藏 (\(count))")
+                    .font(.system(size: 12, weight: .bold))
+                
+                Spacer()
+                
+                LucideView(name: .chevronRight, size: 12, color: .themeGray400)
+            .rotationEffect(.degrees(store.isStarredCollapsed ? 90 : 0))
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Color.themeItem.opacity(0.8))
+            .cornerRadius(6)
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(Color.white.opacity(0.05), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .pointingHandCursor()
+        .padding(.bottom, 4)
+    }
+    
+    /// 其他部分 Header
+    private var otherSectionHeader: some View {
+        HStack {
+            Text("所有记录")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundColor(.themeGray400)
+            Spacer()
+        }
+        .padding(.horizontal, 4)
+        .padding(.vertical, 8)
+        .background(Color.themeBackground)
+    }
+    
     /// 空状态视图
     private var emptyStateView: some View {
         VStack(spacing: 12) {
@@ -857,6 +914,71 @@ struct FloatingRootView: View {
                 store: store
             )
             .equatable() // 使用 Equatable 减少重绘
+        }
+    }
+    
+    /// 为收藏列表提供动画效果的视图
+    /// - Parameter starred: 收藏的记录数组
+    /// - Returns: 带动画效果的收藏列表视图
+    @ViewBuilder
+    private func animatedStarredListView(starred: [Record]) -> some View {
+        // 根据收藏数量动态调整动画时间
+        let animationDuration = calculateAnimationDuration(for: starred.count)
+        
+        // 如果收藏数量很多（比如超过50条），只显示前50条，并提供"查看更多"的提示
+        let displayCount = min(starred.count, 50)
+        let displayRecords = Array(starred.prefix(displayCount))
+        
+        VStack(spacing: 0) {
+            // 显示前50条记录
+            ForEach(displayRecords) { record in
+                RecordCardView(
+                    record: record,
+                    expandedId: $expandedId,
+                    store: store
+                )
+                .equatable() // 使用 Equatable 减少重绘
+                .transition(.asymmetric(
+                    insertion: .opacity.combined(with: .scale(scale: 0.8, anchor: .top)),
+                    removal: .opacity.combined(with: .scale(scale: 0.8, anchor: .top))
+                ))
+            }
+            
+            // 如果还有更多记录，显示"查看更多"提示
+            if starred.count > 50 {
+                HStack {
+                    Spacer()
+                    Text("还有 \(starred.count - 50) 条收藏记录...")
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+                    Spacer()
+                }
+                .padding(.vertical, 8)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    // 可以在这里实现展开全部的逻辑，暂时先不做
+                }
+            }
+        }
+        .opacity(store.isStarredCollapsed ? 0 : 1)
+        .scaleEffect(y: store.isStarredCollapsed ? 0.1 : 1.0, anchor: .top)
+        .frame(height: store.isStarredCollapsed ? 0 : nil)
+        .clipped()
+        .animation(.easeInOut(duration: animationDuration), value: store.isStarredCollapsed)
+    }
+    
+    /// 根据列表大小计算动画持续时间
+    /// - Parameter count: 列表项数量
+    /// - Returns: 动画持续时间（秒）
+    private func calculateAnimationDuration(for count: Int) -> Double {
+        if count <= 10 {
+            return 0.15
+        } else if count <= 20 {
+            return 0.2
+        } else if count <= 50 {
+            return 0.25
+        } else {
+            return 0.3
         }
     }
     
@@ -1193,6 +1315,8 @@ struct FloatingBallView: View {
             }
         }
     }
+    
+    
 }
 
 /// 单条记录行

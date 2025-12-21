@@ -40,6 +40,7 @@ final class RecordStore: ObservableObject {
     @Published var summaryLimit: Int = 100
     @Published var dedupEnabled: Bool = true
     @Published var maxRecords: Int = 100
+    @Published var isStarredCollapsed: Bool = false
     private let stack = CoreDataStack.shared
     private let prefs = PreferencesManager.shared
 
