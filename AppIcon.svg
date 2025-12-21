@@ -3,8 +3,8 @@
   <!-- 背景圆形 -->
   <circle cx="512" cy="512" r="480" fill="#4A6FFF" stroke="#2E4BC7" stroke-width="20"/>
   
-  <!-- 剪切板主体 -->
-  <rect x="280" y="200" width="464" height="600" rx="20" ry="20" fill="#FFFFFF" stroke="#D1D5DB" stroke-width="8"/>
+  <!-- 剪切板主体 - 改为半透明白色背景 -->
+  <rect x="280" y="200" width="464" height="600" rx="20" ry="20" fill="#F3F4F6" stroke="#D1D5DB" stroke-width="8"/>
   
   <!-- 剪切板夹子 -->
   <rect x="420" y="160" width="184" height="80" rx="12" ry="12" fill="#6B7280" stroke="#4B5563" stroke-width="6"/>
