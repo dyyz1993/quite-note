@@ -28,7 +28,21 @@ mkdir -p "$RESOURCES_DIR"
 
 # 复制二进制文件
 echo "复制二进制文件..."
-cp .build/release/$EXECUTABLE_NAME "$MACOS_DIR/"
+if [ -f ".build/apple/Products/Release/$EXECUTABLE_NAME" ]; then
+    cp ".build/apple/Products/Release/$EXECUTABLE_NAME" "$MACOS_DIR/"
+elif [ -f ".build/release/$EXECUTABLE_NAME" ]; then
+    cp ".build/release/$EXECUTABLE_NAME" "$MACOS_DIR/"
+else
+    # 尝试在所有可能的路径中查找最新的二进制文件
+    FOUND_BIN=$(find .build -name "$EXECUTABLE_NAME" -type f -path "*/release/*" | head -n 1)
+    if [ -n "$FOUND_BIN" ]; then
+        echo "在 $FOUND_BIN 找到二进制文件"
+        cp "$FOUND_BIN" "$MACOS_DIR/"
+    else
+        echo "错误：找不到编译好的二进制文件 $EXECUTABLE_NAME"
+        exit 1
+    fi
+fi
 
 # 复制图标文件
 if [ -f "AppIcon.icns" ]; then
@@ -42,10 +56,10 @@ fi
 # 转换 SVG 为 PNG 状态栏图标
 if [ -f "StatusBarIcon.svg" ]; then
     echo "转换 SVG 为 PNG 状态栏图标..."
-    convert StatusBarIcon.svg -resize 36x36 "$RESOURCES_DIR/StatusBarIcon.png"
+    magick StatusBarIcon.svg -resize 36x36 "$RESOURCES_DIR/StatusBarIcon.png" || convert StatusBarIcon.svg -resize 36x36 "$RESOURCES_DIR/StatusBarIcon.png"
 elif [ -f "AppIcon.svg" ]; then
     echo "转换应用图标 SVG 为 PNG 状态栏图标..."
-    convert AppIcon.svg -resize 36x36 "$RESOURCES_DIR/AppIcon.png"
+    magick AppIcon.svg -resize 36x36 "$RESOURCES_DIR/AppIcon.png" || convert AppIcon.svg -resize 36x36 "$RESOURCES_DIR/AppIcon.png"
 fi
 
 # 复制 LucideIcons 资源

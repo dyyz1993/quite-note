@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import UserNotifications
 
 @main
 struct MainApp: App {
@@ -85,11 +86,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         
         // 发送系统通知
         print("[DEBUG] 发送系统通知...")
-        let notification = NSUserNotification()
-        notification.title = "QuiteNote 应用已启动"
-        notification.informativeText = "如果您看到这个通知，说明应用正在运行。"
-        notification.soundName = NSUserNotificationDefaultSoundName
-        NSUserNotificationCenter.default.deliver(notification)
+        let content = UNMutableNotificationContent()
+        content.title = "QuiteNote 应用已启动"
+        content.body = "如果您看到这个通知，说明应用正在运行。"
+        content.sound = .default
+
+        let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                print("[DEBUG] Failed to deliver notification: \(error)")
+            }
+        }
 
         NotificationCenter.default.addObserver(self, selector: #selector(onToggleHistory(_:)), name: .bluetoothToggleHistory, object: nil)
 

@@ -9,6 +9,14 @@ final class RecordStore: ObservableObject {
     @Published private(set) var records: [Record] = []
     @Published var lightHint: String? = nil
     @Published var toast: ToastMessage? = nil
+    
+    /// 是否有正在处理的 AI 任务
+    var isAIProcessing: Bool {
+        records.contains { $0.aiStatus == "pending" }
+    }
+    
+    /// 上次 AI 成功的时间，用于 UI 反馈
+    @Published var lastAISuccessAt: Date? = nil
 
     @Published var enableAI: Bool = true
     @Published var searchHistory: [String] = []
@@ -80,6 +88,7 @@ final class RecordStore: ObservableObject {
                     self.records[index].summary = s.summary
                     self.records[index].summaryConfidence = s.confidence
                     self.records[index].aiStatus = "success"
+                    self.lastAISuccessAt = Date()
                     self.updateCDRecord(id: cd.id, title: s.title, summary: s.summary, confidence: s.confidence, aiStatus: "success")
                 case .failure:
                     self.records[index].aiStatus = "fail"
@@ -416,6 +425,7 @@ final class RecordStore: ObservableObject {
                         self.records[index].summary = s.summary
                         self.records[index].summaryConfidence = s.confidence
                         self.records[index].aiStatus = "success"
+                        self.lastAISuccessAt = Date()
                         self.updateCDRecord(id: self.records[index].id, title: s.title, summary: s.summary, confidence: s.confidence, aiStatus: "success")
                         print("[BULK] 记录 \(index) 处理成功")
                     case .failure(let error):
@@ -572,6 +582,7 @@ final class RecordStore: ObservableObject {
                     self.records[idx].summary = s.summary
                     self.records[idx].summaryConfidence = s.confidence
                     self.records[idx].aiStatus = "success"
+                    self.lastAISuccessAt = Date()
                     self.updateCDRecord(id: record.id, title: s.title, summary: s.summary, confidence: s.confidence, aiStatus: "success")
                 case .failure:
                     self.records[idx].aiStatus = "fail"

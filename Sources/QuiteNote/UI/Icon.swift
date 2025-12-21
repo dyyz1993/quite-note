@@ -48,6 +48,7 @@ enum IconName: String {
     case funnelPlus = "funnel-plus"
     case eraser = "eraser"
     case circleX = "circle-x"
+    case minus = "minus"
 }
 
 /// SwiftUI 包装，渲染 Lucide 图标（不使用 SF Symbols 回退）

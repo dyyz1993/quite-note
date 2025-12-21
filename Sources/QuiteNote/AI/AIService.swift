@@ -207,11 +207,8 @@ final class AIService: AIServiceProtocol {
         config.requestCachePolicy = .reloadIgnoringLocalCacheData
         let session = URLSession(configuration: config)
 
-        let task = session.dataTask(with: req) { [weak self] data, response, error in
-            guard let self = self else { return }
-            
-            if let error = error {
-                
+        let task = session.dataTask(with: req) { data, response, error in
+            if error != nil {
                 let baseTitle = String(content.prefix(max(0, min(titleLimit, 15))))
                 let result = SummaryResult(title: baseTitle, summary: "", confidence: 0.0)
                 safeCompletion(.success(result))

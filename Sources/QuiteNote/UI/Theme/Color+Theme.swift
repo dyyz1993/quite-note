@@ -15,6 +15,7 @@ import SwiftUI
 
 extension Color {
     // Gray Scale (Tailwind 900-100)
+    static let themeDeepBlue = Color(red: 13/255, green: 17/255, blue: 28/255)    // #0D111C (深色背景)
     static let themeGray900 = Color(red: 17/255, green: 24/255, blue: 39/255)     // #111827 (bg-gray-900)
     static let themeGray800 = Color(red: 31/255, green: 41/255, blue: 55/255)     // #1F2937 (bg-gray-800)
     static let themeGray700 = Color(red: 55/255, green: 65/255, blue: 81/255)     // #374151 (bg-gray-700)

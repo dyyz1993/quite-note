@@ -31,8 +31,17 @@ class CustomPanel: NSWindow {
     override var canBecomeMain: Bool { true }
 }
 
+enum WindowMode {
+    case expanded
+    case floatingBall
+}
+
 final class WindowFocusProvider: ObservableObject {
     @Published var isKeyWindow: Bool = false
+    @Published var mode: WindowMode = .expanded
+    @Published var ballPosition: CGPoint = .zero
+    @Published var lastExpandedFrame: NSRect? = nil
+    var isRestoring: Bool = false // 新增：标记是否正在从浮球恢复，用于防止坐标漂移
 }
 
 
@@ -141,6 +150,8 @@ final class FloatingPanelController {
             }
         }, onClose: { [weak self] in
             self?.hide()
+        }, onMinimize: { [weak self] in
+            self?.minimizeToBall()
         }))
         panel.contentView = hosting
         
@@ -152,6 +163,26 @@ final class FloatingPanelController {
         NotificationCenter.default.addObserver(self, selector: #selector(windowDidResize(_:)), name: NSWindow.didResizeNotification, object: panel)
         NotificationCenter.default.addObserver(self, selector: #selector(onWindowKeyDidChange(_:)), name: NSWindow.didBecomeKeyNotification, object: panel)
         NotificationCenter.default.addObserver(self, selector: #selector(onWindowKeyDidChange(_:)), name: NSWindow.didResignKeyNotification, object: panel)
+        
+        // 监听浮球恢复通知
+        NotificationCenter.default.addObserver(self, selector: #selector(onRestoreFromBall), name: Notification.Name("restoreFromBall"), object: nil)
+        
+        // 监听浮球位置更新通知
+        NotificationCenter.default.addObserver(self, selector: #selector(onUpdateBallPosition(_:)), name: Notification.Name("updateBallPosition"), object: nil)
+    }
+    
+    @objc private func onRestoreFromBall() {
+        restoreFromBall()
+    }
+    
+    @objc private func onUpdateBallPosition(_ notification: Notification) {
+        guard let pos = notification.object as? CGPoint else { return }
+        let size = panel.frame.size
+        let newFrame = NSRect(x: pos.x - size.width/2, y: pos.y - size.height/2, width: size.width, height: size.height)
+        panel.setFrame(newFrame, display: true)
+        
+        // 更新球的位置状态
+        focusProvider.ballPosition = pos
     }
 
     /// 显示悬浮窗，带缩放+淡入动效
@@ -312,9 +343,14 @@ final class FloatingPanelController {
     }
     
     @objc private func windowDidMove(_ note: Notification) {
-        // 窗口移动时保存位置和屏幕信息
-        if PreferencesManager.shared.rememberWindowPosition {
+        // 窗口移动时保存位置和屏幕信息，仅在展开模式下保存，防止保存缩放过程中的中间状态或浮球位置
+        if PreferencesManager.shared.rememberWindowPosition && focusProvider.mode == .expanded {
             PreferencesManager.shared.setWindowPosition(panel.frame)
+            
+            // 如果不是正在执行恢复动画，则更新球体位置，以便下次缩小时能缩回到新位置
+            if !focusProvider.isRestoring {
+                focusProvider.ballPosition = CGPoint(x: panel.frame.midX, y: panel.frame.midY)
+            }
             
             // 保存当前屏幕的ID
             if let screen = panel.screen,
@@ -326,8 +362,8 @@ final class FloatingPanelController {
     }
     
     @objc private func windowDidResize(_ note: Notification) {
-        // 窗口调整大小时保存位置和屏幕信息
-        if PreferencesManager.shared.rememberWindowPosition {
+        // 窗口调整大小时保存位置和屏幕信息，仅在展开模式下保存
+        if PreferencesManager.shared.rememberWindowPosition && focusProvider.mode == .expanded {
             PreferencesManager.shared.setWindowPosition(panel.frame)
             
             // 保存当前屏幕的ID
@@ -404,6 +440,124 @@ final class FloatingPanelController {
         // 通过 NotificationCenter 通知 FloatingRootView 显示设置界面
         NotificationCenter.default.post(name: .showSettings, object: nil)
     }
+
+    /// 最小化到浮球
+    func minimizeToBall() {
+        guard focusProvider.mode == .expanded else { return }
+        
+        let currentFrame = panel.frame
+        focusProvider.lastExpandedFrame = currentFrame
+        
+        // 如果开启了记忆位置，也同步到持久化存储
+        if PreferencesManager.shared.rememberWindowPosition {
+            PreferencesManager.shared.setWindowPosition(currentFrame)
+        }
+        
+        // 减小窗口尺寸以保持精致感 (80x80)，球体本身为 56x56
+        let ballWindowSize: CGFloat = 80
+        
+        // 核心修复：优先使用之前保存的 ballPosition，防止边缘漂移
+        let targetCenter = focusProvider.ballPosition != .zero ? focusProvider.ballPosition : CGPoint(x: currentFrame.midX, y: currentFrame.midY)
+        
+        let targetFrame = NSRect(x: targetCenter.x - ballWindowSize/2, 
+                               y: targetCenter.y - ballWindowSize/2, 
+                               width: ballWindowSize, 
+                               height: ballWindowSize)
+        
+        // 1. 启动窗口框架动画
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.4
+            ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            panel.animator().setFrame(targetFrame, display: true)
+        }
+        
+        // 2. 稍微延迟模式切换，让窗口先动起来，产生“折叠”感
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            withAnimation(.easeInOut(duration: 0.3)) {
+                self.focusProvider.mode = .floatingBall
+            }
+        }
+        
+        // 更新浮球位置状态 (确保一致性)
+        focusProvider.ballPosition = CGPoint(x: targetFrame.midX, y: targetFrame.midY)
+        
+        // 浮球状态下允许点击穿透背景
+        panel.backgroundColor = NSColor.clear
+        panel.hasShadow = false // 浮球自带阴影效果
+    }
+    
+    /// 从浮球恢复
+    func restoreFromBall() {
+        guard focusProvider.mode == .floatingBall else { return }
+        
+        let ballFrame = panel.frame
+        let ballCenter = CGPoint(x: ballFrame.midX, y: ballFrame.midY)
+        
+        // 记录当前的球心，用于防止展开时的边界适配导致下次缩小位置偏移
+        focusProvider.ballPosition = ballCenter
+        focusProvider.isRestoring = true
+        
+        // 标准尺寸
+        let defaultWidth: CGFloat = 520
+        let defaultHeight: CGFloat = 640
+        
+        var targetWidth = defaultWidth
+        var targetHeight = defaultHeight
+        
+        // 如果开启了记忆位置，尝试使用上次展开的尺寸
+        if PreferencesManager.shared.rememberWindowPosition, let savedFrame = focusProvider.lastExpandedFrame {
+            // 确保尺寸合理，防止出现尺寸过小的问题
+            targetWidth = max(defaultWidth, savedFrame.width)
+            targetHeight = max(defaultHeight, savedFrame.height)
+        }
+        
+        // 核心逻辑：以当前浮球中心为原点，均匀展开
+        var targetX = ballCenter.x - (targetWidth / 2)
+        var targetY = ballCenter.y - (targetHeight / 2)
+        
+        // 屏幕边界适配
+        let screen = panel.screen ?? NSScreen.main ?? NSScreen.screens.first!
+        let screenFrame = screen.visibleFrame
+        let padding: CGFloat = 16 // 距离屏幕边缘的最小留白
+        
+        // 检查并修正 X 轴位置
+        if targetX < screenFrame.minX + padding {
+            targetX = screenFrame.minX + padding
+        } else if targetX + targetWidth > screenFrame.maxX - padding {
+            targetX = screenFrame.maxX - targetWidth - padding
+        }
+        
+        // 检查并修正 Y 轴位置
+        if targetY < screenFrame.minY + padding {
+            targetY = screenFrame.minY + padding
+        } else if targetY + targetHeight > screenFrame.maxY - padding {
+            targetY = screenFrame.maxY - targetHeight - padding
+        }
+        
+        let targetFrame = NSRect(x: targetX, y: targetY, width: targetWidth, height: targetHeight)
+        
+        // 如果开启了记忆位置，更新记忆的位置为当前展开后的位置
+        if PreferencesManager.shared.rememberWindowPosition {
+            focusProvider.lastExpandedFrame = targetFrame
+            PreferencesManager.shared.setWindowPosition(targetFrame)
+        }
+        
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+            focusProvider.mode = .expanded
+        }
+        
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.4
+            ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            panel.animator().setFrame(targetFrame, display: true)
+        } completionHandler: { [weak focusProvider] in
+            // 动画结束后重置恢复状态
+            focusProvider?.isRestoring = false
+        }
+        
+        panel.backgroundColor = NSColor.clear.withAlphaComponent(0.9)
+        panel.hasShadow = true
+    }
 }
 
 /// 悬浮窗根视图
@@ -415,6 +569,7 @@ struct FloatingRootView: View {
     var onHoverChanged: ((Bool) -> Void)? = nil
     var onInteractionChanged: ((Bool) -> Void)? = nil
     var onClose: (() -> Void)? = nil
+    var onMinimize: (() -> Void)? = nil
     @State private var showSettings = false
     @State private var settingsTab: String = "ai"
     @State private var expandedId: UUID? = nil
@@ -424,36 +579,46 @@ struct FloatingRootView: View {
     @State private var hasMoreRecords: Bool = true // 是否还有更多记录
 
     var body: some View {
-        baseContentView
-            .background(Color.themeBackground.opacity(0.9))
-            .cornerRadius(16)
-            .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.themeBorder, lineWidth: 1).allowsHitTesting(false))
-            .shadow(color: Color.black.opacity(0.5), radius: 20, x: 0, y: 10)
-            .ignoresSafeArea()
-            .onHover { hovering in onHoverChanged?(hovering) }
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 10, coordinateSpace: .local)
-                    .onChanged { _ in onInteractionChanged?(true) }
-                    .onEnded { _ in onInteractionChanged?(false) }
-            )
-            .allowsHitTesting(true)
-            .onReceive(NotificationCenter.default.publisher(for: .showSettings)) { _ in
-                // 响应显示设置界面的通知
-                showSettings = true
-                settingsTab = "ai"
+        ZStack {
+            if focus.mode == .floatingBall {
+                FloatingBallView(store: store, focus: focus)
+                    .transition(.opacity)
+                    .zIndex(1)
+            } else {
+                baseContentView
+                    .background(Color.themeBackground.opacity(0.9))
+                    .cornerRadius(16)
+                    .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.themeBorder, lineWidth: 1).allowsHitTesting(false))
+                    .shadow(color: Color.black.opacity(0.5), radius: 20, x: 0, y: 10)
+                    .transition(.opacity)
+                    .zIndex(0)
             }
-            .onReceive(NotificationCenter.default.publisher(for: Notification.Name("expandRecord"))) { notification in
-                // 响应展开特定记录的通知
-                if let recordId = notification.object as? UUID {
-                    expandedId = recordId
-                    showSettings = false // 确保不在设置界面
-                }
+        }
+        .ignoresSafeArea()
+        .onHover { hovering in onHoverChanged?(hovering) }
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 10, coordinateSpace: .local)
+                .onChanged { _ in onInteractionChanged?(true) }
+                .onEnded { _ in onInteractionChanged?(false) }
+        )
+        .allowsHitTesting(true)
+        .onReceive(NotificationCenter.default.publisher(for: .showSettings)) { _ in
+            // 响应显示设置界面的通知
+            showSettings = true
+            settingsTab = "ai"
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("expandRecord"))) { notification in
+            // 响应展开特定记录的通知
+            if let recordId = notification.object as? UUID {
+                expandedId = recordId
+                showSettings = false // 确保不在设置界面
             }
-            .modifier(KeyboardHandlerModifier(
-                expandedId: $expandedId,
-                showSettings: $showSettings,
-                onClose: onClose
-            ))
+        }
+        .modifier(KeyboardHandlerModifier(
+            expandedId: $expandedId,
+            showSettings: $showSettings,
+            onClose: onClose
+        ))
     }
     
     // MARK: - 子视图组件
@@ -520,6 +685,9 @@ struct FloatingRootView: View {
             HStack(spacing: ThemeSpacing.px2.rawValue) {
                 // Close (Red)
                 CloseButton(onClose: onClose)
+                
+                // Minimize (Yellow)
+                ShrinkButton(onMinimize: onMinimize)
             }
             .padding(.leading, ThemeSpacing.px4.rawValue)
             
@@ -780,6 +948,250 @@ struct CloseButton: View {
             .onHover { hovering = $0 }
             .pointingHandCursor()
             .help("关闭")
+    }
+}
+
+struct ShrinkButton: View {
+    let onMinimize: (() -> Void)?
+    @State private var hovering = false
+    
+    var body: some View {
+        Circle()
+            .fill(Color.themeYellow500.opacity(hovering ? 1.0 : 0.8)) // bg-yellow-500/80
+            .frame(width: 12, height: 12)
+            .onTapGesture { onMinimize?() }
+            .onHover { hovering = $0 }
+            .pointingHandCursor()
+            .help("缩小到浮球")
+    }
+}
+
+/// AI 闪烁图标 (用户提供的 SVG 设计)
+struct AISparkleIcon: View {
+    var size: CGFloat = 30
+    var color: Color = .white
+    
+    var body: some View {
+        Canvas { context, size in
+            let w = size.width
+            
+            // 比例系数
+            let scale = w / 24.0
+            
+            var path = Path()
+            
+            // M12 3v1
+            path.move(to: CGPoint(x: 12 * scale, y: 3 * scale))
+            path.addLine(to: CGPoint(x: 12 * scale, y: 4 * scale))
+            
+            // m0 16v1
+            path.move(to: CGPoint(x: 12 * scale, y: 20 * scale))
+            path.addLine(to: CGPoint(x: 12 * scale, y: 21 * scale))
+            
+            // m9-9h-1
+            path.move(to: CGPoint(x: 21 * scale, y: 12 * scale))
+            path.addLine(to: CGPoint(x: 20 * scale, y: 12 * scale))
+            
+            // M4 12H3
+            path.move(to: CGPoint(x: 4 * scale, y: 12 * scale))
+            path.addLine(to: CGPoint(x: 3 * scale, y: 12 * scale))
+            
+            // m15.364-6.364l-.707.707
+            path.move(to: CGPoint(x: 18.364 * scale, y: 5.636 * scale))
+            path.addLine(to: CGPoint(x: 17.657 * scale, y: 6.343 * scale))
+            
+            // M6.343 17.657l-.707.707
+            path.move(to: CGPoint(x: 6.343 * scale, y: 17.657 * scale))
+            path.addLine(to: CGPoint(x: 5.636 * scale, y: 18.364 * scale))
+            
+            // m0-12.728l.707.707
+            path.move(to: CGPoint(x: 5.636 * scale, y: 5.636 * scale))
+            path.addLine(to: CGPoint(x: 6.343 * scale, y: 6.343 * scale))
+            
+            // m11.314 11.314l.707.707
+            path.move(to: CGPoint(x: 17.657 * scale, y: 17.657 * scale))
+            path.addLine(to: CGPoint(x: 18.364 * scale, y: 18.364 * scale))
+            
+            // M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z (中心圆)
+            let circleRect = CGRect(x: 8 * scale, y: 8 * scale, width: 8 * scale, height: 8 * scale)
+            path.addEllipse(in: circleRect)
+            
+            context.stroke(path, with: .color(color), lineWidth: 2 * scale)
+        }
+        .frame(width: size, height: size)
+    }
+}
+
+struct FloatingBallView: View {
+    @ObservedObject var store: RecordStore
+    @ObservedObject var focus: WindowFocusProvider
+    @State private var hovering = false
+    @State private var pasteSuccess = false
+    @State private var aiSuccess = false
+    @State private var lastProcessedSuccessAt: Date? = nil // 记录已展示过的成功时间点
+    @State private var iconOffset: CGFloat = 0
+    @State private var aiRotation: Double = 0
+    @State private var initialPosition: CGPoint = .zero // 记录拖拽开始时的位置
+    @State private var isDragging = false // 跟踪是否正在拖拽
+    
+    var body: some View {
+        ZStack {
+            // Glow Effect - tight edge glow
+            if hovering || store.isAIProcessing || pasteSuccess || aiSuccess {
+                Circle()
+                    .stroke(statusColor.opacity(0.8), lineWidth: 3)
+                    .frame(width: 58, height: 58)
+                    .blur(radius: 3)
+                    .transition(.opacity)
+            }
+            
+            // Main Ball - refined size 56
+            Circle()
+                .fill(ballBackgroundColor.opacity(isIdle ? 0.8 : 1.0))
+                .frame(width: 56, height: 56)
+                .shadow(color: Color.black.opacity(0.4), radius: 6, x: 0, y: 3)
+                .overlay(
+                    Circle()
+                        .stroke(statusColor.opacity(0.3), lineWidth: 1)
+                )
+            
+            // Icon with Animation
+            Group {
+                if store.isAIProcessing {
+                    AISparkleIcon(size: 30, color: .themePurple500)
+                        .rotationEffect(.degrees(aiRotation))
+                        .onAppear {
+                            withAnimation(.linear(duration: 2).repeatForever(autoreverses: false)) {
+                                aiRotation = 360
+                            }
+                        }
+                } else if pasteSuccess || aiSuccess {
+                    LucideView(name: .check, size: 30, color: .themeGreen500)
+                        .transition(.scale.combined(with: .opacity))
+                } else {
+                    AISparkleIcon(size: 30, color: statusColor)
+                }
+            }
+            .offset(y: iconOffset)
+        }
+        .frame(width: 80, height: 80) // Container matches window size
+        .contentShape(Circle())
+        .onHover { h in 
+            hovering = h 
+            if h {
+                // 跳动动画：向上移动然后轻微回弹
+                withAnimation(.interpolatingSpring(stiffness: 300, damping: 15).repeatForever(autoreverses: true)) {
+                    iconOffset = -6
+                }
+                NSCursor.pointingHand.set()
+            } else {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.5)) {
+                    iconOffset = 0
+                }
+                NSCursor.arrow.set()
+            }
+        }
+        .onAppear {
+            print("[DEBUG] FloatingBallView appeared, mode: \(focus.mode), statusColor: \(statusColor)")
+        }
+        .onReceive(store.$lastAISuccessAt) { date in
+            // 只有当日期真正更新（非 nil），且不是已经展示过的时间点时才触发
+            if let newDate = date, newDate != lastProcessedSuccessAt {
+                lastProcessedSuccessAt = newDate
+                triggerAISuccessAnimation()
+            }
+        }
+        .gesture(
+            DragGesture(minimumDistance: 1, coordinateSpace: .global) // 使用全局坐标
+                .onChanged { value in
+                    if !isDragging {
+                        isDragging = true
+                        NSCursor.closedHand.push()
+                    }
+                    // 直接使用鼠标的绝对屏幕坐标，这在多显示器环境下是最可靠的
+                    let currentMouse = NSEvent.mouseLocation
+                    NotificationCenter.default.post(name: Notification.Name("updateBallPosition"), object: currentMouse)
+                }
+                .onEnded { _ in
+                    if isDragging {
+                        isDragging = false
+                        NSCursor.pop()
+                        snapToEdge()
+                    }
+                }
+        )
+        .onTapGesture {
+            // 只有在非拖拽状态下的点击才触发展开
+            if !isDragging {
+                handleRestore()
+            }
+        }
+    }
+    
+    private var statusColor: Color {
+        if store.isAIProcessing {
+            return .themePurple500
+        } else if pasteSuccess || aiSuccess {
+            return .themeGreen500
+        } else {
+            // 用户要求：闲置时淡蓝色且带透明度
+            return Color.themeBlue400.opacity(0.7)
+        }
+    }
+    
+    private var ballBackgroundColor: Color {
+        // 浮球背景色始终使用要求的深蓝色 #0D111C
+        return .themeDeepBlue
+    }
+    
+    private var isIdle: Bool {
+        !hovering && !store.isAIProcessing && !pasteSuccess && !aiSuccess
+    }
+    
+    private func snapToEdge() {
+        // 获取包含当前窗口中心点的屏幕
+        let currentBallPos = focus.ballPosition
+        let screens = NSScreen.screens
+        let targetScreen = screens.first { NSMouseInRect(currentBallPos, $0.frame, false) } ?? NSScreen.main ?? screens.first!
+        
+        let screenFrame = targetScreen.visibleFrame
+        let padding: CGFloat = 16
+        let ballRadius: CGFloat = 28 // 56/2
+        var finalPos = currentBallPos
+        
+        // 在当前所在的屏幕内进行边界吸附
+        if finalPos.x < screenFrame.minX + padding + ballRadius {
+            finalPos.x = screenFrame.minX + padding + ballRadius
+        } else if finalPos.x > screenFrame.maxX - padding - ballRadius {
+            finalPos.x = screenFrame.maxX - padding - ballRadius
+        }
+        
+        if finalPos.y < screenFrame.minY + padding + ballRadius {
+            finalPos.y = screenFrame.minY + padding + ballRadius
+        } else if finalPos.y > screenFrame.maxY - padding - ballRadius {
+            finalPos.y = screenFrame.maxY - padding - ballRadius
+        }
+        
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+            NotificationCenter.default.post(name: Notification.Name("updateBallPosition"), object: finalPos)
+        }
+    }
+    
+    private func handleRestore() {
+        NotificationCenter.default.post(name: Notification.Name("restoreFromBall"), object: nil)
+    }
+    
+    private func triggerAISuccessAnimation() {
+        withAnimation(.spring()) {
+            aiSuccess = true
+        }
+        HapticFeedbackManager.shared.success()
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+            withAnimation {
+                aiSuccess = false
+            }
+        }
     }
 }
 
