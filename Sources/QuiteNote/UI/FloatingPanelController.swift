@@ -1206,6 +1206,10 @@ struct RecordCardView: View, Equatable {
     @State private var showFullContent = false // 控制是否显示完整内容
     @State private var displayedContent = "" // 当前显示的内容
     
+    // 删除撤回逻辑
+    @State private var deleteCountdown = 0
+    @State private var deleteTimer: Timer? = nil
+    
     // 缓存计算结果，避免重复计算
     private var isExpanded: Bool {
         expandedId == record.id
@@ -1267,7 +1271,7 @@ struct RecordCardView: View, Equatable {
                 
                 // Meta Info
                 HStack(spacing: 8) {
-                    Text(record.createdAt.formatted(date: .omitted, time: .shortened))
+                    Text(formattedDate)
                     Rectangle().fill(Color.themeGray700).frame(width: 2, height: 10) // w-0.5 h-2.5 bg-gray-700
                     Text("\(record.content.count) 字符")
                     Rectangle().fill(Color.themeGray700).frame(width: 2, height: 10)
@@ -1314,9 +1318,30 @@ struct RecordCardView: View, Equatable {
                 .pointingHandCursor()
                 .focusable(false)
                 .help(record.aiStatus == "fail" ? "总结失败，点击重试" : "单独总结此消息")
-                IconButton(icon: .trash2, color: .themeTextSecondary) {
-                    store.delete(record)
+                
+                if deleteCountdown > 0 {
+                    Button(action: {
+                        cancelDelete()
+                    }) {
+                        HStack(spacing: 4) {
+                            LucideView(name: .rotateCcw, size: 14, color: .themeGray400)
+                            Text("\(deleteCountdown)s")
+                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        }
+                        .frame(width: 48, height: 24)
+                        .background(Color.white.opacity(0.1))
+                        .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .pointingHandCursor()
+                    .help("撤回删除")
+                } else {
+                    IconButton(icon: .trash2, color: .themeTextSecondary) {
+                        startDeleteTimer()
+                    }
+                    .help("删除此消息")
                 }
+                
                 // 展开/收起按钮始终显示
                 Button(action: {
                     withAnimation(.easeInOut(duration: 0.2)) {
@@ -1609,6 +1634,29 @@ private extension RecordCardView {
         }
     }
     
+    /// 开始删除倒计时
+    func startDeleteTimer() {
+        deleteCountdown = 5
+        deleteTimer?.invalidate()
+        deleteTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+            if deleteCountdown > 1 {
+                deleteCountdown -= 1
+            } else {
+                deleteTimer?.invalidate()
+                deleteTimer = nil
+                deleteCountdown = 0
+                store.delete(record)
+            }
+        }
+    }
+    
+    /// 撤回删除
+    func cancelDelete() {
+        deleteTimer?.invalidate()
+        deleteTimer = nil
+        deleteCountdown = 0
+    }
+    
     // 缓存计算结果，避免重复计算
     var displayTitle: String {
         // 使用更高效的条件判断顺序
@@ -1620,6 +1668,38 @@ private extension RecordCardView {
         default:
             if let t = record.title, !t.isEmpty { return t }
             return record.content.count > 30 ? String(record.content.prefix(30)) + "..." : record.content
+        }
+    }
+
+    /// 格式化日期显示
+    /// - 24小时内：显示时间
+    /// - 24小时-30天：显示 n天前
+    /// - 30天以上：显示 yyyy-MM-dd
+    var formattedDate: String {
+        let calendar = Calendar.current
+        let now = Date()
+        
+        // 计算天数差异（使用 startOfDay 确保精确到天）
+        let startOfNow = calendar.startOfDay(for: now)
+        let startOfCreated = calendar.startOfDay(for: record.createdAt)
+        let dayComponents = calendar.dateComponents([.day], from: startOfCreated, to: startOfNow)
+        let days = dayComponents.day ?? 0
+        
+        // 计算小时差异
+        let hourComponents = calendar.dateComponents([.hour], from: record.createdAt, to: now)
+        let hours = hourComponents.hour ?? 0
+        
+        if hours < 24 {
+            // 24小时内显示时间
+            return record.createdAt.formatted(date: .omitted, time: .shortened)
+        } else if days < 30 {
+            // 24小时以上且30天以内
+            return "\(days)天前"
+        } else {
+            // 30天以上显示具体日期
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd"
+            return formatter.string(from: record.createdAt)
         }
     }
     
