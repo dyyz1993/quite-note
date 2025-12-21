@@ -151,15 +151,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         
         // 创建新记录
         let hash = ClipboardService.sha1(text)
-        if recordStore.dedupEnabled, recordStore.isRecentDuplicate(hash: hash, withinMinutes: 10) {
-            // 如果是重复内容，更新时间戳
-            recordStore.updateTimestampForHash(hash)
-            recordStore.postToast("记录已去重，更新了时间戳", type: "info")
-        } else {
-            // 添加新记录
-            recordStore.addRecord(content: text, hash: hash)
-            recordStore.postToast("已自动创建新记录", type: "success")
-        }
+        recordStore.addRecord(content: text, hash: hash)
         
         // 显示悬浮窗（如果当前未显示）
         DispatchQueue.main.async { [weak self] in

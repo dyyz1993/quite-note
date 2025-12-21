@@ -82,8 +82,9 @@ final class CoreDataStack {
 
     func fetchRecords() throws -> [CDRecord] {
         let req = NSFetchRequest<CDRecord>(entityName: "CDRecord")
-        let sort = NSSortDescriptor(key: "createdAt", ascending: false)
-        req.sortDescriptors = [sort]
+        let sortStarred = NSSortDescriptor(key: "starred", ascending: false)
+        let sortDate = NSSortDescriptor(key: "createdAt", ascending: false)
+        req.sortDescriptors = [sortStarred, sortDate]
         return try context.fetch(req)
     }
     
@@ -94,8 +95,9 @@ final class CoreDataStack {
     /// - Returns: 指定范围内的记录数组
     func fetchRecords(limit: Int = 50, offset: Int = 0) throws -> [CDRecord] {
         let req = NSFetchRequest<CDRecord>(entityName: "CDRecord")
-        let sort = NSSortDescriptor(key: "createdAt", ascending: false)
-        req.sortDescriptors = [sort]
+        let sortStarred = NSSortDescriptor(key: "starred", ascending: false)
+        let sortDate = NSSortDescriptor(key: "createdAt", ascending: false)
+        req.sortDescriptors = [sortStarred, sortDate]
         req.fetchLimit = limit
         req.fetchOffset = offset
         return try context.fetch(req)
@@ -117,8 +119,9 @@ final class CoreDataStack {
     /// - Returns: 指定日期范围内的记录数组
     func fetchRecords(from startDate: Date, to endDate: Date, limit: Int = 50, offset: Int = 0) throws -> [CDRecord] {
         let req = NSFetchRequest<CDRecord>(entityName: "CDRecord")
-        let sort = NSSortDescriptor(key: "createdAt", ascending: false)
-        req.sortDescriptors = [sort]
+        let sortStarred = NSSortDescriptor(key: "starred", ascending: false)
+        let sortDate = NSSortDescriptor(key: "createdAt", ascending: false)
+        req.sortDescriptors = [sortStarred, sortDate]
         req.predicate = NSPredicate(format: "createdAt >= %@ AND createdAt <= %@", startDate as CVarArg, endDate as CVarArg)
         req.fetchLimit = limit
         req.fetchOffset = offset

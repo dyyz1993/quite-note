@@ -54,6 +54,14 @@ final class RecordStore: ObservableObject {
 
     /// 添加一条记录并触发 UI 刷新
     func addRecord(content: String, hash: String) {
+        // 校验相同内容是否已存在
+        if records.contains(where: { $0.hash == hash }) {
+            Self.logger.info("发现重复记录，仅更新时间: \(hash)")
+            updateTimestampForHash(hash)
+            postToast("记录已去重，更新了时间戳", type: "info")
+            return
+        }
+
         let now = Date()
         let cd = stack.newRecord()
         cd.id = UUID()
@@ -64,6 +72,9 @@ final class RecordStore: ObservableObject {
         stack.save()
         let record = Record(id: cd.id, title: nil, content: content, createdAt: now, hash: hash, aiStatus: nil, summary: nil, summaryConfidence: nil, starred: false, copiedAt: nil)
         records.insert(record, at: 0)
+        sortRecordsInPlace()
+        postToast("已自动创建新记录", type: "success")
+        
         if records.count > maxRecords { records = Array(records.prefix(maxRecords)) }
         Self.logger.info("AI调用条件检查: enableAI=\(self.enableAI), content.count=\(content.count), summaryTrigger=\(self.summaryTrigger), ai=\(self.ai != nil)")
         guard enableAI, content.count >= summaryTrigger, let ai else { 
@@ -98,12 +109,6 @@ final class RecordStore: ObservableObject {
         }
     }
 
-    /// 判断是否为近期重复记录
-    func isRecentDuplicate(hash: String, withinMinutes: Int) -> Bool {
-        let threshold = Date().addingTimeInterval(Double(-withinMinutes) * 60)
-        return records.first(where: { $0.hash == hash && $0.createdAt >= threshold }) != nil
-    }
-
     func updateTimestampForHash(_ hash: String) {
         let now = Date()
         if let idx = records.firstIndex(where: { $0.hash == hash }) {
@@ -115,6 +120,7 @@ final class RecordStore: ObservableObject {
                 obj.createdAt = now
                 stack.save()
             }
+            sortRecordsInPlace()
         }
     }
 
@@ -443,9 +449,6 @@ final class RecordStore: ObservableObject {
     }
     
     /// 分页加载记录，提高性能
-    /// - Parameters:
-    ///   - pageSize: 每页记录数
-    ///   - offset: 偏移量
     func loadFromStore(pageSize: Int = 50, offset: Int = 0) {
         let cds = (try? stack.fetchRecords(limit: pageSize, offset: offset)) ?? []
         let newRecords = cds.map { r in
@@ -456,7 +459,7 @@ final class RecordStore: ObservableObject {
                 r.aiStatus = nil
             }
             return Record(id: r.id, title: r.title, content: r.content, createdAt: r.createdAt, hash: r.digest, aiStatus: aiStatus, summary: r.summary, summaryConfidence: r.summaryConfidence, starred: r.starred, copiedAt: r.copiedAt)
-        }.sorted { $0.createdAt > $1.createdAt }
+        }
         
         // 如果有pending状态的记录被重置，保存更改
         if cds.contains(where: { $0.aiStatus == "pending" }) {
@@ -471,6 +474,18 @@ final class RecordStore: ObservableObject {
             let existingIds = Set(records.map { $0.id })
             let uniqueNewRecords = newRecords.filter { !existingIds.contains($0.id) }
             records.append(contentsOf: uniqueNewRecords)
+        }
+        
+        sortRecordsInPlace()
+    }
+    
+    /// 对内存中的记录进行排序：收藏优先，时间倒序
+    private func sortRecordsInPlace() {
+        records.sort { (r1, r2) -> Bool in
+            if r1.starred != r2.starred {
+                return r1.starred && !r2.starred
+            }
+            return r1.createdAt > r2.createdAt
         }
     }
     
@@ -566,6 +581,7 @@ final class RecordStore: ObservableObject {
                 obj.starred = records[idx].starred
                 stack.save()
             }
+            sortRecordsInPlace()
         }
     }
 

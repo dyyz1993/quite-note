@@ -25,11 +25,6 @@ final class ClipboardService {
             return
         }
         let hash = Self.sha1(text)
-        if store.dedupEnabled, store.isRecentDuplicate(hash: hash, withinMinutes: 10) {
-            store.updateTimestampForHash(hash)
-            store.postToast("记录已去重，更新了时间戳", type: "info")
-            return
-        }
         lastHash = hash
         store.addRecord(content: text, hash: hash)
     }
