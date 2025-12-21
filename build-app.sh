@@ -54,12 +54,19 @@ elif [ -f "QuiteNote.icns" ]; then
 fi
 
 # 转换 SVG 为 PNG 状态栏图标
-if [ -f "StatusBarIcon.svg" ]; then
+if [ -f "generate_icon.swift" ]; then
+    echo "使用 Swift 脚本生成状态栏图标..."
+    swift generate_icon.swift
+    cp StatusBarIcon.png "$RESOURCES_DIR/StatusBarIcon.png"
+    # 同时提供 @2x 版本以确保 Retina 屏幕清晰
+    cp StatusBarIcon.png "$RESOURCES_DIR/StatusBarIcon@2x.png"
+elif [ -f "StatusBarIcon.svg" ]; then
     echo "转换 SVG 为 PNG 状态栏图标..."
-    magick StatusBarIcon.svg -resize 36x36 "$RESOURCES_DIR/StatusBarIcon.png" || convert StatusBarIcon.svg -resize 36x36 "$RESOURCES_DIR/StatusBarIcon.png"
+    # 使用 -background none 确保背景透明，这对菜单栏图标至关重要
+    magick -background none StatusBarIcon.svg -resize 36x36 "$RESOURCES_DIR/StatusBarIcon.png" || convert -background none StatusBarIcon.svg -resize 36x36 "$RESOURCES_DIR/StatusBarIcon.png"
 elif [ -f "AppIcon.svg" ]; then
     echo "转换应用图标 SVG 为 PNG 状态栏图标..."
-    magick AppIcon.svg -resize 36x36 "$RESOURCES_DIR/AppIcon.png" || convert AppIcon.svg -resize 36x36 "$RESOURCES_DIR/AppIcon.png"
+    magick -background none AppIcon.svg -resize 36x36 "$RESOURCES_DIR/AppIcon.png" || convert -background none AppIcon.svg -resize 36x36 "$RESOURCES_DIR/AppIcon.png"
 fi
 
 # 复制 LucideIcons 资源

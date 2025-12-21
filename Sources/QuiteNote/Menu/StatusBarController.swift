@@ -31,18 +31,30 @@ final class StatusBarController {
 
     /// 构建菜单与状态更新
     private func setupMenu() {
-        // 设置自定义图标
-        if let iconPath = Bundle.main.path(forResource: "StatusBarIcon", ofType: "png"),
-           let icon = NSImage(contentsOfFile: iconPath) {
-            icon.size = NSSize(width: 18, height: 18) // 调整图标大小以适应状态栏
+        // 尝试从多个来源加载图标
+        let icon: NSImage? = {
+            // 1. 优先尝试加载生成的 PNG
+            if let path = Bundle.main.path(forResource: "StatusBarIcon", ofType: "png"),
+               let image = NSImage(contentsOfFile: path) {
+                image.isTemplate = true
+                return image
+            }
+            // 2. 尝试命名加载
+            if let image = NSImage(named: "StatusBarIcon") {
+                image.isTemplate = true
+                return image
+            }
+            // 3. 备选方案：系统图标
+            let sparkles = NSImage(systemSymbolName: "sparkles", accessibilityDescription: "Quite Note")
+            sparkles?.isTemplate = true
+            return sparkles
+        }()
+
+        if let icon = icon {
+            // 状态栏标准高度通常为 22pt，图标建议 16x16 或 18x18
+            icon.size = NSSize(width: 18, height: 18)
             statusItem.button?.image = icon
-        } else if let iconPath = Bundle.main.path(forResource: "AppIcon", ofType: "png"),
-                  let icon = NSImage(contentsOfFile: iconPath) {
-            icon.size = NSSize(width: 18, height: 18) // 调整图标大小以适应状态栏
-            statusItem.button?.image = icon
-        } else {
-            // 如果无法加载自定义图标，使用 emoji 作为后备
-            statusItem.button?.title = "📝"
+            statusItem.button?.imagePosition = .imageLeft
         }
         let menu = NSMenu()
         menu.autoenablesItems = false
