@@ -5,7 +5,7 @@ final class PreferencesManager {
     static let shared = PreferencesManager()
     private let d = UserDefaults.standard
 
-    var enableAI: Bool { d.bool(forKey: "enableAI") }
+    var enableAI: Bool { d.object(forKey: "enableAI") == nil ? true : d.bool(forKey: "enableAI") }
     var titleLimit: Int { max(15, d.integer(forKey: "titleLimit")) }
     var summaryTrigger: Int { max(0, d.integer(forKey: "summaryTrigger")) }
     var summaryLimit: Int { max(50, d.integer(forKey: "summaryLimit")) }
@@ -15,7 +15,7 @@ final class PreferencesManager {
     var windowLock: Bool { d.object(forKey: "windowLock") == nil ? false : d.bool(forKey: "windowLock") }
     var animationsEnabled: Bool { d.object(forKey: "animationsEnabled") == nil ? true : d.bool(forKey: "animationsEnabled") }
     var rememberWindowPosition: Bool { d.object(forKey: "rememberWindowPosition") == nil ? true : d.bool(forKey: "rememberWindowPosition") }
-    var aiProvider: String { d.string(forKey: "aiProvider") ?? "local" }
+
     var openAIBaseURL: String { d.string(forKey: "openAIBaseURL") ?? "https://api.openai.com/v1" }
     var openAIModel: String { d.string(forKey: "openAIModel") ?? "gpt-4o-mini" }
 
@@ -29,7 +29,7 @@ final class PreferencesManager {
     func setWindowLock(_ v: Bool) { d.set(v, forKey: "windowLock") }
     func setAnimationsEnabled(_ v: Bool) { d.set(v, forKey: "animationsEnabled") }
     func setRememberWindowPosition(_ v: Bool) { d.set(v, forKey: "rememberWindowPosition") }
-    func setAIProvider(_ v: String) { d.set(v, forKey: "aiProvider") }
+
     func setOpenAIBaseURL(_ v: String) { d.set(v, forKey: "openAIBaseURL") }
     func setOpenAIModel(_ v: String) { d.set(v, forKey: "openAIModel") }
     

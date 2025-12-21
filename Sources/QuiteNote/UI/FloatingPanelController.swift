@@ -1168,7 +1168,7 @@ private extension RecordCardView {
         )
         
         // 调用AI服务生成总结
-        store.ai?.summarizeSingle(record.content) { [weak store] result in
+        store.ai?.summarizeSingle(record.content) { [weak store] (result: Result<SummaryResult, Error>) in
             DispatchQueue.main.async {
                 switch result {
                 case .success(let summaryResult):

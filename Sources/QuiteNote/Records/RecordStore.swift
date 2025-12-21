@@ -1,13 +1,15 @@
 import Foundation
 import Combine
 import CoreData
+import os.log
 
 /// 管理记录的增删改查、搜索与轻提示分发
 final class RecordStore: ObservableObject {
+    private static let logger = Logger(subsystem: "com.quitenote.app", category: "RecordStore")
     @Published private(set) var records: [Record] = []
     @Published var lightHint: String? = nil
     @Published var toast: ToastMessage? = nil
-    @Published var aiProvider: AIProvider = .local
+
     @Published var enableAI: Bool = true
     @Published var searchHistory: [String] = []
     @Published var searchInSummaries: Bool = false
@@ -55,7 +57,12 @@ final class RecordStore: ObservableObject {
         let record = Record(id: cd.id, title: nil, content: content, createdAt: now, hash: hash, aiStatus: nil, summary: nil, summaryConfidence: nil, starred: false, copiedAt: nil)
         records.insert(record, at: 0)
         if records.count > maxRecords { records = Array(records.prefix(maxRecords)) }
-        guard enableAI, content.count >= summaryTrigger, let ai else { return }
+        Self.logger.info("AI调用条件检查: enableAI=\(self.enableAI), content.count=\(content.count), summaryTrigger=\(self.summaryTrigger), ai=\(self.ai != nil)")
+        guard enableAI, content.count >= summaryTrigger, let ai else { 
+            Self.logger.info("AI功能未启用或内容长度不足，跳过AI总结")
+            return 
+        }
+        Self.logger.info("开始调用AI总结，内容长度: \(content.count)")
         let index = 0
         records[index].aiStatus = "pending"
         ai.summarize(titleLimit: titleLimit, summaryLimit: summaryLimit, content: content) { [weak self] result in
@@ -292,18 +299,12 @@ final class RecordStore: ObservableObject {
     func attachAI(service: AIServiceProtocol) {
         self.ai = service
         if let s = ai as? AIService {
-            s.provider = aiProvider
             s.openAIBaseURL = prefs.openAIBaseURL
             s.openAIModel = prefs.openAIModel
         }
     }
 
-    /// 设置 AI 提供商（本地/OpenAI）
-    func setAIProvider(_ provider: AIProvider) {
-        self.aiProvider = provider
-        if let s = ai as? AIService { s.provider = provider }
-        prefs.setAIProvider(provider == .openai ? "openai" : "local")
-    }
+
 
     /// 配置 OpenAI 连接参数并写入 Keychain（仅密钥）
     func configureOpenAI(apiKey: String, baseURL: String, model: String) {
@@ -323,7 +324,19 @@ final class RecordStore: ObservableObject {
         summaryLimit = prefs.summaryLimit
         dedupEnabled = prefs.dedupEnabled
         maxRecords = prefs.maxRecords
-        aiProvider = prefs.aiProvider == "openai" ? .openai : .local
+        
+        // 延迟初始化AI服务：不再启动时立即从 Keychain 读取 API Key
+        // 只有当真正需要调用 summarize 时，AIService 内部才会去读取 Key
+        if enableAI {
+            Self.logger.info("正在初始化AI服务 (延迟加载Key)...")
+            let aiService = AIService()
+            aiService.openAIBaseURL = prefs.openAIBaseURL
+            aiService.openAIModel = prefs.openAIModel
+            self.ai = aiService
+            Self.logger.info("AI服务对象已创建，模型: \(aiService.openAIModel)")
+        } else {
+            Self.logger.info("AI功能已禁用")
+        }
     }
 
     func savePreferences() {
@@ -351,11 +364,36 @@ final class RecordStore: ObservableObject {
         return md
     }
 
+    // 防止重复触发的标志
+    private var isBulkProcessing = false
+    
     /// 批量对无标题记录触发重新提炼（每次最多处理 3 条）
     func bulkResummarize(batchSize: Int = 3) {
-        guard enableAI, let ai else { return }
+        guard enableAI, let ai, !isBulkProcessing else { 
+            if isBulkProcessing {
+                print("[BULK] 批量处理已在进行中，跳过重复调用")
+            }
+            return 
+        }
+        
+        isBulkProcessing = true
+        defer { isBulkProcessing = false }
+        
         let targets = records.enumerated().filter { $0.element.title == nil }.prefix(batchSize)
+        guard !targets.isEmpty else {
+            print("[BULK] 没有需要处理的记录")
+            return
+        }
+        
+        print("[BULK] 开始批量处理 \(targets.count) 条记录")
+        
         for (index, r) in targets {
+            // 检查是否已经在处理中
+            guard records[index].aiStatus != "pending" else {
+                print("[BULK] 跳过已在处理中的记录: \(index)")
+                continue
+            }
+            
             records[index].aiStatus = "pending"
             ai.summarize(titleLimit: titleLimit, summaryLimit: summaryLimit, content: r.content) { [weak self] result in
                 DispatchQueue.main.async {
@@ -367,9 +405,11 @@ final class RecordStore: ObservableObject {
                         self.records[index].summaryConfidence = s.confidence
                         self.records[index].aiStatus = "success"
                         self.updateCDRecord(id: self.records[index].id, title: s.title, summary: s.summary, confidence: s.confidence, aiStatus: "success")
-                    case .failure:
+                        print("[BULK] 记录 \(index) 处理成功")
+                    case .failure(let error):
                         self.records[index].aiStatus = "fail"
                         self.updateCDRecord(id: self.records[index].id, title: nil, summary: nil, confidence: nil, aiStatus: "fail")
+                        print("[BULK] 记录 \(index) 处理失败: \(error.localizedDescription)")
                     }
                 }
             }

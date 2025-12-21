@@ -120,10 +120,10 @@ struct SettingsOverlayView: View {
             // API Key / Status Info (Added based on feedback "缺少数据")
             VStack(alignment: .leading, spacing: 2) {
                 if tab == "ai" {
-                    Text("API: \(store.aiProvider == .openai ? "OpenAI" : "Local")")
+                    Text("API: OpenAI")
                          .font(.system(size: 10, design: .monospaced))
                          .foregroundColor(.themeGray500)
-                    Text(store.aiProvider == .openai ? "Model: \((store.ai as? AIService)?.openAIModel ?? "unknown")" : "Local Service")
+                    Text("Model: \((store.ai as? AIService)?.openAIModel ?? "unknown")")
                          .font(.system(size: 10, design: .monospaced))
                          .foregroundColor(.themeGray600)
                 } else if tab == "history" {
@@ -219,8 +219,7 @@ struct SettingsOverlayView: View {
                         .foregroundColor(.themeGray400)
                     
                     HStack(spacing: 8) {
-                        ProviderButton(title: "OpenAI GPT", isSelected: store.aiProvider == .openai) { store.setAIProvider(.openai) }
-                        ProviderButton(title: "Local LLM", isSelected: store.aiProvider == .local) { store.setAIProvider(.local) }
+                        ProviderButton(title: "OpenAI GPT", isSelected: true) { }
                     }
                 }
                 
