@@ -863,6 +863,7 @@ struct FloatingRootView: View {
                 LucideView(name: .star, size: 14, color: .themeYellow500)
                 Text("已收藏 (\(count))")
                     .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(.themeTextPrimary)
                 
                 Spacer()
                 
@@ -1226,6 +1227,12 @@ struct FloatingBallView: View {
                 triggerAISuccessAnimation()
             }
         }
+        .onReceive(store.$lastPasteSuccessAt) { _ in
+            // 使用 store 的方法来判断是否应该显示粘贴成功动画
+            if store.shouldShowPasteSuccessAnimation() {
+                triggerPasteSuccessAnimation()
+            }
+        }
         .gesture(
             DragGesture(minimumDistance: 1, coordinateSpace: .global) // 使用全局坐标
                 .onChanged { value in
@@ -1315,6 +1322,20 @@ struct FloatingBallView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
             withAnimation {
                 aiSuccess = false
+            }
+        }
+    }
+    
+    /// 触发粘贴成功动画
+    private func triggerPasteSuccessAnimation() {
+        withAnimation(.spring()) {
+            pasteSuccess = true
+        }
+        HapticFeedbackManager.shared.lightImpact()
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            withAnimation {
+                pasteSuccess = false
             }
         }
     }

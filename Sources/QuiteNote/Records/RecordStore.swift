@@ -20,6 +20,12 @@ final class RecordStore: ObservableObject {
     
     /// 上次已处理的 AI 成功时间，用于防止重复显示成功动画
     private var lastProcessedAISuccessAt: Date? = nil
+    
+    /// 上次粘贴成功的时间，用于 UI 反馈
+    @Published var lastPasteSuccessAt: Date? = nil
+    
+    /// 上次已处理的粘贴成功时间，用于防止重复显示粘贴成功动画
+    private var lastProcessedPasteSuccessAt: Date? = nil
 
     @Published var enableAI: Bool = true
     @Published var searchHistory: [String] = []
@@ -77,6 +83,10 @@ final class RecordStore: ObservableObject {
         let record = Record(id: cd.id, title: nil, content: content, createdAt: now, hash: hash, aiStatus: nil, summary: nil, summaryConfidence: nil, starred: false, copiedAt: nil)
         records.insert(record, at: 0)
         sortRecordsInPlace()
+        
+        // 设置粘贴成功时间用于 UI 反馈
+        lastPasteSuccessAt = Date()
+        
         postToast("已自动创建新记录", type: "success")
         
         if records.count > maxRecords { records = Array(records.prefix(maxRecords)) }
@@ -620,6 +630,20 @@ final class RecordStore: ObservableObject {
         // 如果没有处理过的时间，或者时间不同，则应该显示动画
         if lastProcessedAISuccessAt == nil || lastProcessedAISuccessAt! != newSuccessTime {
             lastProcessedAISuccessAt = newSuccessTime
+            return true
+        }
+        
+        return false
+    }
+    
+    /// 检查是否应该显示粘贴成功动画
+    /// 只有当粘贴成功时间真正更新且与上次处理的时间不同时才返回 true
+    func shouldShowPasteSuccessAnimation() -> Bool {
+        guard let newSuccessTime = lastPasteSuccessAt else { return false }
+        
+        // 如果没有处理过的时间，或者时间不同，则应该显示动画
+        if lastProcessedPasteSuccessAt == nil || lastProcessedPasteSuccessAt! != newSuccessTime {
+            lastProcessedPasteSuccessAt = newSuccessTime
             return true
         }
         
