@@ -17,6 +17,9 @@ final class RecordStore: ObservableObject {
     
     /// 上次 AI 成功的时间，用于 UI 反馈
     @Published var lastAISuccessAt: Date? = nil
+    
+    /// 上次已处理的 AI 成功时间，用于防止重复显示成功动画
+    private var lastProcessedAISuccessAt: Date? = nil
 
     @Published var enableAI: Bool = true
     @Published var searchHistory: [String] = []
@@ -607,5 +610,19 @@ final class RecordStore: ObservableObject {
                 }
             }
         }
+    }
+    
+    /// 检查是否应该显示 AI 成功动画
+    /// 只有当成功时间真正更新且与上次处理的时间不同时才返回 true
+    func shouldShowAISuccessAnimation() -> Bool {
+        guard let newSuccessTime = lastAISuccessAt else { return false }
+        
+        // 如果没有处理过的时间，或者时间不同，则应该显示动画
+        if lastProcessedAISuccessAt == nil || lastProcessedAISuccessAt! != newSuccessTime {
+            lastProcessedAISuccessAt = newSuccessTime
+            return true
+        }
+        
+        return false
     }
 }

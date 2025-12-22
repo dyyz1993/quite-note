@@ -220,8 +220,8 @@ final class FloatingPanelController {
 
     /// 启动期强制确保悬浮窗可见并可在当前空间显示
     /// 使用更稳健的策略：先尝试直接显示，如果失败则切换 Activation Policy
-    func ensureVisibleOnLaunch() {
-        print("[DEBUG] ensureVisibleOnLaunch() called - Force showing window")
+    func ensureVisibleOnLaunch(forceCenter: Bool = false) {
+        print("[DEBUG] ensureVisibleOnLaunch() called - Force showing window, forceCenter: \(forceCenter)")
         userHidden = false
         
         // 停止之前的 Timer，避免冲突
@@ -233,8 +233,8 @@ final class FloatingPanelController {
         panel.isOpaque = false
         panel.level = .floating 
         
-        // 2. 设置窗口位置
-        if PreferencesManager.shared.rememberWindowPosition {
+        // 2. 设置窗口位置 - 如果不是强制居中且不在浮球状态，才恢复保存的位置
+        if PreferencesManager.shared.rememberWindowPosition && !forceCenter && focusProvider.mode == .expanded {
             // 尝试恢复上次保存的窗口位置
             if let savedFrame = PreferencesManager.shared.getWindowPosition() {
                 var targetScreen: NSScreen?
@@ -275,11 +275,16 @@ final class FloatingPanelController {
                     print("[DEBUG] 恢复窗口位置: \(adjustedFrame), 屏幕: \(screenNumber?.stringValue ?? "unknown")")
                 }
             } else {
-                // 没有保存的位置，则居中
-                forceCenterWindow()
+                // 没有保存的位置，且当前不在浮球状态，才居中
+                if focusProvider.mode == .expanded {
+                    forceCenterWindow()
+                }
             }
+        } else if !forceCenter && focusProvider.mode == .floatingBall {
+            // 如果在浮球状态且不是强制居中，不改变位置，只确保显示
+            print("[DEBUG] 浮球状态，不改变位置")
         } else {
-            // 不记忆位置，则居中
+            // 强制居中或其他情况
             forceCenterWindow()
         }
         
@@ -1150,7 +1155,6 @@ struct FloatingBallView: View {
     @State private var hovering = false
     @State private var pasteSuccess = false
     @State private var aiSuccess = false
-    @State private var lastProcessedSuccessAt: Date? = nil // 记录已展示过的成功时间点
     @State private var iconOffset: CGFloat = 0
     @State private var aiRotation: Double = 0
     @State private var initialPosition: CGPoint = .zero // 记录拖拽开始时的位置
@@ -1216,10 +1220,9 @@ struct FloatingBallView: View {
         .onAppear {
             print("[DEBUG] FloatingBallView appeared, mode: \(focus.mode), statusColor: \(statusColor)")
         }
-        .onReceive(store.$lastAISuccessAt) { date in
-            // 只有当日期真正更新（非 nil），且不是已经展示过的时间点时才触发
-            if let newDate = date, newDate != lastProcessedSuccessAt {
-                lastProcessedSuccessAt = newDate
+        .onReceive(store.$lastAISuccessAt) { _ in
+            // 使用 store 的方法来判断是否应该显示成功动画
+            if store.shouldShowAISuccessAnimation() {
                 triggerAISuccessAnimation()
             }
         }
