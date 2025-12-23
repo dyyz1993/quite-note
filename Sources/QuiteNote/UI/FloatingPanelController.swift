@@ -796,6 +796,7 @@ struct FloatingRootView: View {
                             Section(header: starredSectionHeader(count: starred.count)) {
                                 // 使用动画包裹收藏列表内容，根据收藏数量调整动画时间
                                 animatedStarredListView(starred: starred)
+                                    .padding(.top, 4) // 增加与 Header 的间距
                             }
                         }
                         
@@ -868,16 +869,11 @@ struct FloatingRootView: View {
                 Spacer()
                 
                 LucideView(name: .chevronRight, size: 12, color: .themeGray400)
-            .rotationEffect(.degrees(store.isStarredCollapsed ? 90 : 0))
+                    .rotationEffect(.degrees(store.isStarredCollapsed ? 0 : 90))
             }
-            .padding(.horizontal, 12)
+            .padding(.horizontal, 8)
             .padding(.vertical, 8)
-            .background(Color.themeItem.opacity(0.8))
-            .cornerRadius(6)
-            .overlay(
-                RoundedRectangle(cornerRadius: 6)
-                    .stroke(Color.white.opacity(0.05), lineWidth: 1)
-            )
+            .background(Color.themeBackground) // 使用背景色，让它看起来像个真正的 Section Header
         }
         .buttonStyle(.plain)
         .pointingHandCursor()
@@ -936,7 +932,7 @@ struct FloatingRootView: View {
         let displayCount = min(starred.count, 50)
         let displayRecords = Array(starred.prefix(displayCount))
         
-        VStack(spacing: 0) {
+        VStack(spacing: 12) {
             // 显示前50条记录
             ForEach(displayRecords) { record in
                 RecordCardView(
@@ -1992,24 +1988,29 @@ private extension RecordCardView {
     }
     
     var statusIconLucide: IconName {
-        // 使用更高效的条件判断顺序
+        // 优先显示星标图标，体现收藏语义
+        if record.starred { return .star }
+        
+        // 其次显示总结状态
         if record.summary != nil { return .sparkles }
         switch record.aiStatus {
         case "pending": return .zap
-        case "fail": return .x
+        case "fail": return .alertTriangle
         default:
             return record.title != nil ? .bot : .clock
         }
     }
     
     var statusColor: Color {
-        // 使用更高效的条件判断顺序
+        // 优先显示收藏颜色
+        if record.starred { return .themeYellow500 }
+        
         if record.summary != nil { return .themePurple500 }
         switch record.aiStatus {
         case "pending": return .themeYellow500
         case "fail": return .themeRed500
         default:
-            return record.title != nil ? .themeBlue600 : .gray
+            return record.title != nil ? .themeBlue600 : .themeGray500
         }
     }
     
