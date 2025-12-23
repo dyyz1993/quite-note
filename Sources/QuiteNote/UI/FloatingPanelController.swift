@@ -1841,6 +1841,8 @@ struct RecordCardView: View, Equatable {
                lhs.record.summary == rhs.record.summary &&
                lhs.record.starred == rhs.record.starred &&
                lhs.record.aiStatus == rhs.record.aiStatus &&
+               lhs.record.tags == rhs.record.tags &&
+               lhs.record.keywords == rhs.record.keywords &&
                lhs.isExpanded == rhs.isExpanded &&
                lhs.searchTerm == rhs.searchTerm
     }
@@ -1887,7 +1889,7 @@ private extension RecordCardView {
         let existingTags = store.records.flatMap { $0.tags }
         let uniqueTags = Array(Set(existingTags)).sorted()
         
-        store.ai?.summarizeSingle(record.content, existingTags: uniqueTags) { [weak store] (result: Result<SummaryResult, Error>) in
+        store.ai?.summarizeSingle(contextId: record.id.uuidString, record.content, existingTags: uniqueTags) { [weak store] (result: Result<SummaryResult, Error>) in
             DispatchQueue.main.async {
                 switch result {
                 case .success(let summaryResult):

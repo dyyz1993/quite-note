@@ -13,13 +13,13 @@ struct SummaryResult: Codable {
 /// 统一的大模型提炼接口：返回标题、总结与置信度
 protocol AIServiceProtocol {
     /// 执行提炼任务：输入限制与原文；completion 返回结构化结果或错误
-    func summarize(titleLimit: Int, summaryLimit: Int, content: String, existingTags: [String], completion: @escaping (Result<SummaryResult, Error>) -> Void)
+    func summarize(contextId: String?, titleLimit: Int, summaryLimit: Int, content: String, existingTags: [String], completion: @escaping (Result<SummaryResult, Error>) -> Void)
     
     /// 使用自定义提示词执行提炼任务
-    func summarize(titleLimit: Int, summaryLimit: Int, content: String, existingTags: [String], systemPrompt: String?, userPrompt: String?, completion: @escaping (Result<SummaryResult, Error>) -> Void)
+    func summarize(contextId: String?, titleLimit: Int, summaryLimit: Int, content: String, existingTags: [String], systemPrompt: String?, userPrompt: String?, completion: @escaping (Result<SummaryResult, Error>) -> Void)
     
     /// 为单个记录生成总结
-    func summarizeSingle(_ content: String, existingTags: [String], completion: @escaping (Result<SummaryResult, Error>) -> Void)
+    func summarizeSingle(contextId: String?, _ content: String, existingTags: [String], completion: @escaping (Result<SummaryResult, Error>) -> Void)
 }
 
 /// AI 服务实现：仅支持 OpenAI
@@ -35,7 +35,7 @@ final class AIService: AIServiceProtocol {
     
     // 请求队列管理
     private var requestQueue: [AIRequest] = []
-    private var isProcessingRequest = false
+    private var activeRequestIds: Set<String> = [] // 记录正在处理的 contextId
     private let maxConcurrentRequests = 3
     private var activeRequests = 0
     private let queueLock = NSLock()
@@ -43,6 +43,7 @@ final class AIService: AIServiceProtocol {
     /// 请求结构
     private struct AIRequest {
         let id = UUID()
+        let contextId: String? // 用于去重的上下文 ID（如记录 ID）
         let titleLimit: Int
         let summaryLimit: Int
         let content: String
@@ -57,24 +58,26 @@ final class AIService: AIServiceProtocol {
     deinit {
         queueLock.lock()
         requestQueue.removeAll()
+        activeRequestIds.removeAll()
         queueLock.unlock()
     }
     
     /// 为单个记录生成总结
-    func summarizeSingle(_ content: String, existingTags: [String], completion: @escaping (Result<SummaryResult, Error>) -> Void) {
+    func summarizeSingle(contextId: String?, _ content: String, existingTags: [String], completion: @escaping (Result<SummaryResult, Error>) -> Void) {
         // 使用默认限制值调用 summarize 方法
-        summarize(titleLimit: 30, summaryLimit: 100, content: content, existingTags: existingTags, completion: completion)
+        summarize(contextId: contextId, titleLimit: 30, summaryLimit: 100, content: content, existingTags: existingTags, completion: completion)
     }
     
     /// 执行提炼任务，失败或超时时降级为前 15 字标题与空总结
-    func summarize(titleLimit: Int, summaryLimit: Int, content: String, existingTags: [String], completion: @escaping (Result<SummaryResult, Error>) -> Void) {
-        summarize(titleLimit: titleLimit, summaryLimit: summaryLimit, content: content, existingTags: existingTags, systemPrompt: nil, userPrompt: nil, completion: completion)
+    func summarize(contextId: String?, titleLimit: Int, summaryLimit: Int, content: String, existingTags: [String], completion: @escaping (Result<SummaryResult, Error>) -> Void) {
+        summarize(contextId: contextId, titleLimit: titleLimit, summaryLimit: summaryLimit, content: content, existingTags: existingTags, systemPrompt: nil, userPrompt: nil, completion: completion)
     }
     
-    /// 使用自定义提示词执行提炼任务
-    func summarize(titleLimit: Int, summaryLimit: Int, content: String, existingTags: [String], systemPrompt: String?, userPrompt: String?, completion: @escaping (Result<SummaryResult, Error>) -> Void) {
+    /// 执行提炼任务
+    func summarize(contextId: String?, titleLimit: Int, summaryLimit: Int, content: String, existingTags: [String], systemPrompt: String?, userPrompt: String?, completion: @escaping (Result<SummaryResult, Error>) -> Void) {
         // 创建请求并加入队列
         let request = AIRequest(
+            contextId: contextId,
             titleLimit: titleLimit,
             summaryLimit: summaryLimit,
             content: content,
@@ -85,36 +88,61 @@ final class AIService: AIServiceProtocol {
         )
         
         queueLock.lock()
+        
+        // 去重逻辑：如果队列中已存在相同 contextId 的请求，则移除旧的
+        if let cid = contextId {
+            if let index = requestQueue.firstIndex(where: { $0.contextId == cid }) {
+                print("[AI] 队列中已存在相同 ID (\(cid)) 的请求，移除旧请求")
+                requestQueue.remove(at: index)
+            }
+            
+            // 如果该 ID 正在处理中，我们也允许新请求入队，但处理时会再次检查
+        }
+        
         requestQueue.append(request)
         queueLock.unlock()
         
-        // 尝试处理队列
-        processQueue()
+        // 异步触发队列处理，尝试填满并发槽位
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            self?.triggerQueueProcessing()
+        }
     }
     
-    /// 处理请求队列
-    private func processQueue() {
-        queueLock.lock()
-        
-        // 如果正在处理请求数量已达上限，则等待
-        guard activeRequests < maxConcurrentRequests else {
+    /// 触发队列处理，直到达到最大并发数
+    private func triggerQueueProcessing() {
+        while true {
+            queueLock.lock()
+            
+            // 如果正在处理请求数量已达上限，或者队列为空，则退出循环
+            guard activeRequests < maxConcurrentRequests && !requestQueue.isEmpty else {
+                queueLock.unlock()
+                break
+            }
+            
+            // 取出下一个请求
+            let request = requestQueue.removeFirst()
+            
+            // 进一步检查 contextId：如果该 ID 正在处理中，则跳过此请求（避免同一记录并发执行）
+            if let cid = request.contextId, activeRequestIds.contains(cid) {
+                print("[AI] ID (\(cid)) 正在处理中，跳过此队列请求")
+                queueLock.unlock()
+                continue
+            }
+            
+            if let cid = request.contextId {
+                activeRequestIds.insert(cid)
+            }
+            
+            activeRequests += 1
             queueLock.unlock()
-            return
+            
+            // 处理单个请求
+            processRequest(request)
         }
-        
-        // 如果队列为空，则无需处理
-        guard !requestQueue.isEmpty else {
-            queueLock.unlock()
-            return
-        }
-        
-        // 取出下一个请求
-        let request = requestQueue.removeFirst()
-        activeRequests += 1
-        
-        queueLock.unlock()
-        
-        // 处理请求 - 仅使用OpenAI
+    }
+    
+    /// 处理单个请求
+    private func processRequest(_ request: AIRequest) {
         summarizeWithOpenAI(
             titleLimit: request.titleLimit, 
             summaryLimit: request.summaryLimit, 
@@ -124,18 +152,21 @@ final class AIService: AIServiceProtocol {
             userPrompt: request.userPrompt
         ) { [weak self] result in
             request.completion(result)
-            self?.requestCompleted()
+            self?.requestCompleted(contextId: request.contextId)
         }
     }
     
     /// 请求完成回调
-    private func requestCompleted() {
+    private func requestCompleted(contextId: String?) {
         queueLock.lock()
         activeRequests -= 1
+        if let cid = contextId {
+            activeRequestIds.remove(cid)
+        }
         queueLock.unlock()
         
-        // 继续处理队列中的下一个请求
-        processQueue()
+        // 继续处理队列
+        triggerQueueProcessing()
     }
 
     /// 获取 OpenAI API 密钥（延迟加载，避免重复访问 Keychain）

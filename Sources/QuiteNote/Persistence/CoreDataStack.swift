@@ -96,9 +96,16 @@ final class CoreDataStack {
         container.persistentStoreDescriptions = [desc]
         container.loadPersistentStores { _, _ in }
         container.viewContext.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy
+        container.viewContext.automaticallyMergesChangesFromParent = true
     }
 
     var context: NSManagedObjectContext { container.viewContext }
+
+    /// 在后台执行数据库操作
+    /// - Parameter block: 要在后台执行的操作
+    func performBackgroundTask(_ block: @escaping (NSManagedObjectContext) -> Void) {
+        container.performBackgroundTask(block)
+    }
 
     func fetchRecords() throws -> [CDRecord] {
         let req = NSFetchRequest<CDRecord>(entityName: "CDRecord")

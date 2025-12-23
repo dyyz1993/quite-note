@@ -62,10 +62,18 @@ final class RecordStore: ObservableObject {
 
     
 
+    /// 缓存的唯一标签，避免频繁计算
+    private var cachedUniqueTags: [String] = []
+    private var tagsNeedUpdate: Bool = true
+
     /// 获取当前所有记录中已有的唯一标签
     private func getAllUniqueTags() -> [String] {
+        if !tagsNeedUpdate { return cachedUniqueTags }
+        
         let allTags = records.flatMap { $0.tags }
-        return Array(Set(allTags)).sorted()
+        cachedUniqueTags = Array(Set(allTags)).sorted()
+        tagsNeedUpdate = false
+        return cachedUniqueTags
     }
 
     /// 添加一条记录并触发 UI 刷新
@@ -79,22 +87,33 @@ final class RecordStore: ObservableObject {
         }
 
         let now = Date()
-        let cd = stack.newRecord()
-        cd.id = UUID()
-        cd.content = content
-        cd.createdAt = now
-        cd.digest = hash
-        cd.starred = false
-        cd.sourceApp = sourceApp
-        cd.sourceUrl = sourceUrl
-        
-        // 自动识别内容类型并添加标签
+        let id = UUID()
         let autoTags = ContentClassifier.classify(content)
-        cd.tagsRaw = toJSONString(autoTags)
         
-        stack.save()
+        // 1. 先在后台保存到 Core Data
+        stack.performBackgroundTask { [weak self] context in
+            guard let self = self else { return }
+            let cd = CDRecord(context: context)
+            cd.id = id
+            cd.content = content
+            cd.createdAt = now
+            cd.digest = hash
+            cd.starred = false
+            cd.sourceApp = sourceApp
+            cd.sourceUrl = sourceUrl
+            cd.tagsRaw = self.toJSONString(autoTags)
+            
+            do {
+                try context.save()
+                Self.logger.info("新记录已异步保存到数据库: \(id)")
+            } catch {
+                Self.logger.error("异步保存记录失败: \(error.localizedDescription)")
+            }
+        }
+        
+        // 2. 立即更新内存 UI (在主线程)
         let record = Record(
-            id: cd.id, 
+            id: id, 
             title: nil, 
             content: content, 
             createdAt: now, 
@@ -109,27 +128,33 @@ final class RecordStore: ObservableObject {
             sourceApp: sourceApp,
             sourceUrl: sourceUrl
         )
+        
         records.insert(record, at: 0)
+        tagsNeedUpdate = true
         sortRecordsInPlace()
         
         // 设置粘贴成功时间用于 UI 反馈
         lastPasteSuccessAt = Date()
-        
         postToast("已自动创建新记录", type: "success")
         
         if records.count > maxRecords { records = Array(records.prefix(maxRecords)) }
+        
+        // 3. 触发 AI 总结 (如果启用)
         Self.logger.info("AI调用条件检查: enableAI=\(self.enableAI), content.count=\(content.count), summaryTrigger=\(self.summaryTrigger), ai=\(self.ai != nil)")
         guard enableAI, content.count >= summaryTrigger, let ai else { 
             Self.logger.info("AI功能未启用或内容长度不足，跳过AI总结")
             return 
         }
+        
         Self.logger.info("开始调用AI总结，内容长度: \(content.count)")
-        let index = 0
-        records[index].aiStatus = "pending"
+        if let idx = records.firstIndex(where: { $0.id == id }) {
+            records[idx].aiStatus = "pending"
+        }
         
         let existingTags = getAllUniqueTags()
         
         ai.summarize(
+            contextId: id.uuidString,
             titleLimit: titleLimit, 
             summaryLimit: summaryLimit, 
             content: content,
@@ -142,7 +167,7 @@ final class RecordStore: ObservableObject {
                 switch result {
                 case .success(let s):
                     self.updateRecordAI(
-                        id: cd.id, 
+                        id: id, 
                         title: s.title, 
                         summary: s.summary, 
                         confidence: s.confidence, 
@@ -152,7 +177,7 @@ final class RecordStore: ObservableObject {
                     )
                     self.lastAISuccessAt = Date()
                 case .failure:
-                    self.updateRecordAI(id: cd.id, title: nil, summary: nil, confidence: nil, aiStatus: "fail")
+                    self.updateRecordAI(id: id, title: nil, summary: nil, confidence: nil, aiStatus: "fail")
                 }
             }
         }
@@ -163,11 +188,15 @@ final class RecordStore: ObservableObject {
         if let idx = records.firstIndex(where: { $0.hash == hash }) {
             let id = records[idx].id
             records[idx].createdAt = now
-            let req = NSFetchRequest<CDRecord>(entityName: "CDRecord")
-            req.predicate = NSPredicate(format: "id == %@", id as CVarArg)
-            if let obj = try? stack.context.fetch(req).first {
-                obj.createdAt = now
-                stack.save()
+            
+            // 异步更新数据库
+            stack.performBackgroundTask { context in
+                let req = NSFetchRequest<CDRecord>(entityName: "CDRecord")
+                req.predicate = NSPredicate(format: "id == %@", id as CVarArg)
+                if let obj = try? context.fetch(req).first {
+                    obj.createdAt = now
+                    try? context.save()
+                }
             }
             sortRecordsInPlace()
         }
@@ -176,16 +205,21 @@ final class RecordStore: ObservableObject {
     /// 删除指定记录
     func delete(_ record: Record) {
         records.removeAll { $0.id == record.id }
+        tagsNeedUpdate = true
         deleteCDRecord(id: record.id)
     }
     
     /// 清空所有记录
     func clearAll() {
         records.removeAll()
-        let req = NSFetchRequest<NSFetchRequestResult>(entityName: "CDRecord")
-        let deleteReq = NSBatchDeleteRequest(fetchRequest: req)
-        _ = try? stack.context.execute(deleteReq)
-        stack.save()
+        tagsNeedUpdate = true
+        // 异步清空数据库
+        stack.performBackgroundTask { context in
+            let req = NSFetchRequest<NSFetchRequestResult>(entityName: "CDRecord")
+            let deleteReq = NSBatchDeleteRequest(fetchRequest: req)
+            _ = try? context.execute(deleteReq)
+            try? context.save()
+        }
     }
 
     /// 搜索记录（支持高级搜索选项）
@@ -349,7 +383,7 @@ final class RecordStore: ObservableObject {
         let prompt = "请为以下搜索结果生成一个简短的总结，不超过100字。搜索关键词: \(query)\n\n搜索结果:\n\(content)"
         
         let existingTags = getAllUniqueTags()
-        ai.summarize(titleLimit: 50, summaryLimit: 100, content: prompt, existingTags: existingTags) { result in
+        ai.summarize(contextId: "search-\(query)", titleLimit: 50, summaryLimit: 100, content: prompt, existingTags: existingTags) { result in
             DispatchQueue.main.async {
                 switch result {
                 case .success(let summaryResult):
@@ -475,6 +509,7 @@ final class RecordStore: ObservableObject {
             records[index].aiStatus = "pending"
             let existingTags = getAllUniqueTags()
             ai.summarize(
+                contextId: r.id.uuidString,
                 titleLimit: titleLimit, 
                 summaryLimit: summaryLimit, 
                 content: r.content,
@@ -524,57 +559,88 @@ final class RecordStore: ObservableObject {
 
     /// 分页加载记录，提高性能
     func loadFromStore(pageSize: Int = 50, offset: Int = 0) {
-        let cds = (try? stack.fetchRecords(limit: pageSize, offset: offset)) ?? []
-        let newRecords = cds.map { r -> Record in
-            // 检查并重置pending状态的记录
-            let aiStatus = r.aiStatus == "pending" ? nil : r.aiStatus
-            if r.aiStatus == "pending" {
-                // 更新数据库中的状态
-                r.aiStatus = nil
+        // 异步加载数据，避免阻塞主线程
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+            
+            do {
+                let cds = try self.stack.fetchRecords(limit: pageSize, offset: offset)
+                let newRecords = cds.map { r -> Record in
+                    // 检查并重置pending状态的记录
+                    let aiStatus = r.aiStatus == "pending" ? nil : r.aiStatus
+                    return Record(
+                        id: r.id, 
+                        title: r.title, 
+                        content: r.content, 
+                        createdAt: r.createdAt, 
+                        hash: r.digest, 
+                        aiStatus: aiStatus, 
+                        summary: r.summary, 
+                        summaryConfidence: r.summaryConfidence, 
+                        starred: r.starred, 
+                        copiedAt: r.copiedAt,
+                        tags: self.parseJSONArray(r.tagsRaw),
+                        keywords: self.parseJSONArray(r.keywordsRaw),
+                        sourceApp: r.sourceApp,
+                        sourceUrl: r.sourceUrl
+                    )
+                }
+                
+                // 如果有 pending 状态的记录，需要在后台更新数据库
+                let pendingIds = cds.filter { $0.aiStatus == "pending" }.map { $0.id }
+                if !pendingIds.isEmpty {
+                    self.stack.performBackgroundTask { context in
+                        let req = NSFetchRequest<CDRecord>(entityName: "CDRecord")
+                        req.predicate = NSPredicate(format: "id IN %@", pendingIds)
+                        if let objects = try? context.fetch(req) {
+                            for obj in objects {
+                                obj.aiStatus = nil
+                            }
+                            try? context.save()
+                        }
+                    }
+                }
+                
+                DispatchQueue.main.async {
+                    if offset == 0 {
+                        self.records = newRecords
+                    } else {
+                        let existingIds = Set(self.records.map { $0.id })
+                        let uniqueNewRecords = newRecords.filter { !existingIds.contains($0.id) }
+                        self.records.append(contentsOf: uniqueNewRecords)
+                    }
+                    self.sortRecordsInPlace()
+                }
+            } catch {
+                Self.logger.error("加载记录失败: \(error.localizedDescription)")
             }
-            return Record(
-                id: r.id, 
-                title: r.title, 
-                content: r.content, 
-                createdAt: r.createdAt, 
-                hash: r.digest, 
-                aiStatus: aiStatus, 
-                summary: r.summary, 
-                summaryConfidence: r.summaryConfidence, 
-                starred: r.starred, 
-                copiedAt: r.copiedAt,
-                tags: parseJSONArray(r.tagsRaw),
-                keywords: parseJSONArray(r.keywordsRaw),
-                sourceApp: r.sourceApp,
-                sourceUrl: r.sourceUrl
-            )
         }
-        
-        // 如果有pending状态的记录被重置，保存更改
-        if cds.contains(where: { $0.aiStatus == "pending" }) {
-            stack.save()
-        }
-        
-        // 如果是第一页，直接替换；否则追加
-        if offset == 0 {
-            records = newRecords
-        } else {
-            // 检查是否已经加载了这些记录，避免重复
-            let existingIds = Set(records.map { $0.id })
-            let uniqueNewRecords = newRecords.filter { !existingIds.contains($0.id) }
-            records.append(contentsOf: uniqueNewRecords)
-        }
-        
-        sortRecordsInPlace()
     }
     
     /// 对内存中的记录进行排序：收藏优先，时间倒序
     private func sortRecordsInPlace() {
-        records.sort { (r1, r2) -> Bool in
-            if r1.starred != r2.starred {
-                return r1.starred && !r2.starred
+        // 如果记录较多，考虑在后台排序后更新
+        if records.count > 100 {
+            let currentRecords = records
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                var sorted = currentRecords
+                sorted.sort { (r1, r2) -> Bool in
+                    if r1.starred != r2.starred {
+                        return r1.starred && !r2.starred
+                    }
+                    return r1.createdAt > r2.createdAt
+                }
+                DispatchQueue.main.async {
+                    self?.records = sorted
+                }
             }
-            return r1.createdAt > r2.createdAt
+        } else {
+            records.sort { (r1, r2) -> Bool in
+                if r1.starred != r2.starred {
+                    return r1.starred && !r2.starred
+                }
+                return r1.createdAt > r2.createdAt
+            }
         }
     }
     
@@ -621,79 +687,98 @@ final class RecordStore: ObservableObject {
     
     /// 更新记录的AI状态和内容
     func updateRecordAI(id: UUID, title: String?, summary: String?, confidence: Double?, aiStatus: String?, tags: [String]? = nil, keywords: [String]? = nil) {
-        // 1. 处理标签合并：自动识别的标签 + AI 生成的标签
-        var finalTags: [String]? = tags
-        if let aiTags = tags, let index = records.firstIndex(where: { $0.id == id }) {
-            let autoTags = records[index].tags
-            finalTags = Array(Set(autoTags + aiTags)).sorted()
-        }
+        // 异步处理数据，避免阻塞主线程
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+            
+            // 1. 处理标签合并：自动识别的标签 + AI 生成的标签
+            var finalTags: [String]? = tags
+            if let aiTags = tags, let index = self.records.firstIndex(where: { $0.id == id }) {
+                let autoTags = self.records[index].tags
+                finalTags = Array(Set(autoTags + aiTags)).sorted()
+            }
 
-        // 2. 处理关键词：确保都有 # 前缀且不超过 10 个
-        var finalKeywords: [String]? = keywords
-        if let aiKeywords = keywords {
-            let cleaned = aiKeywords.prefix(10).map { k -> String in
-                let trimmed = k.trimmingCharacters(in: .whitespacesAndNewlines)
-                return trimmed.hasPrefix("#") ? trimmed : "#\(trimmed)"
+            // 2. 处理关键词：确保都有 # 前缀且不超过 10 个
+            var finalKeywords: [String]? = keywords
+            if let aiKeywords = keywords {
+                let cleaned = aiKeywords.prefix(10).map { k -> String in
+                    let trimmed = k.trimmingCharacters(in: .whitespacesAndNewlines)
+                    return trimmed.hasPrefix("#") ? trimmed : "#\(trimmed)"
+                }
+                finalKeywords = Array(cleaned)
             }
-            finalKeywords = Array(cleaned)
-        }
 
-        updateCDRecord(id: id, title: title, summary: summary, confidence: confidence, aiStatus: aiStatus, tags: finalTags, keywords: finalKeywords)
-        
-        // 更新内存中的记录
-        if let index = records.firstIndex(where: { $0.id == id }) {
-            if let title = title {
-                records[index].title = title
-            }
-            if let summary = summary {
-                records[index].summary = summary
-            }
-            if let confidence = confidence {
-                records[index].summaryConfidence = confidence
-            }
-            if let aiStatus = aiStatus {
-                records[index].aiStatus = aiStatus
-            }
-            if let ft = finalTags {
-                records[index].tags = ft
-            }
-            if let fk = finalKeywords {
-                records[index].keywords = fk
+            // 3. 异步更新数据库
+            self.updateCDRecord(id: id, title: title, summary: summary, confidence: confidence, aiStatus: aiStatus, tags: finalTags, keywords: finalKeywords)
+            
+            // 4. 返回主线程更新内存 UI
+            DispatchQueue.main.async {
+                if let index = self.records.firstIndex(where: { $0.id == id }) {
+                    if let title = title {
+                        self.records[index].title = title
+                    }
+                    if let summary = summary {
+                        self.records[index].summary = summary
+                    }
+                    if let confidence = confidence {
+                        self.records[index].summaryConfidence = confidence
+                    }
+                    if let aiStatus = aiStatus {
+                        self.records[index].aiStatus = aiStatus
+                    }
+                    if let ft = finalTags {
+                        self.records[index].tags = ft
+                        self.tagsNeedUpdate = true
+                    }
+                    if let fk = finalKeywords {
+                        self.records[index].keywords = fk
+                    }
+                }
             }
         }
     }
 
     private func updateCDRecord(id: UUID, title: String?, summary: String?, confidence: Double?, aiStatus: String?, tags: [String]? = nil, keywords: [String]? = nil) {
-        let req = NSFetchRequest<CDRecord>(entityName: "CDRecord")
-        req.predicate = NSPredicate(format: "id == %@", id as CVarArg)
-        if let obj = try? stack.context.fetch(req).first {
-            if let title = title { obj.title = title }
-            if let summary = summary { obj.summary = summary }
-            if let confidence = confidence { obj.summaryConfidence = confidence }
-            if let aiStatus = aiStatus { obj.aiStatus = aiStatus }
-            if let tags = tags { obj.tagsRaw = toJSONString(tags) }
-            if let keywords = keywords { obj.keywordsRaw = toJSONString(keywords) }
-            stack.save()
+        stack.performBackgroundTask { [weak self] context in
+            guard let self = self else { return }
+            let req = NSFetchRequest<CDRecord>(entityName: "CDRecord")
+            req.predicate = NSPredicate(format: "id == %@", id as CVarArg)
+            if let obj = try? context.fetch(req).first {
+                if let title = title { obj.title = title }
+                if let summary = summary { obj.summary = summary }
+                if let confidence = confidence { obj.summaryConfidence = confidence }
+                if let aiStatus = aiStatus { obj.aiStatus = aiStatus }
+                if let tags = tags { obj.tagsRaw = self.toJSONString(tags) }
+                if let keywords = keywords { obj.keywordsRaw = self.toJSONString(keywords) }
+                try? context.save()
+            }
         }
     }
 
     private func deleteCDRecord(id: UUID) {
-        let req = NSFetchRequest<CDRecord>(entityName: "CDRecord")
-        req.predicate = NSPredicate(format: "id == %@", id as CVarArg)
-        if let obj = try? stack.context.fetch(req).first {
-            stack.context.delete(obj)
-            stack.save()
+        stack.performBackgroundTask { context in
+            let req = NSFetchRequest<CDRecord>(entityName: "CDRecord")
+            req.predicate = NSPredicate(format: "id == %@", id as CVarArg)
+            if let obj = try? context.fetch(req).first {
+                context.delete(obj)
+                try? context.save()
+            }
         }
     }
 
     func toggleStar(_ record: Record) {
         if let idx = records.firstIndex(where: { $0.id == record.id }) {
             records[idx].starred.toggle()
-            let req = NSFetchRequest<CDRecord>(entityName: "CDRecord")
-            req.predicate = NSPredicate(format: "id == %@", record.id as CVarArg)
-            if let obj = try? stack.context.fetch(req).first {
-                obj.starred = records[idx].starred
-                stack.save()
+            let isStarred = records[idx].starred
+            
+            // 异步更新数据库
+            stack.performBackgroundTask { context in
+                let req = NSFetchRequest<CDRecord>(entityName: "CDRecord")
+                req.predicate = NSPredicate(format: "id == %@", record.id as CVarArg)
+                if let obj = try? context.fetch(req).first {
+                    obj.starred = isStarred
+                    try? context.save()
+                }
             }
             sortRecordsInPlace()
         }
@@ -707,6 +792,7 @@ final class RecordStore: ObservableObject {
         let existingTags = getAllUniqueTags()
         
         ai.summarize(
+            contextId: record.id.uuidString,
             titleLimit: titleLimit, 
             summaryLimit: summaryLimit, 
             content: record.content,

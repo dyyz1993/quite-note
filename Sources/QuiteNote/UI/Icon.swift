@@ -60,16 +60,23 @@ struct LucideView: View {
     let size: CGFloat
     let color: Color
 
+    /// 全局图标缓存，避免重复文件操作
+    private static var iconCache = NSCache<NSString, NSImage>()
+    /// 已扫描过的 Bundle 缓存
+    private static var foundBundles: [Bundle] = []
+    /// 是否已经执行过初始扫描
+    private static var hasScannedBundles = false
+
     var body: some View {
         Group {
-            if let img = nsImage(for: name.rawValue) {
+            if let img = getCachedImage(for: name.rawValue) {
                 Image(nsImage: img)
                     .renderingMode(.template)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     .frame(width: size, height: size)
                     .foregroundColor(color)
-            } else if let ph = nsImage(for: "x") { // Lucide 内部占位
+            } else if let ph = getCachedImage(for: "x") { // Lucide 内部占位
                 Image(nsImage: ph)
                     .renderingMode(.template)
                     .resizable()
@@ -84,17 +91,43 @@ struct LucideView: View {
         }
     }
 
+    /// 获取缓存或加载图标
+    private func getCachedImage(for id: String) -> NSImage? {
+        if let cached = Self.iconCache.object(forKey: id as NSString) {
+            return cached
+        }
+        
+        if let loaded = nsImage(for: id) {
+            Self.iconCache.setObject(loaded, forKey: id as NSString)
+            return loaded
+        }
+        
+        return nil
+    }
+
     /// 根据 lucideId 加载 NSImage
     private func nsImage(for lucideId: String) -> NSImage? {
         #if canImport(AppKit)
         // 1) 首选 Lucide 扩展按 id 访问
         if let img = NSImage.image(lucideId: lucideId) { return img }
         
-        // 2) 直接从已知的 LucideIcons bundle 路径加载图标
+        // 2) 尝试从已发现的 bundle 中加载
+        for bundle in Self.foundBundles {
+            if let img = bundle.image(forResource: NSImage.Name(lucideId)) {
+                return img
+            }
+        }
+
+        // 3) 直接从已知的 LucideIcons bundle 路径加载图标
         if let img = loadFromKnownBundle(lucideId) { return img }
         
-        // 3) swift run 场景：手动扫描 .build 目录下的 Lucide 资源 bundle
-        return searchLucideImageInBuild(lucideId)
+        // 4) 只有在没有扫描过的情况下才执行全盘扫描（非常耗时）
+        if !Self.hasScannedBundles {
+            Self.hasScannedBundles = true
+            return searchLucideImageInBuild(lucideId)
+        }
+        
+        return nil
         #else
         return nil
         #endif
@@ -104,17 +137,17 @@ struct LucideView: View {
     private func loadFromKnownBundle(_ id: String) -> NSImage? {
         // 首先尝试从 Resources 目录中的 icons.xcassets 加载
         if let imagePath = Bundle.main.path(forResource: id, ofType: "pdf", inDirectory: "icons.xcassets/\(id).imageset") {
-            print("[DEBUG] 从 icons.xcassets 加载图标: \(id) -> \(imagePath)")
             return NSImage(contentsOfFile: imagePath)
         }
         
         // 然后尝试从 Frameworks 目录中的 bundle 加载
         let lucideBundleURL = Bundle.main.bundleURL.appendingPathComponent("Contents/Frameworks/LucideIcons_LucideIcons.bundle")
         if let lucideBundle = Bundle(url: lucideBundleURL) {
-            print("[DEBUG] 从 Frameworks bundle 加载图标: \(id)")
+            if !Self.foundBundles.contains(where: { $0.bundleURL == lucideBundleURL }) {
+                Self.foundBundles.append(lucideBundle)
+            }
             return lucideBundle.image(forResource: NSImage.Name(id))
         }
-        print("[DEBUG] 无法找到图标: \(id)")
         return nil
     }
 
@@ -124,24 +157,31 @@ struct LucideView: View {
         let candidates: [URL] = [
             URL(fileURLWithPath: fm.currentDirectoryPath).appendingPathComponent(".build"),
             Bundle.main.bundleURL,
-            // 显式检查 Frameworks 目录
-        Bundle.main.bundleURL.appendingPathComponent("Contents/Frameworks")
+            Bundle.main.bundleURL.appendingPathComponent("Contents/Frameworks")
         ]
+        
+        var foundImage: NSImage? = nil
+        
         for root in candidates {
             if !fm.fileExists(atPath: root.path) { continue }
             if let en = fm.enumerator(at: root, includingPropertiesForKeys: nil) {
                 for case let url as URL in en {
                     if url.pathExtension == "bundle" && url.lastPathComponent.lowercased().contains("lucide") {
-                        if let b = Bundle(url: url), let img = b.image(forResource: NSImage.Name(id)) {
-                            return img
+                        if let b = Bundle(url: url) {
+                            // 记录发现的 bundle，以便下次直接使用
+                            if !Self.foundBundles.contains(where: { $0.bundleURL == url }) {
+                                Self.foundBundles.append(b)
+                            }
+                            if foundImage == nil {
+                                foundImage = b.image(forResource: NSImage.Name(id))
+                            }
                         }
                     }
                 }
             }
         }
-        return nil
+        return foundImage
     }
-
 }
 
 /// 图标 + 文本组合标签，统一尺寸与对齐
