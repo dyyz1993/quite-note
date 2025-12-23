@@ -1,23 +1,25 @@
 import Foundation
 import os.log
 
-/// AI 总结结果结构：标题、总结与置信度
+/// AI 总结结果结构：标题、总结、置信度、标签与关键词
 struct SummaryResult: Codable {
     let title: String
     let summary: String
     let confidence: Double
+    let tags: [String]?
+    let keywords: [String]?
 }
 
 /// 统一的大模型提炼接口：返回标题、总结与置信度
 protocol AIServiceProtocol {
     /// 执行提炼任务：输入限制与原文；completion 返回结构化结果或错误
-    func summarize(titleLimit: Int, summaryLimit: Int, content: String, completion: @escaping (Result<SummaryResult, Error>) -> Void)
+    func summarize(titleLimit: Int, summaryLimit: Int, content: String, existingTags: [String], completion: @escaping (Result<SummaryResult, Error>) -> Void)
     
     /// 使用自定义提示词执行提炼任务
-    func summarize(titleLimit: Int, summaryLimit: Int, content: String, systemPrompt: String?, userPrompt: String?, completion: @escaping (Result<SummaryResult, Error>) -> Void)
+    func summarize(titleLimit: Int, summaryLimit: Int, content: String, existingTags: [String], systemPrompt: String?, userPrompt: String?, completion: @escaping (Result<SummaryResult, Error>) -> Void)
     
     /// 为单个记录生成总结
-    func summarizeSingle(_ content: String, completion: @escaping (Result<SummaryResult, Error>) -> Void)
+    func summarizeSingle(_ content: String, existingTags: [String], completion: @escaping (Result<SummaryResult, Error>) -> Void)
 }
 
 /// AI 服务实现：仅支持 OpenAI
@@ -44,6 +46,7 @@ final class AIService: AIServiceProtocol {
         let titleLimit: Int
         let summaryLimit: Int
         let content: String
+        let existingTags: [String]
         let systemPrompt: String?
         let userPrompt: String?
         let completion: (Result<SummaryResult, Error>) -> Void
@@ -58,23 +61,24 @@ final class AIService: AIServiceProtocol {
     }
     
     /// 为单个记录生成总结
-    func summarizeSingle(_ content: String, completion: @escaping (Result<SummaryResult, Error>) -> Void) {
+    func summarizeSingle(_ content: String, existingTags: [String], completion: @escaping (Result<SummaryResult, Error>) -> Void) {
         // 使用默认限制值调用 summarize 方法
-        summarize(titleLimit: 30, summaryLimit: 100, content: content, completion: completion)
+        summarize(titleLimit: 30, summaryLimit: 100, content: content, existingTags: existingTags, completion: completion)
     }
-
+    
     /// 执行提炼任务，失败或超时时降级为前 15 字标题与空总结
-    func summarize(titleLimit: Int, summaryLimit: Int, content: String, completion: @escaping (Result<SummaryResult, Error>) -> Void) {
-        summarize(titleLimit: titleLimit, summaryLimit: summaryLimit, content: content, systemPrompt: nil, userPrompt: nil, completion: completion)
+    func summarize(titleLimit: Int, summaryLimit: Int, content: String, existingTags: [String], completion: @escaping (Result<SummaryResult, Error>) -> Void) {
+        summarize(titleLimit: titleLimit, summaryLimit: summaryLimit, content: content, existingTags: existingTags, systemPrompt: nil, userPrompt: nil, completion: completion)
     }
     
     /// 使用自定义提示词执行提炼任务
-    func summarize(titleLimit: Int, summaryLimit: Int, content: String, systemPrompt: String?, userPrompt: String?, completion: @escaping (Result<SummaryResult, Error>) -> Void) {
+    func summarize(titleLimit: Int, summaryLimit: Int, content: String, existingTags: [String], systemPrompt: String?, userPrompt: String?, completion: @escaping (Result<SummaryResult, Error>) -> Void) {
         // 创建请求并加入队列
         let request = AIRequest(
             titleLimit: titleLimit,
             summaryLimit: summaryLimit,
             content: content,
+            existingTags: existingTags,
             systemPrompt: systemPrompt,
             userPrompt: userPrompt,
             completion: completion
@@ -115,6 +119,7 @@ final class AIService: AIServiceProtocol {
             titleLimit: request.titleLimit, 
             summaryLimit: request.summaryLimit, 
             content: request.content,
+            existingTags: request.existingTags,
             systemPrompt: request.systemPrompt,
             userPrompt: request.userPrompt
         ) { [weak self] result in
@@ -144,7 +149,7 @@ final class AIService: AIServiceProtocol {
     }
 
     /// 使用 OpenAI Chat Completions 生成固定 JSON 输出
-    private func summarizeWithOpenAI(titleLimit: Int, summaryLimit: Int, content: String, systemPrompt: String? = nil, userPrompt: String? = nil, completion: @escaping (Result<SummaryResult, Error>) -> Void) {
+    private func summarizeWithOpenAI(titleLimit: Int, summaryLimit: Int, content: String, existingTags: [String], systemPrompt: String? = nil, userPrompt: String? = nil, completion: @escaping (Result<SummaryResult, Error>) -> Void) {
         
         // 防止多次回调的标志
         var hasCompleted = false
@@ -157,7 +162,7 @@ final class AIService: AIServiceProtocol {
         
         guard let apiKey = getOpenAIAPIKey() else {
             let baseTitle = String(content.prefix(max(0, min(titleLimit, 15))))
-            let result = SummaryResult(title: baseTitle, summary: "", confidence: 0.0)
+            let result = SummaryResult(title: baseTitle, summary: "", confidence: 0.0, tags: [], keywords: [])
             completion(.success(result))
             return
         }
@@ -168,17 +173,25 @@ final class AIService: AIServiceProtocol {
         req.addValue("application/json", forHTTPHeaderField: "Content-Type")
         req.addValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
 
-        // 使用默认或自定义提示词，并替换占位符
-        let defaultSys = "你是一个专业的问题分析助手。请仔细分析以下文本，提炼出其中的核心问题或关键点。严格输出以下 JSON 字段，不要包含多余文本：{\"title\":不超过\(titleLimit)字的问题标题,\"summary\":不超过\(summaryLimit)字的问题总结,\"confidence\":0-1 之间置信度，仅数字}";
-        let defaultUser = "请分析以下文本，提炼出其中的问题或关键点：\n\n\(content)\n\n只返回 JSON，确保标题和总结都聚焦于问题本身。"
+        // 准备现有标签提示
+        let tagsPrompt = existingTags.isEmpty ? "" : "\n当前系统已有标签库: [\(existingTags.joined(separator: ", "))]。\n请遵循以下增强规则：\n1. **优先复用**: 检查内容是否属于已有标签的维度，如果是，必须优先使用已有标签。\n2. **多维度分类**: 即使复用了旧标签，也请尝试从内容属性、技术工具、业务场景等维度补齐缺失的分类。\n3. **新增策略**: 仅在已有标签完全无法覆盖该内容的某个重要维度时，才创建新标签。\n4. **简洁规范**: 标签通常为 2-4 字，避免句子形式。"
+
+        // 获取基础提示词
+        let baseSys = systemPrompt ?? PreferencesManager.shared.aiSystemPrompt
+        let baseUser = userPrompt ?? PreferencesManager.shared.aiUserPrompt
         
-        var sys = systemPrompt ?? defaultSys
+        // 注入标签提示（如果是系统默认提示词，则注入 tagsPrompt）
+        var sys = baseSys
+        if sys.contains("识别内容的分类。") {
+            sys = sys.replacingOccurrences(of: "识别内容的分类。", with: "识别内容的分类。\(tagsPrompt)")
+        }
+        
+        // 替换占位符
         sys = sys.replacingOccurrences(of: "{titleLimit}", with: "\(titleLimit)")
         sys = sys.replacingOccurrences(of: "{summaryLimit}", with: "\(summaryLimit)")
         
-        var user = userPrompt ?? defaultUser
-        user = user.replacingOccurrences(of: "{content}", with: content)
-
+        let user = baseUser.replacingOccurrences(of: "{content}", with: content)
+        
         let body: [String: Any] = [
             "model": openAIModel,
             "messages": [
@@ -196,7 +209,7 @@ final class AIService: AIServiceProtocol {
         } catch {
        
             let baseTitle = String(content.prefix(max(0, min(titleLimit, 15))))
-            let result = SummaryResult(title: baseTitle, summary: "", confidence: 0.0)
+            let result = SummaryResult(title: baseTitle, summary: "", confidence: 0.0, tags: [], keywords: [])
             completion(.success(result))
             return
         }
@@ -210,7 +223,7 @@ final class AIService: AIServiceProtocol {
         let task = session.dataTask(with: req) { data, response, error in
             if error != nil {
                 let baseTitle = String(content.prefix(max(0, min(titleLimit, 15))))
-                let result = SummaryResult(title: baseTitle, summary: "", confidence: 0.0)
+                let result = SummaryResult(title: baseTitle, summary: "", confidence: 0.0, tags: [], keywords: [])
                 safeCompletion(.success(result))
                 return
             }
@@ -218,7 +231,7 @@ final class AIService: AIServiceProtocol {
             if let httpResponse = response as? HTTPURLResponse {
                 if httpResponse.statusCode != 200 {
                     let baseTitle = String(content.prefix(max(0, min(titleLimit, 15))))
-                    let result = SummaryResult(title: baseTitle, summary: "", confidence: 0.0)
+                    let result = SummaryResult(title: baseTitle, summary: "", confidence: 0.0, tags: [], keywords: [])
                     safeCompletion(.success(result))
                     return
                 }
@@ -226,7 +239,7 @@ final class AIService: AIServiceProtocol {
 
             guard let data = data else {
                 let baseTitle = String(content.prefix(max(0, min(titleLimit, 15))))
-                let result = SummaryResult(title: baseTitle, summary: "", confidence: 0.0)
+                let result = SummaryResult(title: baseTitle, summary: "", confidence: 0.0, tags: [], keywords: [])
                 safeCompletion(.success(result))
                 return
             }
@@ -265,25 +278,25 @@ final class AIService: AIServiceProtocol {
                             
                             // 尝试降级处理
                             let baseTitle = String(content.prefix(max(0, min(titleLimit, 15))))
-                            let result = SummaryResult(title: baseTitle, summary: trimmed, confidence: 0.5)
+                            let result = SummaryResult(title: baseTitle, summary: trimmed, confidence: 0.5, tags: [], keywords: [])
                             safeCompletion(.success(result))
                         }
                     } else {
                         
                         let baseTitle = String(content.prefix(max(0, min(titleLimit, 15))))
-                        let result = SummaryResult(title: baseTitle, summary: "", confidence: 0.0)
+                        let result = SummaryResult(title: baseTitle, summary: "", confidence: 0.0, tags: [], keywords: [])
                         safeCompletion(.success(result))
                     }
                 } else {
                     
                     let baseTitle = String(content.prefix(max(0, min(titleLimit, 15))))
-                    let result = SummaryResult(title: baseTitle, summary: "", confidence: 0.0)
+                    let result = SummaryResult(title: baseTitle, summary: "", confidence: 0.0, tags: [], keywords: [])
                     safeCompletion(.success(result))
                 }
             } catch {
                 
                 let baseTitle = String(content.prefix(max(0, min(titleLimit, 15))))
-                let result = SummaryResult(title: baseTitle, summary: "", confidence: 0.0)
+                let result = SummaryResult(title: baseTitle, summary: "", confidence: 0.0, tags: [], keywords: [])
                 safeCompletion(.success(result))
             }
         }

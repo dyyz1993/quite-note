@@ -917,6 +917,7 @@ struct FloatingRootView: View {
             RecordCardView(
                 record: record,
                 expandedId: $expandedId,
+                searchTerm: $searchTerm,
                 store: store
             )
             .equatable() // 使用 Equatable 减少重绘
@@ -941,6 +942,7 @@ struct FloatingRootView: View {
                 RecordCardView(
                     record: record,
                     expandedId: $expandedId,
+                    searchTerm: $searchTerm,
                     store: store
                 )
                 .equatable() // 使用 Equatable 减少重绘
@@ -1091,6 +1093,27 @@ struct ShrinkButton: View {
             .onHover { hovering = $0 }
             .pointingHandCursor()
             .help("缩小到浮球")
+    }
+}
+
+struct TagView: View {
+    let text: String
+    let color: Color
+    let bgColor: Color
+    let action: () -> Void
+    
+    var body: some View {
+        Text(text)
+            .font(.system(size: 9, weight: .bold))
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
+            .padding(.horizontal, 4)
+            .padding(.vertical, 1)
+            .background(bgColor)
+            .foregroundColor(color)
+            .cornerRadius(3)
+            .onTapGesture(perform: action)
+            .pointingHandCursor()
     }
 }
 
@@ -1347,6 +1370,7 @@ struct FloatingBallView: View {
 struct RecordCardView: View, Equatable {
     let record: Record
     @Binding var expandedId: UUID?
+    @Binding var searchTerm: String
     let store: RecordStore
     @State private var hovering = false
     @State private var showOriginalContent = false
@@ -1418,21 +1442,65 @@ struct RecordCardView: View, Equatable {
                     .lineLimit(1)
                 
                 // Meta Info
-                HStack(spacing: 8) {
-                    Text(formattedDate)
-                    Rectangle().fill(Color.themeGray700).frame(width: 2, height: 10) // w-0.5 h-2.5 bg-gray-700
-                    Text("\(record.content.count) 字符")
-                    Rectangle().fill(Color.themeGray700).frame(width: 2, height: 10)
-                    
-                    // Status Badge
-                    HStack(spacing: 2) {
-                        LucideView(name: statusIconLucide, size: 10, color: statusColor)
-                        Text(statusText)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        Text(formattedDate)
+                        Rectangle().fill(Color.themeGray700).frame(width: 2, height: 10)
+                        Text("\(record.content.count) 字符")
+                        
+                        if let app = record.sourceApp {
+                            Rectangle().fill(Color.themeGray700).frame(width: 2, height: 10)
+                            HStack(spacing: 4) {
+                                LucideView(name: .appWindowMac, size: 10, color: .themeGray500)
+                                Text(app)
+                                    .lineLimit(1)
+                                    .fixedSize(horizontal: true, vertical: false)
+                            }
+                        }
+                        
+                        if let url = record.sourceUrl {
+                            Rectangle().fill(Color.themeGray700).frame(width: 2, height: 10)
+                            HStack(spacing: 4) {
+                                LucideView(name: .link, size: 10, color: .themeGray500)
+                                Text(url)
+                                    .lineLimit(1)
+                                    .fixedSize(horizontal: true, vertical: false)
+                            }
+                        }
+                        
+                        if !record.tags.isEmpty {
+                            Rectangle().fill(Color.themeGray700).frame(width: 2, height: 10)
+                            HStack(spacing: 4) {
+                                ForEach(record.tags.prefix(3), id: \.self) { tag in
+                                    TagView(text: tag, color: .themeBlue400, bgColor: .themeBlue500.opacity(0.2)) {
+                                        searchTerm = tag
+                                    }
+                                }
+                            }
+                        }
                     }
-                    .foregroundColor(statusColor)
                 }
-                .font(.system(size: 10, design: .monospaced)) // text-[10px] font-mono
-                .foregroundColor(.themeGray500) // text-gray-500
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundColor(.themeGray500)
+                
+                // Keywords Row (New)
+                if !record.keywords.isEmpty {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 6) {
+                            ForEach(record.keywords.prefix(10), id: \.self) { keyword in
+                                let displayKeyword = keyword.hasPrefix("#") ? keyword : "#\(keyword)"
+                                Text(displayKeyword)
+                                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                                    .foregroundColor(.themePurple400)
+                                    .onTapGesture {
+                                        searchTerm = keyword
+                                    }
+                                    .pointingHandCursor()
+                            }
+                        }
+                    }
+                    .frame(height: 14)
+                }
             }
             
             Spacer()
@@ -1529,178 +1597,244 @@ struct RecordCardView: View, Equatable {
             VStack(alignment: .leading, spacing: 12) {
                 // 延迟加载内容，提升展开性能
                 if showContent {
-                
-                // AI Summary Section - 优先显示
-                if record.summary != nil || record.aiStatus == "fail" {
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            HStack(spacing: 4) {
-                                LucideView(name: .sparkles, size: 10, color: record.aiStatus == "fail" ? .themeRed500 : .themePurple500)
-                                Text("AI 智能总结")
-                            }
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundColor(record.aiStatus == "fail" ? .themeRed500 : .themePurple500)
-                            .textCase(.uppercase)
-                            Spacer()
-                            if let s = record.summary {
-                                Button(action: {
-                                    NSPasteboard.general.clearContents()
-                                    NSPasteboard.general.setString(s, forType: .string)
-                                    HapticFeedbackManager.shared.lightImpact()
-                                    store.postToast("已复制总结", type: "success")
-                                }) {
-                                    HStack(spacing: 4) {
-                                        LucideView(name: .copy, size: 10, color: .themePurple500)
-                                        Text("复制总结")
-                                    }
-                                    .font(.system(size: 10))
-                                    .foregroundColor(.themePurple500)
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(Color.themePurple500.opacity(0.1))
-                                    .cornerRadius(4)
-                                }
-                                .buttonStyle(.plain)
-                                .pointingHandCursor()
-                            } else if record.aiStatus == "fail" {
-                                Button(action: {
-                                    store.resummarize(record: record)
-                                }) {
-                                    HStack(spacing: 4) {
-                                        LucideView(name: .refreshCw, size: 10, color: .themeRed500)
-                                        Text("重试")
-                                    }
-                                    .font(.system(size: 10))
-                                    .foregroundColor(.themeRed500)
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(Color.themeRed500.opacity(0.1))
-                                    .cornerRadius(4)
-                                }
-                                .buttonStyle(.plain)
-                                .pointingHandCursor()
-                            }
-                        }
-                        
-                        Text(record.summary ?? "提炼失败")
-                            .font(.system(size: 12))
-                            .foregroundColor(Color.themePurple400.opacity(0.8)) // text-purple-200
-                            .padding(10)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Color.themePurple500.opacity(0.1))
-                            .cornerRadius(8)
-                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.themePurple500.opacity(0.2), lineWidth: 1).allowsHitTesting(false))
-                    }
+                    summarySection
+                    originalContentSection
+                    toggleOriginalContentButton
                 }
-                
-                // Raw Content Section - 如果有总结则默认折叠
-                if record.summary == nil || showOriginalContent {
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            HStack(spacing: 4) {
-                                LucideView(name: .rss, size: 10, color: .themeGray500)
-                                Text("原文内容")
-                            }
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundColor(.themeGray500)
-                            .textCase(.uppercase) // uppercase tracking-wider
-                            Spacer()
+            }
+            .padding(12)
+            .padding(.top, 0)
+        }
+        .onAppear {
+            onAppearAction()
+        }
+        .transition(.opacity)
+    }
+
+    @ViewBuilder
+    private var summarySection: some View {
+        if record.summary != nil || record.aiStatus == "fail" {
+            VStack(alignment: .leading, spacing: 8) {
+                summaryHeader
+                summaryBody
+                keywordsView
+            }
+        }
+    }
+
+    private var summaryHeader: some View {
+        HStack {
+            HStack(spacing: 4) {
+                LucideView(name: .sparkles, size: 10, color: record.aiStatus == "fail" ? .themeRed500 : .themePurple500)
+                Text("AI 智能总结")
+            }
+            .font(.system(size: 10, weight: .bold))
+            .foregroundColor(record.aiStatus == "fail" ? .themeRed500 : .themePurple500)
+            .textCase(.uppercase)
+            Spacer()
+            if let s = record.summary {
+                copySummaryButton(s)
+            } else if record.aiStatus == "fail" {
+                retrySummaryButton
+            }
+        }
+    }
+
+    private func copySummaryButton(_ s: String) -> some View {
+        Button(action: {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(s, forType: .string)
+            HapticFeedbackManager.shared.lightImpact()
+            store.postToast("已复制总结", type: "success")
+        }) {
+            HStack(spacing: 4) {
+                LucideView(name: .copy, size: 10, color: .themePurple500)
+                Text("复制总结")
+            }
+            .font(.system(size: 10))
+            .foregroundColor(.themePurple500)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Color.themePurple500.opacity(0.1))
+            .cornerRadius(4)
+        }
+        .buttonStyle(.plain)
+        .pointingHandCursor()
+    }
+
+    private var retrySummaryButton: some View {
+        Button(action: {
+            store.resummarize(record: record)
+        }) {
+            HStack(spacing: 4) {
+                LucideView(name: .refreshCw, size: 10, color: .themeRed500)
+                Text("重试")
+            }
+            .font(.system(size: 10))
+            .foregroundColor(.themeRed500)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Color.themeRed500.opacity(0.1))
+            .cornerRadius(4)
+        }
+        .buttonStyle(.plain)
+        .pointingHandCursor()
+    }
+
+    private var summaryBody: some View {
+        Text(record.summary ?? "提炼失败")
+            .font(.system(size: 12))
+            .foregroundColor(Color.themePurple400.opacity(0.8))
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.themePurple500.opacity(0.1))
+            .cornerRadius(8)
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.themePurple500.opacity(0.2), lineWidth: 1).allowsHitTesting(false))
+    }
+
+    private var keywordsView: some View {
+        Group {
+            if !record.keywords.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(record.keywords, id: \.self) { keyword in
                             Button(action: {
-                                NSPasteboard.general.clearContents()
-                                NSPasteboard.general.setString(record.content, forType: .string)
+                                searchTerm = keyword
                                 HapticFeedbackManager.shared.lightImpact()
-                                store.postToast("已复制原文", type: "success")
                             }) {
-                                HStack(spacing: 4) {
-                                    LucideView(name: .copy, size: 10, color: .themeGray400)
-                                    Text("复制原文")
-                                }
-                                .font(.system(size: 10))
-                                .foregroundColor(.themeGray400)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 2)
-                                .background(Color.white.opacity(0.05))
-                                .cornerRadius(4)
+                                Text(keyword)
+                                    .font(.system(size: 10, weight: .medium))
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 3)
+                                    .background(Color.white.opacity(0.05))
+                                    .foregroundColor(.themeGray400)
+                                    .cornerRadius(4)
                             }
                             .buttonStyle(.plain)
                             .pointingHandCursor()
                         }
-                        
-                        ScrollView {
-                            VStack(alignment: .leading, spacing: 0) {
-                                Text(displayedContent)
-                                    .font(.system(size: 12, design: .monospaced))
-                                    .foregroundColor(.themeGray300) // text-gray-300
-                                    .padding(12) // p-3
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                        }
-                        .frame(maxHeight: 300) // 限制最大高度，避免过长内容导致性能问题
-                        .background(Color.black.opacity(0.2)) // bg-black/20
-                        .cornerRadius(4)
-                        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.themeBorder, lineWidth: 1).allowsHitTesting(false))
                     }
-                }
-                
-                // 如果有总结，添加显示/隐藏原文的切换按钮
-                if record.summary != nil {
-                    HStack {
-                        Spacer()
-                        Button(action: {
-                            // 使用更快的动画减少卡顿
-                            withAnimation(.easeInOut(duration: 0.15)) {
-                                showOriginalContent.toggle()
-                            }
-                        }) {
-                            HStack(spacing: 4) {
-                                LucideView(name: showOriginalContent ? .eyeOff : .eye, size: 10, color: .themeGray400)
-                                Text(showOriginalContent ? "隐藏原文" : "显示原文")
-                            }
-                            .font(.system(size: 10))
-                            .foregroundColor(.themeGray400)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Color.white.opacity(0.05))
-                            .cornerRadius(4)
-                        }
-                        .buttonStyle(.plain)
-                        .pointingHandCursor()
-                    }
-                }
-                } // 延迟加载内容的结束括号
-            }
-            .padding(12) // p-3
-            .padding(.top, 0)
-        }
-        .onAppear {
-            // 如果有总结，默认折叠原文
-            if record.summary != nil {
-                showOriginalContent = false
-            }
-            
-            // 初始化显示内容
-            if record.content.count > 1000 {
-                displayedContent = String(record.content.prefix(1000)) + "..."
-                // 延迟1秒后自动显示完整内容
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        showFullContent = true
-                        displayedContent = record.content
-                    }
-                }
-            } else {
-                displayedContent = record.content
-                showFullContent = true
-            }
-            
-            // 延迟加载内容，提升展开性能
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                withAnimation(.easeInOut(duration: 0.15)) {
-                    showContent = true
                 }
             }
         }
-        .transition(.opacity)
+    }
+
+    @ViewBuilder
+    private var originalContentSection: some View {
+        if record.summary == nil || showOriginalContent {
+            VStack(alignment: .leading, spacing: 8) {
+                originalContentHeader
+                originalContentBody
+            }
+        }
+    }
+
+    private var originalContentHeader: some View {
+        HStack {
+            HStack(spacing: 4) {
+                LucideView(name: .rss, size: 10, color: .themeGray500)
+                Text("原文内容")
+            }
+            .font(.system(size: 10, weight: .bold))
+            .foregroundColor(.themeGray500)
+            .textCase(.uppercase)
+            Spacer()
+            copyOriginalButton
+        }
+    }
+
+    private var copyOriginalButton: some View {
+        Button(action: {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(record.content, forType: .string)
+            HapticFeedbackManager.shared.lightImpact()
+            store.postToast("已复制原文", type: "success")
+        }) {
+            HStack(spacing: 4) {
+                LucideView(name: .copy, size: 10, color: .themeGray400)
+                Text("复制原文")
+            }
+            .font(.system(size: 10))
+            .foregroundColor(.themeGray400)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 2)
+            .background(Color.white.opacity(0.05))
+            .cornerRadius(4)
+        }
+        .buttonStyle(.plain)
+        .pointingHandCursor()
+    }
+
+    private var originalContentBody: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                Text(displayedContent)
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundColor(.themeGray300)
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .frame(maxHeight: 300)
+        .background(Color.black.opacity(0.2))
+        .cornerRadius(4)
+        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.themeBorder, lineWidth: 1).allowsHitTesting(false))
+    }
+
+    @ViewBuilder
+    private var toggleOriginalContentButton: some View {
+        if record.summary != nil {
+            HStack {
+                Spacer()
+                Button(action: {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        showOriginalContent.toggle()
+                    }
+                }) {
+                    HStack(spacing: 4) {
+                        LucideView(name: showOriginalContent ? .eyeOff : .eye, size: 10, color: .themeGray400)
+                        Text(showOriginalContent ? "隐藏原文" : "显示原文")
+                    }
+                    .font(.system(size: 10))
+                    .foregroundColor(.themeGray400)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.white.opacity(0.05))
+                    .cornerRadius(4)
+                }
+                .buttonStyle(.plain)
+                .pointingHandCursor()
+            }
+        }
+    }
+
+    private func onAppearAction() {
+        // 如果有总结，默认折叠原文
+        if record.summary != nil {
+            showOriginalContent = false
+        }
+        
+        // 初始化显示内容
+        if record.content.count > 1000 {
+            displayedContent = String(record.content.prefix(1000)) + "..."
+            // 延迟1秒后自动显示完整内容
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    showFullContent = true
+                    displayedContent = record.content
+                }
+            }
+        } else {
+            displayedContent = record.content
+            showFullContent = true
+        }
+        
+        // 延迟加载内容，提升展开性能
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            withAnimation(.easeInOut(duration: 0.15)) {
+                showContent = true
+            }
+        }
     }
     
     /// 实现Equatable协议，减少不必要的重绘
@@ -1711,7 +1845,8 @@ struct RecordCardView: View, Equatable {
                lhs.record.summary == rhs.record.summary &&
                lhs.record.starred == rhs.record.starred &&
                lhs.record.aiStatus == rhs.record.aiStatus &&
-               lhs.isExpanded == rhs.isExpanded
+               lhs.isExpanded == rhs.isExpanded &&
+               lhs.searchTerm == rhs.searchTerm
     }
 }
 
@@ -1753,7 +1888,10 @@ private extension RecordCardView {
         )
         
         // 调用AI服务生成总结
-        store.ai?.summarizeSingle(record.content) { [weak store] (result: Result<SummaryResult, Error>) in
+        let existingTags = store.records.flatMap { $0.tags }
+        let uniqueTags = Array(Set(existingTags)).sorted()
+        
+        store.ai?.summarizeSingle(record.content, existingTags: uniqueTags) { [weak store] (result: Result<SummaryResult, Error>) in
             DispatchQueue.main.async {
                 switch result {
                 case .success(let summaryResult):
@@ -1765,7 +1903,9 @@ private extension RecordCardView {
                         title: title,
                         summary: summary,
                         confidence: confidence,
-                        aiStatus: "success"
+                        aiStatus: "success",
+                        tags: summaryResult.tags,
+                        keywords: summaryResult.keywords
                     )
                     store?.postToast("总结已生成", type: "success")
                 case .failure(let error):

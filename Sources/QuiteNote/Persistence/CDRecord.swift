@@ -13,4 +13,8 @@ final class CDRecord: NSManagedObject {
     @NSManaged var summaryConfidence: Double
     @NSManaged var starred: Bool
     @NSManaged var copiedAt: Date?
+    @NSManaged var tagsRaw: String?
+    @NSManaged var keywordsRaw: String?
+    @NSManaged var sourceApp: String?
+    @NSManaged var sourceUrl: String?
 }

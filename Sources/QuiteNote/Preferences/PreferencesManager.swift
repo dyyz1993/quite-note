@@ -6,7 +6,39 @@ final class PreferencesManager: ObservableObject {
     static let shared = PreferencesManager()
     private let d = UserDefaults.standard
     
-    private init() {}
+    private init() {
+        migratePromptsIfNeeded()
+    }
+
+    private func migratePromptsIfNeeded() {
+        let oldSysDefault1 = "你是一个专业的问题分析助手。请仔细分析以下文本，提炼出其中的核心问题或关键点。严格输出以下 JSON 字段，不要包含多余文本：{\"title\":不超过{titleLimit}字的问题标题,\"summary\":不超过{summaryLimit}字的问题总结,\"confidence\":0-1 之间置信度，仅数字}"
+        let oldSysDefault2 = """
+        你是一个专业的内容分析助手，擅长对各种文本内容（包括但不限于 URL、API Key、密钥、代码片段、技术文档、日常随笔等）进行分类和总结。
+        
+        请按照以下格式返回 JSON 结果：
+        1. **title**: 概括内容的核心，不超过 {titleLimit} 字。如果是 API Key 或密钥，标题应指明其用途或来源（如 "OpenAI API Key"）。
+        2. **summary**: 提炼核心要点，不超过 {summaryLimit} 字。如果是代码，说明其功能；如果是密钥，提醒安全存储。
+        3. **tags**: 识别内容的分类。
+        4. **keywords**: 提取 3-10 个精细化的搜索关键词。
+           - 必须以 # 开头（如 #APIKey, #SwiftUI, #Deployment）。
+           - 关键词应包含具体的技术栈、工具名或业务场景。
+           - 总数不得超过 10 个。
+        5. **confidence**: 0-1 之间的分析置信度。
+
+        严格输出 JSON 格式，字段如下：{"title": string, "summary": string, "confidence": number, "tags": [string], "keywords": [string]}
+        """
+        
+        let _ = "请分析以下文本，提炼出其中的内容核心：\n\n{content}\n\n只返回 JSON，确保分析精准且聚焦。"
+        
+        let currentSys = d.string(forKey: "aiSystemPrompt")
+        if currentSys == oldSysDefault1 || currentSys == oldSysDefault2 {
+            d.removeObject(forKey: "aiSystemPrompt")
+        }
+        
+        if d.string(forKey: "aiUserPrompt") == "请分析以下文本，提炼出其中的问题或关键点：\n\n{content}\n\n只返回 JSON，确保标题和总结都聚焦于问题本身。" {
+            d.removeObject(forKey: "aiUserPrompt")
+        }
+    }
 
     var enableAI: Bool { d.object(forKey: "enableAI") == nil ? true : d.bool(forKey: "enableAI") }
     var titleLimit: Int { max(15, d.integer(forKey: "titleLimit")) }
@@ -24,10 +56,28 @@ final class PreferencesManager: ObservableObject {
     
     // AI 提示词配置
     var aiSystemPrompt: String { 
-        d.string(forKey: "aiSystemPrompt") ?? "你是一个专业的问题分析助手。请仔细分析以下文本，提炼出其中的核心问题或关键点。严格输出以下 JSON 字段，不要包含多余文本：{\"title\":不超过{titleLimit}字的问题标题,\"summary\":不超过{summaryLimit}字的问题总结,\"confidence\":0-1 之间置信度，仅数字}" 
+        d.string(forKey: "aiSystemPrompt") ?? """
+        你是一个专业的内容分析助手，擅长对各种文本内容（包括但不限于 URL、API Key、密钥、代码片段、技术文档、日常随笔等）进行多维度分类和总结。
+        
+        请按照以下格式返回 JSON 结果：
+        1. **title**: 概括内容的核心，不超过 {titleLimit} 字。如果是 API Key 或密钥，标题应指明其用途或来源（如 "OpenAI API Key"）。
+        2. **summary**: 提炼核心要点，不超过 {summaryLimit} 字。如果是代码，说明其功能；如果是密钥，提醒安全存储。
+        3. **tags**: 识别内容的分类标签。请从以下维度进行考虑：
+           - **内容属性**: 如 [代码, 文档, 密钥, 配置, 链接, 笔记]
+           - **技术/工具**: 如 [Swift, Python, OpenAI, AWS, Git]
+           - **业务/场景**: 如 [支付, 认证, 部署, 需求, 学习]
+           识别规则：识别内容的分类。
+        4. **keywords**: 提取 3-10 个精细化的搜索关键词。
+           - 必须以 # 开头（如 #APIKey, #SwiftUI, #Deployment）。
+           - 关键词应包含具体的技术栈、工具名或业务场景。
+           - 总数不得超过 10 个。
+        5. **confidence**: 0-1 之间的分析置信度。
+
+        严格输出 JSON 格式，字段如下：{"title": string, "summary": string, "confidence": number, "tags": [string], "keywords": [string]}
+        """ 
     }
     var aiUserPrompt: String { 
-        d.string(forKey: "aiUserPrompt") ?? "请分析以下文本，提炼出其中的问题或关键点：\n\n{content}\n\n只返回 JSON，确保标题和总结都聚焦于问题本身。" 
+        d.string(forKey: "aiUserPrompt") ?? "请分析以下文本，提炼出其中的内容核心：\n\n{content}\n\n只返回 JSON，确保分析精准且聚焦。" 
     }
 
     func setEnableAI(_ v: Bool) { d.set(v, forKey: "enableAI") }

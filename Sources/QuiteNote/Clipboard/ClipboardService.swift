@@ -24,9 +24,39 @@ final class ClipboardService {
             store.postLightHint("剪贴板无有效文本")
             return
         }
+        
+        let (sourceApp, sourceUrl) = Self.getSourceInfo()
+        
         let hash = Self.sha1(text)
         lastHash = hash
-        store.addRecord(content: text, hash: hash)
+        store.addRecord(content: text, hash: hash, sourceApp: sourceApp, sourceUrl: sourceUrl)
+    }
+
+    /// 获取当前剪贴板内容的来源信息
+    static func getSourceInfo() -> (app: String?, url: String?) {
+        let pasteboard = NSPasteboard.general
+        // 1. 尝试获取前端应用程序名
+        // 注意：如果是通过全局快捷键触发，此时 frontmostApplication 通常是用户正在使用的 App
+        let frontmostApp = NSWorkspace.shared.frontmostApplication
+        let appName = frontmostApp?.localizedName
+        
+        // 2. 尝试从剪贴板获取 URL（通常浏览器会放入 URL）
+        var sourceUrl: String? = nil
+        // 检查常见的 URL 类型
+        let urlTypes: [NSPasteboard.PasteboardType] = [
+            .init(rawValue: "public.url"),
+            .URL,
+            .init(rawValue: "WebURLsWithTitlesPboardType")
+        ]
+        
+        for type in urlTypes {
+            if let urlString = pasteboard.string(forType: type) {
+                sourceUrl = urlString
+                break
+            }
+        }
+        
+        return (appName, sourceUrl)
     }
 
     /// 计算文本 SHA1 用于去重

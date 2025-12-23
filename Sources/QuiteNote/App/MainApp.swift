@@ -150,8 +150,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         
         // 创建新记录
+        let (sourceApp, sourceUrl) = ClipboardService.getSourceInfo()
         let hash = ClipboardService.sha1(text)
-        recordStore.addRecord(content: text, hash: hash)
+        recordStore.addRecord(content: text, hash: hash, sourceApp: sourceApp, sourceUrl: sourceUrl)
         
         // 显示悬浮窗（如果当前未显示）
         DispatchQueue.main.async { [weak self] in

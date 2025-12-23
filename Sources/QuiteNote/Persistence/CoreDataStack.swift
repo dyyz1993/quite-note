@@ -64,7 +64,27 @@ final class CoreDataStack {
         copiedAtAttr.attributeType = .dateAttributeType
         copiedAtAttr.isOptional = true
 
-        entity.properties = [idAttr, titleAttr, contentAttr, createdAtAttr, digestAttr, aiStatusAttr, summaryAttr, summaryConfAttr, starredAttr, copiedAtAttr]
+        let tagsAttr = NSAttributeDescription()
+        tagsAttr.name = "tagsRaw"
+        tagsAttr.attributeType = .stringAttributeType
+        tagsAttr.isOptional = true
+
+        let keywordsAttr = NSAttributeDescription()
+        keywordsAttr.name = "keywordsRaw"
+        keywordsAttr.attributeType = .stringAttributeType
+        keywordsAttr.isOptional = true
+
+        let sourceAppAttr = NSAttributeDescription()
+        sourceAppAttr.name = "sourceApp"
+        sourceAppAttr.attributeType = .stringAttributeType
+        sourceAppAttr.isOptional = true
+
+        let sourceUrlAttr = NSAttributeDescription()
+        sourceUrlAttr.name = "sourceUrl"
+        sourceUrlAttr.attributeType = .stringAttributeType
+        sourceUrlAttr.isOptional = true
+
+        entity.properties = [idAttr, titleAttr, contentAttr, createdAtAttr, digestAttr, aiStatusAttr, summaryAttr, summaryConfAttr, starredAttr, copiedAtAttr, tagsAttr, keywordsAttr, sourceAppAttr, sourceUrlAttr]
         model.entities = [entity]
 
         container = NSPersistentContainer(name: "QuiteNote", managedObjectModel: model)

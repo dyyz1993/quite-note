@@ -62,8 +62,14 @@ final class RecordStore: ObservableObject {
 
     
 
+    /// 获取当前所有记录中已有的唯一标签
+    private func getAllUniqueTags() -> [String] {
+        let allTags = records.flatMap { $0.tags }
+        return Array(Set(allTags)).sorted()
+    }
+
     /// 添加一条记录并触发 UI 刷新
-    func addRecord(content: String, hash: String) {
+    func addRecord(content: String, hash: String, sourceApp: String? = nil, sourceUrl: String? = nil) {
         // 校验相同内容是否已存在
         if records.contains(where: { $0.hash == hash }) {
             Self.logger.info("发现重复记录，仅更新时间: \(hash)")
@@ -79,8 +85,30 @@ final class RecordStore: ObservableObject {
         cd.createdAt = now
         cd.digest = hash
         cd.starred = false
+        cd.sourceApp = sourceApp
+        cd.sourceUrl = sourceUrl
+        
+        // 自动识别内容类型并添加标签
+        let autoTags = ContentClassifier.classify(content)
+        cd.tagsRaw = toJSONString(autoTags)
+        
         stack.save()
-        let record = Record(id: cd.id, title: nil, content: content, createdAt: now, hash: hash, aiStatus: nil, summary: nil, summaryConfidence: nil, starred: false, copiedAt: nil)
+        let record = Record(
+            id: cd.id, 
+            title: nil, 
+            content: content, 
+            createdAt: now, 
+            hash: hash, 
+            aiStatus: nil, 
+            summary: nil, 
+            summaryConfidence: nil, 
+            starred: false, 
+            copiedAt: nil,
+            tags: autoTags,
+            keywords: [],
+            sourceApp: sourceApp,
+            sourceUrl: sourceUrl
+        )
         records.insert(record, at: 0)
         sortRecordsInPlace()
         
@@ -98,10 +126,14 @@ final class RecordStore: ObservableObject {
         Self.logger.info("开始调用AI总结，内容长度: \(content.count)")
         let index = 0
         records[index].aiStatus = "pending"
+        
+        let existingTags = getAllUniqueTags()
+        
         ai.summarize(
             titleLimit: titleLimit, 
             summaryLimit: summaryLimit, 
             content: content,
+            existingTags: existingTags,
             systemPrompt: prefs.aiSystemPrompt,
             userPrompt: prefs.aiUserPrompt
         ) { [weak self] result in
@@ -109,15 +141,18 @@ final class RecordStore: ObservableObject {
                 guard let self else { return }
                 switch result {
                 case .success(let s):
-                    self.records[index].title = s.title
-                    self.records[index].summary = s.summary
-                    self.records[index].summaryConfidence = s.confidence
-                    self.records[index].aiStatus = "success"
+                    self.updateRecordAI(
+                        id: cd.id, 
+                        title: s.title, 
+                        summary: s.summary, 
+                        confidence: s.confidence, 
+                        aiStatus: "success",
+                        tags: s.tags,
+                        keywords: s.keywords
+                    )
                     self.lastAISuccessAt = Date()
-                    self.updateCDRecord(id: cd.id, title: s.title, summary: s.summary, confidence: s.confidence, aiStatus: "success")
                 case .failure:
-                    self.records[index].aiStatus = "fail"
-                    self.updateCDRecord(id: cd.id, title: nil, summary: nil, confidence: nil, aiStatus: "fail")
+                    self.updateRecordAI(id: cd.id, title: nil, summary: nil, confidence: nil, aiStatus: "fail")
                 }
             }
         }
@@ -180,6 +215,13 @@ final class RecordStore: ObservableObject {
                 let summary = record.summary ?? ""
                 matches = matches || matchesQuery(text: summary, query: query)
             }
+            
+            // 始终搜索标签和关键词
+            let tagsString = record.tags.joined(separator: " ")
+            matches = matches || matchesQuery(text: tagsString, query: query)
+            
+            let keywordsString = record.keywords.joined(separator: " ")
+            matches = matches || matchesQuery(text: keywordsString, query: query)
             
             return matches
         }
@@ -306,7 +348,8 @@ final class RecordStore: ObservableObject {
         
         let prompt = "请为以下搜索结果生成一个简短的总结，不超过100字。搜索关键词: \(query)\n\n搜索结果:\n\(content)"
         
-        ai.summarize(titleLimit: 50, summaryLimit: 100, content: prompt) { result in
+        let existingTags = getAllUniqueTags()
+        ai.summarize(titleLimit: 50, summaryLimit: 100, content: prompt, existingTags: existingTags) { result in
             DispatchQueue.main.async {
                 switch result {
                 case .success(let summaryResult):
@@ -430,10 +473,12 @@ final class RecordStore: ObservableObject {
             }
             
             records[index].aiStatus = "pending"
+            let existingTags = getAllUniqueTags()
             ai.summarize(
                 titleLimit: titleLimit, 
                 summaryLimit: summaryLimit, 
                 content: r.content,
+                existingTags: existingTags,
                 systemPrompt: prefs.aiSystemPrompt,
                 userPrompt: prefs.aiUserPrompt
             ) { [weak self] result in
@@ -441,16 +486,19 @@ final class RecordStore: ObservableObject {
                     guard let self else { return }
                     switch result {
                     case .success(let s):
-                        self.records[index].title = s.title
-                        self.records[index].summary = s.summary
-                        self.records[index].summaryConfidence = s.confidence
-                        self.records[index].aiStatus = "success"
+                        self.updateRecordAI(
+                            id: r.id, 
+                            title: s.title, 
+                            summary: s.summary, 
+                            confidence: s.confidence, 
+                            aiStatus: "success",
+                            tags: s.tags,
+                            keywords: s.keywords
+                        )
                         self.lastAISuccessAt = Date()
-                        self.updateCDRecord(id: self.records[index].id, title: s.title, summary: s.summary, confidence: s.confidence, aiStatus: "success")
                         print("[BULK] 记录 \(index) 处理成功")
                     case .failure(let error):
-                        self.records[index].aiStatus = "fail"
-                        self.updateCDRecord(id: self.records[index].id, title: nil, summary: nil, confidence: nil, aiStatus: "fail")
+                        self.updateRecordAI(id: r.id, title: nil, summary: nil, confidence: nil, aiStatus: "fail")
                         print("[BULK] 记录 \(index) 处理失败: \(error.localizedDescription)")
                     }
                 }
@@ -462,17 +510,44 @@ final class RecordStore: ObservableObject {
         loadFromStore(pageSize: 50, offset: 0)
     }
     
+    /// 将 JSON 字符串解析为数组
+    private func parseJSONArray(_ json: String?) -> [String] {
+        guard let json = json, let data = json.data(using: .utf8) else { return [] }
+        return (try? JSONDecoder().decode([String].self, from: data)) ?? []
+    }
+    
+    /// 将数组转换为 JSON 字符串
+    private func toJSONString(_ array: [String]) -> String? {
+        guard let data = try? JSONEncoder().encode(array) else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
     /// 分页加载记录，提高性能
     func loadFromStore(pageSize: Int = 50, offset: Int = 0) {
         let cds = (try? stack.fetchRecords(limit: pageSize, offset: offset)) ?? []
-        let newRecords = cds.map { r in
+        let newRecords = cds.map { r -> Record in
             // 检查并重置pending状态的记录
             let aiStatus = r.aiStatus == "pending" ? nil : r.aiStatus
             if r.aiStatus == "pending" {
                 // 更新数据库中的状态
                 r.aiStatus = nil
             }
-            return Record(id: r.id, title: r.title, content: r.content, createdAt: r.createdAt, hash: r.digest, aiStatus: aiStatus, summary: r.summary, summaryConfidence: r.summaryConfidence, starred: r.starred, copiedAt: r.copiedAt)
+            return Record(
+                id: r.id, 
+                title: r.title, 
+                content: r.content, 
+                createdAt: r.createdAt, 
+                hash: r.digest, 
+                aiStatus: aiStatus, 
+                summary: r.summary, 
+                summaryConfidence: r.summaryConfidence, 
+                starred: r.starred, 
+                copiedAt: r.copiedAt,
+                tags: parseJSONArray(r.tagsRaw),
+                keywords: parseJSONArray(r.keywordsRaw),
+                sourceApp: r.sourceApp,
+                sourceUrl: r.sourceUrl
+            )
         }
         
         // 如果有pending状态的记录被重置，保存更改
@@ -545,8 +620,25 @@ final class RecordStore: ObservableObject {
     }
     
     /// 更新记录的AI状态和内容
-    func updateRecordAI(id: UUID, title: String?, summary: String?, confidence: Double?, aiStatus: String?) {
-        updateCDRecord(id: id, title: title, summary: summary, confidence: confidence, aiStatus: aiStatus)
+    func updateRecordAI(id: UUID, title: String?, summary: String?, confidence: Double?, aiStatus: String?, tags: [String]? = nil, keywords: [String]? = nil) {
+        // 1. 处理标签合并：自动识别的标签 + AI 生成的标签
+        var finalTags: [String]? = tags
+        if let aiTags = tags, let index = records.firstIndex(where: { $0.id == id }) {
+            let autoTags = records[index].tags
+            finalTags = Array(Set(autoTags + aiTags)).sorted()
+        }
+
+        // 2. 处理关键词：确保都有 # 前缀且不超过 10 个
+        var finalKeywords: [String]? = keywords
+        if let aiKeywords = keywords {
+            let cleaned = aiKeywords.prefix(10).map { k -> String in
+                let trimmed = k.trimmingCharacters(in: .whitespacesAndNewlines)
+                return trimmed.hasPrefix("#") ? trimmed : "#\(trimmed)"
+            }
+            finalKeywords = Array(cleaned)
+        }
+
+        updateCDRecord(id: id, title: title, summary: summary, confidence: confidence, aiStatus: aiStatus, tags: finalTags, keywords: finalKeywords)
         
         // 更新内存中的记录
         if let index = records.firstIndex(where: { $0.id == id }) {
@@ -562,17 +654,25 @@ final class RecordStore: ObservableObject {
             if let aiStatus = aiStatus {
                 records[index].aiStatus = aiStatus
             }
+            if let ft = finalTags {
+                records[index].tags = ft
+            }
+            if let fk = finalKeywords {
+                records[index].keywords = fk
+            }
         }
     }
 
-    private func updateCDRecord(id: UUID, title: String?, summary: String?, confidence: Double?, aiStatus: String?) {
+    private func updateCDRecord(id: UUID, title: String?, summary: String?, confidence: Double?, aiStatus: String?, tags: [String]? = nil, keywords: [String]? = nil) {
         let req = NSFetchRequest<CDRecord>(entityName: "CDRecord")
         req.predicate = NSPredicate(format: "id == %@", id as CVarArg)
         if let obj = try? stack.context.fetch(req).first {
-            obj.title = title
-            obj.summary = summary
-            obj.summaryConfidence = confidence ?? obj.summaryConfidence
-            obj.aiStatus = aiStatus
+            if let title = title { obj.title = title }
+            if let summary = summary { obj.summary = summary }
+            if let confidence = confidence { obj.summaryConfidence = confidence }
+            if let aiStatus = aiStatus { obj.aiStatus = aiStatus }
+            if let tags = tags { obj.tagsRaw = toJSONString(tags) }
+            if let keywords = keywords { obj.keywordsRaw = toJSONString(keywords) }
             stack.save()
         }
     }
@@ -603,20 +703,31 @@ final class RecordStore: ObservableObject {
         guard let ai, enableAI else { return }
         guard let idx = records.firstIndex(where: { $0.id == record.id }) else { return }
         records[idx].aiStatus = "pending"
-        ai.summarize(titleLimit: titleLimit, summaryLimit: summaryLimit, content: record.content) { [weak self] result in
+        
+        let existingTags = getAllUniqueTags()
+        
+        ai.summarize(
+            titleLimit: titleLimit, 
+            summaryLimit: summaryLimit, 
+            content: record.content,
+            existingTags: existingTags
+        ) { [weak self] result in
             DispatchQueue.main.async {
                 guard let self else { return }
                 switch result {
                 case .success(let s):
-                    self.records[idx].title = s.title
-                    self.records[idx].summary = s.summary
-                    self.records[idx].summaryConfidence = s.confidence
-                    self.records[idx].aiStatus = "success"
+                    self.updateRecordAI(
+                        id: record.id, 
+                        title: s.title, 
+                        summary: s.summary, 
+                        confidence: s.confidence, 
+                        aiStatus: "success",
+                        tags: s.tags,
+                        keywords: s.keywords
+                    )
                     self.lastAISuccessAt = Date()
-                    self.updateCDRecord(id: record.id, title: s.title, summary: s.summary, confidence: s.confidence, aiStatus: "success")
                 case .failure:
-                    self.records[idx].aiStatus = "fail"
-                    self.updateCDRecord(id: record.id, title: nil, summary: nil, confidence: nil, aiStatus: "fail")
+                    self.updateRecordAI(id: record.id, title: nil, summary: nil, confidence: nil, aiStatus: "fail")
                 }
             }
         }

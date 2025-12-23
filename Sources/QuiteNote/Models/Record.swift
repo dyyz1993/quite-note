@@ -12,4 +12,8 @@ struct Record: Identifiable {
     var summaryConfidence: Double? = nil
     var starred: Bool = false
     var copiedAt: Date? = nil
+    var tags: [String] = []
+    var keywords: [String] = []
+    var sourceApp: String? = nil
+    var sourceUrl: String? = nil
 }
