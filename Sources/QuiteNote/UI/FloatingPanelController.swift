@@ -1372,7 +1372,6 @@ struct RecordCardView: View, Equatable {
     @State private var showOriginalContent = false
     @State private var showContent = false // 控制内容延迟显示
     @State private var showFullContent = false // 控制是否显示完整内容
-    @State private var displayedContent = "" // 当前显示的内容
     
     // 删除撤回逻辑
     @State private var deleteCountdown = 0
@@ -1409,13 +1408,6 @@ struct RecordCardView: View, Equatable {
             if !expanded {
                 showContent = false
                 showFullContent = false
-                // 重新初始化显示内容
-                if record.content.count > 1000 {
-                    displayedContent = String(record.content.prefix(1000)) + "..."
-                } else {
-                    displayedContent = record.content
-                    showFullContent = true
-                }
             }
         }
         .onHover { hovering = $0 }
@@ -1678,14 +1670,18 @@ struct RecordCardView: View, Equatable {
     }
 
     private var summaryBody: some View {
-        Text(record.summary ?? "提炼失败")
-            .font(.system(size: 12))
-            .foregroundColor(Color.themePurple400.opacity(0.8))
-            .padding(10)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.themePurple500.opacity(0.1))
-            .cornerRadius(8)
-            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.themePurple500.opacity(0.2), lineWidth: 1).allowsHitTesting(false))
+        SelectableTextView(
+            text: record.summary ?? "提炼失败",
+            fontSize: 12,
+            isMonospaced: false,
+             textColor: NSColor(red: 192/255, green: 132/255, blue: 252/255, alpha: 0.8), // themePurple400 opacity 0.8
+             inset: CGSize(width: 10, height: 10),
+             showScrollbar: false // 总结区域不显示滚动条
+          )
+          .frame(minHeight: 65, maxHeight: 250) // 调高最小高度，确保 2-3 行文字无需滚动即可完整显示
+        .background(Color.themePurple500.opacity(0.1))
+        .cornerRadius(8)
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.themePurple500.opacity(0.2), lineWidth: 1).allowsHitTesting(false))
     }
 
     private var keywordsView: some View {
@@ -1762,16 +1758,14 @@ struct RecordCardView: View, Equatable {
     }
 
     private var originalContentBody: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                Text(displayedContent)
-                    .font(.system(size: 12, design: .monospaced))
-                    .foregroundColor(.themeGray300)
-                    .padding(12)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-        }
-        .frame(maxHeight: 300)
+        SelectableTextView(
+            text: record.content,
+            fontSize: 11,
+            isMonospaced: true,
+             textColor: NSColor(red: 209/255, green: 213/255, blue: 221/255, alpha: 1.0), // themeGray300
+             showScrollbar: true // 原文长，需要滚动条
+          )
+          .frame(minHeight: 250, maxHeight: 650) // 进一步调高，提供更好视野，减少滚动频率
         .background(Color.black.opacity(0.2))
         .cornerRadius(4)
         .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.themeBorder, lineWidth: 1).allowsHitTesting(false))
@@ -1808,21 +1802,6 @@ struct RecordCardView: View, Equatable {
         // 如果有总结，默认折叠原文
         if record.summary != nil {
             showOriginalContent = false
-        }
-        
-        // 初始化显示内容
-        if record.content.count > 1000 {
-            displayedContent = String(record.content.prefix(1000)) + "..."
-            // 延迟1秒后自动显示完整内容
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    showFullContent = true
-                    displayedContent = record.content
-                }
-            }
-        } else {
-            displayedContent = record.content
-            showFullContent = true
         }
         
         // 延迟加载内容，提升展开性能
