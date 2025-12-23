@@ -156,7 +156,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         
         // 显示悬浮窗（如果当前未显示）
         DispatchQueue.main.async { [weak self] in
-            self?.floatingPanelController?.ensureVisibleOnLaunch()
+            // 如果已经在展开模式，不需要重新调用 ensureVisibleOnLaunch(forceCenter: true)
+            // 只需要确保窗口可见即可
+            self?.floatingPanelController?.showWithoutCentering()
         }
     }
     

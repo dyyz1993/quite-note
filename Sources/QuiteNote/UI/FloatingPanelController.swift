@@ -185,6 +185,14 @@ final class FloatingPanelController {
         focusProvider.ballPosition = pos
     }
 
+    /// 显示悬浮窗，不强制居中（用于静默采集等场景）
+    func showWithoutCentering() {
+        userHidden = false
+        panel.level = .floating
+        panel.makeKeyAndOrderFront(nil)
+        panel.orderFrontRegardless()
+    }
+
     /// 显示悬浮窗，带缩放+淡入动效
     func show() {
         print("[DEBUG] show() called")
@@ -469,26 +477,26 @@ final class FloatingPanelController {
                                width: ballWindowSize, 
                                height: ballWindowSize)
         
-        // 1. 启动窗口框架动画
+        // 1. 同步执行模式切换和窗口框架动画
+        // 使用相同的时长和曲线，确保视觉同步
+        let duration: TimeInterval = 0.35
+        
+        // 先切换背景和阴影，避免动画过程中出现黑边或奇怪的阴影
+        panel.backgroundColor = NSColor.clear
+        panel.hasShadow = false
+        
+        withAnimation(.easeInOut(duration: duration)) {
+            self.focusProvider.mode = .floatingBall
+        }
+        
         NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0.4
+            ctx.duration = duration
             ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             panel.animator().setFrame(targetFrame, display: true)
         }
         
-        // 2. 稍微延迟模式切换，让窗口先动起来，产生“折叠”感
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            withAnimation(.easeInOut(duration: 0.3)) {
-                self.focusProvider.mode = .floatingBall
-            }
-        }
-        
         // 更新浮球位置状态 (确保一致性)
         focusProvider.ballPosition = CGPoint(x: targetFrame.midX, y: targetFrame.midY)
-        
-        // 浮球状态下允许点击穿透背景
-        panel.backgroundColor = NSColor.clear
-        panel.hasShadow = false // 浮球自带阴影效果
     }
     
     /// 从浮球恢复
@@ -511,7 +519,6 @@ final class FloatingPanelController {
         
         // 如果开启了记忆位置，尝试使用上次展开的尺寸
         if PreferencesManager.shared.rememberWindowPosition, let savedFrame = focusProvider.lastExpandedFrame {
-            // 确保尺寸合理，防止出现尺寸过小的问题
             targetWidth = max(defaultWidth, savedFrame.width)
             targetHeight = max(defaultHeight, savedFrame.height)
         }
@@ -523,45 +530,39 @@ final class FloatingPanelController {
         // 屏幕边界适配
         let screen = panel.screen ?? NSScreen.main ?? NSScreen.screens.first!
         let screenFrame = screen.visibleFrame
-        let padding: CGFloat = 16 // 距离屏幕边缘的最小留白
+        let padding: CGFloat = 16
         
-        // 检查并修正 X 轴位置
-        if targetX < screenFrame.minX + padding {
-            targetX = screenFrame.minX + padding
-        } else if targetX + targetWidth > screenFrame.maxX - padding {
-            targetX = screenFrame.maxX - targetWidth - padding
-        }
+        if targetX < screenFrame.minX + padding { targetX = screenFrame.minX + padding }
+        else if targetX + targetWidth > screenFrame.maxX - padding { targetX = screenFrame.maxX - targetWidth - padding }
         
-        // 检查并修正 Y 轴位置
-        if targetY < screenFrame.minY + padding {
-            targetY = screenFrame.minY + padding
-        } else if targetY + targetHeight > screenFrame.maxY - padding {
-            targetY = screenFrame.maxY - targetHeight - padding
-        }
+        if targetY < screenFrame.minY + padding { targetY = screenFrame.minY + padding }
+        else if targetY + targetHeight > screenFrame.maxY - padding { targetY = screenFrame.maxY - targetHeight - padding }
         
         let targetFrame = NSRect(x: targetX, y: targetY, width: targetWidth, height: targetHeight)
         
-        // 如果开启了记忆位置，更新记忆的位置为当前展开后的位置
+        // 如果开启了记忆位置，更新记忆的位置
         if PreferencesManager.shared.rememberWindowPosition {
             focusProvider.lastExpandedFrame = targetFrame
             PreferencesManager.shared.setWindowPosition(targetFrame)
         }
         
-        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+        let duration: TimeInterval = 0.4
+        
+        // 同步开始模式切换和框架动画
+        withAnimation(.spring(response: duration, dampingFraction: 0.8)) {
             focusProvider.mode = .expanded
         }
         
         NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0.4
+            ctx.duration = duration
             ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             panel.animator().setFrame(targetFrame, display: true)
-        } completionHandler: { [weak focusProvider] in
-            // 动画结束后重置恢复状态
+        } completionHandler: { [weak focusProvider, weak panel] in
             focusProvider?.isRestoring = false
+            // 动画结束后恢复背景
+            panel?.backgroundColor = NSColor.clear.withAlphaComponent(0.9)
+            panel?.hasShadow = true
         }
-        
-        panel.backgroundColor = NSColor.clear.withAlphaComponent(0.9)
-        panel.hasShadow = true
     }
 }
 
@@ -584,10 +585,10 @@ struct FloatingRootView: View {
     @State private var hasMoreRecords: Bool = true // 是否还有更多记录
 
     var body: some View {
-        ZStack {
+        ZStack(alignment: .center) {
             if focus.mode == .floatingBall {
                 FloatingBallView(store: store, focus: focus)
-                    .transition(.opacity)
+                    .transition(.opacity) // 简化转换，移除复杂的 scale 转换以提升性能
                     .zIndex(1)
             } else {
                 baseContentView
@@ -595,10 +596,11 @@ struct FloatingRootView: View {
                     .cornerRadius(16)
                     .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.themeBorder, lineWidth: 1).allowsHitTesting(false))
                     .shadow(color: Color.black.opacity(0.5), radius: 20, x: 0, y: 10)
-                    .transition(.opacity)
+                    .transition(.opacity) // 简化转换，移除复杂的 scale 转换以提升性能
                     .zIndex(0)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .ignoresSafeArea()
         .onHover { hovering in onHoverChanged?(hovering) }
         .simultaneousGesture(
