@@ -161,8 +161,8 @@ final class StatusBarController {
     }
 
     /// 菜单：打开设置
-    @objc private func openSettings() { 
-        NotificationCenter.default.post(name: .showSettings, object: nil)
+    @objc private func openSettings() {
+        QuiteNoteNotification.post(.showSettings)
     }
 
     /// 菜单：退出应用
@@ -181,7 +181,7 @@ final class StatusBarController {
     }
 
     /// 菜单：采集剪贴板（触发与硬件按钮一致的逻辑）
-    @objc private func onCapture() { NotificationCenter.default.post(name: .bluetoothCaptureClipboard, object: nil) }
+    @objc private func onCapture() { QuiteNoteNotification.post(.bluetoothCaptureClipboard) }
 
     @objc private func onToggleAI() {
         store.enableAI.toggle()
@@ -201,10 +201,7 @@ final class StatusBarController {
         forceShowAction()
         
         // 通过通知展开特定记录
-        NotificationCenter.default.post(
-            name: NSNotification.Name("expandRecord"),
-            object: record.id
-        )
+        QuiteNoteNotification.post(.expandRecord, object: record.id)
     }
     
     /// 菜单：清空所有记录

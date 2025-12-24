@@ -98,7 +98,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
-        NotificationCenter.default.addObserver(self, selector: #selector(onToggleHistory(_:)), name: .bluetoothToggleHistory, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(onToggleHistory(_:)), name: QuiteNoteNotification.bluetoothToggleHistory.name, object: nil)
 
         shortcuts = KeyboardShortcutManager()
         shortcuts?.onTogglePanel = { [weak self] in self?.toggleFloating() }
@@ -107,8 +107,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.floatingPanelController?.forceCenterWindow()
             print("[DEBUG] 已触发强制窗口居中快捷键")
         }
-        shortcuts?.onCaptureClipboard = { 
-            NotificationCenter.default.post(name: .bluetoothCaptureClipboard, object: nil)
+        shortcuts?.onCaptureClipboard = {
+            QuiteNoteNotification.post(.bluetoothCaptureClipboard)
         }
         shortcuts?.onBulkSummarize = { 
             store.bulkResummarize()

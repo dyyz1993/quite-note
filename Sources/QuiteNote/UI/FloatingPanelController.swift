@@ -181,8 +181,8 @@ final class FloatingPanelController {
         }))
         panel.contentView = hosting
         
-        NotificationCenter.default.addObserver(self, selector: #selector(onWindowLock(_:)), name: .windowLockChanged, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(onAnimations(_:)), name: .animationsEnabledChanged, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(onWindowLock(_:)), name: QuiteNoteNotification.windowLockChanged.name, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(onAnimations(_:)), name: QuiteNoteNotification.animationsEnabledChanged.name, object: nil)
         
         // 监听窗口位置和大小变化
         NotificationCenter.default.addObserver(self, selector: #selector(windowDidMove(_:)), name: NSWindow.didMoveNotification, object: panel)
@@ -191,10 +191,10 @@ final class FloatingPanelController {
         NotificationCenter.default.addObserver(self, selector: #selector(onWindowKeyDidChange(_:)), name: NSWindow.didResignKeyNotification, object: panel)
         
         // 监听浮球恢复通知
-        NotificationCenter.default.addObserver(self, selector: #selector(onRestoreFromBall), name: Notification.Name("restoreFromBall"), object: nil)
-        
+        NotificationCenter.default.addObserver(self, selector: #selector(onRestoreFromBall), name: QuiteNoteNotification.restoreFromBall.name, object: nil)
+
         // 监听浮球位置更新通知
-        NotificationCenter.default.addObserver(self, selector: #selector(onUpdateBallPosition(_:)), name: Notification.Name("updateBallPosition"), object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(onUpdateBallPosition(_:)), name: QuiteNoteNotification.updateBallPosition.name, object: nil)
     }
     
     @objc private func onRestoreFromBall() {
@@ -508,7 +508,7 @@ final class FloatingPanelController {
     /// 显示设置界面
     func showSettings() {
         // 通过 NotificationCenter 通知 FloatingRootView 显示设置界面
-        NotificationCenter.default.post(name: .showSettings, object: nil)
+        QuiteNoteNotification.post(.showSettings)
     }
 
     /// 最小化到浮球
@@ -670,12 +670,12 @@ struct FloatingRootView: View {
                 .onEnded { _ in onInteractionChanged?(false) }
         )
         .allowsHitTesting(true)
-        .onReceive(NotificationCenter.default.publisher(for: .showSettings)) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: QuiteNoteNotification.showSettings.name)) { _ in
             // 响应显示设置界面的通知
             showSettings = true
             settingsTab = "ai"
         }
-        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("expandRecord"))) { notification in
+        .onReceive(NotificationCenter.default.publisher(for: QuiteNoteNotification.expandRecord.name)) { notification in
             // 响应展开特定记录的通知
             if let recordId = notification.object as? UUID {
                 expandedId = recordId
@@ -1324,7 +1324,7 @@ struct FloatingBallView: View {
                     }
                     // 直接使用鼠标的绝对屏幕坐标，这在多显示器环境下是最可靠的
                     let currentMouse = NSEvent.mouseLocation
-                    NotificationCenter.default.post(name: Notification.Name("updateBallPosition"), object: currentMouse)
+                    QuiteNoteNotification.post(.updateBallPosition, object: currentMouse)
                 }
                 .onEnded { _ in
                     if isDragging {
@@ -1387,12 +1387,12 @@ struct FloatingBallView: View {
         }
         
         withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
-            NotificationCenter.default.post(name: Notification.Name("updateBallPosition"), object: finalPos)
+            QuiteNoteNotification.post(.updateBallPosition, object: finalPos)
         }
     }
     
     private func handleRestore() {
-        NotificationCenter.default.post(name: Notification.Name("restoreFromBall"), object: nil)
+        QuiteNoteNotification.post(.restoreFromBall)
     }
     
     private func triggerAISuccessAnimation() {

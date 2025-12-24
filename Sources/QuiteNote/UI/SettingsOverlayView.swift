@@ -613,7 +613,7 @@ struct SettingsOverlayView: View {
                 }
                 .onChange(of: windowLock) { newValue in
                     PreferencesManager.shared.setWindowLock(newValue)
-                    NotificationCenter.default.post(name: .windowLockChanged, object: newValue)
+                    QuiteNoteNotification.post(.windowLockChanged, object: newValue)
                 }
             
             ToggleRow(title: "动效开关", subtitle: "开启/关闭窗口淡入淡出动画", isOn: $animationsEnabled)
@@ -622,7 +622,7 @@ struct SettingsOverlayView: View {
                 }
                 .onChange(of: animationsEnabled) { newValue in
                     PreferencesManager.shared.setAnimationsEnabled(newValue)
-                    NotificationCenter.default.post(name: .animationsEnabledChanged, object: newValue)
+                    QuiteNoteNotification.post(.animationsEnabledChanged, object: newValue)
                 }
             
             ToggleRow(title: "记忆位置", subtitle: "开启后记住并恢复窗口上次的位置", isOn: $rememberWindowPosition)

@@ -55,9 +55,9 @@ final class BluetoothManager: NSObject, ObservableObject {
         lastEvent = (eventId, seq, Date())
         switch eventId {
         case 0x01:
-            NotificationCenter.default.post(name: .bluetoothCaptureClipboard, object: seq)
+            QuiteNoteNotification.post(.bluetoothCaptureClipboard, object: seq)
         case 0x02:
-            NotificationCenter.default.post(name: .bluetoothToggleHistory, object: seq)
+            QuiteNoteNotification.post(.bluetoothToggleHistory, object: seq)
         default:
             break
         }
@@ -130,7 +130,4 @@ extension BluetoothManager: CBPeripheralDelegate {
     }
 }
 
-extension Notification.Name {
-    static let bluetoothCaptureClipboard = Notification.Name("bluetoothCaptureClipboard")
-    static let bluetoothToggleHistory = Notification.Name("bluetoothToggleHistory")
-}
+// 移除旧的通知名称扩展，已统一到 QuiteNoteNotifications

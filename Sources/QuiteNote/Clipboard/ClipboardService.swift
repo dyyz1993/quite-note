@@ -10,7 +10,7 @@ final class ClipboardService {
     /// 初始化服务并订阅蓝牙按钮事件
     init(store: RecordStore) {
         self.store = store
-        NotificationCenter.default.addObserver(self, selector: #selector(onBluetoothCapture(_:)), name: .bluetoothCaptureClipboard, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(onBluetoothCapture(_:)), name: QuiteNoteNotification.bluetoothCaptureClipboard.name, object: nil)
     }
 
     /// 蓝牙“采集剪贴板”事件处理
