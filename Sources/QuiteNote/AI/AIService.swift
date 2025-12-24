@@ -1,15 +1,6 @@
 import Foundation
 import os.log
 
-/// AI 总结结果结构：标题、总结、置信度、标签与关键词
-struct SummaryResult: Codable {
-    let title: String
-    let summary: String
-    let confidence: Double
-    let tags: [String]?
-    let keywords: [String]?
-}
-
 /// 统一的大模型提炼接口：返回标题、总结与置信度
 protocol AIServiceProtocol {
     /// 执行提炼任务：输入限制与原文；completion 返回结构化结果或错误
@@ -389,11 +380,4 @@ final class AIService: AIServiceProtocol {
 
         task.resume()
     }
-}
-
-/// 简化的总结结果结构（用于简单解析）
-private struct SimpleSummaryResult: Codable {
-    let title: String
-    let summary: String
-    let confidence: Double
 }
