@@ -56,11 +56,13 @@ final class FloatingPanelController {
     private let focusProvider = WindowFocusProvider()
     private var launchEnsurer: Timer?
     private var hoverActive: Bool = false
+    private var hoverFocusTimer: Timer?
     private var revertTimer: Timer?
     private var lastSwitchAt: TimeInterval = 0
     private var isInteracting: Bool = false // 跟踪用户是否正在交互（拖拽、点击等）
     private var lastInteractionChange: TimeInterval = 0 // 记录上次交互状态变更时间
     private var userHidden: Bool = false // 用户主动隐藏标记，防止自动前置
+    private var previousApp: NSRunningApplication? // 记录焦点夺取前的活跃应用
     
     var isVisible: Bool { panel.isVisible }
     
@@ -74,6 +76,8 @@ final class FloatingPanelController {
         // 清理定时器
         launchEnsurer?.invalidate()
         launchEnsurer = nil
+        hoverFocusTimer?.invalidate()
+        hoverFocusTimer = nil
         revertTimer?.invalidate()
         revertTimer = nil
         
@@ -134,7 +138,29 @@ final class FloatingPanelController {
         
         hosting = NSHostingView(rootView: FloatingRootView(store: store, heatmapVM: heatmapVM, bluetooth: bluetooth, focus: focusProvider, onHoverChanged: { [weak self] hovering in
             guard let self else { return }
-            if hovering { self.requestRegularFocus(reason: "hover") } else { self.scheduleRevertToAccessory() }
+            print("[DEBUG] onHoverChanged: \(hovering), mode: \(self.focusProvider.mode)")
+            if hovering {
+                self.hoverActive = true
+                // 开启 600 毫秒延时聚焦定时器
+                self.hoverFocusTimer?.invalidate()
+                // 开启 600 毫秒延时聚焦定时器
+                print("[DEBUG] 启动 600ms 聚焦计时器 (模式: \(self.focusProvider.mode))")
+                let timer = Timer(timeInterval: 0.6, repeats: false) { [weak self] _ in
+                    guard let self = self else { return }
+                    print("[DEBUG] 计时器触发, hoverActive: \(self.hoverActive)")
+                    if self.hoverActive {
+                        self.requestRegularFocus(reason: "hover_delayed")
+                    }
+                }
+                RunLoop.main.add(timer, forMode: .common)
+                self.hoverFocusTimer = timer
+            } else {
+                self.hoverActive = false
+                // 鼠标离开，取消延时聚焦定时器
+                self.hoverFocusTimer?.invalidate()
+                self.hoverFocusTimer = nil
+                self.scheduleRevertToAccessory()
+            }
         }, onInteractionChanged: { [weak self] interacting in
             guard let self else { return }
             // 添加防抖机制，避免频繁的状态变更
@@ -393,20 +419,32 @@ final class FloatingPanelController {
         // 如果用户主动隐藏了窗口，则不进行任何前置操作
         if userHidden { return }
 
-        let now = CFAbsoluteTimeGetCurrent()
-        // 增加节流时间到 1 秒，减少频繁的焦点切换
-        if now - lastSwitchAt < 1.0 { return }
         // 如果已经是关键窗口，不需要再次请求焦点
         if panel.isKeyWindow { return }
         
-        lastSwitchAt = now
+        // 记录当前活跃的应用，以便稍后还原 (仅在浮球模式且当前活跃应用不是我们自己时记录)
+        if focusProvider.mode == .floatingBall {
+            if let frontmost = NSWorkspace.shared.frontmostApplication, 
+               frontmost.bundleIdentifier != Bundle.main.bundleIdentifier {
+                self.previousApp = frontmost
+                print("[DEBUG] requestFocus: 记录上一个活跃应用: \(frontmost.localizedName ?? "unknown")")
+            }
+        }
+        
         hoverActive = true
         print("[DEBUG] requestFocus(\(reason)) policy=\(NSApp.activationPolicy()) isKey=\(panel.isKeyWindow)")
-        // 保持 Accessory，直接激活并前置
+        
+        // 强制激活应用并置顶
         DispatchQueue.main.async {
+            // 对于某些 macOS 版本，需要先设置为 regular 才能可靠获取焦点
+            // 但为了不显示 Dock 图标，我们尽量保持 accessory 并使用更强力的激活方法
             NSApp.activate(ignoringOtherApps: true)
             self.panel.makeKeyAndOrderFront(nil)
             self.panel.orderFrontRegardless()
+            self.panel.makeKey() // 显式请求成为关键窗口
+            
+            // 验证是否成功
+            print("[DEBUG] 激活请求已发出，当前 key 状态: \(self.panel.isKeyWindow)")
         }
     }
 
@@ -416,16 +454,35 @@ final class FloatingPanelController {
         if userHidden { return }
 
         hoverActive = false
+        // 取消可能的聚焦定时器
+        hoverFocusTimer?.invalidate()
+        hoverFocusTimer = nil
+        
         revertTimer?.invalidate()
-        // 增加延迟时间，减少频繁的状态切换
-        revertTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { [weak self] _ in
+        // 缩短延迟时间到 0.3 秒，让离开后的响应更灵敏，同时保留基础防抖
+        revertTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { [weak self] _ in
             guard let self else { return }
             // 只有在非悬停且非交互状态下才回退到 Accessory
-            // 增加额外检查：确保窗口不是关键窗口
-            if !self.hoverActive && !self.isInteracting && !self.userHidden && !self.panel.isKeyWindow {
-                NSApp.setActivationPolicy(.accessory)
-                self.panel.orderFrontRegardless()
-                print("[DEBUG] revertToAccessory policy=\(NSApp.activationPolicy()) isKey=\(self.panel.isKeyWindow)")
+            if !self.hoverActive && !self.isInteracting && !self.userHidden {
+                
+                // 还原焦点到上一个应用 (仅在浮球模式且有记录时)
+                if self.focusProvider.mode == .floatingBall, let prevApp = self.previousApp {
+                    if !prevApp.isTerminated {
+                        print("[DEBUG] scheduleRevertToAccessory: 尝试还原焦点到: \(prevApp.localizedName ?? "unknown")")
+                        // 只有当我们仍然是活跃应用时才还原，避免干扰用户手动切换到其他应用
+                        if NSWorkspace.shared.frontmostApplication?.bundleIdentifier == Bundle.main.bundleIdentifier {
+                            prevApp.activate(options: .activateIgnoringOtherApps)
+                        }
+                    }
+                    self.previousApp = nil
+                }
+                
+                // 如果窗口不是关键窗口，或者我们主动要交还焦点 (浮球模式下移走即还)，则切回 accessory 模式
+                if !self.panel.isKeyWindow || self.focusProvider.mode == .floatingBall {
+                    NSApp.setActivationPolicy(.accessory)
+                    self.panel.orderFrontRegardless()
+                    print("[DEBUG] revertToAccessory policy=\(NSApp.activationPolicy()) isKey=\(self.panel.isKeyWindow)")
+                }
             }
         }
     }
@@ -557,11 +614,15 @@ final class FloatingPanelController {
             ctx.duration = duration
             ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             panel.animator().setFrame(targetFrame, display: true)
-        } completionHandler: { [weak focusProvider, weak panel] in
+        } completionHandler: { [weak self, weak focusProvider, weak panel] in
+            guard let self = self else { return }
             focusProvider?.isRestoring = false
             // 动画结束后恢复背景
             panel?.backgroundColor = NSColor.clear.withAlphaComponent(0.9)
             panel?.hasShadow = true
+            
+            // 恢复后强制获取一次焦点，确保搜索框等组件可用
+            self.requestRegularFocus(reason: "restore")
         }
     }
 }
