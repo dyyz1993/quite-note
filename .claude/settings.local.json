@@ -16,7 +16,9 @@
       "Bash(log show:*)",
       "Bash(sqlite3:*)",
       "Bash(xargs cat:*)",
-      "Bash(swift -:*)"
+      "Bash(swift -:*)",
+      "Bash(wc:*)",
+      "Bash(sw_vers:*)"
     ],
     "deny": [],
     "ask": []
