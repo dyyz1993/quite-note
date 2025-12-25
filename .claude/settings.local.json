@@ -18,7 +18,10 @@
       "Bash(xargs cat:*)",
       "Bash(swift -:*)",
       "Bash(wc:*)",
-      "Bash(sw_vers:*)"
+      "Bash(sw_vers:*)",
+      "mcp__memory__search_nodes",
+      "Bash(find:*)",
+      "Bash(plutil:*)"
     ],
     "deny": [],
     "ask": []

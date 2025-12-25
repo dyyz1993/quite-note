@@ -89,8 +89,27 @@ final class CoreDataStack {
 
         container = NSPersistentContainer(name: "QuiteNote", managedObjectModel: model)
 
+        // 使用 Bundle Identifier 和可执行文件路径分离开发和生产环境的数据
+        let bundleID = Bundle.main.bundleIdentifier ?? "com.quitenote.app"
+        let executablePath = Bundle.main.executablePath ?? ""
+
+        // 检测是否为开发环境：
+        // 1. Bundle ID 包含 "debug" 或 "dev"
+        // 2. 可执行文件路径包含 .build (swift build/run 产生的)
+        let isDebug = bundleID.contains("debug") || bundleID.contains("dev") || executablePath.contains(".build")
+
+        let dbName = isDebug ? "QuiteNote-Debug.sqlite" : "QuiteNote.sqlite"
+        let directoryName = isDebug ? "QuiteNote-Debug" : "QuiteNote"
+
         let url = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-            .appendingPathComponent("QuiteNote").appendingPathComponent("QuiteNote.sqlite")
+            .appendingPathComponent(directoryName).appendingPathComponent(dbName)
+
+        #if DEBUG
+        print("[CoreDataStack] 使用数据库路径: \(url.path)")
+        print("[CoreDataStack] Bundle ID: \(bundleID), isDebug: \(isDebug)")
+        print("[CoreDataStack] 可执行文件路径: \(executablePath)")
+        #endif
+
         try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         let desc = NSPersistentStoreDescription(url: url)
         container.persistentStoreDescriptions = [desc]
