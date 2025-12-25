@@ -43,6 +43,7 @@ final class WindowFocusProvider: ObservableObject {
     @Published var ballPosition: CGPoint = .zero
     @Published var lastExpandedFrame: NSRect? = nil
     var isRestoring: Bool = false // 新增：标记是否正在从浮球恢复，用于防止坐标漂移
+    var ballPositionLastSet: TimeInterval = 0 // 记录 ballPosition 最后设置的时间，用于防止 windowDidMove 覆盖
 }
 
 // MARK: - FloatingPanelController
@@ -388,9 +389,12 @@ final class FloatingPanelController {
         if PreferencesManager.shared.rememberWindowPosition && focusProvider.mode == .expanded {
             PreferencesManager.shared.setWindowPosition(panel.frame)
 
-            // 如果不是正在执行恢复动画，则更新球体位置，以便下次缩小时能缩回到新位置
-            if !focusProvider.isRestoring {
+            // 如果不是正在执行恢复动画，且距离上次设置 ballPosition 超过 1 秒，则更新球体位置
+            // 这是为了防止恢复动画完成后的 windowDidMove 通知覆盖正确的 ballPosition
+            let now = CFAbsoluteTimeGetCurrent()
+            if !focusProvider.isRestoring && (now - focusProvider.ballPositionLastSet) > 1.0 {
                 focusProvider.ballPosition = CGPoint(x: panel.frame.midX, y: panel.frame.midY)
+                print("[DEBUG] windowDidMove 更新 ballPosition: \(panel.frame.midX), \(panel.frame.midY)")
             }
 
             // 保存当前屏幕的ID
@@ -561,8 +565,24 @@ final class FloatingPanelController {
                 ctx.allowsImplicitAnimation = true
                 self.panel.animator().setFrame(targetFrame, display: true)
             } completionHandler: {
-                // 动画完成后更新浮球位置状态
-                self.focusProvider.ballPosition = CGPoint(x: targetFrame.midX, y: targetFrame.midY)
+                // 动画完成后，使用 targetFrame（理论值）而不是 panel.frame（实际值）
+                // 因为 macOS 窗口系统可能会有微小的位置调整，导致实际值不准确
+                let targetCenter = CGPoint(x: targetFrame.midX, y: targetFrame.midY)
+
+                // 延迟检查实际位置，用于调试
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                    let actualFrame = self.panel.frame
+                    let actualCenter = CGPoint(x: actualFrame.midX, y: actualFrame.midY)
+
+                    if abs(actualCenter.x - targetCenter.x) > 1 || abs(actualCenter.y - targetCenter.y) > 1 {
+                        print("[DEBUG] ⚠️ minimizeToBall 位置偏差！预期(使用): \(targetCenter.x), \(targetCenter.y) | 实际(忽略): \(actualCenter.x), \(actualCenter.y)")
+                    }
+
+                    // 使用目标位置而不是实际位置
+                    self.focusProvider.ballPosition = targetCenter
+                    self.focusProvider.ballPositionLastSet = CFAbsoluteTimeGetCurrent()
+                    print("[DEBUG] minimizeToBall 完成，ballPosition(使用目标值): \(targetCenter.x), \(targetCenter.y)")
+                }
             }
         }
     }
@@ -572,10 +592,16 @@ final class FloatingPanelController {
         guard focusProvider.mode == .floatingBall else { return }
 
         let ballFrame = panel.frame
-        let ballCenter = CGPoint(x: ballFrame.midX, y: ballFrame.midY)
+        let actualBallCenter = CGPoint(x: ballFrame.midX, y: ballFrame.midY)
 
-        // 记录当前的球心，用于防止展开时的边界适配导致下次缩小位置偏移
-        focusProvider.ballPosition = ballCenter
+        // 关键修复：使用已保存的 ballPosition 而不是 panel.frame
+        // 因为 panel.frame 可能被 macOS 窗口系统调整过，导致位置漂移
+        let ballCenter = focusProvider.ballPosition != .zero ? focusProvider.ballPosition : actualBallCenter
+
+        print("[DEBUG] restoreFromBall 开始，实际浮球中心: \(actualBallCenter.x), \(actualBallCenter.y)")
+        print("[DEBUG] restoreFromBall 使用保存的 ballPosition: \(ballCenter.x), \(ballCenter.y)")
+
+        focusProvider.ballPositionLastSet = CFAbsoluteTimeGetCurrent()
         focusProvider.isRestoring = true
 
         // 标准尺寸
@@ -600,11 +626,16 @@ final class FloatingPanelController {
         let screenFrame = screen.visibleFrame
         let padding: CGFloat = 16
 
+        let originalTargetY = targetY
         if targetX < screenFrame.minX + padding { targetX = screenFrame.minX + padding }
         else if targetX + targetWidth > screenFrame.maxX - padding { targetX = screenFrame.maxX - targetWidth - padding }
 
         if targetY < screenFrame.minY + padding { targetY = screenFrame.minY + padding }
         else if targetY + targetHeight > screenFrame.maxY - padding { targetY = screenFrame.maxY - targetHeight - padding }
+
+        if targetY != originalTargetY {
+            print("[DEBUG] restoreFromBall Y 被调整: \(originalTargetY) -> \(targetY)")
+        }
 
         let targetFrame = NSRect(x: targetX, y: targetY, width: targetWidth, height: targetHeight)
 
@@ -627,13 +658,31 @@ final class FloatingPanelController {
             panel.animator().setFrame(targetFrame, display: true)
         } completionHandler: { [weak self, weak focusProvider, weak panel] in
             guard let self = self else { return }
-            focusProvider?.isRestoring = false
-            // 动画结束后恢复背景
-            panel?.backgroundColor = NSColor.clear.withAlphaComponent(0.9)
-            panel?.hasShadow = true
+            // 动画结束后，延迟处理
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                // 恢复背景
+                panel?.backgroundColor = NSColor.clear.withAlphaComponent(0.9)
+                panel?.hasShadow = true
 
-            // 恢复后强制获取一次焦点，确保搜索框等组件可用
-            self.requestRegularFocus(reason: "restore")
+                // 读取实际窗口位置用于调试
+                let actualFrame = panel?.frame ?? targetFrame
+                let actualCenter = CGPoint(x: actualFrame.midX, y: actualFrame.midY)
+                let expectedCenter = CGPoint(x: targetFrame.midX, y: targetFrame.midY)
+
+                if abs(actualCenter.x - expectedCenter.x) > 1 || abs(actualCenter.y - expectedCenter.y) > 1 {
+                    print("[DEBUG] ⚠️ restoreFromBall 窗口位置偏差！预期: \(expectedCenter.x), \(expectedCenter.y) | 实际: \(actualCenter.x), \(actualCenter.y)")
+                }
+
+                // 关键：始终使用原始保存的 ballCenter，保持浮球位置不变
+                focusProvider?.ballPosition = ballCenter
+                focusProvider?.ballPositionLastSet = CFAbsoluteTimeGetCurrent()
+                focusProvider?.isRestoring = false
+
+                print("[DEBUG] restoreFromBall 完成，ballPosition 保持为: \(ballCenter.x), \(ballCenter.y)")
+
+                // 恢复后强制获取一次焦点，确保搜索框等组件可用
+                self.requestRegularFocus(reason: "restore")
+            }
         }
     }
 }
