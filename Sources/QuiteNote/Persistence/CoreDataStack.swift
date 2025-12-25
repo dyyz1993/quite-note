@@ -155,6 +155,18 @@ final class CoreDataStack {
         return try context.fetch(req)
     }
 
+    /// 根据日期范围查询所有记录（不分页，用于热力图等统计功能）
+    /// - Parameters:
+    ///   - startDate: 开始日期
+    ///   - endDate: 结束日期
+    /// - Returns: 指定日期范围内的所有记录数组
+    func fetchAllRecords(from startDate: Date, to endDate: Date) throws -> [CDRecord] {
+        let req = NSFetchRequest<CDRecord>(entityName: "CDRecord")
+        req.predicate = NSPredicate(format: "createdAt >= %@ AND createdAt <= %@", startDate as CVarArg, endDate as CVarArg)
+        // 不设置 fetchLimit，获取所有记录
+        return try context.fetch(req)
+    }
+
     func newRecord() -> CDRecord {
         CDRecord(context: context)
     }

@@ -10,7 +10,13 @@
       "mcp__sequential-thinking__sequentialthinking",
       "Bash(./build-app.sh:*)",
       "Bash(pkill:*)",
-      "Bash(open \"./Quite Note.app\")"
+      "Bash(open \"./Quite Note.app\")",
+      "mcp__zai-mcp-server__analyze_image",
+      "Bash(log stream:*)",
+      "Bash(log show:*)",
+      "Bash(sqlite3:*)",
+      "Bash(xargs cat:*)",
+      "Bash(swift -:*)"
     ],
     "deny": [],
     "ask": []

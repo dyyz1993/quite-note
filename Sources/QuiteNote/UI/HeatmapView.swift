@@ -68,20 +68,33 @@ final class HeatmapViewModel: ObservableObject {
             guard let self = self else { return }
 
             do {
-                // 计算日期范围：最近 21 天
+                // 计算日期范围：最近 21 天（包含今天的全部时间）
                 let calendar = Calendar.current
                 let today = calendar.startOfDay(for: Date())
+                // 使用明天的开始时间作为结束时间，以包含今天的所有记录
+                let endOfToday = calendar.date(byAdding: .day, value: 1, to: today)!
                 let twentyOneDaysAgo = calendar.date(byAdding: .day, value: -21, to: today)!
 
-                // 获取最近 21 天的记录
-                let allRecords = try self.coreDataStack.fetchRecords(from: twentyOneDaysAgo, to: today)
+                Self.logger.info("热力图查询范围: \(twentyOneDaysAgo) 到 \(endOfToday)")
+
+                // 获取最近 21 天的所有记录（不分页）
+                let cdRecords = try self.coreDataStack.fetchAllRecords(from: twentyOneDaysAgo, to: endOfToday)
 
                 // 按日期统计
                 var map: [Date: Int] = [:]
 
-                for r in allRecords {
+                for r in cdRecords {
                     let day = calendar.startOfDay(for: r.createdAt)
-                    map[day] = (map[day] ?? 0) + 1
+                    map[day, default: 0] += 1
+                }
+
+                Self.logger.info("热力图统计完成: 查询到 \(cdRecords.count) 条记录，\(map.count) 个有记录的日期")
+
+                // 打印每天的统计
+                for (date, count) in map.sorted(by: { $0.key < $1.key }) {
+                    let formatter = DateFormatter()
+                    formatter.dateFormat = "MM-dd"
+                    Self.logger.info("  \(formatter.string(from: date)): \(count) 条")
                 }
 
                 // 在主线程更新结果

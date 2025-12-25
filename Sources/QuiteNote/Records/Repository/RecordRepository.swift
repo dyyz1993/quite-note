@@ -58,7 +58,7 @@ final class RecordRepository {
 
     // MARK: - 保存操作
 
-    /// 保存新记录
+    /// 保存新记录（异步，后台任务）
     func save(_ record: Record) throws {
         stack.performBackgroundTask { [weak self] context in
             guard let self = self else { return }
@@ -71,6 +71,15 @@ final class RecordRepository {
                 Self.logger.error("保存记录失败: \(error.localizedDescription)")
             }
         }
+    }
+
+    /// 同步保存新记录（用于导入等需要立即确认的场景）
+    func saveSync(_ record: Record) throws {
+        let context = stack.context
+        let cd = CDRecord(context: context)
+        mapRecordToCDRecord(record, into: cd)
+        try context.save()
+        Self.logger.info("新记录已同步保存到数据库: \(record.id)")
     }
 
     /// 更新记录时间戳

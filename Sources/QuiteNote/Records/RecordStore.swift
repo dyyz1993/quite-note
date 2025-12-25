@@ -479,18 +479,229 @@ final class RecordStore: ObservableObject {
 
     /// 导出全部记录为 Markdown
     func exportMarkdown() -> String {
+        let dateFormatter = ISO8601DateFormatter()
         var md = "# QuiteNote 导出\n\n"
         for r in records.reversed() {
+            // 标题
             if let t = r.title {
                 md += "## \(t)\n\n"
             } else {
                 md += "## 无标题\n\n"
             }
-            md += "创建时间：\(r.createdAt)\n\n"
+
+            // 元数据
+            md += "**创建时间**：\(dateFormatter.string(from: r.createdAt))\n\n"
+
+            // 标签
+            if !r.tags.isEmpty {
+                md += "**标签**：\(r.tags.joined(separator: "、"))\n\n"
+            }
+
+            // 关键词
+            if !r.keywords.isEmpty {
+                md += "**关键词**：\(r.keywords.joined(separator: "、"))\n\n"
+            }
+
+            // 来源信息
+            if let source = r.sourceApp {
+                md += "**来源**：\(source)"
+                if let url = r.sourceUrl {
+                    md += " ([\(url)](\(url)))"
+                }
+                md += "\n\n"
+            }
+
+            // 内容
             md += "\(r.content)\n\n"
-            if let s = r.summary { md += "> 总结：\(s)\n\n" }
+
+            // 总结
+            if let s = r.summary {
+                md += "> **总结**：\(s)\n\n"
+            }
+
+            md += "---\n\n"
         }
         return md
+    }
+
+    /// 从 Markdown 内容导入记录
+    func importFromMarkdown(_ markdown: String) -> Int {
+        var importedCount = 0
+        var skippedCount = 0
+        let sections = markdown.components(separatedBy: "\n## ")
+
+        // 先获取所有已存在的哈希值用于去重
+        let existingHashes = Set(records.map { $0.hash })
+
+        for section in sections {
+            let trimmed = section.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty { continue }
+
+            // 解析各个部分
+            var title: String?
+            var createdAt: Date?
+            var tags: [String] = []
+            var keywords: [String] = []
+            var content: String = ""
+            var summary: String?
+
+            let lines = trimmed.components(separatedBy: "\n")
+            var i = 0
+
+            // 第一行是标题
+            if i < lines.count {
+                let firstLine = lines[i].trimmingCharacters(in: .whitespacesAndNewlines)
+                if !firstLine.isEmpty && !firstLine.hasPrefix("---") {
+                    title = firstLine == "无标题" ? nil : firstLine
+                }
+                i += 1
+            }
+
+            // 解析元数据
+            while i < lines.count {
+                let line = lines[i].trimmingCharacters(in: .whitespaces)
+
+                // 空行跳过
+                if line.isEmpty {
+                    i += 1
+                    continue
+                }
+
+                // 创建时间
+                if line.hasPrefix("**创建时间**") || line.hasPrefix("创建时间：") {
+                    let dateStr = line.replacingOccurrences(of: "**创建时间**：", with: "")
+                                   .replacingOccurrences(of: "创建时间：", with: "")
+                    // 尝试多种日期格式
+                    let dateFormatter1 = ISO8601DateFormatter()
+                    var date = dateFormatter1.date(from: dateStr)
+
+                    if date == nil {
+                        // 尝试其他格式
+                        let dateFormatter2 = DateFormatter()
+                        dateFormatter2.dateFormat = "yyyy-MM-dd HH:mm:ss"
+                        date = dateFormatter2.date(from: dateStr)
+                    }
+
+                    if date == nil {
+                        let dateFormatter3 = DateFormatter()
+                        dateFormatter3.dateFormat = "yyyy-MM-dd'T'HH:mm:ssZ"
+                        date = dateFormatter3.date(from: dateStr)
+                    }
+
+                    createdAt = date ?? Date()
+                    Self.logger.info("导入记录日期解析: '\(dateStr)' -> \(createdAt ?? Date())")
+                    i += 1
+                    continue
+                }
+
+                // 标签
+                if line.hasPrefix("**标签**") || line.hasPrefix("标签") {
+                    let tagsStr = line.replacingOccurrences(of: "**标签**：", with: "")
+                                  .replacingOccurrences(of: "标签：", with: "")
+                    tags = tagsStr.components(separatedBy: "、").map { $0.trimmingCharacters(in: .whitespaces) }
+                    i += 1
+                    continue
+                }
+
+                // 关键词
+                if line.hasPrefix("**关键词**") || line.hasPrefix("关键词") {
+                    let keywordsStr = line.replacingOccurrences(of: "**关键词**：", with: "")
+                                     .replacingOccurrences(of: "关键词：", with: "")
+                    keywords = keywordsStr.components(separatedBy: "、").map { $0.trimmingCharacters(in: .whitespaces) }
+                    i += 1
+                    continue
+                }
+
+                // 来源
+                if line.hasPrefix("**来源**") {
+                    i += 1
+                    continue
+                }
+
+                // 分隔符或内容开始
+                if line == "---" {
+                    i += 1
+                    continue
+                }
+
+                // 总结
+                if line.hasPrefix(">") {
+                    summary = line.replacingOccurrences(of: "> ", with: "")
+                               .replacingOccurrences(of: ">**总结**：", with: "")
+                               .replacingOccurrences(of: "> 总结：", with: "")
+                    i += 1
+                    continue
+                }
+
+                // 内容开始
+                break
+            }
+
+            // 收集剩余内容
+            while i < lines.count {
+                let line = lines[i]
+                if line != "---" {
+                    content += line + "\n"
+                }
+                i += 1
+            }
+
+            // 保存记录
+            let trimmedContent = content.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmedContent.isEmpty {
+                // 计算哈希用于去重
+                let data = Data(trimmedContent.utf8)
+                let hash = data.reduce(into: "") { $0 += String(format: "%02x", $1) }
+
+                // 检查是否已存在
+                if existingHashes.contains(hash) {
+                    skippedCount += 1
+                } else {
+                    addImportedRecord(
+                        title: title,
+                        content: trimmedContent,
+                        summary: summary,
+                        tags: tags,
+                        keywords: keywords,
+                        createdAt: createdAt
+                    )
+                    importedCount += 1
+                }
+            }
+        }
+
+        // 立即重新加载内存数据（CoreData 保存已在 addImportedRecord 中同步完成）
+        if importedCount > 0 {
+            loadFromStore()
+        }
+
+        return importedCount
+    }
+
+    /// 添加单条导入的记录（同步保存）
+    private func addImportedRecord(title: String?, content: String, summary: String?, tags: [String], keywords: [String], createdAt: Date?) {
+        // 使用简单哈希算法（与 ClipboardService 保持一致）
+        let data = Data(content.utf8)
+        let hash = data.reduce(into: "") { $0 += String(format: "%02x", $1) }
+
+        let record = Record(
+            id: UUID(),
+            title: title?.isEmpty == false ? title : nil,
+            content: content,
+            createdAt: createdAt ?? Date(),
+            hash: hash,
+            aiStatus: "completed",
+            summary: summary?.isEmpty == false ? summary : nil,
+            tags: tags,
+            keywords: keywords
+        )
+
+        // 使用同步保存，确保数据立即写入 CoreData
+        do {
+            try repository.saveSync(record)
+        } catch {
+            Self.logger.error("导入记录保存失败: \(error.localizedDescription)")
+        }
     }
 
     // MARK: - 数据加载

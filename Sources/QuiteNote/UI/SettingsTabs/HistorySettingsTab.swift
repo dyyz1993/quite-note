@@ -4,6 +4,8 @@ import SwiftUI
 struct HistorySettingsTab: View {
     @ObservedObject var store: RecordStore
     @State private var showClearConfirmation = false
+    @State private var showImportAlert = false
+    @State private var importAlertMessage = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
@@ -26,6 +28,11 @@ struct HistorySettingsTab: View {
             }
         } message: {
             Text("确定要清空所有记录吗？此操作不可撤销。")
+        }
+        .alert("导入结果", isPresented: $showImportAlert) {
+            Button("确定", role: .cancel) { }
+        } message: {
+            Text(importAlertMessage)
         }
     }
 
@@ -109,6 +116,25 @@ struct HistorySettingsTab: View {
                     .foregroundColor(.themeTextPrimary)
             }
 
+            // 导入按钮
+            Button(action: {
+                importRecordsWithOpenPanel()
+            }) {
+                HStack {
+                    LucideView(name: .upload, size: 12, color: .themeGray400)
+                    Text("导入记录 (Markdown)")
+                }
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(.themeGray400)
+                .padding(.vertical, 12)
+                .frame(maxWidth: .infinity)
+                .background(Color.clear)
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.1), lineWidth: 1).allowsHitTesting(false))
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .pointingHandCursor()
+
             // 导出按钮
             Button(action: {
                 exportRecordsWithSavePanel()
@@ -127,9 +153,6 @@ struct HistorySettingsTab: View {
             }
             .buttonStyle(.plain)
             .pointingHandCursor()
-            .onHover { isHovered in
-                if isHovered { NSCursor.pointingHand.push() } else { NSCursor.pop() }
-            }
 
             // 清空按钮（带确认）
             Button(action: {
@@ -155,6 +178,42 @@ struct HistorySettingsTab: View {
 
     // MARK: - Methods
 
+    /// 使用 NSOpenPanel 导入记录（让用户选择文件）
+    private func importRecordsWithOpenPanel() {
+        let openPanel = NSOpenPanel()
+        // 使用允许所有文件的方式，确保可以选中 .md 和 .txt 文件
+        openPanel.allowedFileTypes = nil
+        openPanel.allowsMultipleSelection = false
+        openPanel.canChooseFiles = true
+        openPanel.canChooseDirectories = false
+        openPanel.title = "选择要导入的记录文件"
+        openPanel.prompt = "导入"
+        // 设置为模态窗口，层级最高
+        openPanel.level = .modalPanel
+
+        openPanel.begin { response in
+            if response == .OK, let url = openPanel.url {
+                do {
+                    let markdownContent = try String(contentsOf: url, encoding: .utf8)
+                    let count = self.store.importFromMarkdown(markdownContent)
+                    DispatchQueue.main.async {
+                        if count > 0 {
+                            self.importAlertMessage = "成功导入 \(count) 条记录"
+                        } else {
+                            self.importAlertMessage = "未找到可导入的记录，请检查文件格式"
+                        }
+                        self.showImportAlert = true
+                    }
+                } catch {
+                    DispatchQueue.main.async {
+                        self.importAlertMessage = "导入失败: \(error.localizedDescription)"
+                        self.showImportAlert = true
+                    }
+                }
+            }
+        }
+    }
+
     /// 使用 NSSavePanel 导出记录（让用户选择保存位置）
     private func exportRecordsWithSavePanel() {
         let markdownContent = store.exportMarkdown()
@@ -164,6 +223,8 @@ struct HistorySettingsTab: View {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
         savePanel.nameFieldStringValue = "QuiteNote_导出_\(formatter.string(from: Date())).md"
+        // 设置为模态窗口，层级最高
+        savePanel.level = .modalPanel
 
         savePanel.begin { response in
             if response == .OK, let url = savePanel.url {

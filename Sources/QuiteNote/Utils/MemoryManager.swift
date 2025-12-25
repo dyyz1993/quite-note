@@ -123,11 +123,11 @@ final class MemoryManager: ObservableObject {
         performMemoryOptimization()
     }
     
-    /// 获取当前内存使用量（公开方法）
+    /// 获取当前内存使用量（公开方法）- 返回当前应用的内存使用量
     func getCurrentMemoryUsage() -> Int64 {
         var info = mach_task_basic_info()
         var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size)/4
-        
+
         let kerr: kern_return_t = withUnsafeMutablePointer(to: &info) {
             $0.withMemoryRebound(to: integer_t.self, capacity: 1) {
                 task_info(mach_task_self_,
@@ -136,12 +136,43 @@ final class MemoryManager: ObservableObject {
                          &count)
             }
         }
-        
+
         if kerr == KERN_SUCCESS {
             return Int64(info.resident_size)
         } else {
             return 0
         }
+    }
+
+    /// 获取系统内存使用率（0.0 - 1.0）
+    func getSystemMemoryUsagePercentage() -> Double {
+        var stats = vm_statistics64()
+        var count = mach_msg_type_number_t(MemoryLayout<vm_statistics64>.size / MemoryLayout<integer_t>.size)
+
+        let result = withUnsafeMutablePointer(to: &stats) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                host_statistics64(mach_host_self(), HOST_VM_INFO64, $0, &count)
+            }
+        }
+
+        guard result == KERN_SUCCESS else {
+            return 0
+        }
+
+        let totalPages = UInt64(stats.wire_count + stats.active_count + stats.inactive_count + stats.free_count)
+        let usedPages = UInt64(stats.wire_count + stats.active_count + stats.inactive_count)
+
+        if totalPages == 0 {
+            return 0
+        }
+
+        return Double(usedPages) / Double(totalPages)
+    }
+
+    /// 获取系统已使用内存量（字节）
+    func getSystemUsedMemory() -> Int64 {
+        let percentage = getSystemMemoryUsagePercentage()
+        return Int64(Double(ProcessInfo.processInfo.physicalMemory) * percentage)
     }
     
     /// 析构函数，确保清理资源
