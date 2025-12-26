@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// 单条记录卡片视图
 struct RecordCardView: View, Equatable {
@@ -23,11 +24,17 @@ struct RecordCardView: View, Equatable {
     // 使用@ViewBuilder优化条件渲染
     @ViewBuilder
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            cardHeader
+        HStack(spacing: 0) {
+            // 拖拽手柄
+            dragHandle
 
-            if isExpanded {
-                cardExpandedContent
+            // 卡片内容
+            VStack(alignment: .leading, spacing: 0) {
+                cardHeader
+
+                if isExpanded {
+                    cardExpandedContent
+                }
             }
         }
         // 简化背景和边框，减少重绘
@@ -49,7 +56,56 @@ struct RecordCardView: View, Equatable {
             }
         }
         .onHover { hovering = $0 }
-        .pointingHandCursor()
+    }
+
+    // MARK: - 拖拽手柄
+
+    private var dragHandle: some View {
+        Image(systemName: "line.3.horizontal")
+            .foregroundColor(hovering ? Color.themeTextSecondary : Color.themeGray500)
+            .frame(width: 16, height: 44)
+            .contentShape(Rectangle())
+            .background(
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(hovering ? Color.themeHoverLight : Color.clear)
+                    .padding(.horizontal, 2)
+            )
+            .onDrag {
+                guard let fileURL = getFileURL(from: record) else {
+                    return NSItemProvider(object: "" as NSString)
+                }
+                return NSItemProvider(item: fileURL as NSURL, typeIdentifier: UTType.fileURL.identifier)
+            }
+            .help("拖拽导出到 Finder 或编辑器")
+    }
+
+    // MARK: - 辅助函数
+
+    /// 根据记录类型获取文件URL
+    private func getFileURL(from record: Record) -> URL? {
+        switch record.type {
+        case .file:
+            // 文件记录：返回原文件URL
+            return record.sourceUrl.flatMap { URL(string: $0) }
+
+        case .folder:
+            // 文件夹记录：返回文件夹URL
+            return record.sourceUrl.flatMap { URL(string: $0) }
+
+        case .text:
+            // 文本记录：创建临时 .md 文件
+            let tempDir = FileManager.default.temporaryDirectory
+            let timestamp = DateFormatter.timestampFormatter.string(from: record.createdAt)
+            let filename = (record.title ?? "记录") + "_" + timestamp + ".md"
+            let fileURL = tempDir.appendingPathComponent(filename)
+
+            // 写入内容到临时文件
+            try? record.content.write(to: fileURL, atomically: true, encoding: .utf8)
+            return fileURL
+
+        default:
+            return nil
+        }
     }
 
     private var cardHeader: some View {
@@ -587,7 +643,19 @@ private extension RecordCardView {
             return "AI 正在分析内容..."
         default:
             if let t = record.title, !t.isEmpty { return t }
-            if record.type == .folder { return "文件夹" }
+            if record.type == .folder {
+                // 文件夹记录：显示 "文件夹名 (文件数) 个文件"
+                if let urlString = record.sourceUrl,
+                   let url = URL(string: urlString) {
+                    let folderName = url.lastPathComponent
+                    let name = folderName.isEmpty ? "文件夹" : folderName
+                    if let count = record.fileCount {
+                        return "\(name) (\(count) 个文件)"
+                    }
+                    return name
+                }
+                return "文件夹"
+            }
             if record.type == .file { return "文件" }
             return record.content.count > 30 ? String(record.content.prefix(30)) + "..." : record.content
         }
@@ -673,4 +741,14 @@ private extension RecordCardView {
             return record.title != nil ? "仅标题" : "原始记录"
         }
     }
+}
+
+// MARK: - DateFormatter Extension
+
+private extension DateFormatter {
+    static let timestampFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd_HHmmss"
+        return formatter
+    }()
 }

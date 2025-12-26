@@ -27,4 +27,5 @@ struct Record: Identifiable {
     var sourceUrl: String? = nil
     var type: RecordType = .text
     var skipAI: Bool = false
+    var fileCount: Int? = nil  // 文件夹包含的文件数量
 }

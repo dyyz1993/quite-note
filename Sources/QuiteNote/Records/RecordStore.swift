@@ -142,9 +142,26 @@ final class RecordStore: ObservableObject {
                 print("[DEBUG] 错误: 文件不存在於路径: \(finalUrl.path)")
                 content = "错误: 文件不存在\n路径: \(finalUrl.path)"
             } else if isFolder {
-                // 文件夹处理逻辑
-                content = "文件夹路径: \(finalUrl.path)\n文件夹名: \(fileName)"
-                print("[DEBUG] 识别为文件夹，记录路径")
+                // 文件夹处理逻辑：生成 tree 结构
+                let treeResult = generateTreeStructure(for: finalUrl)
+                content = treeResult.content
+                let fileCount = treeResult.fileCount
+                let hash = ClipboardService.sha1(content)  // 计算 hash
+
+                print("[DEBUG] 识别为文件夹，文件数: \(fileCount)")
+
+                // 添加记录时传入文件数量
+                addRecord(
+                    content: content,
+                    hash: hash,
+                    sourceApp: "Folder Drag",
+                    sourceUrl: sourceUrl,
+                    type: recordType,
+                    skipAI: skipAI,
+                    fileName: fileName,
+                    fileCount: fileCount
+                )
+                continue  // 跳过后续的通用 addRecord
             } else {
                 do {
                     // 只要是文件，统一设为 .file 类型，确保能通过文件筛选找到
@@ -281,7 +298,8 @@ final class RecordStore: ObservableObject {
         sourceUrl: String? = nil,
         type: RecordType = .text,
         skipAI: Bool = false,
-        fileName: String? = nil
+        fileName: String? = nil,
+        fileCount: Int? = nil
     ) {
         print("[DEBUG] RecordStore.addRecord 被调用，内容长度: \(content.count), hash: \(hash), type: \(type)")
         // 1. 检查是否已存在相同哈希的记录
@@ -324,7 +342,8 @@ final class RecordStore: ObservableObject {
             sourceApp: sourceApp,
             sourceUrl: sourceUrl,
             type: type,
-            skipAI: skipAI
+            skipAI: skipAI,
+            fileCount: fileCount
         )
 
         do { try repository.save(record) }
@@ -1073,5 +1092,82 @@ final class RecordStore: ObservableObject {
             }
             searchHistory = trimmed
         }
+    }
+}
+
+// MARK: - 文件夹 Tree 结构生成
+
+extension RecordStore {
+    /// Tree 结构生成结果
+    private struct TreeResult {
+        let content: String
+        let fileCount: Int
+    }
+
+    /// 为文件夹生成 tree 结构的内容
+    private func generateTreeStructure(for folderURL: URL) -> TreeResult {
+        let folderName = folderURL.lastPathComponent
+        let folderPath = folderURL.path
+
+        // 递归遍历文件夹，生成 tree 结构
+        func traverseDirectory(_ url: URL, level: Int = 0) -> (lines: [String], fileCount: Int) {
+            var lines: [String] = []
+            var fileCount = 0
+            let indent = String(repeating: "│  ", count: level)
+            let lastIndent = String(repeating: "└── ", count: 1)
+
+            do {
+                let contents = try FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: [.nameKey, .isDirectoryKey], options: [.skipsHiddenFiles])
+
+                // 排序：文件夹在前，文件在后
+                let sorted = contents.sorted { a, b in
+                    let aIsDir = (try? a.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
+                    let bIsDir = (try? b.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
+                    if aIsDir != bIsDir {
+                        return aIsDir && !bIsDir  // 文件夹排在前面
+                    }
+                    return a.lastPathComponent < b.lastPathComponent
+                }
+
+                for (index, item) in sorted.enumerated() {
+                    let name = item.lastPathComponent
+                    let isDirectory = (try? item.resourceValues(forKeys: [URLResourceKey.isDirectoryKey]))?.isDirectory ?? false
+
+                    let isLast = index == sorted.count - 1
+                    let prefix = isLast ? "└── " : "├── "
+                    let connector = isLast ? "    " : "│   "
+
+                    if isDirectory {
+                        lines.append("\(indent)\(prefix)\(name)/")
+                        let subResult = traverseDirectory(item, level: level + 1)
+                        fileCount += subResult.fileCount
+
+                        // 添加子项内容
+                        for subLine in subResult.lines {
+                            lines.append("\(indent)\(connector)\(subLine)")
+                        }
+                    } else {
+                        lines.append("\(indent)\(prefix)\(name)")
+                        fileCount += 1
+                    }
+                }
+            } catch {
+                lines.append("\(indent)└── (无法读取内容)")
+            }
+
+            return (lines, fileCount)
+        }
+
+        var resultLines: [String] = []
+        resultLines.append("文件夹路径: \(folderPath)")
+        resultLines.append("文件夹名: \(folderName)")
+        resultLines.append("文件结构:")
+        resultLines.append(".")
+
+        let (treeLines, totalFiles) = traverseDirectory(folderURL)
+        resultLines.append(contentsOf: treeLines)
+
+        let content = resultLines.joined(separator: "\n")
+        return TreeResult(content: content, fileCount: totalFiles)
     }
 }

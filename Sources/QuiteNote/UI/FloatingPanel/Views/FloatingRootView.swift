@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import Cocoa
+import UniformTypeIdentifiers
 
 // MARK: - Keyboard Intercept View
 
@@ -65,6 +66,7 @@ struct FloatingRootView: View {
     @State private var searchResults: [Record] = [] // 缓存搜索结果
     @State private var isLoadingMore: Bool = false // 是否正在加载更多
     @State private var hasMoreRecords: Bool = true // 是否还有更多记录
+    @State private var isDroppingFiles: Bool = false // 是否正在拖入文件
 
     var body: some View {
         ZStack(alignment: .center) {
@@ -326,49 +328,62 @@ struct FloatingRootView: View {
 
     /// 列表内容视图
     private var listContentView: some View {
-        ScrollView {
-            LazyVStack(spacing: 12, pinnedViews: [.sectionHeaders]) { // 使用LazyVStack提高性能，并固定Header
-                if searchTerm.isEmpty {
-                    if store.records.isEmpty {
-                        emptyStateView
-                    } else {
-                        let starred = store.records.filter { $0.starred }
-                        let others = store.records.filter { !$0.starred }
+        ZStack {
+            ScrollView {
+                LazyVStack(spacing: 12, pinnedViews: [.sectionHeaders]) { // 使用LazyVStack提高性能，并固定Header
+                    if searchTerm.isEmpty {
+                        if store.records.isEmpty {
+                            emptyStateView
+                        } else {
+                            let starred = store.records.filter { $0.starred }
+                            let others = store.records.filter { !$0.starred }
 
-                        // 收藏部分
-                        if !starred.isEmpty {
-                            Section(header: starredSectionHeader(count: starred.count)) {
-                                // 使用动画包裹收藏列表内容，根据收藏数量调整动画时间
-                                animatedStarredListView(starred: starred)
-                                    .padding(.top, 4) // 增加与 Header 的间距
-                            }
-                        }
-
-                        // 其他记录部分
-                        if !others.isEmpty {
-                            Section(header: !starred.isEmpty ? otherSectionHeader : nil) {
-                                listViewContent(items: others)
-                            }
-                        }
-
-                        // 加载更多指示器
-                        if hasMoreRecords {
-                            loadMoreIndicatorView
-                                .onAppear {
-                                    loadMoreRecords()
+                            // 收藏部分
+                            if !starred.isEmpty {
+                                Section(header: starredSectionHeader(count: starred.count)) {
+                                    // 使用动画包裹收藏列表内容，根据收藏数量调整动画时间
+                                    animatedStarredListView(starred: starred)
+                                        .padding(.top, 4) // 增加与 Header 的间距
                                 }
+                            }
+
+                            // 其他记录部分
+                            if !others.isEmpty {
+                                Section(header: !starred.isEmpty ? otherSectionHeader : nil) {
+                                    listViewContent(items: others)
+                                }
+                            }
+
+                            // 加载更多指示器
+                            if hasMoreRecords {
+                                loadMoreIndicatorView
+                                    .onAppear {
+                                        loadMoreRecords()
+                                    }
+                            }
                         }
-                    }
-                } else {
-                    let items = Array(searchResults.prefix(50))
-                    if items.isEmpty {
-                        emptyStateView
                     } else {
-                        listViewContent(items: items)
+                        let items = Array(searchResults.prefix(50))
+                        if items.isEmpty {
+                            emptyStateView
+                        } else {
+                            listViewContent(items: items)
+                        }
                     }
                 }
+                .padding(16) // p-4
             }
-            .padding(16) // p-4
+            .onDrop(of: [.item, .fileURL, .text, .url], isTargeted: $isDroppingFiles) { providers in
+                print("[DEBUG] onDrop 被调用！providers 数量: \(providers.count)")
+                handleDroppedFiles(providers: providers)
+                return true
+            }
+
+            // 拖入视觉反馈动画
+            if isDroppingFiles {
+                dropFeedbackOverlay
+                    .allowsHitTesting(false)  // 让事件穿透到下层的 onDrop
+            }
         }
         .onChange(of: searchTerm) { newValue in
             // 使用防抖搜索，避免频繁搜索
@@ -393,6 +408,120 @@ struct FloatingRootView: View {
                     searchResults = results
                     hasMoreRecords = results.count >= 50
                 }
+            }
+        }
+    }
+
+    /// 拖入文件的视觉反馈覆盖层
+    private var dropFeedbackOverlay: some View {
+        ZStack {
+            // 半透明蒙层
+            Color.themeBlue500.opacity(0.15)
+                .ignoresSafeArea()
+
+            VStack(spacing: 16) {
+                // 上传图标（带脉冲动画）
+                ZStack {
+                    Circle()
+                        .fill(Color.themeBlue500.opacity(0.2))
+                        .frame(width: 80, height: 80)
+                        .scaleEffect(isDroppingFiles ? 1.2 : 1.0)
+                        .opacity(isDroppingFiles ? 0.5 : 0.0)
+
+                    Circle()
+                        .fill(Color.themeBlue500.opacity(0.3))
+                        .frame(width: 60, height: 60)
+
+                    LucideView(name: .upload, size: 32, color: .themeBlue400)
+                }
+
+                Text("松开即可导入文件")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(.themeBlue400)
+
+                Text("支持单个文件或整个文件夹")
+                    .font(.system(size: 12))
+                    .foregroundColor(.themeTextSecondary)
+            }
+            .padding(24)
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(Color.themeBackground)
+                    .shadow(color: Color.themeShadowBlue, radius: 20, x: 0, y: 4)
+            )
+        }
+        .transition(.opacity.combined(with: .scale(scale: 0.95)))
+        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isDroppingFiles)
+    }
+
+    /// 处理拖入的文件
+    private func handleDroppedFiles(providers: [NSItemProvider]) {
+        print("[DEBUG] handleDroppedFiles 被调用，providers 数量: \(providers.count)")
+
+        let dispatchGroup = DispatchGroup()
+        var urls: [URL] = []
+
+        for provider in providers {
+            dispatchGroup.enter()
+
+            let types = provider.registeredTypeIdentifiers
+            print("[DEBUG] provider 注册的类型: \(types)")
+
+            // 优先尝试 URL
+            if provider.canLoadObject(ofClass: URL.self) {
+                _ = provider.loadObject(ofClass: URL.self) { url, error in
+                    if let url = url {
+                        print("[DEBUG] 成功解析为 URL: \(url.path)")
+                        urls.append(url)
+                    }
+                    dispatchGroup.leave()
+                }
+            }
+            // 其次尝试 String
+            else if provider.canLoadObject(ofClass: String.self) {
+                _ = provider.loadObject(ofClass: String.self) { str, error in
+                    if let str = str {
+                        print("[DEBUG] 成功解析为 String: \(str)")
+                        if str.starts(with: "/") {
+                            let url = URL(fileURLWithPath: str)
+                            urls.append(url)
+                        }
+                    }
+                    dispatchGroup.leave()
+                }
+            }
+            else {
+                // 如果都失败了，尝试通过 loadItem 加载原始数据
+                if let firstType = types.first {
+                    print("[DEBUG] 尝试加载第一个类型的数据: \(firstType)")
+                    provider.loadItem(forTypeIdentifier: firstType, options: nil) { item, error in
+                        if let url = item as? URL {
+                            print("[DEBUG] loadItem 成功获取 URL: \(url.path)")
+                            urls.append(url)
+                        } else if let data = item as? Data,
+                                  let url = URL(dataRepresentation: data, relativeTo: nil) {
+                            print("[DEBUG] loadItem 从 Data 获取到 URL: \(url.path)")
+                            urls.append(url)
+                        } else if let item = item {
+                            print("[DEBUG] loadItem 获取到未知对象类型: \(type(of: item))")
+                        }
+                        dispatchGroup.leave()
+                    }
+                } else {
+                    dispatchGroup.leave()
+                }
+            }
+        }
+
+        dispatchGroup.notify(queue: DispatchQueue.main) {
+            if !urls.isEmpty {
+                print("[DEBUG] 最终接收到 \(urls.count) 个文件")
+                store.handleDroppedUrls(urls)
+                HapticFeedbackManager.shared.mediumImpact()
+                store.postToast("已导入 \(urls.count) 个文件", type: "success")
+            } else {
+                print("[DEBUG] 未能解析到任何有效内容")
+                store.postToast("未能解析文件", type: "error")
             }
         }
     }

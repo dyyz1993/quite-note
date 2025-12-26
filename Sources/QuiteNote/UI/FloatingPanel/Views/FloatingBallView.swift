@@ -51,7 +51,7 @@ struct FloatingBallView: View {
                     LucideView(name: .check, size: 30, color: .themeGreen500)
                         .transition(.scale.combined(with: .opacity))
                 } else if isTargeted {
-                    LucideView(name: .plus, size: 30, color: .themeBlue500)
+                    LucideView(name: .upload, size: 30, color: .themeBlue500)
                         .transition(.scale)
                 } else {
                     AISparkleIcon(size: 30, color: statusColor)

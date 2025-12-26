@@ -131,7 +131,8 @@ final class FloatingPanelController {
         panel.titleVisibility = .hidden  // 隐藏标题栏
         panel.titlebarAppearsTransparent = true  // 标题栏透明
         panel.backgroundColor = NSColor.clear.withAlphaComponent(0.9) // 设置为透明背景，让SwiftUI内容显示
-        panel.isMovableByWindowBackground = !PreferencesManager.shared.windowLock
+        // 禁用全局窗口拖拽，只允许 WindowDragHandler 区域拖拽
+        panel.isMovableByWindowBackground = false
         panel.hasShadow = true // Ensure shadow is visible for borderless window
 
         // Hide system buttons
@@ -372,7 +373,8 @@ final class FloatingPanelController {
     @objc private func onWindowLock(_ note: Notification) {
         if let lock = note.object as? Bool {
             panel.isMovable = !lock
-            panel.isMovableByWindowBackground = !lock
+            // 保持 isMovableByWindowBackground 为 false，只允许 WindowDragHandler 区域拖拽
+            // panel.isMovableByWindowBackground = !lock  // 注释掉，不使用全局窗口拖拽
         }
     }
 
