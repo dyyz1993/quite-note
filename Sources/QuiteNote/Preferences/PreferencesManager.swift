@@ -51,6 +51,7 @@ final class PreferencesManager: ObservableObject {
     var animationsEnabled: Bool { d.object(forKey: "animationsEnabled") == nil ? true : d.bool(forKey: "animationsEnabled") }
     var rememberWindowPosition: Bool { d.object(forKey: "rememberWindowPosition") == nil ? true : d.bool(forKey: "rememberWindowPosition") }
     var attachmentsPath: String? { d.string(forKey: "attachmentsPath") }
+    var preferredEditor: String { d.string(forKey: "preferredEditor") ?? "System Default" }
 
     var openAIBaseURL: String { d.string(forKey: "openAIBaseURL") ?? "https://api.openai.com/v1" }
     var openAIModel: String { d.string(forKey: "openAIModel") ?? "gpt-4o-mini" }
@@ -92,6 +93,7 @@ final class PreferencesManager: ObservableObject {
     func setAnimationsEnabled(_ v: Bool) { d.set(v, forKey: "animationsEnabled") }
     func setRememberWindowPosition(_ v: Bool) { d.set(v, forKey: "rememberWindowPosition") }
     func setAttachmentsPath(_ v: String?) { d.set(v, forKey: "attachmentsPath") }
+    func setPreferredEditor(_ v: String) { d.set(v, forKey: "preferredEditor") }
 
     func setOpenAIBaseURL(_ v: String) { d.set(v, forKey: "openAIBaseURL") }
     func setOpenAIModel(_ v: String) { d.set(v, forKey: "openAIModel") }
@@ -114,6 +116,21 @@ final class PreferencesManager: ObservableObject {
     func resetAIUserPrompt() {
         objectWillChange.send()
         d.removeObject(forKey: "aiUserPrompt")
+    }
+    
+    /// 重置所有设置为默认值
+    func resetAll() {
+        objectWillChange.send()
+        let keys = [
+            "enableAI", "titleLimit", "summaryTrigger", "summaryLimit", 
+            "dedupEnabled", "maxRecords", "debounceSeconds", "windowLock", 
+            "animationsEnabled", "rememberWindowPosition", "attachmentsPath",
+            "openAIBaseURL", "openAIModel", "aiSystemPrompt", "aiUserPrompt",
+            "preferredEditor"
+        ]
+        for key in keys {
+            d.removeObject(forKey: key)
+        }
     }
     
     // 搜索历史相关方法

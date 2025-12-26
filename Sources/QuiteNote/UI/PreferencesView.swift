@@ -44,6 +44,9 @@ struct PreferencesView: View {
                 .padding()
                 .tabItem { Label("记录设置", systemImage: "note.text") }
 
+            FileSettingsTab(store: store)
+                .tabItem { Label("文件与存储", systemImage: "folder") }
+
             Text("悬浮窗设置占位")
                 .padding()
                 .tabItem { Label("悬浮窗设置", systemImage: "rectangle.on.rectangle") }

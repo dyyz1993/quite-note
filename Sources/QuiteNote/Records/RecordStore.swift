@@ -1005,7 +1005,7 @@ final class RecordStore: ObservableObject {
 
     // MARK: - 偏好设置
 
-    private func loadPreferences() {
+    func loadPreferences() {
         enableAI = prefs.enableAI
         titleLimit = prefs.titleLimit
         summaryTrigger = prefs.summaryTrigger

@@ -102,7 +102,7 @@ struct RecordCardView: View, Equatable {
                             }
                             .onTapGesture {
                                 if url.isFileURL {
-                                    NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: url.path)
+                                    FileOpener.open(url: url, preferredEditor: PreferencesManager.shared.preferredEditor)
                                 } else {
                                     NSWorkspace.shared.open(url)
                                 }
