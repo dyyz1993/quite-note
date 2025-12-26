@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 
 /// 浮球视图 - 窗口缩小后的状态，支持拖拽、点击和状态动画
 struct FloatingBallView: View {
@@ -11,15 +12,17 @@ struct FloatingBallView: View {
     @State private var iconOffset: CGFloat = 0
     @State private var aiRotation: Double = 0
     @State private var isDragging = false
+    @State private var isTargeted = false // 拖拽是否悬停在上方
 
     var body: some View {
         ZStack {
             // Glow Effect - tight edge glow
-            if hovering || store.isAIProcessing || pasteSuccess || aiSuccess {
+            if hovering || store.isAIProcessing || pasteSuccess || aiSuccess || isTargeted {
                 Circle()
-                    .stroke(statusColor.opacity(0.8), lineWidth: 3)
+                    .stroke(isTargeted ? Color.themeBlue500 : statusColor.opacity(0.8), lineWidth: 3)
                     .frame(width: 58, height: 58)
-                    .blur(radius: 3)
+                    .blur(radius: isTargeted ? 5 : 3)
+                    .scaleEffect(isTargeted ? 1.1 : 1.0)
                     .transition(.opacity)
             }
 
@@ -27,10 +30,11 @@ struct FloatingBallView: View {
             Circle()
                 .fill(ballBackgroundColor.opacity(isIdle ? 0.8 : 1.0))
                 .frame(width: 56, height: 56)
+                .scaleEffect(isTargeted ? 1.1 : 1.0)
                 .shadow(color: Color.black.opacity(0.4), radius: 6, x: 0, y: 3)
                 .overlay(
                     Circle()
-                        .stroke(statusColor.opacity(0.3), lineWidth: 1)
+                        .stroke(isTargeted ? Color.themeBlue500 : statusColor.opacity(0.3), lineWidth: 1)
                 )
 
             // Icon with Animation
@@ -46,14 +50,89 @@ struct FloatingBallView: View {
                 } else if pasteSuccess || aiSuccess {
                     LucideView(name: .check, size: 30, color: .themeGreen500)
                         .transition(.scale.combined(with: .opacity))
+                } else if isTargeted {
+                    LucideView(name: .plus, size: 30, color: .themeBlue500)
+                        .transition(.scale)
                 } else {
                     AISparkleIcon(size: 30, color: statusColor)
                 }
             }
             .offset(y: iconOffset)
+            .scaleEffect(isTargeted ? 1.2 : 1.0)
         }
         .frame(width: 80, height: 80) // Container matches window size
         .contentShape(Circle())
+        .onDrop(of: [.item, .fileURL, .text, .url], isTargeted: $isTargeted) { providers in
+            print("[DEBUG] onDrop 触发，providers 数量: \(providers.count)")
+            
+            let dispatchGroup = DispatchGroup()
+            var urls: [URL] = []
+            
+            for provider in providers {
+                dispatchGroup.enter()
+                
+                let types = provider.registeredTypeIdentifiers
+                print("[DEBUG] provider 注册的类型: \(types)")
+                
+                // 1. 尝试遍历所有类型，看看有没有能用的
+                var handled = false
+                
+                // 优先尝试 URL
+                if provider.canLoadObject(ofClass: URL.self) {
+                    _ = provider.loadObject(ofClass: URL.self) { url, error in
+                        if let url = url {
+                            print("[DEBUG] 成功解析为 URL: \(url)")
+                            urls.append(url)
+                            handled = true
+                        }
+                        dispatchGroup.leave()
+                    }
+                } 
+                // 其次尝试 String
+                else if provider.canLoadObject(ofClass: String.self) {
+                    _ = provider.loadObject(ofClass: String.self) { str, error in
+                        if let str = str {
+                            print("[DEBUG] 成功解析为 String: \(str)")
+                            if str.starts(with: "/") {
+                                let url = URL(fileURLWithPath: str)
+                                urls.append(url)
+                                handled = true
+                            }
+                        }
+                        dispatchGroup.leave()
+                    }
+                }
+                else {
+                    // 如果都失败了，尝试通过 loadItem 加载原始数据
+                    if let firstType = types.first {
+                        print("[DEBUG] 尝试加载第一个类型的数据: \(firstType)")
+                        provider.loadItem(forTypeIdentifier: firstType, options: nil) { item, error in
+                            if let url = item as? URL {
+                                print("[DEBUG] loadItem 成功获取 URL: \(url)")
+                                urls.append(url)
+                            } else if let data = item as? Data {
+                                print("[DEBUG] loadItem 获取到 Data，大小: \(data.count)")
+                            } else if let item = item {
+                                print("[DEBUG] loadItem 获取到未知对象类型: \(type(of: item))")
+                            }
+                            dispatchGroup.leave()
+                        }
+                    } else {
+                        dispatchGroup.leave()
+                    }
+                }
+            }
+            
+            dispatchGroup.notify(queue: .main) {
+                if !urls.isEmpty {
+                    print("[DEBUG] 最终接收到有效内容，数量: \(urls.count)")
+                    store.handleDroppedUrls(urls)
+                } else {
+                    print("[DEBUG] 未能解析到任何有效内容")
+                }
+            }
+            return true
+        }
         .onHover { h in
             hovering = h
             if h {

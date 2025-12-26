@@ -69,6 +69,54 @@ final class RecordStore: ObservableObject {
         aiCoordinator.ai
     }
 
+    // MARK: - 文件拖拽处理
+
+    /// 处理拖拽的文件 URL 列表
+    /// - Parameter urls: 文件 URL 数组
+    func handleDroppedUrls(_ urls: [URL]) {
+        Self.logger.info("RecordStore 处理拖拽 URL，数量: \(urls.count)")
+        for url in urls {
+            // 获取文件路径
+            let path = url.path
+            let fileName = url.lastPathComponent
+            
+            Self.logger.info("正在处理文件: \(fileName), 路径: \(path)")
+            
+            // 尝试读取文件内容（仅限文本文件）
+            var content = ""
+            let sourceUrl = url.absoluteString
+            
+            do {
+                // 简单的文本检测：尝试读取前几个字节或检查扩展名
+                let textExtensions = ["txt", "md", "js", "ts", "swift", "py", "html", "css", "json", "yml", "yaml", "xml", "c", "cpp", "h"]
+                if textExtensions.contains(url.pathExtension.lowercased()) {
+                    content = try String(contentsOf: url, encoding: .utf8)
+                    Self.logger.info("成功读取文本文件内容，长度: \(content.count)")
+                } else {
+                    // 如果不是文本文件，记录路径和文件名
+                    content = "文件路径: \(path)\n文件名: \(fileName)"
+                    Self.logger.info("非文本文件，记录路径信息")
+                }
+            } catch {
+                Self.logger.error("读取文件内容失败: \(error.localizedDescription)")
+                content = "文件路径: \(path)\n文件名: \(fileName)\n(内容读取失败)"
+            }
+            
+            // 计算哈希用于去重
+            let data = Data(content.utf8)
+            let hash = data.reduce(into: "") { $0 += String(format: "%02x", $1) }
+            
+            // 添加记录
+            addRecord(content: content, hash: hash, sourceApp: "File Drag", sourceUrl: sourceUrl)
+            Self.logger.info("记录已添加到 store")
+        }
+        
+        // 发送触觉反馈
+        HapticFeedbackManager.shared.success()
+        // 触发 UI 成功动画
+        self.lastPasteSuccessAt = Date()
+    }
+
     // MARK: - 配置
 
     private let prefs = PreferencesManager.shared
