@@ -54,18 +54,26 @@ struct RecordCardView: View, Equatable {
 
     private var cardHeader: some View {
         HStack(alignment: .top, spacing: 12) {
-            // Icon
-            LucideView(name: statusIconLucide, size: 16, color: statusColor)
-                .frame(width: 20, height: 20)
-                .padding(.top, 4) // mt-1 (4px)
-
             // Content
             VStack(alignment: .leading, spacing: 4) {
-                // Title
-                Text(displayTitle)
-                    .font(.system(size: 14, weight: .medium)) // text-sm font-medium
-                    .foregroundColor(record.aiStatus == "pending" ? Color.themePurple500.opacity(0.7) : Color.themeTextPrimary)
-                    .lineLimit(1)
+                HStack(alignment: .center, spacing: 8) {
+                    // Type Icon
+                    LucideView(name: typeIconLucide, size: 14, color: .themeGray400)
+                        .frame(width: 18, height: 18)
+                        .background(Color.white.opacity(0.05))
+                        .cornerRadius(4)
+                    
+                    // Title
+                    Text(displayTitle)
+                        .font(.system(size: 14, weight: .medium)) // text-sm font-medium
+                        .foregroundColor(record.aiStatus == "pending" ? Color.themePurple500.opacity(0.7) : Color.themeTextPrimary)
+                        .lineLimit(1)
+                    
+                    // Status Icon (AI/Star)
+                    if let statusIcon = statusIconLucide {
+                        LucideView(name: statusIcon, size: 12, color: statusColor)
+                    }
+                }
 
                 // Meta Info
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -84,14 +92,24 @@ struct RecordCardView: View, Equatable {
                             }
                         }
 
-                        if let url = record.sourceUrl {
+                        if let urlString = record.sourceUrl, let url = URL(string: urlString) {
                             Rectangle().fill(Color.themeGray700).frame(width: 2, height: 10)
                             HStack(spacing: 4) {
                                 LucideView(name: .link, size: 10, color: .themeGray500)
-                                Text(url)
+                                Text(url.isFileURL ? url.lastPathComponent : urlString)
                                     .lineLimit(1)
                                     .fixedSize(horizontal: true, vertical: false)
                             }
+                            .onTapGesture {
+                                if url.isFileURL {
+                                    NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: url.path)
+                                } else {
+                                    NSWorkspace.shared.open(url)
+                                }
+                                HapticFeedbackManager.shared.lightImpact()
+                            }
+                            .pointingHandCursor()
+                            .help(url.isFileURL ? "在 Finder 中显示: \(url.path)" : "在浏览器中打开: \(urlString)")
                         }
 
                         if !record.tags.isEmpty {
@@ -150,7 +168,9 @@ struct RecordCardView: View, Equatable {
                 store.toggleStar(record)
             }
             // 单独总结按钮 - 根据状态显示不同样式
-            summarizeButton
+            if !record.skipAI {
+                summarizeButton
+            }
 
             if deleteCountdown > 0 {
                 cancelButton
@@ -566,6 +586,8 @@ private extension RecordCardView {
             return "AI 正在分析内容..."
         default:
             if let t = record.title, !t.isEmpty { return t }
+            if record.type == .folder { return "文件夹" }
+            if record.type == .file { return "文件" }
             return record.content.count > 30 ? String(record.content.prefix(30)) + "..." : record.content
         }
     }
@@ -602,22 +624,33 @@ private extension RecordCardView {
         }
     }
 
-    var statusIconLucide: IconName {
-        // 优先显示星标图标，体现收藏语义
+    var typeIconLucide: IconName {
+        switch record.type {
+        case .folder: return .folder
+        case .file: return .paperclip
+        case .text: return .fileText
+        case .image: return .image
+        case .video: return .video
+        }
+    }
+
+    var statusIconLucide: IconName? {
+        // 1. 优先显示星标图标
         if record.starred { return .star }
 
-        // 其次显示总结状态
+        // 2. 其次显示总结状态
         if record.summary != nil { return .sparkles }
+        
         switch record.aiStatus {
         case "pending": return .zap
         case "fail": return .alertTriangle
         default:
-            return record.title != nil ? .bot : .clock
+            return nil
         }
     }
 
     var statusColor: Color {
-        // 优先显示收藏颜色
+        // 1. 优先显示收藏颜色
         if record.starred { return .themeYellow500 }
 
         if record.summary != nil { return .themePurple500 }
@@ -625,7 +658,7 @@ private extension RecordCardView {
         case "pending": return .themeYellow500
         case "fail": return .themeRed500
         default:
-            return record.title != nil ? .themeBlue600 : .themeGray500
+            return .themeGray500
         }
     }
 

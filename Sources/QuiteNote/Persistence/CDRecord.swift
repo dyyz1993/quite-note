@@ -17,4 +17,6 @@ final class CDRecord: NSManagedObject {
     @NSManaged var keywordsRaw: String?
     @NSManaged var sourceApp: String?
     @NSManaged var sourceUrl: String?
+    @NSManaged var type: String?
+    @NSManaged var skipAI: Bool
 }

@@ -188,7 +188,9 @@ final class RecordRepository {
             tags: parseJSONArray(cd.tagsRaw),
             keywords: parseJSONArray(cd.keywordsRaw),
             sourceApp: cd.sourceApp,
-            sourceUrl: cd.sourceUrl
+            sourceUrl: cd.sourceUrl,
+            type: RecordType(rawValue: cd.type ?? "text") ?? .text,
+            skipAI: cd.skipAI
         )
     }
 
@@ -207,5 +209,7 @@ final class RecordRepository {
         cd.keywordsRaw = toJSONString(record.keywords)
         cd.sourceApp = record.sourceApp
         cd.sourceUrl = record.sourceUrl
+        cd.type = record.type.rawValue
+        cd.skipAI = record.skipAI
     }
 }

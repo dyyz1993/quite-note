@@ -26,7 +26,7 @@ class KeyboardInterceptView: NSView {
 
         if window != nil {
             // 监听本地键盘事件（不要求成为第一响应者）
-            localMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            localMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
                 if event.keyCode == 53 { // ESC key code
                     print("[DEBUG AppKit] ESC key detected via local monitor")
                     NotificationCenter.default.post(name: .escKeyPressed, object: nil)
@@ -157,11 +157,57 @@ struct FloatingRootView: View {
             Color.themePanel // 使用主题文件中的面板颜色
             WindowDragHandler() // Allow dragging on sidebar background
 
-            HeatmapView(vm: heatmapVM)
+            VStack(spacing: 20) {
+                Spacer().frame(height: 40) // 顶部留空
+                
+                // 类型筛选按钮组
+                filterButton(type: RecordType.text, icon: .fileText)
+                filterButton(type: RecordType.file, icon: .paperclip)
+                filterButton(type: RecordType.folder, icon: .folder)
+                
+                // 未来可以增加图片和视频
+                // filterButton(type: .image, icon: .image)
+                // filterButton(type: .video, icon: .video)
+                
+                Spacer()
+                
+                // 热力图移至侧边栏底部
+                HeatmapView(vm: heatmapVM)
+                    .padding(.bottom, 20)
+            }
         }
-        .frame(width: ThemeSpacing.w16.rawValue) // 使用主题文件中的宽度定义
-        .zIndex(10) // Fix Tooltip Z-Index (Ensure it renders above Main Content)
+        .frame(width: 64) // 调整为固定 64px
+        .zIndex(10)
         .overlay(Rectangle().frame(width: ThemeSpacing.border1, height: nil, alignment: .trailing).foregroundColor(Color.themeBorder).allowsHitTesting(false), alignment: .trailing)
+    }
+
+    /// 类型筛选按钮
+    private func filterButton(type: RecordType, icon: IconName) -> some View {
+        let isSelected = store.filterType == type
+        
+        return Button(action: {
+            withAnimation(.spring(response: 0.3)) {
+                store.toggleFilterType(type)
+            }
+        }) {
+            ZStack {
+                if isSelected {
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color.themeBlue600.opacity(0.15))
+                        .frame(width: 44, height: 44)
+                        .transition(.scale.combined(with: .opacity))
+                }
+                
+                LucideView(
+                    name: icon,
+                    size: 20,
+                    color: isSelected ? .themeBlue400 : .themeGray400
+                )
+            }
+        }
+        .buttonStyle(.plain)
+        .pointingHandCursor()
+        .help(isSelected ? "取消筛选" : "筛选\(type.rawValue)")
     }
 
     /// 右侧主内容视图
@@ -175,7 +221,7 @@ struct FloatingRootView: View {
             }
         }
     }
-
+    
     /// 头部视图
     private var headerView: some View {
         HStack {
@@ -402,7 +448,9 @@ struct FloatingRootView: View {
     /// 列表内容视图
     @ViewBuilder
     private func listViewContent(items: [Record]) -> some View {
-        ForEach(items, id: \.id) { record in // 明确指定 id
+        let filtered = store.filterType == nil ? items : items.filter { $0.type == store.filterType }
+        
+        ForEach(filtered, id: \.id) { record in // 明确指定 id
             RecordCardView(
                 record: record,
                 expandedId: $expandedId,
@@ -410,6 +458,10 @@ struct FloatingRootView: View {
                 store: store
             )
             .equatable() // 使用 Equatable 减少重绘
+            .transition(.asymmetric(
+                insertion: .opacity.combined(with: .move(edge: .top)),
+                removal: .opacity.combined(with: .scale(scale: 0.95))
+            ))
         }
     }
 

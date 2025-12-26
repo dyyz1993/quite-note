@@ -74,16 +74,12 @@ struct FloatingBallView: View {
                 let types = provider.registeredTypeIdentifiers
                 print("[DEBUG] provider 注册的类型: \(types)")
                 
-                // 1. 尝试遍历所有类型，看看有没有能用的
-                var handled = false
-                
                 // 优先尝试 URL
                 if provider.canLoadObject(ofClass: URL.self) {
                     _ = provider.loadObject(ofClass: URL.self) { url, error in
                         if let url = url {
                             print("[DEBUG] 成功解析为 URL: \(url)")
                             urls.append(url)
-                            handled = true
                         }
                         dispatchGroup.leave()
                     }
@@ -96,7 +92,6 @@ struct FloatingBallView: View {
                             if str.starts(with: "/") {
                                 let url = URL(fileURLWithPath: str)
                                 urls.append(url)
-                                handled = true
                             }
                         }
                         dispatchGroup.leave()

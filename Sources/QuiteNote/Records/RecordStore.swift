@@ -33,6 +33,9 @@ final class RecordStore: ObservableObject {
     /// 搜索历史（直接存储，同步到 searchHistoryManager）
     @Published var searchHistory: [String] = []
 
+    /// 筛选类型（nil 表示全部）
+    @Published var filterType: RecordType? = nil
+
     /// 是否有正在处理的 AI 任务
     var isAIProcessing: Bool {
         records.contains { $0.aiStatus == "pending" }
@@ -71,35 +74,96 @@ final class RecordStore: ObservableObject {
 
     // MARK: - 文件拖拽处理
 
+    /// 附件存储目录
+    public var currentAttachmentsDirectory: URL {
+        if !attachmentsPath.isEmpty {
+            let customURL = URL(fileURLWithPath: attachmentsPath)
+            // 确保目录存在
+            try? FileManager.default.createDirectory(at: customURL, withIntermediateDirectories: true)
+            return customURL
+        }
+        
+        let paths = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
+        let appSupport = paths[0].appendingPathComponent("QuiteNote", isDirectory: true)
+        let attachments = appSupport.appendingPathComponent("Attachments", isDirectory: true)
+        
+        // 确保目录存在
+        try? FileManager.default.createDirectory(at: attachments, withIntermediateDirectories: true)
+        return attachments
+    }
+
+    /// 附件存储目录（内部使用）
+    private var attachmentsDirectory: URL {
+        return currentAttachmentsDirectory
+    }
+
     /// 处理拖拽的文件 URL 列表
     /// - Parameter urls: 文件 URL 数组
     func handleDroppedUrls(_ urls: [URL]) {
-        Self.logger.info("RecordStore 处理拖拽 URL，数量: \(urls.count)")
+        print("[DEBUG] RecordStore handleDroppedUrls 开始处理, 数量: \(urls.count)")
         for url in urls {
             // 获取文件路径
+            var finalUrl = url
             let path = url.path
             let fileName = url.lastPathComponent
             
-            Self.logger.info("正在处理文件: \(fileName), 路径: \(path)")
+            print("[DEBUG] 正在处理文件: \(fileName), 路径: \(path)")
+            
+            // 检查是否是文件夹
+            var isDirectory: ObjCBool = false
+            let exists = FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory)
+            let isFolder = exists && isDirectory.boolValue
+            
+            // 检查是否是临时文件 (File Promises 或 Caches)
+            let isTemporary = path.contains("filePromises") || path.contains("Library/Caches")
+            if isTemporary && !isFolder {
+                print("[DEBUG] 检测到临时文件，准备持久化备份...")
+                // 使用 FileUtil 获取唯一文件名，还原原始名字
+                let destination = FileUtil.getUniqueURL(for: fileName, in: attachmentsDirectory)
+                do {
+                    try FileManager.default.copyItem(at: url, to: destination)
+                    finalUrl = destination
+                    print("[DEBUG] 文件已成功备份到: \(destination.path)")
+                } catch {
+                    print("[DEBUG] 文件备份失败: \(error.localizedDescription)")
+                }
+            }
+            
+            // 确定记录类型和 AI 跳过标志
+            var recordType: RecordType = isFolder ? .folder : .file
+            let skipAI = isFolder // 文件夹默认跳过 AI
             
             // 尝试读取文件内容（仅限文本文件）
             var content = ""
-            let sourceUrl = url.absoluteString
+            let sourceUrl = finalUrl.absoluteString
             
-            do {
-                // 简单的文本检测：尝试读取前几个字节或检查扩展名
-                let textExtensions = ["txt", "md", "js", "ts", "swift", "py", "html", "css", "json", "yml", "yaml", "xml", "c", "cpp", "h"]
-                if textExtensions.contains(url.pathExtension.lowercased()) {
-                    content = try String(contentsOf: url, encoding: .utf8)
-                    Self.logger.info("成功读取文本文件内容，长度: \(content.count)")
-                } else {
-                    // 如果不是文本文件，记录路径和文件名
-                    content = "文件路径: \(path)\n文件名: \(fileName)"
-                    Self.logger.info("非文本文件，记录路径信息")
+            // 检查文件是否存在
+            if !FileManager.default.fileExists(atPath: finalUrl.path) {
+                print("[DEBUG] 错误: 文件不存在於路径: \(finalUrl.path)")
+                content = "错误: 文件不存在\n路径: \(finalUrl.path)"
+            } else if isFolder {
+                // 文件夹处理逻辑
+                content = "文件夹路径: \(finalUrl.path)\n文件夹名: \(fileName)"
+                print("[DEBUG] 识别为文件夹，记录路径")
+            } else {
+                do {
+                    // 只要是文件，统一设为 .file 类型，确保能通过文件筛选找到
+                    recordType = .file
+                    
+                    // 简单的文本检测：如果是已知文本扩展名，尝试读取内容用于 AI 总结
+                    let textExtensions = ["txt", "md", "js", "ts", "swift", "py", "html", "css", "json", "yml", "yaml", "xml", "c", "cpp", "h"]
+                    if textExtensions.contains(finalUrl.pathExtension.lowercased()) || isTemporary {
+                        content = try String(contentsOf: finalUrl, encoding: .utf8)
+                        print("[DEBUG] 成功读取文本文件内容，长度: \(content.count)")
+                    } else {
+                        // 非文本文件记录基本信息
+                        content = "文件路径: \(finalUrl.path)\n文件名: \(fileName)"
+                        print("[DEBUG] 非文本文件，记录路径信息")
+                    }
+                } catch {
+                    print("[DEBUG] 读取文件内容失败: \(error.localizedDescription)")
+                    content = "文件路径: \(finalUrl.path)\n文件名: \(fileName)\n(内容读取失败: \(error.localizedDescription))"
                 }
-            } catch {
-                Self.logger.error("读取文件内容失败: \(error.localizedDescription)")
-                content = "文件路径: \(path)\n文件名: \(fileName)\n(内容读取失败)"
             }
             
             // 计算哈希用于去重
@@ -107,14 +171,26 @@ final class RecordStore: ObservableObject {
             let hash = data.reduce(into: "") { $0 += String(format: "%02x", $1) }
             
             // 添加记录
-            addRecord(content: content, hash: hash, sourceApp: "File Drag", sourceUrl: sourceUrl)
-            Self.logger.info("记录已添加到 store")
+            print("[DEBUG] 准备调用 addRecord...")
+            addRecord(
+                content: content,
+                hash: hash,
+                sourceApp: isFolder ? "Folder Drag" : "File Drag",
+                sourceUrl: sourceUrl,
+                type: recordType,
+                skipAI: skipAI,
+                fileName: isFolder ? fileName : nil
+            )
+            print("[DEBUG] addRecord 调用完成")
         }
         
         // 发送触觉反馈
         HapticFeedbackManager.shared.success()
         // 触发 UI 成功动画
-        self.lastPasteSuccessAt = Date()
+        DispatchQueue.main.async {
+            self.lastPasteSuccessAt = Date()
+            print("[DEBUG] lastPasteSuccessAt 已更新")
+        }
     }
 
     // MARK: - 配置
@@ -122,6 +198,7 @@ final class RecordStore: ObservableObject {
     private let prefs = PreferencesManager.shared
     @Published var dedupEnabled: Bool = true
     @Published var maxRecords: Int = 100
+    @Published var attachmentsPath: String = ""
     @Published var isStarredCollapsed: Bool = false
 
     // MARK: - 内存管理
@@ -196,21 +273,41 @@ final class RecordStore: ObservableObject {
 
     // MARK: - 核心操作：添加记录
 
-    /// 添加一条记录并触发 UI 刷新
-    func addRecord(content: String, hash: String, sourceApp: String? = nil, sourceUrl: String? = nil) {
-        // 校验相同内容是否已存在
+    /// 添加新记录到 Store 和数据库
+    func addRecord(
+        content: String,
+        hash: String,
+        sourceApp: String? = nil,
+        sourceUrl: String? = nil,
+        type: RecordType = .text,
+        skipAI: Bool = false,
+        fileName: String? = nil
+    ) {
+        print("[DEBUG] RecordStore.addRecord 被调用，内容长度: \(content.count), hash: \(hash), type: \(type)")
+        // 1. 检查是否已存在相同哈希的记录
         if records.contains(where: { $0.hash == hash }) {
-            Self.logger.info("发现重复记录，仅更新时间: \(hash)")
+            print("[DEBUG] 记录已存在，仅更新时间戳")
             updateTimestampForHash(hash)
             notifier.postToast("记录已去重，更新了时间戳", type: "info")
             return
         }
 
+        // 2. 创建并保存到数据库
         let now = Date()
         let id = UUID()
-        let autoTags = ContentClassifier.classify(content)
-
-        // 1. 创建记录对象
+        var autoTags = ContentClassifier.classify(content)
+        var keywords: [String] = []
+        
+        // 文件夹特殊处理：打上 folder 标签，加入关键词
+        if type == .folder {
+            if !autoTags.contains("folder") {
+                autoTags.append("folder")
+            }
+            if let name = fileName {
+                keywords.append(name)
+            }
+        }
+        
         let record = Record(
             id: id,
             title: nil,
@@ -223,35 +320,40 @@ final class RecordStore: ObservableObject {
             starred: false,
             copiedAt: nil,
             tags: autoTags,
-            keywords: [],
+            keywords: keywords,
             sourceApp: sourceApp,
-            sourceUrl: sourceUrl
+            sourceUrl: sourceUrl,
+            type: type,
+            skipAI: skipAI
         )
 
-        // 2. 异步保存到 CoreData
         do { try repository.save(record) }
         catch {
             Self.logger.error("保存记录失败: \(error.localizedDescription)")
         }
+        print("[DEBUG] 记录已插入数据库，ID: \(id)")
 
-        // 3. 立即更新内存 UI (在主线程)
-        records.insert(record, at: 0)
-        aiCoordinator.markTagsNeedUpdate()
-        sortRecordsInPlace()
+        // 3. 更新内存列表并排序
+        DispatchQueue.main.async {
+            self.records.insert(record, at: 0)
+            print("[DEBUG] 记录已插入内存数组，当前 records.count: \(self.records.count)")
+            self.aiCoordinator.markTagsNeedUpdate()
+            self.sortRecordsInPlace()
 
-        // 设置粘贴成功时间用于 UI 反馈
-        notifier.markPasteSuccess()
-        lastPasteSuccessAt = Date()
-        notifier.postToast("已自动创建新记录", type: "success")
+            // 设置粘贴成功时间用于 UI 反馈
+            self.notifier.markPasteSuccess()
+            self.lastPasteSuccessAt = Date()
+            self.notifier.postToast("已自动创建新记录", type: "success")
+        }
 
         // 限制最大记录数
         if records.count > maxRecords { records = Array(records.prefix(maxRecords)) }
 
         // 4. 触发 AI 总结 (如果启用)
         syncToAICoordinator()
-        Self.logger.info("AI调用条件检查: enableAI=\(self.aiCoordinator.enableAI), content.count=\(content.count), summaryTrigger=\(self.aiCoordinator.summaryTrigger)")
-        guard self.aiCoordinator.enableAI, content.count >= self.aiCoordinator.summaryTrigger else {
-            Self.logger.info("AI功能未启用或内容长度不足，跳过AI总结")
+        Self.logger.info("AI调用条件检查: enableAI=\(self.aiCoordinator.enableAI), skipAI=\(skipAI), content.count=\(content.count), summaryTrigger=\(self.aiCoordinator.summaryTrigger)")
+        guard self.aiCoordinator.enableAI, !skipAI, content.count >= self.aiCoordinator.summaryTrigger else {
+            Self.logger.info("AI功能未启用、显式跳过或内容长度不足，跳过AI总结")
             return
         }
 
@@ -284,6 +386,27 @@ final class RecordStore: ObservableObject {
                 self.lastAISuccessAt = Date()
             }
         }
+    }
+
+    /// 切换类型筛选
+    func toggleFilterType(_ type: RecordType) {
+        if filterType == type {
+            filterType = nil
+        } else {
+            filterType = type
+        }
+    }
+
+    /// 获取筛选后的记录列表
+    func filteredRecords() -> [Record] {
+        var result = records
+        
+        // 类型筛选
+        if let type = filterType {
+            result = result.filter { $0.type == type }
+        }
+        
+        return result
     }
 
     /// 更新指定哈希的记录时间戳
@@ -889,6 +1012,7 @@ final class RecordStore: ObservableObject {
         summaryLimit = prefs.summaryLimit
         dedupEnabled = prefs.dedupEnabled
         maxRecords = prefs.maxRecords
+        attachmentsPath = prefs.attachmentsPath ?? ""
 
         // 同步到 AI 协调器
         syncToAICoordinator()
@@ -913,6 +1037,7 @@ final class RecordStore: ObservableObject {
         prefs.setSummaryLimit(summaryLimit)
         prefs.setDedupEnabled(dedupEnabled)
         prefs.setMaxRecords(maxRecords)
+        prefs.setAttachmentsPath(attachmentsPath.isEmpty ? nil : attachmentsPath)
 
         aiCoordinator.savePreferences()
     }

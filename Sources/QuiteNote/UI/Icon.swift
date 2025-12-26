@@ -55,6 +55,10 @@ enum IconName: String {
     case caseSensitive = "case-sensitive"
     case regex = "regex"
     case plus = "plus"
+    case folder = "folder"
+    case paperclip = "paperclip"
+    case image = "image"
+    case video = "video"
 }
 
 /// SwiftUI 包装，渲染 Lucide 图标（不使用 SF Symbols 回退）

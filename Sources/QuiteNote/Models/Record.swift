@@ -1,5 +1,14 @@
 import Foundation
 
+/// 记录类型
+enum RecordType: String, Codable, CaseIterable {
+    case text = "text"
+    case file = "file"
+    case folder = "folder"
+    case image = "image"
+    case video = "video"
+}
+
 /// 记录模型：标题、内容、创建时间与去重哈希
 struct Record: Identifiable {
     let id: UUID
@@ -16,4 +25,6 @@ struct Record: Identifiable {
     var keywords: [String] = []
     var sourceApp: String? = nil
     var sourceUrl: String? = nil
+    var type: RecordType = .text
+    var skipAI: Bool = false
 }

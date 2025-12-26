@@ -134,13 +134,13 @@ struct HeatmapView: View {
     /// 构建热力图方格
     var body: some View {
         VStack(alignment: .center, spacing: 6) {
-            headerView
-                .padding(.bottom, 24)
-
             cellsView
+                .padding(.bottom, 36)
+
+            headerView
         }
-        .padding(.top, 12) // Reduced top padding to move icon up
-        .padding(.bottom, 24)
+        .padding(.top, 24)
+        .padding(.bottom, 0)
         .frame(width: 64)
     }
 

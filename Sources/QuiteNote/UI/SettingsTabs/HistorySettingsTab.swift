@@ -15,6 +15,9 @@ struct HistorySettingsTab: View {
             // 记录保留条数
             maxRecordsSection
 
+            // 附件存储位置
+            attachmentsStorageSection
+
             // 记录统计
             recordsInfoSection
 
@@ -75,6 +78,79 @@ struct HistorySettingsTab: View {
         }
         .padding(16)
         .background(Color.black.opacity(0.2))
+        .cornerRadius(8)
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.05)).allowsHitTesting(false))
+    }
+
+    // MARK: - Attachments Storage Section
+
+    private var attachmentsStorageSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                LucideView(name: .folder, size: 16, color: .themeBlue400)
+                Text("附件存储位置")
+                    .font(.themeH2)
+                    .foregroundColor(.themeTextPrimary)
+                Spacer()
+                
+                HStack(spacing: 8) {
+                    // 复制路径按钮
+                    Button(action: {
+                        let pasteboard = NSPasteboard.general
+                        pasteboard.clearContents()
+                        pasteboard.setString(store.currentAttachmentsDirectory.path, forType: .string)
+                        // 提示用户已复制 (这里简单模拟，如果项目有 toast 可以用)
+                        HapticFeedbackManager.shared.success()
+                    }) {
+                        HStack(spacing: 4) {
+                            LucideView(name: .copy, size: 10, color: .themeGray400)
+                            Text("复制路径")
+                        }
+                        .font(.system(size: 11))
+                        .foregroundColor(.themeGray400)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.white.opacity(0.05))
+                        .cornerRadius(6)
+                    }
+                    .buttonStyle(.plain)
+                    .pointingHandCursor()
+                    .help("复制当前存储目录的完整路径")
+
+                    Button(action: selectAttachmentsFolder) {
+                        Text("更改目录")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(.themeBlue400)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(Color.themeBlue600.opacity(0.1))
+                            .cornerRadius(6)
+                    }
+                    .buttonStyle(.plain)
+                    .pointingHandCursor()
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                let currentPath = store.currentAttachmentsDirectory.path
+                Text(currentPath)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundColor(.themeGray400)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                
+                Text("从 VS Code 等应用拖入的文件将备份到此目录。")
+                    .font(.system(size: 10))
+                    .foregroundColor(.themeGray500)
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.black.opacity(0.2))
+            .cornerRadius(8)
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.05)).allowsHitTesting(false))
+        }
+        .padding(16)
+        .background(Color.white.opacity(0.05))
         .cornerRadius(8)
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.05)).allowsHitTesting(false))
     }
@@ -178,11 +254,34 @@ struct HistorySettingsTab: View {
 
     // MARK: - Methods
 
+    /// 选择附件存储目录
+    private func selectAttachmentsFolder() {
+        let openPanel = NSOpenPanel()
+        openPanel.canChooseFiles = false
+        openPanel.canChooseDirectories = true
+        openPanel.allowsMultipleSelection = false
+        openPanel.title = "选择附件存储目录"
+        openPanel.prompt = "选择"
+        openPanel.level = .modalPanel
+        
+        // 默认定位到当前存储位置
+        openPanel.directoryURL = store.currentAttachmentsDirectory
+
+        openPanel.begin { response in
+            if response == .OK, let url = openPanel.url {
+                DispatchQueue.main.async {
+                    store.attachmentsPath = url.path
+                    store.savePreferences()
+                }
+            }
+        }
+    }
+
     /// 使用 NSOpenPanel 导入记录（让用户选择文件）
     private func importRecordsWithOpenPanel() {
         let openPanel = NSOpenPanel()
-        // 使用允许所有文件的方式，确保可以选中 .md 和 .txt 文件
-        openPanel.allowedFileTypes = nil
+        // 使用允许的文件类型，支持 .md 和 .txt
+        openPanel.allowedContentTypes = [.text, .plainText]
         openPanel.allowsMultipleSelection = false
         openPanel.canChooseFiles = true
         openPanel.canChooseDirectories = false
@@ -190,6 +289,9 @@ struct HistorySettingsTab: View {
         openPanel.prompt = "导入"
         // 设置为模态窗口，层级最高
         openPanel.level = .modalPanel
+        
+        // 尝试定位到当前附件目录，方便导入备份的文件
+        openPanel.directoryURL = store.currentAttachmentsDirectory
 
         openPanel.begin { response in
             if response == .OK, let url = openPanel.url {

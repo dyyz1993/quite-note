@@ -50,6 +50,7 @@ final class PreferencesManager: ObservableObject {
     var windowLock: Bool { d.object(forKey: "windowLock") == nil ? false : d.bool(forKey: "windowLock") }
     var animationsEnabled: Bool { d.object(forKey: "animationsEnabled") == nil ? true : d.bool(forKey: "animationsEnabled") }
     var rememberWindowPosition: Bool { d.object(forKey: "rememberWindowPosition") == nil ? true : d.bool(forKey: "rememberWindowPosition") }
+    var attachmentsPath: String? { d.string(forKey: "attachmentsPath") }
 
     var openAIBaseURL: String { d.string(forKey: "openAIBaseURL") ?? "https://api.openai.com/v1" }
     var openAIModel: String { d.string(forKey: "openAIModel") ?? "gpt-4o-mini" }
@@ -90,6 +91,7 @@ final class PreferencesManager: ObservableObject {
     func setWindowLock(_ v: Bool) { d.set(v, forKey: "windowLock") }
     func setAnimationsEnabled(_ v: Bool) { d.set(v, forKey: "animationsEnabled") }
     func setRememberWindowPosition(_ v: Bool) { d.set(v, forKey: "rememberWindowPosition") }
+    func setAttachmentsPath(_ v: String?) { d.set(v, forKey: "attachmentsPath") }
 
     func setOpenAIBaseURL(_ v: String) { d.set(v, forKey: "openAIBaseURL") }
     func setOpenAIModel(_ v: String) { d.set(v, forKey: "openAIModel") }

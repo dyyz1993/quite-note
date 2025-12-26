@@ -84,7 +84,19 @@ final class CoreDataStack {
         sourceUrlAttr.attributeType = .stringAttributeType
         sourceUrlAttr.isOptional = true
 
-        entity.properties = [idAttr, titleAttr, contentAttr, createdAtAttr, digestAttr, aiStatusAttr, summaryAttr, summaryConfAttr, starredAttr, copiedAtAttr, tagsAttr, keywordsAttr, sourceAppAttr, sourceUrlAttr]
+        let typeAttr = NSAttributeDescription()
+        typeAttr.name = "type"
+        typeAttr.attributeType = .stringAttributeType
+        typeAttr.isOptional = false
+        typeAttr.defaultValue = "text"
+
+        let skipAIAttr = NSAttributeDescription()
+        skipAIAttr.name = "skipAI"
+        skipAIAttr.attributeType = .booleanAttributeType
+        skipAIAttr.isOptional = false
+        skipAIAttr.defaultValue = false
+
+        entity.properties = [idAttr, titleAttr, contentAttr, createdAtAttr, digestAttr, aiStatusAttr, summaryAttr, summaryConfAttr, starredAttr, copiedAtAttr, tagsAttr, keywordsAttr, sourceAppAttr, sourceUrlAttr, typeAttr, skipAIAttr]
         model.entities = [entity]
 
         container = NSPersistentContainer(name: "QuiteNote", managedObjectModel: model)
