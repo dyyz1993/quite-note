@@ -144,11 +144,11 @@ final class FloatingPanelController {
             print("[DEBUG] onHoverChanged: \(hovering), mode: \(self.focusProvider.mode)")
             if hovering {
                 self.hoverActive = true
-                // 开启 600 毫秒延时聚焦定时器
+                // 开启 300 毫秒延时聚焦定时器
                 self.hoverFocusTimer?.invalidate()
-                // 开启 600 毫秒延时聚焦定时器
-                print("[DEBUG] 启动 600ms 聚焦计时器 (模式: \(self.focusProvider.mode))")
-                let timer = Timer(timeInterval: 0.6, repeats: false) { [weak self] _ in
+                // 开启 300 毫秒延时聚焦定时器
+                print("[DEBUG] 启动 300ms 聚焦计时器 (模式: \(self.focusProvider.mode))")
+                let timer = Timer(timeInterval: 0.3, repeats: false) { [weak self] _ in
                     guard let self = self else { return }
                     print("[DEBUG] 计时器触发, hoverActive: \(self.hoverActive)")
                     if self.hoverActive {

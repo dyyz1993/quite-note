@@ -25,7 +25,8 @@
       "Bash(echo 正在监控日志，请执行以下操作： echo '1. 点击展开浮球' echo '2. 点击缩小到浮球' echo '3. 重复几次' echo sleep 2 for i in {1..10})",
       "Bash(do echo '=== 检查 #$i ===' tail -20 /tmp/quitenote.log)",
       "Bash(done)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "WebSearch"
     ],
     "deny": [],
     "ask": []

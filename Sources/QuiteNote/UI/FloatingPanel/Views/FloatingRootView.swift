@@ -155,7 +155,7 @@ struct FloatingRootView: View {
     private var sidebarView: some View {
         ZStack(alignment: .top) {
             Color.themePanel // 使用主题文件中的面板颜色
-            WindowDragHandler() // Allow dragging on sidebar background
+            // 移除了 WindowDragHandler() - 侧边栏不再支持窗口拖拽
 
             VStack(spacing: 20) {
                 Spacer().frame(height: 40) // 顶部留空
@@ -224,36 +224,41 @@ struct FloatingRootView: View {
     
     /// 头部视图
     private var headerView: some View {
-        HStack {
-            // Window Controls (Custom Red Dot)
-            HStack(spacing: ThemeSpacing.px2.rawValue) {
-                // Close (Red)
-                CloseButton(onClose: onClose)
+        ZStack(alignment: .top) {
+            // 原有内容
+            HStack {
+                // Window Controls (Custom Red Dot)
+                HStack(spacing: ThemeSpacing.px2.rawValue) {
+                    // Close (Red)
+                    CloseButton(onClose: onClose)
 
-                // Minimize (Yellow)
-                ShrinkButton(onMinimize: onMinimize)
+                    // Minimize (Yellow)
+                    ShrinkButton(onMinimize: onMinimize)
+                }
+                .padding(.leading, ThemeSpacing.px4.rawValue)
+
+                Spacer()
+
+                Text(showSettings ? "偏好设置" : "闪记")
+                    .font(.themeH2) // 使用主题文件中的字体定义
+                    .foregroundColor(.themeTextPrimary) // 使用主题文件中的文本颜色
+
+                Spacer()
+
+                // Bluetooth Icon (Lucide)
+                bluetoothView
             }
-            .padding(.leading, ThemeSpacing.px4.rawValue)
+            .frame(height: ThemeSpacing.h12.rawValue) // 使用主题文件中的高度定义
+            .background(Color.themeBackground.opacity(0.5)) // bg-gray-900/50
+            .overlay(Rectangle().frame(width: nil, height: ThemeSpacing.border1, alignment: .bottom).foregroundColor(Color.themeBorder).allowsHitTesting(false), alignment: .bottom)
 
-            Spacer()
-
-            Text(showSettings ? "偏好设置" : "闪记")
-                .font(.themeH2) // 使用主题文件中的字体定义
-                .foregroundColor(.themeTextPrimary) // 使用主题文件中的文本颜色
-
-            Spacer()
-
-            // Bluetooth Icon (Lucide)
-            bluetoothView
+            // 拖拽手柄 - 只在顶部 24px 区域有效
+            Color.clear
+                .frame(height: 24)
+                .contentShape(Rectangle())
+                .background(WindowDragHandler())
+                .allowsHitTesting(true)
         }
-        .frame(height: ThemeSpacing.h12.rawValue) // 使用主题文件中的高度定义
-        .background(
-            ZStack {
-                Color.themeBackground.opacity(0.5) // bg-gray-900/50
-                WindowDragHandler() // Allow dragging on header background
-            }
-        )
-        .overlay(Rectangle().frame(width: nil, height: ThemeSpacing.border1, alignment: .bottom).foregroundColor(Color.themeBorder).allowsHitTesting(false), alignment: .bottom)
     }
 
     /// 蓝牙视图
