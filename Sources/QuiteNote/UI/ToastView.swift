@@ -38,7 +38,7 @@ struct ToastView: View {
     var body: some View {
         HStack(spacing: 8) {
             LucideView(name: iconNameLucide, size: 16, color: textColor)
-            Text(message.text).font(.system(size: 13, weight: .medium))
+            Text(message.text).font(.themeBody)
         }
         .foregroundColor(textColor)
         .padding(12) // p-3

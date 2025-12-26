@@ -499,7 +499,7 @@ struct FloatingRootView: View {
                     Spacer()
                     Text("还有 \(starred.count - 50) 条收藏记录...")
                         .font(.system(size: 12))
-                        .foregroundColor(.secondary)
+                        .foregroundColor(.themeTextTertiary)
                     Spacer()
                 }
                 .padding(.vertical, 8)
