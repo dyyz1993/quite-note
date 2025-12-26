@@ -82,8 +82,8 @@ extension Color {
     static let themeInput        = themeBlack40          // bg-black/40 (inputs)
     static let themePanel        = themeBlack20          // bg-black/20 (sidebars/panels)
     static let themeTextPrimary  = themeGray200          // text-gray-200
-    static let themeTextSecondary = themeGray400         // text-gray-400
-    static let themeTextTertiary  = themeGray500         // text-gray-500
+    static let themeTextSecondary = themeGray300         // text-gray-300 (提升对比度)
+    static let themeTextTertiary  = themeGray400         // text-gray-400 (提升对比度)
 
     // 动态透明度版本（用于悬停效果）
     func withAlpha(_ alpha: Double) -> Color {

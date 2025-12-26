@@ -58,7 +58,7 @@ struct RecordCardView: View, Equatable {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .center, spacing: 8) {
                     // Type Icon
-                    LucideView(name: typeIconLucide, size: 14, color: .themeGray400)
+                    LucideView(name: typeIconLucide, size: 14, color: .themeTextSecondary)
                         .frame(width: 18, height: 18)
                         .background(Color.white.opacity(0.05))
                         .cornerRadius(4)
@@ -85,7 +85,7 @@ struct RecordCardView: View, Equatable {
                         if let app = record.sourceApp {
                             Rectangle().fill(Color.themeGray700).frame(width: 2, height: 10)
                             HStack(spacing: 4) {
-                                LucideView(name: .appWindowMac, size: 10, color: .themeGray500)
+                                LucideView(name: .appWindowMac, size: 10, color: .themeTextTertiary)
                                 Text(app)
                                     .lineLimit(1)
                                     .fixedSize(horizontal: true, vertical: false)
@@ -95,7 +95,7 @@ struct RecordCardView: View, Equatable {
                         if let urlString = record.sourceUrl, let url = URL(string: urlString) {
                             Rectangle().fill(Color.themeGray700).frame(width: 2, height: 10)
                             HStack(spacing: 4) {
-                                LucideView(name: .link, size: 10, color: .themeGray500)
+                                LucideView(name: .link, size: 10, color: .themeTextTertiary)
                                 Text(url.isFileURL ? url.lastPathComponent : urlString)
                                     .lineLimit(1)
                                     .fixedSize(horizontal: true, vertical: false)
@@ -125,7 +125,7 @@ struct RecordCardView: View, Equatable {
                     }
                 }
                 .font(.system(size: 10, design: .monospaced))
-                .foregroundColor(.themeGray500)
+                .foregroundColor(.themeTextTertiary)
 
                 // Keywords Row (New)
                 if !record.keywords.isEmpty {
@@ -398,11 +398,11 @@ struct RecordCardView: View, Equatable {
     private var originalContentHeader: some View {
         HStack {
             HStack(spacing: 4) {
-                LucideView(name: .rss, size: 10, color: .themeGray500)
+                LucideView(name: .rss, size: 10, color: .themeTextTertiary)
                 Text("原文内容")
             }
             .font(.system(size: 10, weight: .bold))
-            .foregroundColor(.themeGray500)
+            .foregroundColor(.themeTextTertiary)
             .textCase(.uppercase)
             Spacer()
             copyOriginalButton
@@ -417,11 +417,11 @@ struct RecordCardView: View, Equatable {
             store.postToast("已复制原文", type: "success")
         }) {
             HStack(spacing: 4) {
-                LucideView(name: .copy, size: 10, color: .themeGray400)
+                LucideView(name: .copy, size: 10, color: .themeTextSecondary)
                 Text("复制原文")
             }
             .font(.system(size: 10))
-            .foregroundColor(.themeGray400)
+            .foregroundColor(.themeTextSecondary)
             .padding(.horizontal, 8)
             .padding(.vertical, 2)
             .background(Color.white.opacity(0.05))
@@ -456,11 +456,11 @@ struct RecordCardView: View, Equatable {
                     }
                 }) {
                     HStack(spacing: 4) {
-                        LucideView(name: showOriginalContent ? .eyeOff : .eye, size: 10, color: .themeGray400)
+                        LucideView(name: showOriginalContent ? .eyeOff : .eye, size: 10, color: .themeTextSecondary)
                         Text(showOriginalContent ? "隐藏原文" : "显示原文")
                     }
                     .font(.system(size: 10))
-                    .foregroundColor(.themeGray400)
+                    .foregroundColor(.themeTextSecondary)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
                     .background(Color.white.opacity(0.05))

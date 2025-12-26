@@ -8,14 +8,11 @@ struct FileSettingsTab: View {
     @State private var showResetConfirm = false
     
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                pathSection
-                editorSection
-                statsSection
-                dangerSection
-            }
-            .padding(20)
+        VStack(alignment: .leading, spacing: 24) {
+            statsSection
+            pathSection
+            editorSection
+            dangerSection
         }
         .onAppear {
             preferredEditor = PreferencesManager.shared.preferredEditor
@@ -29,41 +26,59 @@ struct FileSettingsTab: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 8) {
                 LucideView(name: .folder, size: 16, color: .themeBlue400)
-                Text("附件存储路径")
+                Text("附件存储位置")
                     .font(.themeH2)
                     .foregroundColor(.themeTextPrimary)
-            }
-            
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(store.attachmentsPath.isEmpty ? "默认路径 (Application Support)" : store.attachmentsPath)
-                            .font(.themeCaption)
-                            .foregroundColor(.themeTextSecondary)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
+                
+                Spacer()
+                
+                HStack(spacing: 8) {
+                    Button(action: copyPathToClipboard) {
+                        HStack(spacing: 4) {
+                            LucideView(name: .copy, size: 14, color: .themeTextSecondary)
+                            Text("复制路径")
+                                .font(.themeCaption)
+                                .foregroundColor(.themeTextSecondary)
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Color.white.opacity(0.05))
+                        .cornerRadius(6)
                     }
-                    
-                    Spacer()
+                    .buttonStyle(.plain)
+                    .pointingHandCursor()
                     
                     Button(action: selectAttachmentsFolder) {
-                        Text("更改...")
+                        Text("更改目录")
                             .font(.themeCaption)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 4)
-                            .background(Color.white.opacity(0.05))
+                            .fontWeight(.medium)
+                            .foregroundColor(.themeBlue400)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(Color.themeBlue500.opacity(0.15))
                             .cornerRadius(6)
                     }
                     .buttonStyle(.plain)
                     .pointingHandCursor()
                 }
-                .padding(12)
-                .background(Color.themeInput)
+            }
+            
+            VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(store.currentAttachmentsDirectory.path)
+                        .font(.themeCaption)
+                        .foregroundColor(.themeTextSecondary)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                    
+                    Text("从 VS Code 等应用拖入的文件将备份到此目录。")
+                        .font(.themeCaptionSmall)
+                        .foregroundColor(.themeTextTertiary)
+                }
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.themeInput.opacity(0.8))
                 .cornerRadius(8)
-                
-                Text("所有上传的图片、视频和文件将存储在此目录下。")
-                    .font(.themeCaptionSmall)
-                    .foregroundColor(.themeTextTertiary)
             }
         }
         .padding(20)
@@ -155,6 +170,16 @@ struct FileSettingsTab: View {
                         Text(stats.formattedTotalSize)
                             .font(.system(size: 12, weight: .bold, design: .monospaced))
                             .foregroundColor(.themeBlue400)
+                    }
+                    
+                    HStack {
+                        Text("FILE COUNT")
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .foregroundColor(.themeGray500)
+                        Spacer()
+                        Text("\(stats.fileCount)")
+                            .font(.system(size: 12, weight: .bold, design: .monospaced))
+                            .foregroundColor(.themePurple400)
                     }
                     
                     GeometryReader { geo in
@@ -260,6 +285,12 @@ struct FileSettingsTab: View {
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.05)))
     }
     
+    private func copyPathToClipboard() {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(store.currentAttachmentsDirectory.path, forType: .string)
+    }
+
     private func refreshStats() {
         stats = StorageManager.shared.calculateStats(for: store.currentAttachmentsDirectory)
     }

@@ -213,7 +213,7 @@ struct TabButton: View {
             }
             .padding(.horizontal, 12) // px-3
             .padding(.vertical, 6) // py-1.5
-            .foregroundColor(isSelected ? .white : .themeGray400)
+            .foregroundColor(isSelected ? .white : .themeTextSecondary)
             .background(isSelected ? Color.themeBlue600 : Color.white.opacity(0.05))
             .cornerRadius(16) // rounded-full
             .overlay(
@@ -236,7 +236,7 @@ struct TabButtonLucide: View {
         let isSelected = current == key
         Button(action: { withAnimation(.easeInOut(duration: 0.2)) { current = key } }) {
             HStack(spacing: 4) {
-                LucideView(name: icon, size: 12, color: isSelected ? .white : .themeGray400)
+                LucideView(name: icon, size: 12, color: isSelected ? .white : .themeTextSecondary)
                 Text(label)
                     .font(.system(size: 12, weight: isSelected ? .medium : .regular))
             }
@@ -288,7 +288,7 @@ struct ProviderButton: View {
         Button(action: action) {
             Text(title)
                 .font(.system(size: 10, weight: isSelected ? .bold : .regular))
-                .foregroundColor(isSelected ? .white : .themeGray400)
+                .foregroundColor(isSelected ? .white : .themeTextSecondary)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
                 .background(isSelected ? Color.themeBlue600 : Color.white.opacity(0.05))

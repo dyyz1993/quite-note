@@ -202,6 +202,7 @@ struct LucideLabel: View {
         HStack(spacing: 4) {
             LucideView(name: icon, size: size, color: color)
             Text(text)
+                .foregroundColor(color)
         }
     }
 }
