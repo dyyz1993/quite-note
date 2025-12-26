@@ -65,7 +65,7 @@ struct EnhancedSearchBar: View {
                         .frame(width: searchBarWidth) // 完全对齐搜索栏宽度
                         .background(Color.themeBackground)
                         .clipShape(RoundedCorner(radius: 12, corners: [.bottomLeft, .bottomRight]))
-                        .shadow(color: Color.black.opacity(0.3), radius: 15, x: 0, y: 10)
+                        .shadow(color: Color.themeShadowMedium, radius: 15, x: 0, y: 10)
                         .overlay(
                             RoundedCorner(radius: 12, corners: [.bottomLeft, .bottomRight])
                                 .stroke(Color.themeBorder, lineWidth: 1)
@@ -171,7 +171,7 @@ struct EnhancedSearchBar: View {
 
         }
         .padding(ThemeSpacing.px3)
-        .background(Color.black.opacity(0.1))
+        .background(Color.themeShadowLight)
         .overlay(Rectangle().frame(height: 1).foregroundColor(Color.themeBorder).allowsHitTesting(false), alignment: .bottom)
     }
     
@@ -230,7 +230,7 @@ struct EnhancedSearchBar: View {
             .padding(.horizontal, 4)
             
             Divider()
-                .background(Color.white.opacity(0.05))
+                .background(Color.themeHoverLight)
             
             // 搜索配置
             VStack(alignment: .leading, spacing: 10) {
@@ -264,7 +264,7 @@ struct EnhancedSearchBar: View {
                 .padding(.vertical, 5)
                 .background(
                     Capsule()
-                        .fill(isOn ? Color.themeBlue500.opacity(0.9) : (isHovering ? Color.white.opacity(0.1) : Color.white.opacity(0.05)))
+                        .fill(isOn ? Color.themeBlue500.opacity(0.9) : (isHovering ? Color.themeHoverMedium : Color.themeHoverLight))
                 )
                 .foregroundColor(isOn ? .white : .themeTextSecondary)
                 .onTapGesture {
@@ -315,7 +315,7 @@ struct EnhancedSearchBar: View {
                     LucideView(name: .check, size: 12, color: .themeBlue500)
                 } else {
                     Circle()
-                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                        .stroke(Color.themeHoverMedium, lineWidth: 1)
                         .frame(width: 12, height: 12)
                 }
             }
@@ -323,7 +323,7 @@ struct EnhancedSearchBar: View {
             .padding(.vertical, 8)
             .background(
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(isHovering ? Color.white.opacity(0.05) : Color.clear)
+                    .fill(isHovering ? Color.themeHoverLight : Color.clear)
             )
             .contentShape(Rectangle())
             .onTapGesture {

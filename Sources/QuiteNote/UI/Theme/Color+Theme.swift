@@ -85,106 +85,69 @@ extension Color {
     static let themeTextSecondary = themeGray300         // text-gray-300 (提升对比度)
     static let themeTextTertiary  = themeGray400         // text-gray-400 (提升对比度)
 
-    // 动态透明度版本（用于悬停效果）
-    func withAlpha(_ alpha: Double) -> Color {
-        return self.opacity(alpha)
-    }
-}
+    // MARK: - Shadow Colors
 
-// MARK: - Convenience Extensions for Tailwind-like Usage
-//
-// These extensions provide helper methods to convert Tailwind CSS syntax
-// directly to SwiftUI Colors, making migration from React easier.
-//
-// Usage:
-//   Color.fromTailwindAlpha(colorName: "white", alpha: 5)     // bg-white/5
-//   Color.fromTailwindColorWithAlpha(baseColor: "gray-900", alpha: 90)  // bg-gray-900/90
+    /// 阴影颜色 - 轻阴影（卡片悬停）
+    static let themeShadowLight = Color.black.opacity(0.1)
 
-extension Color {
-    /// 从 note.jsx 的 bg-white/5 等语法转换
-    /// - Parameters:
-    ///   - colorName: "white" 或 "black"
-    ///   - alpha: 5, 10, 20, 50, 80, 90 等
-    static func fromTailwindAlpha(colorName: String, alpha: Int) -> Color {
-        let baseColor: Color = colorName == "white" ? .white : .black
-        let alphaValue = Double(alpha) / 1000.0 // 5 -> 0.005, 10 -> 0.01, 20 -> 0.02
-        return baseColor.opacity(alphaValue)
-    }
+    /// 阴影颜色 - 中等阴影（卡片展开）
+    static let themeShadowMedium = Color.black.opacity(0.2)
 
-    /// 从 note.jsx 的 bg-gray-900/90 等语法转换
-    /// - Parameters:
-    ///   - baseColor: "gray-900", "blue-500" 等
-    ///   - alpha: 50, 80, 90 等
-    static func fromTailwindColorWithAlpha(baseColor: String, alpha: Int) -> Color {
-        let baseColorValue: Color
-        switch baseColor {
-        case "gray-900": baseColorValue = .themeGray900
-        case "gray-800": baseColorValue = .themeGray800
-        case "gray-700": baseColorValue = .themeGray700
-        case "gray-600": baseColorValue = .themeGray600
-        case "gray-500": baseColorValue = .themeGray500
-        case "gray-400": baseColorValue = .themeGray400
-        case "gray-300": baseColorValue = .themeGray300
-        case "gray-200": baseColorValue = .themeGray200
-        case "gray-100": baseColorValue = .themeGray100
-        case "blue-600": baseColorValue = .themeBlue600
-        case "blue-500": baseColorValue = .themeBlue500
-        case "blue-400": baseColorValue = .themeBlue400
-        case "blue-300": baseColorValue = .themeBlue300
-        case "purple-600": baseColorValue = .themePurple600
-        case "purple-500": baseColorValue = .themePurple500
-        case "purple-400": baseColorValue = .themePurple400
-        case "purple-300": baseColorValue = .themePurple300
-        case "green-600": baseColorValue = .themeGreen600
-        case "green-500": baseColorValue = .themeGreen500
-        case "green-400": baseColorValue = .themeGreen400
-        case "green-300": baseColorValue = .themeGreen300
-        case "red-600": baseColorValue = .themeRed600
-        case "red-500": baseColorValue = .themeRed500
-        case "red-400": baseColorValue = .themeRed400
-        case "red-300": baseColorValue = .themeRed300
-        case "yellow-600": baseColorValue = .themeYellow600
-        case "yellow-500": baseColorValue = .themeYellow500
-        case "yellow-400": baseColorValue = .themeYellow400
-        case "yellow-300": baseColorValue = .themeYellow300
-        default: baseColorValue = .themeGray400
-        }
-        return baseColorValue.opacity(Double(alpha) / 100.0)
-    }
-}
+    /// 阴影颜色 - 重阴影（悬浮面板）
+    static let themeShadowHeavy = Color.black.opacity(0.3)
 
-// MARK: - Color Utilities
-//
-// Additional utility methods for working with colors in the theme system.
+    /// 阴影颜色 - 浮球阴影
+    static let themeShadowBall = Color.black.opacity(0.4)
 
-extension Color {
-    /// Create a color with a specific hex value
-    /// - Parameter hex: Hex string like "#FF0000" or "FF0000"
-    static func fromHex(_ hex: String) -> Color {
-        var hexString = hex.trimmingCharacters(in: .whitespacesAndNewlines)
-        hexString = hexString.replacingOccurrences(of: "#", with: "")
+    /// 彩色阴影 - 蓝色发光（AI 处理中）
+    static let themeShadowBlue = Color.themeBlue600.opacity(0.3)
 
-        if hexString.count == 3 {
-            // Expand shorthand hex like #RGB to #RRGGBB
-            let chars = Array(hexString)
-            hexString = "\(chars[0])\(chars[0])\(chars[1])\(chars[1])\(chars[2])\(chars[2])"
-        }
+    /// 彩色阴影 - 紫色发光（AI 总结）
+    static let themeShadowPurple = Color.themePurple500.opacity(0.3)
 
-        var rgbValue: UInt64 = 0
-        Scanner(string: hexString).scanHexInt64(&rgbValue)
+    /// 彩色阴影 - 绿色发光（成功状态）
+    static let themeShadowGreen = Color.themeGreen500.opacity(0.3)
 
-        let red = Double((rgbValue & 0xFF0000) >> 16) / 255.0
-        let green = Double((rgbValue & 0x00FF00) >> 8) / 255.0
-        let blue = Double(rgbValue & 0x0000FF) / 255.0
+    // MARK: - Interaction States
 
-        return Color(red: red, green: green, blue: blue)
-    }
+    /// 悬停状态 - 轻微高亮
+    static let themeHoverLight = Color.white.opacity(0.05)
 
-    /// Create a color with alpha from hex
-    /// - Parameters:
-    ///   - hex: Hex string
-    ///   - alpha: Alpha value 0.0-1.0
-    static func fromHex(_ hex: String, alpha: Double) -> Color {
-        return fromHex(hex).opacity(alpha)
-    }
+    /// 悬停状态 - 中等高亮
+    static let themeHoverMedium = Color.white.opacity(0.1)
+
+    /// 悬停状态 - 强烈高亮
+    static let themeHoverStrong = Color.white.opacity(0.15)
+
+    /// 选中状态 - 蓝色高亮
+    static let themeSelected = Color.themeBlue600
+
+    /// 激活状态 - 蓝色半透明
+    static let themeActive = Color.themeBlue500.opacity(0.2)
+
+    /// 禁用状态 - 低对比度
+    static let themeDisabled = Color.themeGray500.opacity(0.5)
+
+    /// 聚焦状态 - 边框高亮
+    static let themeFocused = Color.themeBlue500.opacity(0.3)
+
+    // MARK: - Status Indicators
+
+    /// 状态 - 空闲
+    static let themeStatusIdle = Color.themeBlue400.opacity(0.7)
+
+    /// 状态 - 加载中
+    static let themeStatusLoading = Color.themePurple500
+
+    /// 状态 - 成功
+    static let themeStatusSuccess = Color.themeGreen500
+
+    /// 状态 - 警告
+    static let themeStatusWarning = Color.themeYellow500
+
+    /// 状态 - 错误
+    static let themeStatusError = Color.themeRed500
+
+    /// 状态 - 处理中（半透明）
+    static let themeStatusPending = Color.themePurple500.opacity(0.7)
 }

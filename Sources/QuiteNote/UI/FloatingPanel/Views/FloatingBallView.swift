@@ -31,7 +31,7 @@ struct FloatingBallView: View {
                 .fill(ballBackgroundColor.opacity(isIdle ? 0.8 : 1.0))
                 .frame(width: 56, height: 56)
                 .scaleEffect(isTargeted ? 1.1 : 1.0)
-                .shadow(color: Color.black.opacity(0.4), radius: 6, x: 0, y: 3)
+                .shadow(color: Color.themeShadowBall, radius: 6, x: 0, y: 3)
                 .overlay(
                     Circle()
                         .stroke(isTargeted ? Color.themeBlue500 : statusColor.opacity(0.3), lineWidth: 1)
@@ -194,7 +194,7 @@ struct FloatingBallView: View {
             return .themeGreen500
         } else {
             // 用户要求：闲置时淡蓝色且带透明度
-            return Color.themeBlue400.opacity(0.7)
+            return Color.themeStatusIdle
         }
     }
 

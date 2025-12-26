@@ -37,7 +37,7 @@ struct SettingsOverlayView: View {
             Button(action: { withAnimation { showSettings = false } }) {
                 LucideView(name: .chevronLeft, size: 20, color: .themeTextSecondary)
                     .padding(6)
-                    .background(Color.white.opacity(0.05))
+                    .background(Color.themeHoverLight)
                     .clipShape(Circle())
             }
             .buttonStyle(.plain)
@@ -64,7 +64,7 @@ struct SettingsOverlayView: View {
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .background(Color.white.opacity(0.05))
+            .background(Color.themeHoverLight)
             .cornerRadius(12)
             .onTapGesture {
                withAnimation { tab = "bluetooth" }
@@ -162,7 +162,7 @@ struct SettingsOverlayView: View {
                 .padding(.vertical, 10)
                 .background(Color.themeBlue600)
                 .cornerRadius(10)
-                .shadow(color: Color.themeBlue600.opacity(0.3), radius: 8, y: 4)
+                .shadow(color: Color.themeShadowBlue, radius: 8, y: 4)
             }
             .buttonStyle(.plain)
             .pointingHandCursor()
@@ -214,11 +214,11 @@ struct TabButton: View {
             .padding(.horizontal, 12) // px-3
             .padding(.vertical, 6) // py-1.5
             .foregroundColor(isSelected ? .white : .themeTextSecondary)
-            .background(isSelected ? Color.themeBlue600 : Color.white.opacity(0.05))
+            .background(isSelected ? Color.themeSelected : Color.themeHoverLight)
             .cornerRadius(16) // rounded-full
             .overlay(
                 RoundedRectangle(cornerRadius: 16)
-                    .stroke(Color.white.opacity(0.1), lineWidth: isSelected ? 0 : 1)
+                    .stroke(Color.themeBorder, lineWidth: isSelected ? 0 : 1)
             )
         }
         .buttonStyle(.plain)
@@ -243,11 +243,11 @@ struct TabButtonLucide: View {
             .padding(.horizontal, 12) // px-3
             .padding(.vertical, 6) // py-1.5
             .foregroundColor(isSelected ? .white : .themeGray400)
-            .background(isSelected ? Color.themeBlue600 : Color.white.opacity(0.05))
+            .background(isSelected ? Color.themeSelected : Color.themeHoverLight)
             .cornerRadius(16)
             .overlay(
                 RoundedRectangle(cornerRadius: 16)
-                    .stroke(Color.white.opacity(0.1), lineWidth: isSelected ? 0 : 1)
+                    .stroke(Color.themeBorder, lineWidth: isSelected ? 0 : 1)
             )
         }
         .buttonStyle(.plain)
@@ -291,9 +291,9 @@ struct ProviderButton: View {
                 .foregroundColor(isSelected ? .white : .themeTextSecondary)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
-                .background(isSelected ? Color.themeBlue600 : Color.white.opacity(0.05))
+                .background(isSelected ? Color.themeSelected : Color.themeHoverLight)
                 .cornerRadius(4)
-                .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.white.opacity(0.1), lineWidth: 1).allowsHitTesting(false))
+                .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.themeBorder, lineWidth: 1).allowsHitTesting(false))
         }
         .buttonStyle(.plain)
         .pointingHandCursor()
@@ -331,7 +331,7 @@ struct CustomTextField: View {
             .cornerRadius(8)
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
-                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                    .stroke(Color.themeBorder, lineWidth: 1)
             )
         }
     }
@@ -352,8 +352,8 @@ struct ToggleRow: View {
             CustomToggle(isOn: $isOn)
         }
         .padding(16)
-        .background(Color.white.opacity(0.05))
+        .background(Color.themeHoverLight)
         .cornerRadius(8)
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.05)).allowsHitTesting(false))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.themeBorderSubtle).allowsHitTesting(false))
     }
 }

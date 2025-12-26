@@ -42,7 +42,7 @@ struct AISettingsTab: View {
         .padding(20)
         .background(Color.themeGray800.opacity(0.4) as Color)
         .cornerRadius(12)
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.05) as Color))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.themeBorderSubtle))
     }
 
     // MARK: - AI Behavior Section
@@ -74,7 +74,7 @@ struct AISettingsTab: View {
         .padding(20)
         .background(Color.themeGray800.opacity(0.4) as Color)
         .cornerRadius(12)
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.05) as Color))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.themeBorderSubtle))
     }
 
     // MARK: - Provider Section
@@ -133,7 +133,7 @@ struct AISettingsTab: View {
                 .frame(maxWidth: .infinity)
                 .background(Color.themeBlue600)
                 .cornerRadius(8)
-                .shadow(color: Color.themeBlue600.opacity(0.3), radius: 8, y: 4)
+                .shadow(color: Color.themeShadowBlue, radius: 8, y: 4)
             }
             .buttonStyle(.plain)
             .pointingHandCursor()
@@ -142,7 +142,7 @@ struct AISettingsTab: View {
         .padding(20)
         .background(Color.themeGray800.opacity(0.4) as Color)
         .cornerRadius(12)
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.05) as Color))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.themeBorderSubtle))
     }
 
     // MARK: - Prompt Config Section
@@ -178,7 +178,7 @@ struct AISettingsTab: View {
                     }) {
                         LucideView(name: .rotateCcw, size: 12, color: .themeTextTertiary)
                             .padding(4)
-                            .background(Color.white.opacity(0.05))
+                            .background(Color.themeHoverLight)
                             .clipShape(Circle())
                     }
                     .buttonStyle(.plain)
@@ -232,7 +232,7 @@ struct AISettingsTab: View {
                     }) {
                         LucideView(name: .rotateCcw, size: 12, color: .themeTextTertiary)
                             .padding(4)
-                            .background(Color.white.opacity(0.05))
+                            .background(Color.themeHoverLight)
                             .clipShape(Circle())
                     }
                     .buttonStyle(.plain)

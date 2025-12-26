@@ -65,7 +65,7 @@ struct IconButton: View {
         Button(action: action) {
             LucideView(name: icon, size: 14, color: color)
                 .frame(width: 24, height: 24)
-                .background(isHovering ? Color.white.opacity(0.1) : Color.white.opacity(0.05))
+                .background(isHovering ? Color.white.opacity(0.1) : Color.themeHoverLight)
                 .clipShape(Circle())
         }
         .buttonStyle(.plain)

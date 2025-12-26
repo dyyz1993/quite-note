@@ -42,7 +42,7 @@ struct FileSettingsTab: View {
                         }
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
-                        .background(Color.white.opacity(0.05))
+                        .background(Color.themeHoverLight)
                         .cornerRadius(6)
                     }
                     .buttonStyle(.plain)
@@ -84,7 +84,7 @@ struct FileSettingsTab: View {
         .padding(20)
         .background(Color.themeGray800.opacity(0.4))
         .cornerRadius(12)
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.05)))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.themeHoverLight))
     }
 
     private var editorSection: some View {
@@ -105,7 +105,7 @@ struct FileSettingsTab: View {
                     .font(.themeCaption)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 4)
-                    .background(Color.white.opacity(0.05))
+                    .background(Color.themeHoverLight)
                     .cornerRadius(6)
                 }
                 .buttonStyle(.plain)
@@ -135,7 +135,7 @@ struct FileSettingsTab: View {
         .padding(20)
         .background(Color.themeGray800.opacity(0.4))
         .cornerRadius(12)
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.05)))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.themeHoverLight))
     }
 
     private var statsSection: some View {
@@ -185,7 +185,7 @@ struct FileSettingsTab: View {
                     GeometryReader { geo in
                         ZStack(alignment: .leading) {
                             Rectangle()
-                                .fill(Color.white.opacity(0.05))
+                                .fill(Color.themeHoverLight)
                                 .frame(height: 6)
                             
                             HStack(spacing: 0) {
@@ -233,13 +233,13 @@ struct FileSettingsTab: View {
                 .padding(16)
                 .background(Color.themeInput.opacity(0.5))
                 .cornerRadius(10)
-                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.05)))
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.themeHoverLight))
             }
         }
         .padding(20)
         .background(Color.themeGray800.opacity(0.4))
         .cornerRadius(12)
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.05)))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.themeHoverLight))
     }
 
     private var dangerSection: some View {
@@ -282,7 +282,7 @@ struct FileSettingsTab: View {
         .padding(20)
         .background(Color.themeGray800.opacity(0.4))
         .cornerRadius(12)
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.05)))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.themeHoverLight))
     }
     
     private func copyPathToClipboard() {

@@ -55,9 +55,9 @@ struct HistorySettingsTab: View {
             ))
         }
         .padding(16)
-        .background(Color.white.opacity(0.05))
+        .background(Color.themeHoverLight)
         .cornerRadius(8)
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.05)).allowsHitTesting(false))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.themeHoverLight).allowsHitTesting(false))
     }
 
     // MARK: - Max Records Section
@@ -74,9 +74,9 @@ struct HistorySettingsTab: View {
                 .foregroundColor(.themeGray500)
         }
         .padding(16)
-        .background(Color.black.opacity(0.2))
+        .background(Color.themePanel)
         .cornerRadius(8)
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.05)).allowsHitTesting(false))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.themeHoverLight).allowsHitTesting(false))
     }
 
 
@@ -87,7 +87,7 @@ struct HistorySettingsTab: View {
         HStack(spacing: 16) {
             LucideView(name: .database, size: 32, color: .themeBlue400)
                 .frame(width: 56, height: 56)
-                .background(Color.themeBlue600.opacity(0.2))
+                .background(Color.themeActive)
                 .cornerRadius(28)
 
             VStack(alignment: .leading, spacing: 4) {
@@ -104,7 +104,7 @@ struct HistorySettingsTab: View {
         .padding(20)
         .background(Color.themeGray800.opacity(0.4) as Color)
         .cornerRadius(12)
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.05) as Color))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.themeHoverLight as Color))
     }
 
     // MARK: - Data Management Section
@@ -131,7 +131,7 @@ struct HistorySettingsTab: View {
                 .padding(.vertical, 12)
                 .frame(maxWidth: .infinity)
                 .background(Color.clear)
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.1), lineWidth: 1).allowsHitTesting(false))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.themeHoverMedium, lineWidth: 1).allowsHitTesting(false))
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -150,7 +150,7 @@ struct HistorySettingsTab: View {
                 .padding(.vertical, 12)
                 .frame(maxWidth: .infinity)
                 .background(Color.clear)
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.1), lineWidth: 1).allowsHitTesting(false))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.themeHoverMedium, lineWidth: 1).allowsHitTesting(false))
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)

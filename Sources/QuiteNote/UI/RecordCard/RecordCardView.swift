@@ -35,11 +35,11 @@ struct RecordCardView: View, Equatable {
         .cornerRadius(8) // rounded-lg
         .overlay(
             RoundedRectangle(cornerRadius: 8)
-                .stroke(isExpanded ? Color.themeBlue500.opacity(0.3) : Color.clear, lineWidth: 1)
+                .stroke(isExpanded ? Color.themeFocused : Color.clear, lineWidth: 1)
                 .allowsHitTesting(false)
         )
         // 只在展开状态时应用阴影，减少性能开销
-        .shadow(color: isExpanded ? Color.black.opacity(0.3) : .clear, radius: 10, x: 0, y: 2)
+        .shadow(color: isExpanded ? Color.themeShadowMedium : .clear, radius: 10, x: 0, y: 2)
         .animation(.easeOut(duration: 0.2), value: isExpanded) // 减少动画时长
         .onChange(of: isExpanded) { expanded in
             // 当折叠时，重置内容显示状态，优化性能
@@ -60,13 +60,13 @@ struct RecordCardView: View, Equatable {
                     // Type Icon
                     LucideView(name: typeIconLucide, size: 14, color: .themeTextSecondary)
                         .frame(width: 18, height: 18)
-                        .background(Color.white.opacity(0.05))
+                        .background(Color.themeHoverLight)
                         .cornerRadius(4)
-                    
+
                     // Title
                     Text(displayTitle)
                         .font(.system(size: 14, weight: .medium)) // text-sm font-medium
-                        .foregroundColor(record.aiStatus == "pending" ? Color.themePurple500.opacity(0.7) : Color.themeTextPrimary)
+                        .foregroundColor(record.aiStatus == "pending" ? Color.themeStatusPending : Color.themeTextPrimary)
                         .lineLimit(1)
                     
                     // Status Icon (AI/Star)
@@ -116,7 +116,7 @@ struct RecordCardView: View, Equatable {
                             Rectangle().fill(Color.themeGray700).frame(width: 2, height: 10)
                             HStack(spacing: 4) {
                                 ForEach(record.tags.prefix(3), id: \.self) { tag in
-                                    TagView(text: tag, color: .themeBlue400, bgColor: .themeBlue500.opacity(0.2)) {
+                                    TagView(text: tag, color: .themeBlue400, bgColor: .themeActive) {
                                         searchTerm = tag
                                     }
                                 }
@@ -202,9 +202,9 @@ struct RecordCardView: View, Equatable {
                         .clipShape(Circle())
                 } else {
                     // 正常或处理中状态
-                    LucideView(name: .sparkles, size: 14, color: record.aiStatus == "pending" ? .themePurple500.opacity(0.7) : .themeBlue500)
+                    LucideView(name: .sparkles, size: 14, color: record.aiStatus == "pending" ? .themeStatusPending : .themeBlue500)
                         .frame(width: 24, height: 24)
-                        .background(Color.white.opacity(0.05))
+                        .background(Color.themeHoverLight)
                         .clipShape(Circle())
                 }
             }
@@ -223,9 +223,10 @@ struct RecordCardView: View, Equatable {
                 LucideView(name: .rotateCcw, size: 14, color: .themeGray400)
                 Text("\(deleteCountdown)s")
                     .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundColor(.themeTextSecondary)
             }
             .frame(width: 48, height: 24)
-            .background(Color.white.opacity(0.1))
+            .background(Color.themeHoverMedium)
             .clipShape(Capsule())
         }
         .buttonStyle(.plain)
@@ -246,7 +247,7 @@ struct RecordCardView: View, Equatable {
             LucideView(name: .chevronRight, size: 14, color: .themeTextSecondary)
                 .rotationEffect(.degrees(isExpanded ? 90 : 0))
                 .frame(width: 24, height: 24)
-                .background(Color.white.opacity(0.05))
+                .background(Color.themeHoverLight)
                 .clipShape(Circle())
         }
         .buttonStyle(.plain)
@@ -355,7 +356,7 @@ struct RecordCardView: View, Equatable {
           .frame(minHeight: 65, maxHeight: 250) // 调高最小高度，确保 2-3 行文字无需滚动即可完整显示
         .background(Color.themePurple500.opacity(0.1))
         .cornerRadius(8)
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.themePurple500.opacity(0.2), lineWidth: 1).allowsHitTesting(false))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.themeShadowPurple, lineWidth: 1).allowsHitTesting(false))
     }
 
     private var keywordsView: some View {
@@ -372,7 +373,7 @@ struct RecordCardView: View, Equatable {
                                     .font(.system(size: 10, weight: .medium))
                                     .padding(.horizontal, 8)
                                     .padding(.vertical, 3)
-                                    .background(Color.white.opacity(0.05))
+                                    .background(Color.themeHoverLight)
                                     .foregroundColor(.themeGray400)
                                     .cornerRadius(4)
                             }
@@ -424,7 +425,7 @@ struct RecordCardView: View, Equatable {
             .foregroundColor(.themeTextSecondary)
             .padding(.horizontal, 8)
             .padding(.vertical, 2)
-            .background(Color.white.opacity(0.05))
+            .background(Color.themeHoverLight)
             .cornerRadius(4)
         }
         .buttonStyle(.plain)
@@ -440,7 +441,7 @@ struct RecordCardView: View, Equatable {
              showScrollbar: true // 原文长，需要滚动条
           )
           .frame(minHeight: 250, maxHeight: 650) // 进一步调高，提供更好视野，减少滚动频率
-        .background(Color.black.opacity(0.2))
+        .background(Color.themePanel)
         .cornerRadius(4)
         .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.themeBorder, lineWidth: 1).allowsHitTesting(false))
     }
@@ -463,7 +464,7 @@ struct RecordCardView: View, Equatable {
                     .foregroundColor(.themeTextSecondary)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
-                    .background(Color.white.opacity(0.05))
+                    .background(Color.themeHoverLight)
                     .cornerRadius(4)
                 }
                 .buttonStyle(.plain)

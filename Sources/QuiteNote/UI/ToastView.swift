@@ -45,7 +45,7 @@ struct ToastView: View {
         .background(bgColor)
         .background(.ultraThinMaterial) // backdrop-blur-md
         .clipShape(RoundedRectangle(cornerRadius: 12)) // rounded-xl
-        .shadow(color: Color.black.opacity(0.3), radius: 10, x: 0, y: 5) // shadow-2xl approximation
+        .shadow(color: Color.themeShadowMedium, radius: 10, x: 0, y: 5) // shadow-2xl approximation
         .transition(.move(edge: .trailing).combined(with: .opacity))
     }
 }

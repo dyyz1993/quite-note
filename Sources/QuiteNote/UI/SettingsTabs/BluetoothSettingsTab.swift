@@ -55,7 +55,7 @@ struct BluetoothSettingsTab: View {
         .padding(20)
         .background(Color.themeGray800.opacity(0.4) as Color)
         .cornerRadius(12)
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.05) as Color))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.themeHoverLight as Color))
     }
 
     private var statusIcon: some View {
@@ -171,7 +171,7 @@ struct DeviceRow: View {
             HStack(spacing: 12) {
                 LucideView(name: .cpu, size: 20, color: .themeBlue400)
                     .frame(width: 36, height: 36)
-                    .background(Color.themeBlue600.opacity(0.2))
+                    .background(Color.themeActive)
                     .cornerRadius(10)
 
                 VStack(alignment: .leading, spacing: 4) {
@@ -191,7 +191,7 @@ struct DeviceRow: View {
                 }
             }
             .padding(12)
-            .background(Color.white.opacity(0.05))
+            .background(Color.themeHoverLight)
             .cornerRadius(10)
             .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.themeBorder.opacity(0.3), lineWidth: 1))
         }

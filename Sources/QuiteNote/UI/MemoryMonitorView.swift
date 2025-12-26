@@ -60,7 +60,7 @@ struct MemoryMonitorView: View {
         .padding(20)
         .background(Color.themeGray800.opacity(0.4) as Color)
         .cornerRadius(12)
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.05) as Color))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.themeHoverLight as Color))
     }
 
     private var memoryIcon: some View {

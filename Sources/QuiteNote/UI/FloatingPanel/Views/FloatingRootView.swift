@@ -81,7 +81,7 @@ struct FloatingRootView: View {
                     .background(Color.themeBackground.opacity(0.9))
                     .cornerRadius(16)
                     .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.themeBorder, lineWidth: 1).allowsHitTesting(false))
-                    .shadow(color: Color.black.opacity(0.5), radius: 20, x: 0, y: 10)
+                    .shadow(color: Color.themeShadowHeavy, radius: 20, x: 0, y: 10)
                     .transition(.opacity) // 简化转换，移除复杂的 scale 转换以提升性能
                     .zIndex(0)
             }
