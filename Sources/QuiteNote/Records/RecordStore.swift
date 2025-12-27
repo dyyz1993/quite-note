@@ -1114,7 +1114,7 @@ extension RecordStore {
             var lines: [String] = []
             var fileCount = 0
             let indent = String(repeating: "│  ", count: level)
-            let lastIndent = String(repeating: "└── ", count: 1)
+            _ = String(repeating: "└── ", count: 1)
 
             do {
                 let contents = try FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: [.nameKey, .isDirectoryKey], options: [.skipsHiddenFiles])

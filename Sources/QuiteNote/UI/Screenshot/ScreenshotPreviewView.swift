@@ -4,9 +4,12 @@ import AppKit
 /// 截图预览视图 - 终极重构版 (模块化、子菜单、全功能实现)
 struct ScreenshotPreviewView: View {
     let image: NSImage
+    let initialCropRect: CGRect?
+    let sourceRect: CGRect // 来源区域（用于动画）
+    let transitionFrom: TransitionSource // 过渡来源
     let onSave: () -> Void
     let onCancel: () -> Void
-    
+
     @State private var elements: [DrawingElement] = []
     @State private var currentElement: DrawingElement?
     @State private var selectedTool: AnnotationTool = AnnotationSettings.shared.getLastTool(for: .draw)
@@ -33,11 +36,12 @@ struct ScreenshotPreviewView: View {
         case displayCircle  // 只能拖动显示圆圈
     }
 
-    // 三阶段枚举
+    // 四阶段枚举
     enum ScreenshotPhase {
-        case initialCrop    // 阶段1：初始裁剪（全屏虚线框，截图光标，无工具栏）
-        case confirmCrop    // 阶段2：调整确认（有工具栏，可继续调整）
-        case editing        // 阶段3：编辑标注（虚线框固定，可标注）
+        case windowDetection  // 阶段0：窗口识别（全屏透明，瞄准镜光标）
+        case initialCrop      // 阶段1：初始裁剪（全屏虚线框，截图光标，无工具栏）
+        case confirmCrop      // 阶段2：调整确认（有工具栏，不可调整）
+        case editing          // 阶段3：编辑标注（虚线框固定，可标注）
     }
 
     // 模式状态：cropping (调整区域) vs editing (标注)
@@ -130,9 +134,15 @@ struct ScreenshotPreviewView: View {
                                 cropOverlayLayer(for: geo.size)
                             }
                             .onAppear {
-                                // 阶段1强制设置为全屏
+                                // 阶段1初始化：使用 initialCropRect 或默认全屏
                                 if screenshotPhase == .initialCrop {
-                                    cropRect = CGRect(origin: .zero, size: geo.size)
+                                    if let initialRect = initialCropRect {
+                                        // 使用从阶段0传递过来的裁剪区域
+                                        cropRect = initialRect
+                                    } else {
+                                        // 默认全屏
+                                        cropRect = CGRect(origin: .zero, size: geo.size)
+                                    }
                                 } else {
                                     setupInitialCrop(geo.size)
                                 }
@@ -262,7 +272,7 @@ struct ScreenshotPreviewView: View {
     }
 
     private func handleEscape() {
-        // 三阶段 ESC 分层处理逻辑
+        // 四阶段 ESC 分层处理逻辑
         // 1. 优先：文本编辑状态
         if editingTextId != nil {
             editingTextId = nil
@@ -280,14 +290,16 @@ struct ScreenshotPreviewView: View {
         }
 
         // 3. 根据当前阶段处理状态转换
-        if screenshotPhase == .editing {
-            // 阶段3 → 阶段2：返回裁剪调整模式
-            screenshotPhase = .confirmCrop
-        } else if screenshotPhase == .confirmCrop {
-            // 阶段2 → 取消截图
+        switch screenshotPhase {
+        case .editing:
+            // 阶段3：双击退出逻辑
             if showExitConfirm {
+                // 第2次 ESC: 直接退出
+                exitConfirmTimer?.invalidate()
+                showExitConfirm = false
                 onCancel()
             } else {
+                // 第1次 ESC: 显示提示
                 withAnimation {
                     showExitConfirm = true
                 }
@@ -298,8 +310,17 @@ struct ScreenshotPreviewView: View {
                     }
                 }
             }
-        } else {
-            // 阶段1 → 直接取消截图
+
+        case .confirmCrop:
+            // 阶段2：1次 ESC → 返回阶段1
+            screenshotPhase = .initialCrop
+
+        case .initialCrop:
+            // 阶段1：暂时直接退出（等阶段0实现后可以返回）
+            onCancel()
+
+        case .windowDetection:
+            // 阶段0：1次 ESC → 退出
             onCancel()
         }
     }
@@ -397,6 +418,12 @@ struct ScreenshotPreviewView: View {
                 screenshotCursor = createScreenshotCursor()
             }
             screenshotCursor?.set()
+            return
+        }
+
+        // 阶段2：禁用调整光标，只显示箭头
+        if screenshotPhase == .confirmCrop {
+            NSCursor.arrow.set()
             return
         }
 
@@ -657,6 +684,7 @@ struct ScreenshotPreviewView: View {
         .frame(width: containerSize.width, height: containerSize.height)
         .contentShape(Rectangle()) // 确保整个区域都能接收点击
         .gesture(
+            screenshotPhase == .initialCrop ?
             DragGesture(minimumDistance: 0)
                 .onChanged { value in
                     handleCropDrag(value, containerSize: containerSize)
@@ -664,34 +692,41 @@ struct ScreenshotPreviewView: View {
                 .onEnded { _ in
                     activeHandle = nil
                     lastDragDelta = .zero
-                }
+                } :
+            DragGesture()
+                .onChanged { _ in }
+                .onEnded { _ in }
         )
     }
 
+    @ViewBuilder
     private func handleView(_ handle: CropHandle, x: CGFloat, y: CGFloat) -> some View {
-        Group {
-            switch handle {
-            case .top, .bottom:
-                // 上下边手柄：横向长条
-                Rectangle()
-                    .fill(Color.white)
-                    .frame(width: 30, height: 8)
-                    .overlay(Rectangle().stroke(Color.blue, lineWidth: 1))
-            case .left, .right:
-                // 左右边手柄：纵向长条
-                Rectangle()
-                    .fill(Color.white)
-                    .frame(width: 8, height: 30)
-                    .overlay(Rectangle().stroke(Color.blue, lineWidth: 1))
-            default:
-                // 四角手柄：方形
-                Rectangle()
-                    .fill(Color.white)
-                    .frame(width: 10, height: 10)
-                    .overlay(Rectangle().stroke(Color.blue, lineWidth: 1))
-            }
+        // 阶段1显示手柄，阶段2隐藏
+        if screenshotPhase == .initialCrop {
+            let handleView: some View = {
+                switch handle {
+                case .top, .bottom:
+                    // 上下边手柄：横向长条
+                    return Rectangle()
+                        .fill(Color.white)
+                        .frame(width: 30, height: 8)
+                        .overlay(Rectangle().stroke(Color.blue, lineWidth: 1))
+                case .left, .right:
+                    // 左右边手柄：纵向长条
+                    return Rectangle()
+                        .fill(Color.white)
+                        .frame(width: 8, height: 30)
+                        .overlay(Rectangle().stroke(Color.blue, lineWidth: 1))
+                default:
+                    // 四角手柄：方形
+                    return Rectangle()
+                        .fill(Color.white)
+                        .frame(width: 10, height: 10)
+                        .overlay(Rectangle().stroke(Color.blue, lineWidth: 1))
+                }
+            }()
+            handleView.position(x: x, y: y)
         }
-        .position(x: x, y: y)
     }
 
     // MARK: - 坐标转换系统（统一使用 Canvas 相对坐标）
@@ -750,6 +785,9 @@ struct ScreenshotPreviewView: View {
     }
 
     private func handleCropDrag(_ value: DragGesture.Value, containerSize: CGSize) {
+        // 阶段2禁用拖动
+        guard screenshotPhase == .initialCrop else { return }
+
         if activeHandle == nil {
             // 使用局部坐标版本，因为 startLocation 是相对于 cropOverlayLayer 的
             activeHandle = getHandleInLocalCoordinates(at: value.startLocation, containerSize: containerSize)

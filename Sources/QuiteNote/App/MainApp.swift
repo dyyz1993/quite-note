@@ -218,22 +218,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// 处理截图快捷键触发
     private func handleScreenshot() {
         print("[DEBUG] 快捷键回调：handleScreenshot 被调用")
-        ScreenshotService.shared.capture { [weak self] image in
+        // 使用新的窗口识别截图流程
+        ScreenshotService.shared.captureWithWindowDetection { [weak self] image, cropRect in
             if image == nil {
                 print("[DEBUG] 截图失败或被取消：image 为 nil")
             }
             guard let self = self, let image = image else { return }
-            
+
             DispatchQueue.main.async {
-                self.showPreview(image: image)
+                self.showPreview(image: image, initialCropRect: cropRect)
             }
         }
     }
-    
-    private func showPreview(image: NSImage) {
+
+    private func showPreview(image: NSImage, initialCropRect: CGRect? = nil) {
         // 创建预览窗口
         self.screenshotPreviewController = ScreenshotPreviewController(
             image: image,
+            initialCropRect: initialCropRect,
             onSave: { [weak self] in
                 guard let self = self else { return }
                 self.saveScreenshotRecord(image: image)

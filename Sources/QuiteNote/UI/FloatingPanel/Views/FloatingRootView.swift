@@ -2,6 +2,7 @@ import SwiftUI
 import AppKit
 import Cocoa
 import UniformTypeIdentifiers
+import Combine
 
 // MARK: - Keyboard Intercept View
 
@@ -67,6 +68,8 @@ struct FloatingRootView: View {
     @State private var isLoadingMore: Bool = false // 是否正在加载更多
     @State private var hasMoreRecords: Bool = true // 是否还有更多记录
     @State private var isDroppingFiles: Bool = false // 是否正在拖入文件
+    @State private var isWindowHighlightEnabled: Bool = false // 窗口高亮是否启用
+    @State private var windowSelectionCancellable: AnyCancellable? = nil // 窗口选择的订阅
 
     var body: some View {
         ZStack(alignment: .center) {
@@ -118,7 +121,19 @@ struct FloatingRootView: View {
                 showSettings = false
             } else {
                 print("[DEBUG] ESC calling onMinimize via notification")
+                // 缩小到浮球时停止窗口高亮
+                if isWindowHighlightEnabled {
+                    WindowHighlightController.shared.stopHighlight()
+                    isWindowHighlightEnabled = false
+                }
                 onMinimize?()
+            }
+        }
+        .onChange(of: focus.mode) { newMode in
+            // 当缩小到浮球模式时自动停止窗口高亮
+            if newMode == .floatingBall && isWindowHighlightEnabled {
+                WindowHighlightController.shared.stopHighlight()
+                isWindowHighlightEnabled = false
             }
         }
     }
@@ -176,6 +191,9 @@ struct FloatingRootView: View {
                 // 测试截图按钮
                 testScreenshotButton
 
+                // 测试窗口高亮按钮
+                testWindowHighlightButton
+
                 // 未来可以增加图片和视频
                 // filterButton(type: .image, icon: .image)
                 // filterButton(type: .video, icon: .video)
@@ -221,17 +239,125 @@ struct FloatingRootView: View {
         .help(isSelected ? "取消筛选" : "筛选\(type.rawValue)")
     }
 
-    /// 测试截图按钮
+    /// 测试截图按钮 - 改为窗口截图模式
     private var testScreenshotButton: some View {
         Button(action: {
-            NotificationCenter.default.post(name: NSNotification.Name("qn.screenshot.test"), object: nil)
+            print("=== [DEBUG] 启动窗口截图模式 ===")
+
+            // 启动窗口高亮选择
+            WindowHighlightController.shared.startHighlight()
+
+            // 监听选择结果
+            DispatchQueue.main.async {
+                self.observeWindowSelection()
+            }
         }) {
             LucideView(name: .camera, size: 20, color: .themeTextSecondary)
                 .frame(width: 44, height: 44)
         }
         .buttonStyle(.plain)
         .pointingHandCursor()
-        .help("测试截图 (Test Screenshot)")
+        .help("窗口截图 - 点击选择要截图的窗口")
+    }
+
+    /// 监听窗口选择结果
+    private func observeWindowSelection() {
+        // 使用 Combine 监听选中的窗口
+        windowSelectionCancellable = WindowHighlightController.shared.$selectedWindow
+            .dropFirst()  // 跳过初始值
+            .sink { window in
+                if let window = window {
+                    print("=== [DEBUG] 用户选择了窗口: \(window.displayTitle) ===")
+                    self.captureWindow(window)
+                }
+            }
+    }
+
+    /// 截取选中的窗口
+    private func captureWindow(_ window: WindowInfo) {
+        print("=== [DEBUG] 开始截取窗口: \(window.displayTitle) ===")
+        print("=== [DEBUG] 窗口 bounds: \(window.bounds) ===")
+
+        // 使用 WindowInfoService 截取窗口
+        let image = WindowInfoService.shared.captureWindow(window)
+
+        if let image = image {
+            print("=== [DEBUG] 截图成功，尺寸: \(image.size) ===")
+
+            // 打开截图预览
+            DispatchQueue.main.async {
+                self.openScreenshotPreview(image: image, sourceWindow: window)
+            }
+        } else {
+            print("=== [ERROR] 截图失败 ===")
+        }
+    }
+
+    /// 打开截图预览界面
+    private func openScreenshotPreview(image: NSImage, sourceWindow: WindowInfo) {
+        print("=== [DEBUG] 打开截图预览 ===")
+
+        let controller = ScreenshotPreviewController(
+            image: image,
+            initialCropRect: nil,
+            onSave: {
+                print("=== [DEBUG] 保存截图 ===")
+                // TODO: 实现保存逻辑
+            },
+            onCancel: {
+                print("=== [DEBUG] 取消截图 ===")
+            }
+        )
+
+        controller.show()
+    }
+
+    /// 测试窗口高亮按钮
+    private var testWindowHighlightButton: some View {
+        Button(action: {
+            print("=== [DEBUG FloatingRootView] 窗口高亮按钮被点击，当前状态: \(isWindowHighlightEnabled) ===")
+
+            if isWindowHighlightEnabled {
+                print("=== [DEBUG] 停止窗口高亮 ===")
+                WindowHighlightController.shared.stopHighlight()
+                isWindowHighlightEnabled = false
+            } else {
+                print("=== [DEBUG] 启动窗口高亮 ===")
+                WindowHighlightController.shared.startHighlight()
+                isWindowHighlightEnabled = true
+                print("=== [DEBUG] 启动完成，isEnabled: \(WindowHighlightController.shared.isEnabled) ===")
+            }
+        }) {
+            ZStack {
+                if isWindowHighlightEnabled {
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color.themeStatusError)  // 红色背景表示停止
+                        .frame(width: 44, height: 44)
+                        .transition(.scale.combined(with: .opacity))
+                }
+
+                LucideView(
+                    name: .square,
+                    size: 20,
+                    color: isWindowHighlightEnabled ? .white : .themeTextSecondary
+                )
+            }
+
+            // 显示提示文字
+            if isWindowHighlightEnabled {
+                Text("点击退出")
+                    .font(.system(size: 10))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.black.opacity(0.7))
+                    .cornerRadius(4)
+                    .offset(x: 50, y: -20)
+            }
+        }
+        .buttonStyle(.plain)
+        .pointingHandCursor()
+        .help(isWindowHighlightEnabled ? "点击退出窗口高亮" : "启动窗口高亮")
     }
 
     /// 右侧主内容视图

@@ -6,11 +6,11 @@ final class ScreenshotPreviewController: NSWindowController {
     private var hostingView: NSHostingView<ScreenshotPreviewView>?
     private var onSave: () -> Void
     private var onCancel: () -> Void
-    
-    init(image: NSImage, onSave: @escaping () -> Void, onCancel: @escaping () -> Void) {
+
+    init(image: NSImage, initialCropRect: CGRect? = nil, onSave: @escaping () -> Void, onCancel: @escaping () -> Void) {
         self.onSave = onSave
         self.onCancel = onCancel
-        
+
         // 创建真正无边框透明面板
         let panel = NSPanel(
             contentRect: NSRect(x: 0, y: 0, width: 1200, height: 900),
@@ -18,12 +18,12 @@ final class ScreenshotPreviewController: NSWindowController {
             backing: .buffered,
             defer: false
         )
-        
+
         // 移除标题栏但保持 KeyWindow 特性
         panel.titleVisibility = .hidden
         panel.titlebarAppearsTransparent = true
         panel.isMovableByWindowBackground = true
-        
+
         panel.isFloatingPanel = true
         panel.level = .floating
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
@@ -33,11 +33,15 @@ final class ScreenshotPreviewController: NSWindowController {
         panel.isOpaque = false
         panel.hasShadow = false
         panel.ignoresMouseEvents = false
-        
+
         super.init(window: panel)
-        
+
+        // ✅ 简化：使用默认参数
         let contentView = ScreenshotPreviewView(
             image: image,
+            initialCropRect: initialCropRect,
+            sourceRect: initialCropRect ?? .zero,
+            transitionFrom: .none,
             onSave: { [weak self] in
                 self?.close()
                 onSave()
@@ -47,20 +51,27 @@ final class ScreenshotPreviewController: NSWindowController {
                 onCancel()
             }
         )
-        
+
         self.hostingView = NSHostingView(rootView: contentView)
         panel.contentView = hostingView
-        
+
         // 居中显示
         panel.center()
     }
-    
+
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
-    
+
     func show() {
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
+}
+
+/// 过渡来源类型
+enum TransitionSource {
+    case none
+    case windowDetection
+    case fullscreen
 }

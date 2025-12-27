@@ -11,6 +11,84 @@ BUNDLE_ID="com.quitenote.app.dev"
 EXECUTABLE_NAME="QuiteNote"
 VERSION="1.0.0"
 
+# ====================================================================
+# 权限检查与引导功能
+# ====================================================================
+
+# 检查权限状态
+checkPermissions() {
+    local bundle_id="$1"
+    echo "🔍 正在检查 $bundle_id 的权限状态..."
+    
+    local has_screen=false
+    local has_accessibility=false
+
+    # 检查屏幕录制权限
+    if /usr/bin/sqlite3 "/Library/Application Support/com.apple.TCC/TCC.db" "SELECT client FROM access WHERE service='kTCCServiceScreenCapture' AND client='$bundle_id' AND allowed=1" 2>/dev/null | grep -q "$bundle_id"; then
+        echo "✅ 屏幕录制权限：已授权"
+        has_screen=true
+    else
+        echo "❌ 屏幕录制权限：未授权或需要手动确认"
+    fi
+    
+    # 检查辅助功能权限
+    if /usr/bin/sqlite3 "/Library/Application Support/com.apple.TCC/TCC.db" "SELECT client FROM access WHERE service='kTCCServiceAccessibility' AND client='$bundle_id' AND allowed=1" 2>/dev/null | grep -q "$bundle_id"; then
+        echo "✅ 辅助功能权限：已授权"
+        has_accessibility=true
+    else
+        echo "❌ 辅助功能权限：未授权"
+    fi
+
+    if [ "$has_screen" = false ] || [ "$has_accessibility" = false ]; then
+        echo ""
+        echo "💡 提示：由于 macOS 安全机制，即使通过脚本申请权限，通常仍需手动开启："
+        echo "   1. 运行应用后，如果弹出权限请求，请点击「打开系统设置」"
+        echo "   2. 在「隐私与安全性」中找到「屏幕录制」和「辅助功能」"
+        echo "   3. 确保 '$APP_NAME' 的开关已开启"
+        echo "   4. 如果开关已开启但功能无效，请尝试「关闭再重新开启」"
+    fi
+}
+
+# 引导设置权限
+guidePermissions() {
+    local bundle_id="$1"
+    echo "正在检查应用权限..."
+    checkPermissions "$bundle_id"
+}
+
+showUsage() {
+    cat << 'EOF'
+
+🎯 权限设置说明
+===================
+
+macOS (11.0+) 对「屏幕录制」和「辅助功能」有极严的安全限制。
+脚本无法完全自动开启这些权限，必须由用户在系统设置中手动确认。
+
+⚡ 使用方法：
+   1. 正常构建：./build-app.sh (会自动运行检查)
+   2. 检查权限状态：./build-app.sh --check-permissions
+   3. 帮助说明：./build-app.sh --help
+
+� 手动确认路径：
+   系统设置 → 隐私与安全性 → 屏幕录制
+   系统设置 → 隐私与安全性 → 辅助功能
+
+EOF
+}
+
+# 处理命令行参数
+case "${1:-}" in
+    --check-permissions)
+        checkPermissions "$BUNDLE_ID"
+        exit 0
+        ;;
+    --help|-h)
+        showUsage
+        exit 0
+        ;;
+esac
+
 # 构建 release 版本
 echo "正在编译应用..."
 swift build -c release --product QuiteNote
@@ -145,9 +223,8 @@ else
     echo "警告：未找到 codesign 工具，跳过代码签名"
 fi
 
-# 设置屏幕录制权限（开发环境）
-echo "正在设置屏幕录制权限..."
-setupScreenCapturePermission "$BUNDLE_ID"
+# 检查并引导权限设置
+guidePermissions "$BUNDLE_ID"
 
 echo "应用构建完成！"
 echo "应用位置: $APP_PATH"
@@ -166,159 +243,4 @@ open "$APP_PATH"
 
 echo "应用已重启并启动。"
 
-# ====================================================================
-# 权限设置功能
-# ====================================================================
-
-# 设置屏幕录制权限
-setupScreenCapturePermission() {
-    local bundle_id="$1"
-    echo "🔧 设置屏幕录制权限..."
-    
-    if sudo /usr/bin/sqlite3 "/Library/Application Support/com.apple.TCC/TCC.db" "INSERT OR REPLACE INTO access (service,client,client_type,allowed,prompt_count,indirect_object_identifier) VALUES ('kTCCServiceScreenCapture','$bundle_id',0,1,1,'kTCCServiceEventTap')" 2>/dev/null; then
-        echo "✅ 屏幕录制权限设置成功"
-    else
-        echo "❌ 自动设置屏幕录制权限失败，请手动设置"
-    fi
-}
-
-# 设置辅助功能权限
-setupAccessibilityPermission() {
-    local bundle_id="$1"
-    echo "🔧 设置辅助功能权限..."
-    
-    if sudo /usr/bin/sqlite3 "/Library/Application Support/com.apple.TCC/TCC.db" "INSERT OR REPLACE INTO access (service,client,client_type,allowed,prompt_count,indirect_object_identifier) VALUES ('kTCCServiceAccessibility','$bundle_id',0,1,1,'kTCCServiceEventTap')" 2>/dev/null; then
-        echo "✅ 辅助功能权限设置成功"
-    else
-        echo "❌ 自动设置辅助功能权限失败，请手动设置"
-    fi
-}
-
-# ====================================================================
-# 使用说明
-# ====================================================================
-
-showUsage() {
-    cat << 'EOF'
-
-🎯 权限自动设置说明
-===================
-
-✅ 自动设置的功能：
-   • 屏幕录制权限 - 用于截图功能
-   • 辅助功能权限 - 用于全局快捷键
-
-⚡ 使用方法：
-   1. 开发环境构建会自动设置权限
-   2. 单独设置权限：./build-app.sh --setup-permissions
-   3. 检查权限状态：./build-app.sh --check-permissions
-
-🔒 安全说明：
-   • 仅在开发环境（Bundle ID 包含 "dev"）中自动设置
-   • 需要管理员权限，会提示输入密码
-   • 不会影响生产环境的安全性
-
-📱 手动设置方法：
-   系统偏好设置 → 安全性与隐私 → 隐私 → 屏幕录制/辅助功能
-
-EOF
-}
-
-# 检查权限状态
-checkPermissions() {
-    local bundle_id="$1"
-    echo "🔍 检查 $bundle_id 的权限状态："
-    
-    # 检查屏幕录制权限
-    if /usr/bin/sqlite3 "/Library/Application Support/com.apple.TCC/TCC.db" "SELECT client FROM access WHERE service='kTCCServiceScreenCapture' AND client='$bundle_id'" 2>/dev/null | grep -q "$bundle_id"; then
-        echo "✅ 屏幕录制权限：已授权"
-    else
-        echo "❌ 屏幕录制权限：未授权"
-    fi
-    
-    # 检查辅助功能权限
-    if /usr/bin/sqlite3 "/Library/Application Support/com.apple.TCC/TCC.db" "SELECT client FROM access WHERE service='kTCCServiceAccessibility' AND client='$bundle_id'" 2>/dev/null | grep -q "$bundle_id"; then
-        echo "✅ 辅助功能权限：已授权"
-    else
-        echo "❌ 辅助功能权限：未授权"
-    fi
-}
-
-# 处理命令行参数
-case "${1:-}" in
-    --setup-permissions)
-        echo "🔧 单独设置权限模式"
-        setupScreenCapturePermission "$BUNDLE_ID"
-        setupAccessibilityPermission "$BUNDLE_ID"
-        exit 0
-        ;;
-    --check-permissions)
-        checkPermissions "$BUNDLE_ID"
-        exit 0
-        ;;
-    --help|-h)
-        showUsage
-        exit 0
-        ;;
-esac
-
-# ====================================================================
-# 权限设置函数
-# ====================================================================
-
-# 设置屏幕录制权限
-setupScreenCapturePermission() {
-    local bundle_id="$1"
-    
-    echo "正在为 $bundle_id 设置屏幕录制权限..."
-    
-    # 检查是否已经拥有权限
-    if /usr/bin/sqlite3 "/Library/Application Support/com.apple.TCC/TCC.db" "SELECT client FROM access WHERE service='kTCCServiceScreenCapture' AND client='$bundle_id'" 2>/dev/null | grep -q "$bundle_id"; then
-        echo "✅ 屏幕录制权限已存在"
-        return 0
-    fi
-    
-    # 尝试自动添加权限
-    echo "⚠️  需要管理员权限来设置屏幕录制权限"
-    echo "如果提示输入密码，请输入你的 Mac 登录密码"
-    
-    # 使用 osascript 执行需要管理员权限的命令
-    local timestamp=$(date +%s)
-    local sql_cmd="INSERT or REPLACE INTO access VALUES('kTCCServiceScreenCapture','$bundle_id',0,1,1,NULL,NULL,NULL,'UNUSED',NULL,0,$timestamp);"
-    
-    if osascript -e "do shell script \"/usr/bin/sqlite3 '/Library/Application Support/com.apple.TCC/TCC.db' '$sql_cmd'\" with administrator privileges" 2>/dev/null; then
-        echo "✅ 屏幕录制权限设置成功"
-        echo "💡 提示：权限将在应用重启后生效"
-    else
-        echo "❌ 自动设置权限失败，请手动设置："
-        echo "   1. 打开「系统偏好设置」→「安全性与隐私」→「隐私」"
-        echo "   2. 选择「屏幕录制」"
-        echo "   3. 找到并勾选 '$APP_NAME'"
-        echo "   4. 重启应用"
-    fi
-}
-
-# 设置辅助功能权限（用于全局快捷键）
-setupAccessibilityPermission() {
-    local bundle_id="$1"
-    
-    echo "正在为 $bundle_id 设置辅助功能权限..."
-    
-    # 检查是否已经拥有权限
-    if /usr/bin/sqlite3 "/Library/Application Support/com.apple.TCC/TCC.db" "SELECT client FROM access WHERE service='kTCCServiceAccessibility' AND client='$bundle_id'" 2>/dev/null | grep -q "$bundle_id"; then
-        echo "✅ 辅助功能权限已存在"
-        return 0
-    fi
-    
-    echo "⚠️  需要管理员权限来设置辅助功能权限"
-    
-    # 尝试自动添加权限
-    local timestamp=$(date +%s)
-    local sql_cmd="INSERT or REPLACE INTO access VALUES('kTCCServiceAccessibility','$bundle_id',0,1,1,NULL,NULL,NULL,'UNUSED',NULL,0,$timestamp);"
-    
-    if osascript -e "do shell script \"/usr/bin/sqlite3 '/Library/Application Support/com.apple.TCC/TCC.db' '$sql_cmd'\" with administrator privileges" 2>/dev/null; then
-        echo "✅ 辅助功能权限设置成功"
-    else
-        echo "❌ 自动设置辅助功能权限失败，请手动设置"
-    fi
-}
+exit 0
