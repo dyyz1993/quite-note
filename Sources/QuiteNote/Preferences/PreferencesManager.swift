@@ -53,6 +53,11 @@ final class PreferencesManager: ObservableObject {
     var attachmentsPath: String? { d.string(forKey: "attachmentsPath") }
     var preferredEditor: String { d.string(forKey: "preferredEditor") ?? "System Default" }
 
+    // 截图设置
+    var screenshotShortcut: String { d.string(forKey: "screenshotShortcut") ?? "s" }
+    var screenshotShortcutFlags: Int { d.object(forKey: "screenshotShortcutFlags") == nil ? Int(NSEvent.ModifierFlags([.command, .shift]).rawValue) : d.integer(forKey: "screenshotShortcutFlags") }
+    var screenshotSaveToClipboard: Bool { d.object(forKey: "screenshotSaveToClipboard") == nil ? true : d.bool(forKey: "screenshotSaveToClipboard") }
+
     var openAIBaseURL: String { d.string(forKey: "openAIBaseURL") ?? "https://api.openai.com/v1" }
     var openAIModel: String { d.string(forKey: "openAIModel") ?? "gpt-4o-mini" }
     
@@ -94,6 +99,10 @@ final class PreferencesManager: ObservableObject {
     func setRememberWindowPosition(_ v: Bool) { d.set(v, forKey: "rememberWindowPosition") }
     func setAttachmentsPath(_ v: String?) { d.set(v, forKey: "attachmentsPath") }
     func setPreferredEditor(_ v: String) { d.set(v, forKey: "preferredEditor") }
+
+    func setScreenshotShortcut(_ v: String) { d.set(v, forKey: "screenshotShortcut") }
+    func setScreenshotShortcutFlags(_ v: Int) { d.set(v, forKey: "screenshotShortcutFlags") }
+    func setScreenshotSaveToClipboard(_ v: Bool) { d.set(v, forKey: "screenshotSaveToClipboard") }
 
     func setOpenAIBaseURL(_ v: String) { d.set(v, forKey: "openAIBaseURL") }
     func setOpenAIModel(_ v: String) { d.set(v, forKey: "openAIModel") }

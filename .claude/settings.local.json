@@ -26,7 +26,8 @@
       "Bash(do echo '=== 检查 #$i ===' tail -20 /tmp/quitenote.log)",
       "Bash(done)",
       "Bash(grep:*)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(open:*)"
     ],
     "deny": [],
     "ask": []

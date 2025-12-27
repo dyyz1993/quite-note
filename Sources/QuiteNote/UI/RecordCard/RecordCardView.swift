@@ -700,6 +700,7 @@ private extension RecordCardView {
         case .text: return .fileText
         case .image: return .image
         case .video: return .video
+        case .screenshot: return .camera
         }
     }
 

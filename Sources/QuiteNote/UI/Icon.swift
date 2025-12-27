@@ -59,6 +59,23 @@ enum IconName: String {
     case paperclip = "paperclip"
     case image = "image"
     case video = "video"
+    case camera = "camera"
+    case keyboard = "keyboard"
+    case shield = "shield"
+    case square = "square"
+    case circle = "circle"
+    case type = "type"
+    case highlighter = "highlighter"
+    case crop = "crop"
+    case arrowUpRight = "arrow-up-right"
+    case grid3x3 = "grid-3x3"
+    case dither = "dither"
+    case hash = "hash"
+    case mousePointer2 = "mouse-pointer-2"
+    case palette = "palette"
+    case penTool = "pen-tool"
+    case focus = "focus"
+    case trash = "trash"
 }
 
 /// SwiftUI 包装，渲染 Lucide 图标（不使用 SF Symbols 回退）

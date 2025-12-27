@@ -161,18 +161,27 @@ struct FloatingRootView: View {
 
             VStack(spacing: 20) {
                 Spacer().frame(height: 40) // 顶部留空
-                
+
                 // 类型筛选按钮组
                 filterButton(type: RecordType.text, icon: .fileText)
                 filterButton(type: RecordType.file, icon: .paperclip)
                 filterButton(type: RecordType.folder, icon: .folder)
-                
+
+                // 分隔线
+                Rectangle()
+                    .fill(Color.themeBorderSubtle)
+                    .frame(width: 32, height: 1)
+                    .padding(.vertical, 4)
+
+                // 测试截图按钮
+                testScreenshotButton
+
                 // 未来可以增加图片和视频
                 // filterButton(type: .image, icon: .image)
                 // filterButton(type: .video, icon: .video)
-                
+
                 Spacer()
-                
+
                 // 热力图移至侧边栏底部
                 HeatmapView(vm: heatmapVM)
                     .padding(.bottom, 20)
@@ -186,7 +195,7 @@ struct FloatingRootView: View {
     /// 类型筛选按钮
     private func filterButton(type: RecordType, icon: IconName) -> some View {
         let isSelected = store.filterType == type
-        
+
         return Button(action: {
             withAnimation(.spring(response: 0.3)) {
                 store.toggleFilterType(type)
@@ -199,7 +208,7 @@ struct FloatingRootView: View {
                         .frame(width: 44, height: 44)
                         .transition(.scale.combined(with: .opacity))
                 }
-                
+
                 LucideView(
                     name: icon,
                     size: 20,
@@ -210,6 +219,19 @@ struct FloatingRootView: View {
         .buttonStyle(.plain)
         .pointingHandCursor()
         .help(isSelected ? "取消筛选" : "筛选\(type.rawValue)")
+    }
+
+    /// 测试截图按钮
+    private var testScreenshotButton: some View {
+        Button(action: {
+            NotificationCenter.default.post(name: NSNotification.Name("qn.screenshot.test"), object: nil)
+        }) {
+            LucideView(name: .camera, size: 20, color: .themeTextSecondary)
+                .frame(width: 44, height: 44)
+        }
+        .buttonStyle(.plain)
+        .pointingHandCursor()
+        .help("测试截图 (Test Screenshot)")
     }
 
     /// 右侧主内容视图

@@ -85,6 +85,7 @@ struct SettingsOverlayView: View {
                 TabButtonLucide(key: "history", label: "记录设置", icon: .database, current: $tab)
                 TabButtonLucide(key: "bluetooth", label: "蓝牙设置", icon: .bluetooth, current: $tab)
                 TabButtonLucide(key: "window", label: "悬浮窗设置", icon: .layout, current: $tab)
+                TabButtonLucide(key: "screenshot", label: "截图设置", icon: .camera, current: $tab)
                 TabButtonLucide(key: "file", label: "文件与存储", icon: .folder, current: $tab)
                 TabButtonLucide(key: "memory", label: "系统监控", icon: .cpu, current: $tab)
             }
@@ -105,6 +106,7 @@ struct SettingsOverlayView: View {
                 case "history": HistorySettingsTab(store: store)
                 case "bluetooth": BluetoothSettingsTab(bluetooth: bluetooth)
                 case "window": WindowSettingsTab()
+                case "screenshot": ScreenshotSettingsTab()
                 case "file": FileSettingsTab(store: store)
                 case "memory": MemorySettingsTab()
                 default: EmptyView()

@@ -91,6 +91,13 @@ final class StatusBarController {
         capture.target = self
         capture.isEnabled = true
         menu.addItem(capture)
+
+        let screenshot = NSMenuItem(title: "捕获屏幕截图", action: #selector(onScreenshot), keyEquivalent: "s")
+        screenshot.keyEquivalentModifierMask = [.command, .shift]
+        screenshot.target = self
+        screenshot.isEnabled = true
+        menu.addItem(screenshot)
+
         let bulk = NSMenuItem(title: "批量重新提炼（3条）", action: #selector(onBulkSummarize), keyEquivalent: "a")
         bulk.keyEquivalentModifierMask = [.option, .command]
         bulk.target = self
@@ -189,8 +196,12 @@ final class StatusBarController {
         store.postToast(store.enableAI ? "AI 已开启" : "AI 已关闭")
         setupMenu()
     }
+
+    @objc private func onScreenshot() {
+        // 通过 NotificationCenter 发送截图通知，让 MainApp 处理
+        NotificationCenter.default.post(name: NSNotification.Name("qn.screenshot.trigger"), object: nil)
+    }
     
-    /// 菜单：打开最近记录
     @objc private func onOpenRecentRecord(_ sender: NSMenuItem) {
         let recentRecords = Array(store.records.sorted(by: { $0.createdAt > $1.createdAt }).prefix(5))
         guard sender.tag < recentRecords.count else { return }

@@ -23,6 +23,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var floatingPanelController: FloatingPanelController?
     private var clipboard: ClipboardService?
     private var shortcuts: KeyboardShortcutManager?
+    private var screenshotCount = 0
+    private var screenshotPreviewController: ScreenshotPreviewController?
 
     // 公开的 store 和 bluetooth 属性供 PreferencesView 使用
     var recordStore: RecordStore!
@@ -30,7 +32,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// 应用启动回调：初始化状态栏与悬浮窗
     func applicationDidFinishLaunching(_ notification: Notification) {
+        let bundlePath = Bundle.main.bundlePath
+        let bundleID = Bundle.main.bundleIdentifier ?? "unknown"
         print("[DEBUG] 应用启动中...")
+        print("[DEBUG] 运行路径: \(bundlePath)")
+        print("[DEBUG] Bundle ID: \(bundleID)")
 
         NSApp.setActivationPolicy(.accessory)
 
@@ -102,6 +108,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         NotificationCenter.default.addObserver(self, selector: #selector(onToggleHistory(_:)), name: QuiteNoteNotification.bluetoothToggleHistory.name, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(onScreenshotTriggered), name: NSNotification.Name("qn.screenshot.trigger"), object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(onTestScreenshotTriggered), name: NSNotification.Name("qn.screenshot.test"), object: nil)
 
         shortcuts = KeyboardShortcutManager()
         shortcuts?.onTogglePanel = { [weak self] in self?.toggleFloating() }
@@ -132,7 +140,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         shortcuts?.onGlobalPaste = { [weak self] in
             self?.handleGlobalPaste()
         }
+        shortcuts?.onScreenshot = { [weak self] in
+            self?.handleScreenshot()
+        }
         shortcuts?.start()
+        
+        // 检查辅助功能权限（静默检查，不触发弹窗）
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            if !ScreenshotService.shared.checkAccessibilityPermission(prompt: false) {
+                print("[DEBUG] 警告：缺少辅助功能权限，全局快捷键可能无效")
+            }
+        }
         
         print("[DEBUG] 应用启动完成")
     }
@@ -185,5 +203,69 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// 蓝牙“唤起历史”事件处理：展开或收起悬浮窗
     @objc private func onToggleHistory(_ note: Notification) {
         toggleFloating()
+    }
+
+    @objc private func onScreenshotTriggered() {
+        handleScreenshot()
+    }
+
+    @objc private func onTestScreenshotTriggered() {
+        print("[DEBUG] 触发测试截图预览")
+        // 调用真正的截图功能
+        handleScreenshot()
+    }
+
+    /// 处理截图快捷键触发
+    private func handleScreenshot() {
+        print("[DEBUG] 快捷键回调：handleScreenshot 被调用")
+        ScreenshotService.shared.capture { [weak self] image in
+            if image == nil {
+                print("[DEBUG] 截图失败或被取消：image 为 nil")
+            }
+            guard let self = self, let image = image else { return }
+            
+            DispatchQueue.main.async {
+                self.showPreview(image: image)
+            }
+        }
+    }
+    
+    private func showPreview(image: NSImage) {
+        // 创建预览窗口
+        self.screenshotPreviewController = ScreenshotPreviewController(
+            image: image,
+            onSave: { [weak self] in
+                guard let self = self else { return }
+                self.saveScreenshotRecord(image: image)
+            },
+            onCancel: { [weak self] in
+                print("[DEBUG] 用户放弃了截图")
+                self?.screenshotPreviewController = nil
+            }
+        )
+        self.screenshotPreviewController?.show()
+    }
+    
+    /// 保存截图到记录中
+    private func saveScreenshotRecord(image: NSImage) {
+        self.screenshotCount += 1
+        let timestamp = Int(Date().timeIntervalSince1970)
+        let message = "截图 \(self.screenshotCount)"
+        let hash = "screenshot_\(timestamp)_\(self.screenshotCount)"
+        
+        // 1. 发送轻提示
+        self.recordStore.postLightHint(message)
+        
+        // 2. 创建真正的记录
+        self.recordStore.addRecord(
+            content: message,
+            hash: hash,
+            sourceApp: "Screen Capture",
+            type: .screenshot,
+            skipAI: true
+        )
+        
+        print("[DEBUG] \(message) 已保存并创建记录")
+        self.screenshotPreviewController = nil
     }
 }

@@ -7,6 +7,7 @@ enum RecordType: String, Codable, CaseIterable {
     case folder = "folder"
     case image = "image"
     case video = "video"
+    case screenshot = "screenshot"
 }
 
 /// 记录模型：标题、内容、创建时间与去重哈希
