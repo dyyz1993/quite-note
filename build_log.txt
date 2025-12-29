@@ -1,0 +1,121 @@
+warning: 'quite-note': found 12 file(s) which are unhandled; explicitly declare them as resources or exclude from the target
+    /Users/xuyingzhou/Project/study-mac-app/quite-note/Sources/QuiteNote/UI/Screenshot/UX_DESIGN_EVALUATION_REPORT.md
+    /Users/xuyingzhou/Project/study-mac-app/quite-note/Sources/QuiteNote/UI/Screenshot/CODE_FLOW_ANALYSIS.md
+    /Users/xuyingzhou/Project/study-mac-app/quite-note/Sources/QuiteNote/UI/Screenshot/RESEARCH_SUMMARY.md
+    /Users/xuyingzhou/Project/study-mac-app/quite-note/Sources/QuiteNote/UI/FloatingPanel/┌───────────────────────────────────────.ini
+    /Users/xuyingzhou/Project/study-mac-app/quite-note/Sources/QuiteNote/UI/Screenshot/CHROME_WINDOW_RESEARCH.md
+    /Users/xuyingzhou/Project/study-mac-app/quite-note/Sources/QuiteNote/UI/Screenshot/UX_TEST_REPORT.md
+    /Users/xuyingzhou/Project/study-mac-app/quite-note/Sources/QuiteNote/UI/FloatingPanel/Untitled-2.ini
+    /Users/xuyingzhou/Project/study-mac-app/quite-note/Sources/QuiteNote/UI/Screenshot/WINDOW_MERGING_GUIDE.md
+    /Users/xuyingzhou/Project/study-mac-app/quite-note/Sources/QuiteNote/UI/ScreenshotV2/FIXES.md
+    /Users/xuyingzhou/Project/study-mac-app/quite-note/Sources/QuiteNote/UI/Screenshot/COORDINATE_INVESTIGATION_REPORT.md
+    /Users/xuyingzhou/Project/study-mac-app/quite-note/Sources/QuiteNote/UI/ScreenshotV2/P0_FIXES_REPORT.md
+    /Users/xuyingzhou/Project/study-mac-app/quite-note/Sources/QuiteNote/UI/ScreenshotV2/V2_ARCHITECTURE.md
+[0/1] Planning build
+Building for production...
+[0/3] Write swift-version--58304C5D6DBC2206.txt
+[2/4] Compiling LucideIcons Lucide+iOS.swift
+[3/5] Compiling QuiteNote AIFallbackHandler.swift
+/Users/xuyingzhou/Project/study-mac-app/quite-note/Sources/QuiteNote/App/MainApp.swift:154:43: warning: variable 'self' was written to, but never read
+152 |             self?.handleGlobalPaste()
+153 |         }
+154 |         shortcuts?.onScreenshot = { [weak self] in
+    |                                           `- warning: variable 'self' was written to, but never read
+155 |             // 使用统一截图入口
+156 |             ScreenshotService.shared.startScreenshot()
+
+/Users/xuyingzhou/Project/study-mac-app/quite-note/Sources/QuiteNote/UI/FloatingPanel/Views/FloatingRootView.swift:283:36: error: type 'IconName' has no member 'bug'
+281 |                 .help("截图 (⌥⌘C)")
+282 | 
+283 |                 HoverButton(icon: .bug, size: 14) {
+    |                                    `- error: type 'IconName' has no member 'bug'
+284 |                     V2ScreenshotDebugController.show()
+285 |                 }
+
+/Users/xuyingzhou/Project/study-mac-app/quite-note/Sources/QuiteNote/UI/Screenshot/ScrollCapture/ScrollCaptureOverlayController.swift:81:13: warning: initialization of immutable value 'screenFrame' was never used; consider replacing with assignment to '_' or removing it
+ 79 |     func startCapture() {
+ 80 |         guard let screen = NSScreen.main else { return }
+ 81 |         let screenFrame = screen.frame
+    |             `- warning: initialization of immutable value 'screenFrame' was never used; consider replacing with assignment to '_' or removing it
+ 82 | 
+ 83 |         print("[DEBUG ScrollCaptureOverlayController] 开始滚动截图")
+
+/Users/xuyingzhou/Project/study-mac-app/quite-note/Sources/QuiteNote/UI/Screenshot/Services/ImageStitcher.swift:201:19: warning: immutable value 'topData' was never used; consider replacing with '_' or removing it
+199 | 
+200 |         // 获取两张区域用于比较的数据
+201 |         guard let topData = topRegion.tiffRepresentation,
+    |                   `- warning: immutable value 'topData' was never used; consider replacing with '_' or removing it
+202 |               let bottomData = bottomRegion.tiffRepresentation else {
+203 |             return 0
+
+/Users/xuyingzhou/Project/study-mac-app/quite-note/Sources/QuiteNote/UI/Screenshot/Services/ImageStitcher.swift:202:19: warning: immutable value 'bottomData' was never used; consider replacing with '_' or removing it
+200 |         // 获取两张区域用于比较的数据
+201 |         guard let topData = topRegion.tiffRepresentation,
+202 |               let bottomData = bottomRegion.tiffRepresentation else {
+    |                   `- warning: immutable value 'bottomData' was never used; consider replacing with '_' or removing it
+203 |             return 0
+204 |         }
+
+/Users/xuyingzhou/Project/study-mac-app/quite-note/Sources/QuiteNote/UI/Screenshot/Services/ImageStitcher.swift:225:13: warning: initialization of variable 'matchCount' was never used; consider replacing with assignment to '_' or removing it
+223 |         // 简化计算：使用随机采样估算相似度
+224 |         var sampleCount = 0
+225 |         var matchCount = 0
+    |             `- warning: initialization of variable 'matchCount' was never used; consider replacing with assignment to '_' or removing it
+226 |         let sampleStep = 10 // 每10个像素采样一次
+227 | 
+
+/Users/xuyingzhou/Project/study-mac-app/quite-note/Sources/QuiteNote/UI/Screenshot/Services/ImageStitcher.swift:228:13: warning: immutable value 'y' was never used; consider replacing with '_' or removing it
+226 |         let sampleStep = 10 // 每10个像素采样一次
+227 | 
+228 |         for y in stride(from: topHeight - compareHeight, to: topHeight, by: sampleStep) {
+    |             `- warning: immutable value 'y' was never used; consider replacing with '_' or removing it
+229 |             for x in stride(from: 0, to: min(topWidth, bottomWidth), by: sampleStep) {
+230 |                 // 这里应该比较实际像素值，简化版本返回估算值
+
+/Users/xuyingzhou/Project/study-mac-app/quite-note/Sources/QuiteNote/UI/Screenshot/Services/ImageStitcher.swift:229:17: warning: immutable value 'x' was never used; consider replacing with '_' or removing it
+227 | 
+228 |         for y in stride(from: topHeight - compareHeight, to: topHeight, by: sampleStep) {
+229 |             for x in stride(from: 0, to: min(topWidth, bottomWidth), by: sampleStep) {
+    |                 `- warning: immutable value 'x' was never used; consider replacing with '_' or removing it
+230 |                 // 这里应该比较实际像素值，简化版本返回估算值
+231 |                 sampleCount += 1
+
+/Users/xuyingzhou/Project/study-mac-app/quite-note/Sources/QuiteNote/UI/ScreenshotV2/Controllers/V2ScreenSelectionController.swift:248:13: warning: initialization of immutable value 'screen' was never used; consider replacing with assignment to '_' or removing it
+246 |         // 找到窗口所在的屏幕
+247 |         let windowCenter = CGPoint(x: window.bounds.midX, y: window.bounds.midY)
+248 |         let screen = V2CoordinateMapper.findScreenContaining(point: windowCenter)
+    |             `- warning: initialization of immutable value 'screen' was never used; consider replacing with assignment to '_' or removing it
+249 |             ?? NSScreen.main
+250 |             ?? NSScreen.screens.first!
+
+/Users/xuyingzhou/Project/study-mac-app/quite-note/Sources/QuiteNote/UI/ScreenshotV2/Controllers/V2SelectionPreviewController.swift:98:15: warning: call to main actor-isolated instance method 'close()' in a synchronous nonisolated context; this is an error in the Swift 6 language mode
+ 96 | 
+ 97 |     deinit {
+ 98 |         panel.close()
+    |               `- warning: call to main actor-isolated instance method 'close()' in a synchronous nonisolated context; this is an error in the Swift 6 language mode
+ 99 |     }
+100 | }
+
+AppKit.NSWindow:95:26: note: calls to instance method 'close()' from outside of its actor context are implicitly asynchronous
+  93 |     @MainActor weak open var firstResponder: NSResponder? { get }
+  94 |     open var resizeFlags: NSEvent.ModifierFlags { get }
+  95 |     @MainActor open func close()
+     |                          `- note: calls to instance method 'close()' from outside of its actor context are implicitly asynchronous
+  96 |     open var isReleasedWhenClosed: Bool { get set }
+  97 |     @available(swift, obsoleted: 3, renamed: "isReleasedWhenClosed")
+
+/Users/xuyingzhou/Project/study-mac-app/quite-note/Sources/QuiteNote/UI/ScreenshotV2/Views/V2ScreenSelectionView.swift:24:20: warning: value 'mainScreen' was defined but never used; consider replacing with boolean test
+ 22 | 
+ 23 |             // 提示信息（只在主屏幕显示）
+ 24 |             if let mainScreen = NSScreen.main {
+    |                    `- warning: value 'mainScreen' was defined but never used; consider replacing with boolean test
+ 25 |                 GeometryReader { geometry in
+ 26 |                     VStack {
+
+/Users/xuyingzhou/Project/study-mac-app/quite-note/Sources/QuiteNote/UI/ScreenshotV2/Views/V2WindowHighlightView.swift:105:19: warning: value 'primaryScreen' was defined but never used; consider replacing with boolean test
+103 |     private var overlayOpacity: Double {
+104 |         // 如果还没有设置主屏幕，返回默认 0.8
+105 |         guard let primaryScreen = primaryScreenManager.primaryScreen else {
+    |                   `- warning: value 'primaryScreen' was defined but never used; consider replacing with boolean test
+106 |             return 0.8
+107 |         }

@@ -8,12 +8,24 @@ final class ScreenshotService {
     private let logger = Logger(subsystem: "com.quitenote.app.dev", category: "ScreenshotService")
 
     // 用于通知模式的临时存储
-    private var pendingCompletion: ((NSImage?, CGRect?) -> Void)?
+    private var pendingCompletion: ((NSImage?, CGRect?, NSScreen?) -> Void)?
 
-    // ⚠️ 全局强引用，确保 window detection controller 不会被释放
-    nonisolated(unsafe) static var activeWindowDetectionController: WindowDetectionController?
+    // 截图计数器
+    private var screenshotCount = 0
+
+    // 弱引用 RecordStore，用于保存截图记录
+    private weak var recordStore: RecordStore?
+
+    // ⚠️ 关键：用于在截图开始前隐藏主窗口，截图结束后恢复
+    var onWillStartScreenshot: (() -> Void)?
+    var onDidFinishScreenshot: (() -> Void)?
 
     private init() {}
+
+    /// 设置 RecordStore（需要在应用启动时调用）
+    func attachRecordStore(_ store: RecordStore) {
+        self.recordStore = store
+    }
     
     /// 检查是否有辅助功能权限（用于全局快捷键监听）
     /// - Parameter prompt: 是否在未获得权限时弹出系统申请弹窗
@@ -40,9 +52,21 @@ final class ScreenshotService {
     /// - Returns: 是否已获得权限
     func checkAndRequestPermission() -> Bool {
         if #available(macOS 10.15, *) {
-            let granted = CGRequestScreenCaptureAccess()
-            logger.debug("请求屏幕录制权限结果: \(granted)")
-            return granted
+            let hasPreflight = CGPreflightScreenCaptureAccess()
+            print("[DEBUG ScreenshotService] 权限检查 - CGPreflightScreenCaptureAccess: \(hasPreflight)")
+
+            if !hasPreflight {
+                let granted = CGRequestScreenCaptureAccess()
+                print("[DEBUG ScreenshotService] 权限请求 - CGRequestScreenCaptureAccess: \(granted)")
+
+                if !granted {
+                    print("[DEBUG ScreenshotService] ❌ 屏幕录制权限被拒绝，请到系统设置中手动开启")
+                    return false
+                }
+            }
+
+            print("[DEBUG ScreenshotService] ✅ 屏幕录制权限已获取")
+            return true
         }
         return true
     }
@@ -132,84 +156,76 @@ final class ScreenshotService {
     }
 
     /// 带窗口识别的截图流程（阶段0）
-    /// - Parameter completion: 完成回调，返回 (图片, 初始裁剪区域)
-    func captureWithWindowDetection(completion: @escaping (NSImage?, CGRect?) -> Void) {
-        print("[DEBUG ScreenshotService] captureWithWindowDetection 被调用")
-        logger.info("启动窗口识别截图流程...")
+    // MARK: - 统一截图入口
 
-        // 1. 权限检查
-        guard checkAndRequestPermission() else {
-            print("[DEBUG ScreenshotService] 权限检查失败")
-            logger.error("截图失败：未获得屏幕录制权限")
-            completion(nil, nil)
-            return
-        }
-        print("[DEBUG ScreenshotService] 权限检查通过")
+    /// 统一的截图入口 - 处理完整的截图流程
+    /// 这是唯一应该被调用的公开截图方法
+    func startScreenshot() {
+        print("[DEBUG ScreenshotService] ========== 启动统一截图流程（V2 静态模式） ==========")
 
-        // 2. 在主线程创建窗口识别控制器
-        if Thread.isMainThread {
-            print("[DEBUG ScreenshotService] 在主线程，直接创建控制器")
-            createAndShowController(completion: completion)
-        } else {
-            print("[DEBUG ScreenshotService] 不在主线程，切换到主线程")
-            DispatchQueue.main.sync { [weak self] in
-                self?.createAndShowController(completion: completion)
-            }
+        // ⚠️ 修复：调用设置好回调的 V2 截图方法
+        Task { @MainActor in
+            startV2Screenshot()
         }
     }
 
-    private func createAndShowController(completion: @escaping (NSImage?, CGRect?) -> Void) {
-        print("[DEBUG ScreenshotService] createAndShowController 被调用")
+    /// 启动 V2 静态截图流程
+    @MainActor
+    func startV2Screenshot() {
+        print("[DEBUG ScreenshotService] 启动 V2 静态截图流程")
 
-        // 使用实例方法 + selector 模式避免闭包类型推断问题
-        pendingCompletion = completion
+        // ⚠️ 修复：即使权限被拒绝也继续，降级到基本截图
+        let hasPermission = checkAndRequestPermission()
 
-        let notificationName = Notification.Name("qn.screenshot.windowSelection")
-        print("[DEBUG ScreenshotService] 通知名: \(notificationName.rawValue)")
+        if !hasPermission {
+            print("[WARN ScreenshotService] ⚠️ 没有屏幕录制权限，窗口识别功能不可用")
+            print("[WARN ScreenshotService] 提示：请在「系统设置 > 隐私与安全性 > 屏幕录制」中授权")
+            // ⚠️ 继续执行，而不是 return
+        }
 
-        // 使用 #selector 避免闭包
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleWindowSelectionNotification(_:)),
-            name: notificationName,
-            object: nil
+        let controller = V2CaptureController.shared
+
+        // ⚠️ 关键：设置回调
+        controller.onComplete = { [weak self] image in
+            print("[DEBUG ScreenshotService] V2 截图完成，准备保存")
+            self?.saveScreenshotRecord(image: image)
+        }
+
+        controller.onCancel = {
+            print("[DEBUG ScreenshotService] V2 静态截图已取消")
+        }
+        
+        // ⚠️ 传递隐藏/显示主窗口的回调
+        controller.onWillStart = { [weak self] in
+            self?.onWillStartScreenshot?()
+        }
+        
+        controller.onDidFinish = { [weak self] in
+            self?.onDidFinishScreenshot?()
+        }
+
+        controller.startCapture()
+    }
+
+    /// 保存截图到记录中
+    private func saveScreenshotRecord(image: NSImage) {
+        self.screenshotCount += 1
+        let timestamp = Int(Date().timeIntervalSince1970)
+        let message = "截图 \(self.screenshotCount)"
+        let hash = "screenshot_\(timestamp)_\(self.screenshotCount)"
+
+        // 1. 发送轻提示
+        self.recordStore?.postLightHint(message)
+
+        // 2. 创建真正的记录
+        self.recordStore?.addRecord(
+            content: message,
+            hash: hash,
+            sourceApp: "Screen Capture",
+            type: .screenshot,
+            skipAI: true
         )
-        print("[DEBUG ScreenshotService] 已添加通知观察者")
 
-        // 创建控制器并传入通知名
-        print("[DEBUG ScreenshotService] 即将创建 WindowDetectionController")
-        let controller = WindowDetectionController.createWithNotification(notificationName: notificationName)
-        print("[DEBUG ScreenshotService] WindowDetectionController 已创建，准备 show")
-
-        // ⚠️ 关键修复：使用全局静态变量保持强引用，防止 controller 被释放
-        Self.activeWindowDetectionController = controller
-        print("[DEBUG ScreenshotService] controller 已保存到全局引用")
-
-        controller.show()
-        print("[DEBUG ScreenshotService] controller.show() 已调用")
-    }
-
-    @objc private func handleWindowSelectionNotification(_ notification: Notification) {
-        print("[DEBUG ScreenshotService] 收到窗口选择通知")
-
-        // 移除观察者
-        NotificationCenter.default.removeObserver(self, name: notification.name, object: nil)
-
-        guard let completion = pendingCompletion else { return }
-        pendingCompletion = nil
-
-        if let image = notification.userInfo?["image"] as? NSImage,
-           let rect = notification.userInfo?["rect"] as? CGRect {
-            let cropRect = WindowInfoService.shared.screenToImageRect(
-                rect,
-                imageSize: image.size,
-                screenSize: NSScreen.main?.frame.size ?? .zero
-            )
-            print("[DEBUG] 窗口选择完成，区域: \(cropRect)")
-            completion(image, cropRect)
-        } else if notification.userInfo?["cancelled"] as? Bool == true {
-            print("[DEBUG] 窗口识别已取消")
-            completion(nil, nil)
-        }
+        print("[DEBUG ScreenshotService] \(message) 已保存并创建记录")
     }
 }

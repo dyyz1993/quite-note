@@ -6,7 +6,6 @@ struct ScreenshotSettingsTab: View {
     @State private var isRecording = false
     @State private var screenCaptureGranted = false
     @State private var accessibilityGranted = false
-    @State private var isWindowHighlightEnabled = false
 
     // 定时器，每 2 秒刷新一次权限状态
     private let timer = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
@@ -19,11 +18,9 @@ struct ScreenshotSettingsTab: View {
                 shortcutSection
                 behaviorSection
                 previewSection
-                windowHighlightSection  // ✅ 新增：窗口高亮测试
             } else {
                 permissionRequiredHint
                 previewSection // 即使没有权限也允许测试预览 UI
-                windowHighlightSection  // ✅ 新增：窗口高亮测试（不需要权限）
             }
         }
         .onAppear {
@@ -32,13 +29,6 @@ struct ScreenshotSettingsTab: View {
         }
         .onReceive(timer) { _ in
             updatePermissionStatus()
-        }
-        .onDisappear {
-            // 页面关闭时停止窗口高亮
-            if isWindowHighlightEnabled {
-                WindowHighlightController.shared.stopHighlight()
-                isWindowHighlightEnabled = false
-            }
         }
     }
     
@@ -58,7 +48,8 @@ struct ScreenshotSettingsTab: View {
                 .foregroundColor(.themeTextTertiary)
 
             Button(action: {
-                NotificationCenter.default.post(name: NSNotification.Name("qn.screenshot.test"), object: nil)
+                // 使用统一截图入口进行测试
+                ScreenshotService.shared.startScreenshot()
             }) {
                 HStack(spacing: 8) {
                     LucideView(name: .eye, size: 14, color: .white)
@@ -79,50 +70,6 @@ struct ScreenshotSettingsTab: View {
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.themeBorderSubtle))
     }
 
-    // MARK: - Window Highlight Section (✅ 新增)
-
-    private var windowHighlightSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(spacing: 8) {
-                LucideView(name: .square, size: 16, color: .themeBlue400)
-                Text("窗口高亮测试")
-                    .font(.themeH2)
-                    .foregroundColor(.themeTextPrimary)
-            }
-
-            Text("无需截图权限即可测试窗口高亮功能，验证多屏幕和样式效果。")
-                .font(.themeCaption)
-                .foregroundColor(.themeTextTertiary)
-
-            Button(action: {
-                if isWindowHighlightEnabled {
-                    WindowHighlightController.shared.stopHighlight()
-                    isWindowHighlightEnabled = false
-                } else {
-                    WindowHighlightController.shared.startHighlight()
-                    isWindowHighlightEnabled = true
-                }
-            }) {
-                HStack(spacing: 8) {
-                    Image(systemName: isWindowHighlightEnabled ? "xmark.circle" : "square")
-                        .foregroundColor(.white)
-                    Text(isWindowHighlightEnabled ? "停止高亮" : "启动高亮")
-                        .font(.themeBody)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .background(isWindowHighlightEnabled ? Color.themeStatusError : Color.themeStatusSuccess)
-                .cornerRadius(8)
-                .foregroundColor(.white)
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(20)
-        .background(Color.themeCard)
-        .cornerRadius(12)
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.themeBorderSubtle))
-    }
-    
     private func autoRequestPermissions() {
         // 1. 更新当前状态
         updatePermissionStatus()

@@ -7,7 +7,11 @@ final class KeyboardShortcutManager {
     private var globalMonitor: Any?
     private var localMonitor: Any?
     private var pasteMonitor: Any?
-    
+
+    // ⚠️ 防抖相关：防止快捷键重复触发
+    private var lastScreenshotTriggerTime: Date?
+    private let screenshotDebounceInterval: TimeInterval = 0.3  // 300ms防抖间隔
+
     // 回调函数
     var onTogglePanel: (() -> Void)?
     var onToggleAI: (() -> Void)?
@@ -19,7 +23,27 @@ final class KeyboardShortcutManager {
     var onQuit: (() -> Void)?
     var onGlobalPaste: (() -> Void)?
     var onScreenshot: (() -> Void)?
-    
+
+    /// ⚠️ 防抖触发截图回调
+    /// 防止全局监听和应用内监听同时触发导致的重复调用
+    private func triggerScreenshot() {
+        let now = Date()
+
+        // 检查是否在防抖间隔内
+        if let lastTime = lastScreenshotTriggerTime,
+           now.timeIntervalSince(lastTime) < screenshotDebounceInterval {
+            logger.info("截图快捷键触发被防抖逻辑拦截（距离上次触发仅 \(now.timeIntervalSince(lastTime))s）")
+            return
+        }
+
+        // 更新最后触发时间
+        lastScreenshotTriggerTime = now
+        logger.info("截图快捷键触发成功")
+
+        // 调用回调
+        onScreenshot?()
+    }
+
     /// 启动全局快捷键监听
     func start() {
         logger.info("启动键盘快捷键监听")
@@ -68,15 +92,15 @@ final class KeyboardShortcutManager {
             let prefShortcut = PreferencesManager.shared.screenshotShortcut.lowercased()
             let prefFlagsRaw = UInt(PreferencesManager.shared.screenshotShortcutFlags)
             let prefFlags = NSEvent.ModifierFlags(rawValue: prefFlagsRaw)
-            
+
             // 只保留关键修饰键进行比较 (cmd, opt, shift, ctrl)
             let relevantFlags: NSEvent.ModifierFlags = [.command, .option, .shift, .control]
             let currentFlags = flags.intersection(relevantFlags)
             let targetFlags = prefFlags.intersection(relevantFlags)
-            
+
             if currentFlags == targetFlags && char == prefShortcut {
                 self.logger.info("全局快捷键触发: 截图")
-                self.onScreenshot?()
+                self.triggerScreenshot()  // ⚠️ 使用防抖方法
             }
         }
         
@@ -96,7 +120,7 @@ final class KeyboardShortcutManager {
 
             if currentFlags == targetFlags && char == prefShortcut {
                 self.logger.info("应用内快捷键触发: 截图")
-                self.onScreenshot?()
+                self.triggerScreenshot()  // ⚠️ 使用防抖方法
                 return nil // 消费事件
             }
             

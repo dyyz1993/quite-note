@@ -2,6 +2,45 @@ import Foundation
 import CoreGraphics
 import AppKit
 
+// MARK: - Window Info Model
+
+/// 窗口信息
+struct WindowInfo: Identifiable {
+    let id = UUID()
+    let windowNumber: Int
+    let windowID: CGWindowID
+    let bounds: CGRect
+    let ownerName: String
+    let windowName: String?
+    let layer: Int
+    let alpha: Double
+    let isOnscreen: Bool
+
+    /// 窗口是否可见
+    var isVisible: Bool {
+        return alpha > 0.01 && isOnscreen
+    }
+
+    /// 窗口是否包含指定点
+    func contains(_ point: CGPoint) -> Bool {
+        return bounds.contains(point)
+    }
+
+    /// 显示标题（用于调试）
+    var displayTitle: String {
+        if let windowName = windowName, !windowName.isEmpty {
+            return "\(ownerName) - \(windowName)"
+        }
+        return ownerName
+    }
+}
+
+/// 窗口信息错误
+enum WindowInfoError: Error {
+    case screenCaptureAccessRequired
+    case noWindowsFound
+}
+
 /// 窗口信息服务 - 获取和管理窗口信息
 class WindowInfoService {
     static let shared = WindowInfoService()
@@ -43,6 +82,13 @@ class WindowInfoService {
             let ownerName = windowInfo[kCGWindowOwnerName as String] as? String ?? "Unknown"
             let windowName = windowInfo[kCGWindowName as String] as? String
             let layer = windowInfo[kCGWindowLayer as String] as? Int ?? 0
+            
+            // ⚠️ 过滤掉自己的窗口 (QuiteNote)
+            // 这里的 ownerName 可能是 "QuiteNote" 或 "quite-note"
+            if ownerName == "QuiteNote" || ownerName == "quite-note" {
+                continue
+            }
+            
             let alpha = windowInfo[kCGWindowAlpha as String] as? Double ?? 1.0
             let isOnscreen = windowInfo[kCGWindowIsOnscreen as String] as? Bool ?? true
 

@@ -78,6 +78,7 @@ EOF
 }
 
 # 处理命令行参数
+SKIP_BUILD=false
 case "${1:-}" in
     --check-permissions)
         checkPermissions "$BUNDLE_ID"
@@ -87,11 +88,19 @@ case "${1:-}" in
         showUsage
         exit 0
         ;;
+    --no-build)
+        SKIP_BUILD=true
+        echo "跳过编译，只更新应用包..."
+        ;;
 esac
 
 # 构建 release 版本
-echo "正在编译应用..."
-swift build -c release --product QuiteNote
+if [ "$SKIP_BUILD" = false ]; then
+    echo "正在编译应用..."
+    swift build -c release --product QuiteNote
+else
+    echo "使用已编译的二进制文件..."
+fi
 
 # 创建应用包结构
 APP_PATH="$APP_NAME.app"
@@ -100,26 +109,53 @@ MACOS_DIR="$CONTENTS/MacOS"
 RESOURCES_DIR="$CONTENTS/Resources"
 
 echo "创建应用包结构..."
-rm -rf "$APP_PATH"
+
+# 确保目录存在
 mkdir -p "$MACOS_DIR"
 mkdir -p "$RESOURCES_DIR"
 
+# ⚠️ 关键修复：如果应用已存在，只更新二进制文件，不删除整个包
+# 这样可以保留 macOS 的权限设置
+if [ -d "$APP_PATH" ]; then
+    echo "应用包已存在，更新内容（保留权限）..."
+    # 只删除二进制文件，确保重新复制
+    rm -f "$MACOS_DIR/$EXECUTABLE_NAME"
+fi
+
 # 复制二进制文件
 echo "复制二进制文件..."
+BINARY_CHANGED=false
+
 if [ -f ".build/apple/Products/Release/$EXECUTABLE_NAME" ]; then
-    cp ".build/apple/Products/Release/$EXECUTABLE_NAME" "$MACOS_DIR/"
+    SOURCE_BIN=".build/apple/Products/Release/$EXECUTABLE_NAME"
 elif [ -f ".build/release/$EXECUTABLE_NAME" ]; then
-    cp ".build/release/$EXECUTABLE_NAME" "$MACOS_DIR/"
+    SOURCE_BIN=".build/release/$EXECUTABLE_NAME"
 else
     # 尝试在所有可能的路径中查找最新的二进制文件
-    FOUND_BIN=$(find .build -name "$EXECUTABLE_NAME" -type f -path "*/release/*" | head -n 1)
-    if [ -n "$FOUND_BIN" ]; then
-        echo "在 $FOUND_BIN 找到二进制文件"
-        cp "$FOUND_BIN" "$MACOS_DIR/"
-    else
+    SOURCE_BIN=$(find .build -name "$EXECUTABLE_NAME" -type f -path "*/release/*" | head -n 1)
+    if [ -z "$SOURCE_BIN" ]; then
         echo "错误：找不到编译好的二进制文件 $EXECUTABLE_NAME"
         exit 1
     fi
+    echo "在 $SOURCE_BIN 找到二进制文件"
+fi
+
+# 检查二进制文件是否变化（使用 MD5 比较内容）
+if [ -f "$MACOS_DIR/$EXECUTABLE_NAME" ]; then
+    SOURCE_HASH=$(md5 -q "$SOURCE_BIN")
+    TARGET_HASH=$(md5 -q "$MACOS_DIR/$EXECUTABLE_NAME")
+
+    if [ "$SOURCE_HASH" != "$TARGET_HASH" ]; then
+        echo "二进制文件已变化（MD5: $SOURCE_HASH），需要更新"
+        cp "$SOURCE_BIN" "$MACOS_DIR/"
+        BINARY_CHANGED=true
+    else
+        echo "二进制文件未变化（MD5: $SOURCE_HASH），跳过复制"
+    fi
+else
+    echo "首次复制二进制文件"
+    cp "$SOURCE_BIN" "$MACOS_DIR/"
+    BINARY_CHANGED=true
 fi
 
 # 复制图标文件
@@ -149,12 +185,13 @@ fi
 
 # 复制 LucideIcons 资源
 # 直接复制资源文件到 Resources 目录，避免 bundle 签名问题
-if [ -d ".build/arm64-apple-macosx/release/LucideIcons_LucideIcons.bundle/icons.xcassets" ]; then
-    echo "复制 LucideIcons 资源到 Resources 目录..."
-    cp -R ".build/arm64-apple-macosx/release/LucideIcons_LucideIcons.bundle/icons.xcassets" "$RESOURCES_DIR/"
-elif [ -d ".build/release/LucideIcons_LucideIcons.bundle/icons.xcassets" ]; then
-    echo "复制 LucideIcons 资源到 Resources 目录 (通用路径)..."
-    cp -R ".build/release/LucideIcons_LucideIcons.bundle/icons.xcassets" "$RESOURCES_DIR/"
+LUCIDE_BUNDLE_PATH=$(find .build -name "LucideIcons_LucideIcons.bundle" -type d -path "*/release/*" | head -n 1)
+
+if [ -n "$LUCIDE_BUNDLE_PATH" ] && [ -d "$LUCIDE_BUNDLE_PATH/icons.xcassets" ]; then
+    echo "在 $LUCIDE_BUNDLE_PATH 找到 LucideIcons 资源，复制到 Resources 目录..."
+    # 先删除旧的，避免权限问题
+    rm -rf "$RESOURCES_DIR/icons.xcassets"
+    cp -R "$LUCIDE_BUNDLE_PATH/icons.xcassets" "$RESOURCES_DIR/"
 else
     echo "警告：未找到 LucideIcons 资源，请检查构建配置。"
 fi
@@ -210,17 +247,18 @@ EOF
 # 设置权限
 chmod +x "$MACOS_DIR/$EXECUTABLE_NAME"
 
-# 代码签名 (使用临时签名，避免"损坏"问题)
-echo "正在对应用进行代码签名..."
-if command -v codesign >/dev/null 2>&1; then
-    # 签名可执行文件
-    codesign --force --sign - "$MACOS_DIR/$EXECUTABLE_NAME"
-    
-    # 最后签名整个应用包
-    codesign --force --sign - "$APP_PATH"
-    echo "代码签名完成"
+# 代码签名 (只在二进制变化时重新签名)
+if [ "$BINARY_CHANGED" = true ]; then
+    echo "二进制文件已变化，正在重新签名..."
+
+    if command -v codesign >/dev/null 2>&1; then
+        codesign --deep --sign - "$APP_PATH" --identifier "$BUNDLE_ID"
+        echo "代码签名完成 (Bundle ID: $BUNDLE_ID)"
+    else
+        echo "警告：未找到 codesign 工具，跳过代码签名"
+    fi
 else
-    echo "警告：未找到 codesign 工具，跳过代码签名"
+    echo "二进制文件未变化，跳过签名（保留权限）"
 fi
 
 # 检查并引导权限设置

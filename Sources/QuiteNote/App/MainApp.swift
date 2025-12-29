@@ -23,8 +23,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var floatingPanelController: FloatingPanelController?
     private var clipboard: ClipboardService?
     private var shortcuts: KeyboardShortcutManager?
-    private var screenshotCount = 0
-    private var screenshotPreviewController: ScreenshotPreviewController?
 
     // 公开的 store 和 bluetooth 属性供 PreferencesView 使用
     var recordStore: RecordStore!
@@ -50,6 +48,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let heatmapVM = HeatmapViewModel(store: store)
         let ai = AIService()
         store.attachAI(service: ai)
+
+        // 将 RecordStore 注入到 ScreenshotService
+        ScreenshotService.shared.attachRecordStore(store)
+        
+        // ⚠️ 配置截图时的窗口隐藏逻辑
+        ScreenshotService.shared.onWillStartScreenshot = { [weak self] in
+            print("[DEBUG AppDelegate] 截图即将开始，隐藏悬浮窗")
+            self?.floatingPanelController?.hideImmediately()
+        }
+        ScreenshotService.shared.onDidFinishScreenshot = { [weak self] in
+            print("[DEBUG AppDelegate] 截图已结束，恢复悬浮窗")
+            self?.floatingPanelController?.show()
+        }
 
         // 在 LucideDiagnostics.run() 之前，尝试显式加载 LucideIcons 框架的 bundle
         // 使用 Bundle.main.bundleURL 直接构建到 Contents/Frameworks 的路径
@@ -108,8 +119,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         NotificationCenter.default.addObserver(self, selector: #selector(onToggleHistory(_:)), name: QuiteNoteNotification.bluetoothToggleHistory.name, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(onBluetoothScreenshot), name: QuiteNoteNotification.bluetoothCaptureScreenshot.name, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(onScreenshotTriggered), name: NSNotification.Name("qn.screenshot.trigger"), object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(onTestScreenshotTriggered), name: NSNotification.Name("qn.screenshot.test"), object: nil)
 
         shortcuts = KeyboardShortcutManager()
         shortcuts?.onTogglePanel = { [weak self] in self?.toggleFloating() }
@@ -134,14 +145,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         shortcuts?.onOpenSettings = { [weak self] in
             self?.floatingPanelController?.showSettings()
         }
-        shortcuts?.onQuit = { 
+        shortcuts?.onQuit = {
             NSApp.terminate(nil)
         }
         shortcuts?.onGlobalPaste = { [weak self] in
             self?.handleGlobalPaste()
         }
         shortcuts?.onScreenshot = { [weak self] in
-            self?.handleScreenshot()
+            // 使用统一截图入口
+            ScreenshotService.shared.startScreenshot()
         }
         shortcuts?.start()
         
@@ -200,74 +212,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// 蓝牙“唤起历史”事件处理：展开或收起悬浮窗
+    /// 蓝牙"唤起历史"事件处理：展开或收起悬浮窗
     @objc private func onToggleHistory(_ note: Notification) {
         toggleFloating()
     }
 
+    /// 蓝牙按钮截图事件处理：触发截图功能
+    @objc private func onBluetoothScreenshot() {
+        print("[DEBUG] 蓝牙按钮触发截图")
+        // 使用统一截图入口
+        ScreenshotService.shared.startScreenshot()
+    }
+
     @objc private func onScreenshotTriggered() {
-        handleScreenshot()
-    }
-
-    @objc private func onTestScreenshotTriggered() {
-        print("[DEBUG] 触发测试截图预览")
-        // 调用真正的截图功能
-        handleScreenshot()
-    }
-
-    /// 处理截图快捷键触发
-    private func handleScreenshot() {
-        print("[DEBUG] 快捷键回调：handleScreenshot 被调用")
-        // 使用新的窗口识别截图流程
-        ScreenshotService.shared.captureWithWindowDetection { [weak self] image, cropRect in
-            if image == nil {
-                print("[DEBUG] 截图失败或被取消：image 为 nil")
-            }
-            guard let self = self, let image = image else { return }
-
-            DispatchQueue.main.async {
-                self.showPreview(image: image, initialCropRect: cropRect)
-            }
-        }
-    }
-
-    private func showPreview(image: NSImage, initialCropRect: CGRect? = nil) {
-        // 创建预览窗口
-        self.screenshotPreviewController = ScreenshotPreviewController(
-            image: image,
-            initialCropRect: initialCropRect,
-            onSave: { [weak self] in
-                guard let self = self else { return }
-                self.saveScreenshotRecord(image: image)
-            },
-            onCancel: { [weak self] in
-                print("[DEBUG] 用户放弃了截图")
-                self?.screenshotPreviewController = nil
-            }
-        )
-        self.screenshotPreviewController?.show()
-    }
-    
-    /// 保存截图到记录中
-    private func saveScreenshotRecord(image: NSImage) {
-        self.screenshotCount += 1
-        let timestamp = Int(Date().timeIntervalSince1970)
-        let message = "截图 \(self.screenshotCount)"
-        let hash = "screenshot_\(timestamp)_\(self.screenshotCount)"
-        
-        // 1. 发送轻提示
-        self.recordStore.postLightHint(message)
-        
-        // 2. 创建真正的记录
-        self.recordStore.addRecord(
-            content: message,
-            hash: hash,
-            sourceApp: "Screen Capture",
-            type: .screenshot,
-            skipAI: true
-        )
-        
-        print("[DEBUG] \(message) 已保存并创建记录")
-        self.screenshotPreviewController = nil
+        print("[DEBUG] 快捷键/菜单栏触发截图")
+        // 使用统一截图入口
+        ScreenshotService.shared.startScreenshot()
     }
 }

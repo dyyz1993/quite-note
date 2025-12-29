@@ -58,6 +58,8 @@ final class BluetoothManager: NSObject, ObservableObject {
             QuiteNoteNotification.post(.bluetoothCaptureClipboard, object: seq)
         case 0x02:
             QuiteNoteNotification.post(.bluetoothToggleHistory, object: seq)
+        case 0x03:
+            QuiteNoteNotification.post(.bluetoothCaptureScreenshot, object: seq)
         default:
             break
         }

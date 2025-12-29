@@ -60,6 +60,7 @@ enum IconName: String {
     case image = "image"
     case video = "video"
     case camera = "camera"
+    case bug = "bug"
     case keyboard = "keyboard"
     case shield = "shield"
     case square = "square"

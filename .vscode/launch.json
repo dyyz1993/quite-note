@@ -1,0 +1,19 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Build and Launch App (F5)",
+            "type": "node",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "runtimeExecutable": "bash",
+            "runtimeArgs": [
+                "./build-app.sh"
+            ],
+            "presentation": {
+                "hidden": true
+            },
+            "internalConsoleOptions": "neverOpen"
+        }
+    ]
+}

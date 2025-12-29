@@ -127,3 +127,4 @@ Custom notification names for cross-component communication:
 - For multi-monitor setups, use "Force show & center" if window is lost
 - AI summarization is async; UI updates must be on main thread
 - CoreData uses auto-merge policy for concurrent updates
+- 每次要去开发构建build-app.sh要用这个,禁止swift build

@@ -347,13 +347,22 @@ final class FloatingPanelController {
 
     /// 隐藏悬浮窗，带缩放+淡出动效
     func hide() {
-        // 标记为用户主动隐藏，并清理可能导致再次前置的定时器/状态
+        // 标记为用户主动隐藏
         userHidden = true
+        hideInternal(withAnimation: animationsEnabled)
+    }
+
+    /// 立即隐藏悬浮窗，无动画（用于截图等场景）
+    func hideImmediately() {
+        hideInternal(withAnimation: false)
+    }
+
+    private func hideInternal(withAnimation: Bool) {
         hoverActive = false
         revertTimer?.invalidate(); revertTimer = nil
         launchEnsurer?.invalidate(); launchEnsurer = nil
 
-        if animationsEnabled {
+        if withAnimation {
             NSAnimationContext.runAnimationGroup { ctx in
                 ctx.duration = ThemeDuration._500.rawValue
                 ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.4, 0.0, 0.6, 1.0)

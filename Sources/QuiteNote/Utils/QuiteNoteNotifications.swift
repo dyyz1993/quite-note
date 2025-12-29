@@ -11,6 +11,9 @@ enum QuiteNoteNotification {
     /// 蓝牙按钮切换历史面板
     case bluetoothToggleHistory
 
+    /// 蓝牙按钮触发截图
+    case bluetoothCaptureScreenshot
+
     // MARK: - UI 相关
 
     /// 显示设置面板
@@ -67,6 +70,8 @@ enum QuiteNoteNotification {
             return Notification.Name("qn.bluetooth.capture.clipboard")
         case .bluetoothToggleHistory:
             return Notification.Name("qn.bluetooth.toggle.history")
+        case .bluetoothCaptureScreenshot:
+            return Notification.Name("qn.bluetooth.capture.screenshot")
         case .showSettings:
             return Notification.Name("qn.ui.showSettings")
         case .windowLockChanged:
