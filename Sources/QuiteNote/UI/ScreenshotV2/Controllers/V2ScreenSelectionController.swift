@@ -154,6 +154,9 @@ class V2ScreenSelectionController: NSObject {
             let isPrimary = (screen == targetScreen)
             if isPrimary {
                 panel.makeKeyAndOrderFront(nil)
+            } else {
+                // ✨ 修复：确保非主屏幕面板也保持显示，避免背景消失
+                panel.orderFront(nil)
             }
         }
     }

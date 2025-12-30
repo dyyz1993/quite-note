@@ -47,15 +47,16 @@ class V2PrimaryScreenStateManager: ObservableObject {
     /// 更新当前工具
     func updateTool(_ tool: AnnotationTool) {
         selectedTool = tool
-        
+
+        // ✨ 切换工具时，如果正在编辑文本，需要先完成编辑
+        finishTextEdit()
+
         // 如果切换到选择工具，默认选中最后一个元素
         if tool == .cursor {
             selectedElementId = elements.last?.id
         } else {
-            // 切换到其他工具时，清除选中状态（除非是正在编辑文字）
-            if editingTextId == nil {
-                selectedElementId = nil
-            }
+            // 切换到其他工具时，清除选中状态
+            selectedElementId = nil
         }
     }
     
@@ -110,6 +111,9 @@ class V2PrimaryScreenStateManager: ObservableObject {
         stepCounter = 1
         selectedElementId = nil
         editingTextId = nil
+
+        // 关闭文本编辑面板
+        closeTextEditPanel()
     }
 
     /// 更新主屏幕
@@ -200,5 +204,30 @@ class V2PrimaryScreenStateManager: ObservableObject {
             elements.removeAll { $0.id == id }
             selectedElementId = nil
         }
+    }
+
+    // MARK: - 文本编辑面板管理
+
+    /// 关闭文本编辑面板（面板由 TextEditPanelRepresentable 管理）
+    func closeTextEditPanel() {
+        editingTextId = nil
+    }
+
+    /// ✨ 完成文本编辑：检查空文本并清理
+    /// 当用户退出文本编辑时调用，如果文本为空则删除该元素
+    func finishTextEdit() {
+        guard let editingId = editingTextId else { return }
+
+        // 检查当前编辑的文本是否为空
+        if let index = elements.firstIndex(where: { $0.id == editingId }) {
+            let element = elements[index]
+            if element.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                // 如果文本为空，移除该元素
+                elements.remove(at: index)
+            }
+        }
+
+        // 清除编辑状态
+        editingTextId = nil
     }
 }

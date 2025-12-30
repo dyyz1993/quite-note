@@ -61,7 +61,17 @@
       "Bash(osascript:*)",
       "Bash(cgfloat:*)",
       "Bash(tccutil list:*)",
-      "Bash(defaults read:*)"
+      "Bash(defaults read:*)",
+      "Bash(swifyt:*)",
+      "Bash(ls:*)",
+      "Bash(/usr/bin/tail -50 /tmp/quitenote.log)",
+      "Bash(/usr/bin/ls:*)",
+      "Bash(if [ -f /tmp/quitenote.log ])",
+      "Bash(then cat /tmp/quitenote.log)",
+      "Bash(/usr/bin/tail:*)",
+      "Bash(else echo 文件不存在，查找中...)",
+      "Bash(sh -c 'cat /tmp/quitenote.log 2>/dev/null | tail -100')",
+      "Bash(/usr/bin/bash:*)"
     ],
     "deny": [],
     "ask": []

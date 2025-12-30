@@ -132,8 +132,21 @@ struct V2AnnotationCanvas: View {
         
         if element.tool == .text {
             let point = element.points.first ?? .zero
-            let width: CGFloat = element.text.isEmpty ? 100 : CGFloat(element.text.count * 12 + 20)
-            return CGRect(x: point.x, y: point.y, width: width, height: element.fontSize * 1.5)
+            // ✨ 计算文本实际尺寸
+            // 计算行数（按换行符分割）
+            let lines = element.text.components(separatedBy: .newlines)
+            let lineCount = max(1, lines.count)
+
+            // 计算宽度：取最长的一行
+            let maxLineLength = lines.map { $0.count }.max() ?? 0
+            let charWidth = element.fontSize * 0.6  // 粗略估计字符宽度
+            let width = max(100, CGFloat(maxLineLength) * charWidth + 20)
+
+            // 计算高度：行数 * 行高
+            let lineHeight = element.fontSize * 1.3
+            let height = min(200, max(50, CGFloat(lineCount) * lineHeight))
+
+            return CGRect(x: point.x, y: point.y, width: width, height: height)
         }
 
         // 其他工具使用原有逻辑

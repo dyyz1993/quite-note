@@ -40,6 +40,9 @@ struct V2ScreenshotDebugView: View {
     
     /// 订阅主屏幕状态变化
     @StateObject private var primaryScreenManager = V2PrimaryScreenStateManager.shared
+
+    /// ✨ 文本编辑焦点状态（必须在同一视图内）
+    @FocusState private var isTextEditingFocused: Bool
     
     /// 动态计算是否是主屏幕（响应鼠标移动）
     private var isCurrentlyPrimary: Bool {
@@ -605,14 +608,16 @@ struct V2ScreenshotDebugView: View {
                 
                 Spacer()
                 
-                Button(action: { 
+                Button(action: {
                     if primaryScreenManager.isEditing {
+                        // ✨ 如果正在编辑文本，先完成编辑
+                        primaryScreenManager.finishTextEdit()
                         // 如果在编辑模式，ESC 返回选区模式
                         primaryScreenManager.setEditing(false)
                         addLog("ESC - Back to Selection Mode")
                     } else {
                         // 否则关闭截图
-                        V2ScreenshotDebugController.close() 
+                        V2ScreenshotDebugController.close()
                     }
                 }) {
                     Text(primaryScreenManager.isEditing ? "Back (ESC)" : "Close (ESC)")
@@ -720,10 +725,22 @@ struct V2ScreenshotDebugView: View {
         
         if element.tool == .text {
             let point = element.points.first ?? .zero
-            // 给文本一个预估的点击区域 (300x40 是 TextField 的默认大小)
-            // 实际宽度可以根据文字长度估算，这里先给一个较大的热区
-            let width: CGFloat = element.text.isEmpty ? 100 : CGFloat(element.text.count * 12 + 20)
-            return CGRect(x: point.x, y: point.y, width: width, height: element.fontSize * 1.5)
+            // ✨ 修复：匹配 TextEditor 的实际显示位置
+            // TextEditor 使用 .position(x: point.x + 150, y: point.y + 25) (中心点定位)
+            // 而 elementBoundingRect 需要返回左上角坐标
+            // TextEditor 尺寸是 300x50，所以中心点补偿后左上角是 (point.x, point.y)
+            let textEditorWidth: CGFloat = 300
+            let textEditorHeight: CGFloat = 50
+            // .position(x: point.x + 150, y: point.y + 25) 表示中心在 (point.x + 150, point.y + 25)
+            // 所以左上角是 (point.x, point.y)
+            // 但我们需要返回整个区域的 CGRect 用于点击检测
+            // 考虑到 insetBy(dx: -10, dy: -10) 的热区扩展，我们返回一个稍大的区域
+            return CGRect(
+                x: point.x,
+                y: point.y,
+                width: textEditorWidth,
+                height: textEditorHeight
+            )
         }
         
         let points = element.points
@@ -750,7 +767,18 @@ struct V2ScreenshotDebugView: View {
                     if primaryScreenManager.isMouseOverUI {
                         return
                     }
-                    
+
+                    // ✨ 编辑文本时只更新位置，不处理放大镜等其他逻辑
+                    if primaryScreenManager.editingTextId != nil {
+                        switch phase {
+                        case .active(let location):
+                            mouseLocation = location
+                        default:
+                            break
+                        }
+                        return
+                    }
+
                     if isReleased { return }
                     
                     switch phase {
@@ -820,7 +848,7 @@ struct V2ScreenshotDebugView: View {
                         } else {
                             // ✨ 点击空白处，如果正在编辑，则完成编辑
                             if primaryScreenManager.editingTextId != nil {
-                                primaryScreenManager.editingTextId = nil
+                                primaryScreenManager.finishTextEdit()
                             }
                             // 点击空白处取消选中
                             primaryScreenManager.selectedElementId = nil
@@ -901,11 +929,17 @@ struct V2ScreenshotDebugView: View {
                         return
                     }
 
-                    // 4. 如果点击了选区外，清除选区并退出编辑模式
+                    // 4. 如果点击了选区外
                     if let selection = localSelectedArea, !selection.contains(mouseLocation) {
-                        addLog("Background Tapped - Clearing Selection")
-                        primaryScreenManager.updateSelection(nil, on: nil)
-                        primaryScreenManager.setEditing(false)
+                        // ✨ 修复：在编辑模式下，点击选区外不应该退出编辑模式
+                        // 只有通过 ESC 才能退出编辑模式
+                        if !primaryScreenManager.isEditing {
+                            addLog("Background Tapped - Clearing Selection")
+                            primaryScreenManager.updateSelection(nil, on: nil)
+                            primaryScreenManager.setEditing(false)
+                        } else {
+                            addLog("Background Tapped while Editing - Ignored")
+                        }
                     }
                 }
         }
@@ -913,11 +947,24 @@ struct V2ScreenshotDebugView: View {
                 .simultaneousGesture(
                     DragGesture(minimumDistance: 0)
                         .onChanged { value in
+                            // ✨ 关键修复：如果正在编辑文本
+                            if primaryScreenManager.editingTextId != nil {
+                                // 检查点击位置是否在选区外
+                                if let selection = localSelectedArea, !selection.contains(value.startLocation) {
+                                    // 点击选区外，完成编辑
+                                    primaryScreenManager.finishTextEdit()
+                                    // 不 return，继续处理事件
+                                } else {
+                                    // 点击选区内或没有选区，不处理让 TextField 接收
+                                    return
+                                }
+                            }
+
                             // ✨ 修复：如果鼠标在 UI 上开始拖拽，不处理 InteractionLayer 的拖拽逻辑
                             if primaryScreenManager.isMouseOverUI && !isDraggingElement && !isMovingSelection && activeHandle == nil {
                                 return
                             }
-                            
+
                             if isReleased { return }
 
                     // 阶段 2: 编辑模式下的交互
@@ -1308,15 +1355,38 @@ struct V2ScreenshotDebugView: View {
                 .allowsHitTesting(false)  // ✨ 关键：不拦截事件，让 Layer 3 能够正常监听
             }
 
-            // 文本编辑浮层
-            V2TextEditOverlay(
-                stateManager: primaryScreenManager,
-                onFinish: {
-                    primaryScreenManager.editingTextId = nil
-                    primaryScreenManager.updateTool(.cursor)
+            // ✨ 文本编辑：使用 TextEditor 在 ZStack 中直接渲染
+            if let editingId = primaryScreenManager.editingTextId,
+               let index = primaryScreenManager.elements.firstIndex(where: { $0.id == editingId }) {
+                let element = primaryScreenManager.elements[index]
+                let position = element.points.first ?? .zero
+
+                TextEditor(text: Binding(
+                    get: { primaryScreenManager.elements[index].text },
+                    set: { primaryScreenManager.elements[index].text = $0 }
+                ))
+                .font(.system(size: element.fontSize, weight: .bold))
+                .foregroundColor(element.color)
+                .scrollContentBackground(.hidden)
+                .background(Color.clear)  // ✨ 透明背景
+                .cornerRadius(4)
+                .focused($isTextEditingFocused)
+                .frame(width: 300, height: 50)  // ✨ 固定尺寸
+                .overlay(
+                    RoundedRectangle(cornerRadius: 4)
+                        .stroke(
+                            element.color,
+                            style: StrokeStyle(lineWidth: 1.5, dash: [6, 4])  // ✨ 虚线边框
+                        )
+                )
+                .position(x: position.x + 150, y: position.y + 25)  // ✨ 中心点定位，补偿尺寸
+                .onAppear {
+                    print("[V2ScreenshotDebugView] TextEditor appeared, setting focus")
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        isTextEditingFocused = true
+                    }
                 }
-            )
-            .zIndex(100)
+            }
         }
     }
     
@@ -2003,6 +2073,13 @@ class V2LongScreenshotControlPanel: NSPanel {
     }
 }
 
+/// ✨ 自定义文本输入面板 - 允许 .borderless 窗口成为 key window
+/// 覆盖 canBecomeKey 让窗口能够接收键盘输入，同时保持 .borderless 样式（无偏移）
+class V2TextInputPanel: NSPanel {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { true }
+}
+
 struct V2CaptureStopToolbarView: View {
     let onFinish: () -> Void
     @ObservedObject var stateManager = V2PrimaryScreenStateManager.shared
@@ -2131,14 +2208,15 @@ class V2ScreenshotDebugController {
             let snapshot = V2ScreenshotDebugController.captureScreen(screen)
             let view = V2ScreenshotDebugView(screen: screen, snapshot: snapshot, screenIndex: index, allWindows: allWindows)
             
-            let panel = NSPanel(
+            // ✅ 使用自定义面板类，允许 .borderless 样式下接收键盘输入
+            let panel = V2TextInputPanel(
                 contentRect: screen.frame,
-                styleMask: [.borderless, .nonactivatingPanel],
+                styleMask: [.borderless],  // ✅ 简单样式，无偏移
                 backing: .buffered,
                 defer: false
             )
-            
-            panel.level = .statusBar
+
+            panel.level = .screenSaver  // ✨ 最高级别，确保在所有窗口（包括浮球）之上
             panel.backgroundColor = .clear
             panel.isOpaque = false
             panel.hasShadow = false
