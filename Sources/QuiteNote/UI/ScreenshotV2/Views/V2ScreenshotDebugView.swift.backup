@@ -645,7 +645,23 @@ struct V2ScreenshotDebugView: View {
             .padding(40)
         }
     }
-
+    
+    /// 构建层级标签组件
+    struct LayerLabel: View {
+        let name: String
+        let color: Color
+        var body: some View {
+            Text(name)
+                .font(.system(size: 9, weight: .bold))
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(color.opacity(0.7))
+                .foregroundColor(.white)
+                .cornerRadius(4)
+                .padding(10)
+        }
+    }
+    
     /// 构建交互层：处理鼠标悬停、点击、拖拽等
     // 计算当前应该显示的唯一吸附线框
     private var snappedWireframeRect: CGRect? {
@@ -1409,5 +1425,978 @@ struct V2ScreenshotDebugView: View {
             }
             .allowsHitTesting(false)
         }
+    }
+    
+    /// 统一的黄色虚线框组件
+    struct YellowWireframe: View {
+        let rect: CGRect
+        let label: String?
+        let isDashed: Bool
+        let showBackground: Bool 
+        let isEditing: Bool // 传入编辑状态
+        let isLongScreenshotMode: Bool // 传入长图模式
+        var opacity: Double = 1.0
+        var showHandles: Bool = false // 是否显示 8 个调整手柄
+        
+        var body: some View {
+            ZStack(alignment: .topLeading) {
+                // 边框
+                Rectangle()
+                    .stroke(
+                        Color.yellow.opacity(opacity),
+                        style: StrokeStyle(
+                            lineWidth: 2,
+                            dash: isDashed ? [6, 3] : []
+                        )
+                    )
+                
+                // 8 个调整手柄 (仅在非编辑模式和非长图模式下显示)
+                if showHandles && !isEditing && !isLongScreenshotMode {
+                    ForEach(SelectionHandle.allCases, id: \.self) { handle in
+                        Circle()
+                            .fill(Color.yellow)
+                            .frame(width: 10, height: 10) // 稍微大一点，更好看
+                            .overlay(Circle().stroke(Color.black.opacity(0.8), lineWidth: 1))
+                            .position(handle.position(in: rect))
+                    }
+                }
+               
+                // 标签
+                if let label = label {
+                    Text(label)
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(.black)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.yellow.opacity(opacity))
+                        .cornerRadius(2)
+                        .offset(y: -22) // 放在边框上方
+                }
+            }
+            .frame(width: rect.width, height: rect.height)
+            .position(x: rect.midX, y: rect.midY)
+        }
+    }
+}
+
+/// 反向矩形形状：用于在交互层“挖孔”，让特定区域的事件穿透到桌面
+struct InvertedRectangle: Shape {
+    let hole: CGRect?
+    
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.addRect(rect)
+        if let hole = hole {
+            path.addRect(hole)
+        }
+        return path
+    }
+}
+
+/// 长图滚动预览内容组件
+struct V2LongScreenshotPreviewContent: View {
+    @ObservedObject var stateManager = V2PrimaryScreenStateManager.shared
+    var width: CGFloat = 160
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("长图预览")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundColor(.white.opacity(0.7))
+                .padding(.horizontal, 4)
+            
+            ScrollView(.vertical, showsIndicators: true) {
+                VStack(spacing: 2) {
+                    if stateManager.longScreenshotPreviews.isEmpty {
+                        // 空状态
+                        VStack(spacing: 8) {
+                            Image(systemName: "scroll.fill")
+                                .font(.system(size: 24))
+                                .foregroundColor(.white.opacity(0.2))
+                            Text("等待滚动...")
+                                .font(.system(size: 9))
+                                .foregroundColor(.white.opacity(0.3))
+                        }
+                        .frame(height: 120)
+                    } else {
+                        // 渲染实时采集的图片块
+                        ForEach(0..<stateManager.longScreenshotPreviews.count, id: \.self) { index in
+                            Image(nsImage: stateManager.longScreenshotPreviews[index])
+                                .resizable()
+                                .scaledToFit()
+                                .cornerRadius(2)
+                        }
+                    }
+                }
+                .padding(4)
+            }
+            .background(Color.black.opacity(0.2))
+            .cornerRadius(6)
+            .frame(height: 200) // 限制预览高度
+        }
+        .frame(width: width)
+    }
+}
+
+/// 长图滚动预览组件 (旧版，保留定位逻辑用于主视图显示)
+struct V2LongScreenshotPreview: View {
+    let selection: CGRect
+    let screen: NSScreen
+    @ObservedObject var stateManager = V2PrimaryScreenStateManager.shared
+    
+    var body: some View {
+        V2LongScreenshotPreviewContent()
+            .padding(12)
+            .background(
+                ZStack {
+                    VisualEffectView(material: .hudWindow, blendingMode: .withinWindow)
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                }
+            )
+            .shadow(color: .black.opacity(0.5), radius: 10)
+            .position(calculatePosition())
+            .transition(.move(edge: .trailing).combined(with: .opacity))
+    }
+    
+    private func calculatePosition() -> CGPoint {
+        // 放在选区右侧，如果空间不够则放在左侧
+        let spacing: CGFloat = 20
+        let previewWidth: CGFloat = 160
+        
+        var x = selection.maxX + previewWidth/2 + spacing
+        if x > screen.frame.width - 20 {
+            x = selection.minX - previewWidth/2 - spacing
+        }
+        
+        return CGPoint(x: x, y: selection.midY)
+    }
+}
+
+/// 截图工具栏
+struct V2FloatingToolbar: View {
+    let selection: CGRect
+    let screen: NSScreen
+    @ObservedObject var stateManager = V2PrimaryScreenStateManager.shared
+
+    var body: some View {
+        if stateManager.isLongScreenshotMode {
+            // 长图模式：显示专用工具栏
+            basicToolbar
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(
+                    ZStack {
+                        VisualEffectView(material: .hudWindow, blendingMode: .withinWindow)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(Color.black.opacity(0.4))
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                    }
+                )
+                .shadow(color: .black.opacity(0.5), radius: 15, x: 0, y: 8)
+                .onHover { hovering in
+                    stateManager.isMouseOverUI = hovering
+                }
+                .position(calculatePosition())
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .animation(.spring(response: 0.3), value: selection)
+        } else {
+            // 选区模式和编辑模式：都显示完整标注工具栏
+            V2AnnotationToolbar(stateManager: stateManager)
+                .overlay(alignment: .topLeading) {
+                    if stateManager.isEditing {
+                        // 仅在编辑模式显示退出按钮
+                        Button(action: { stateManager.setEditing(false) }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "xmark.circle.fill")
+                                Text("退出")
+                            }
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.red.opacity(0.8))
+                            .cornerRadius(6)
+                        }
+                        .buttonStyle(.plain)
+                        .padding(8)
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(
+                    ZStack {
+                        VisualEffectView(material: .hudWindow, blendingMode: .withinWindow)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(Color.black.opacity(0.4))
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                    }
+                )
+                .shadow(color: .black.opacity(0.5), radius: 15, x: 0, y: 8)
+                .onHover { hovering in
+                    stateManager.isMouseOverUI = hovering
+                }
+                .position(calculatePosition())
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .animation(.spring(response: 0.3), value: selection)
+        }
+    }
+
+    private var basicToolbar: some View {
+        HStack(spacing: 16) {
+            if stateManager.isLongScreenshotMode {
+                // 长图模式下的专用工具栏
+                Text("长图采集模式")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(.green)
+
+                Divider()
+                    .frame(width: 1, height: 24)
+                    .background(Color.white.opacity(0.2))
+
+                ToolbarButton(icon: "record.circle", color: .red, label: "开始滚动") {
+                    stateManager.setCapturing(true)
+                    V2ScreenshotDebugController.setLongScreenshotControlVisible(
+                        true,
+                        selection: stateManager.selectedArea,
+                        screen: screen
+                    )
+                }
+
+                ToolbarButton(icon: "xmark.circle", color: .white, label: "取消") {
+                    stateManager.setCapturing(false)
+                    V2ScreenshotDebugController.setLongScreenshotControlVisible(false)
+                    stateManager.setLongScreenshotMode(false)
+                }
+            } else {
+                // 编辑模式切换
+                ToolbarButton(
+                    icon: stateManager.isEditing ? "pencil.tip.crop.circle.fill" : "pencil.tip.crop.circle",
+                    color: stateManager.isEditing ? .orange : .white,
+                    label: stateManager.isEditing ? "绘画中" : "编辑"
+                ) {
+                    stateManager.setEditing(!stateManager.isEditing)
+                }
+
+                // 长图模式按钮
+                ToolbarButton(
+                    icon: "scroll",
+                    color: .white,
+                    label: "长图"
+                ) {
+                    stateManager.setLongScreenshotMode(true)
+                }
+
+                // 清除画板（兼容旧版本）
+                if !stateManager.drawingPaths.isEmpty {
+                    ToolbarButton(icon: "arrow.uturn.backward", color: .white, label: "撤销") {
+                        if !stateManager.drawingPaths.isEmpty {
+                            stateManager.drawingPaths.removeLast()
+                        }
+                    }
+
+                    ToolbarButton(icon: "trash", color: .red, label: "清空") {
+                        stateManager.clearPaths()
+                    }
+                }
+
+                Divider()
+                    .frame(width: 1, height: 24)
+                    .background(Color.white.opacity(0.2))
+
+                // 完成并保存
+                ToolbarButton(icon: "checkmark", color: .green, label: "完成", isPrimary: true) {
+                    NotificationCenter.default.post(name: NSNotification.Name("SaveScreenshot"), object: nil)
+                }
+            }
+        }
+    }
+    
+    /// 计算工具栏位置
+    private func calculatePosition() -> CGPoint {
+        let toolbarHeight: CGFloat = 60
+        let spacing: CGFloat = 12
+        
+        // 1. 优先尝试底部
+        let bottomY = selection.maxY + toolbarHeight/2 + spacing
+        if bottomY < screen.frame.height - 40 {
+            return CGPoint(x: selection.midX, y: bottomY)
+        }
+        
+        // 2. 尝试顶部
+        let topY = selection.minY - toolbarHeight/2 - spacing
+        if topY > 40 {
+            return CGPoint(x: selection.midX, y: topY)
+        }
+        
+        // 3. 全屏或空间不足：显示在选区内部底部
+        return CGPoint(
+            x: selection.midX, 
+            y: selection.maxY - toolbarHeight/2 - spacing - 10
+        )
+    }
+}
+
+/// 长图采集过程中的停止按钮（位于屏幕顶部，尽量少占空间）
+struct V2CaptureStopToolbar: View {
+    @ObservedObject var stateManager = V2PrimaryScreenStateManager.shared
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "record.circle.fill")
+                .foregroundColor(.red)
+                .font(.system(size: 14))
+            
+            Text("正在采集长图...")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(.white)
+            
+            Divider()
+                .frame(width: 1, height: 16)
+                .background(Color.white.opacity(0.2))
+            
+            Button(action: {
+                        stateManager.setCapturing(false)
+                        // 不直接退出长图模式，让用户看到预览和主工具栏，可以继续操作或保存
+                    }) {
+                        Text("完成采集")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(Color.green)
+                    .cornerRadius(4)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(
+            ZStack {
+                VisualEffectView(material: .hudWindow, blendingMode: .withinWindow)
+                    .clipShape(Capsule())
+                Capsule()
+                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
+            }
+        )
+        .shadow(radius: 10)
+        .padding(.top, 40) // 避开菜单栏
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+}
+
+/// 工具栏按钮组件
+struct ToolbarButton: View {
+    let icon: String
+    let color: Color
+    let label: String
+    var isPrimary: Bool = false
+    let action: () -> Void
+    
+    @State private var isHovered = false
+    
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(.system(size: isPrimary ? 20 : 16, weight: .medium))
+                    .foregroundColor(color)
+                
+                Text(label)
+                    .font(.system(size: 10))
+                    .foregroundColor(.white.opacity(0.8))
+            }
+            .frame(width: 44, height: 44)
+            .background(isHovered ? Color.white.opacity(0.1) : Color.clear)
+            .cornerRadius(8)
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+    }
+}
+
+/// 毛玻璃效果视图
+struct VisualEffectView: NSViewRepresentable {
+    let material: NSVisualEffectView.Material
+    let blendingMode: NSVisualEffectView.BlendingMode
+    
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = material
+        view.blendingMode = blendingMode
+        view.state = .active
+        return view
+    }
+    
+    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {
+        nsView.material = material
+        nsView.blendingMode = blendingMode
+    }
+}
+
+/// 放大镜预览组件 (正方形 + 十字准星版)
+struct MagnifierView: View {
+    let snapshot: NSImage
+    let location: CGPoint
+    let screen: NSScreen
+    
+    private let magnifierSize: CGFloat = 120
+    private let zoomScale: CGFloat = 3.0
+    
+    // 获取当前像素点的颜色
+    private var pixelColor: Color {
+        let scale = screen.backingScaleFactor
+        let x = Int(location.x * scale)
+        let y = Int((screen.frame.height - location.y) * scale)
+        
+        guard let cgImage = snapshot.cgImage(forProposedRect: nil, context: nil, hints: nil),
+              let pixelData = cgImage.dataProvider?.data,
+              let data = CFDataGetBytePtr(pixelData) else {
+            return .clear
+        }
+        
+        let bytesPerPixel = 4
+        let bytesPerRow = cgImage.bytesPerRow
+        let pixelInfo = y * bytesPerRow + x * bytesPerPixel
+        
+        // 确保不越界
+        if pixelInfo + 3 >= CFDataGetLength(pixelData) {
+            return .clear
+        }
+        
+        let r = CGFloat(data[pixelInfo]) / 255.0
+        let g = CGFloat(data[pixelInfo+1]) / 255.0
+        let b = CGFloat(data[pixelInfo+2]) / 255.0
+        let a = CGFloat(data[pixelInfo+3]) / 255.0
+        
+        return Color(red: r, green: g, blue: b, opacity: a)
+    }
+    
+    // 获取颜色的 HEX 字符串
+    private var hexString: String {
+        let nsColor = NSColor(pixelColor)
+        let r = Int(nsColor.redComponent * 255)
+        let g = Int(nsColor.greenComponent * 255)
+        let b = Int(nsColor.blueComponent * 255)
+        return String(format: "#%02X%02X%02X", r, g, b)
+    }
+    
+    var body: some View {
+        VStack(spacing: 4) {
+            // 放大镜正方形区域
+            ZStack {
+                // 背景图片裁剪放大
+                Rectangle()
+                    .fill(Color.black)
+                    .frame(width: magnifierSize, height: magnifierSize)
+                
+                Image(nsImage: snapshot)
+                    .resizable()
+                    .frame(width: screen.frame.width * zoomScale, height: screen.frame.height * zoomScale)
+                    .offset(
+                        x: (screen.frame.width / 2 - location.x) * zoomScale,
+                        y: (screen.frame.height / 2 - location.y) * zoomScale
+                    )
+                
+                // 中心十字准星 (极细线)
+                Group {
+                    // 纵向线
+                    Rectangle()
+                        .fill(Color.white.opacity(0.8))
+                        .frame(width: 0.5, height: magnifierSize)
+                        .shadow(color: .black.opacity(0.5), radius: 0.5)
+                    
+                    // 横向线
+                    Rectangle()
+                        .fill(Color.white.opacity(0.8))
+                        .frame(width: magnifierSize, height: 0.5)
+                        .shadow(color: .black.opacity(0.5), radius: 0.5)
+                }
+                
+                // 外框边框
+                Rectangle()
+                    .stroke(Color.white, lineWidth: 1)
+                    .frame(width: magnifierSize, height: magnifierSize)
+                    .shadow(radius: 4)
+            }
+            .frame(width: magnifierSize, height: magnifierSize)
+            .clipped() // ⚠️ 必须裁剪，防止巨型图片溢出
+            
+            // 信息面板
+            VStack(spacing: 2) {
+                Text(hexString)
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundColor(.white)
+                
+                HStack(spacing: 4) {
+                    Rectangle()
+                        .fill(pixelColor)
+                        .frame(width: 8, height: 8)
+                        .overlay(Rectangle().stroke(Color.white.opacity(0.5), lineWidth: 0.5))
+                    
+                    Text("(\(Int(location.x)), \(Int(location.y)))")
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundColor(.white.opacity(0.8))
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Color.black.opacity(0.7))
+            .cornerRadius(4)
+        }
+        .allowsHitTesting(false) // ⚠️ 放大镜不应拦截鼠标事件，确保底层交互层能正常工作
+    }
+}
+
+/// 选区调整手柄
+enum SelectionHandle: CaseIterable {
+    case topLeft, top, topRight, right, bottomRight, bottom, bottomLeft, left
+    
+    func position(in rect: CGRect) -> CGPoint {
+        switch self {
+        case .topLeft: return CGPoint(x: 0, y: 0)
+        case .top: return CGPoint(x: rect.width / 2, y: 0)
+        case .topRight: return CGPoint(x: rect.width, y: 0)
+        case .right: return CGPoint(x: rect.width, y: rect.height / 2)
+        case .bottomRight: return CGPoint(x: rect.width, y: rect.height)
+        case .bottom: return CGPoint(x: rect.width / 2, y: rect.height)
+        case .bottomLeft: return CGPoint(x: 0, y: rect.height)
+        case .left: return CGPoint(x: 0, y: rect.height / 2)
+        }
+    }
+}
+
+/// 自定义 HostingView，用于在长图模式下实现选区内的事件穿透
+class V2ScreenshotHostingView<Content: View>: NSHostingView<Content> {
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        // 1. 先检查 SwiftUI 内部是否有组件需要拦截事件 (如按钮、工具栏)
+        let hitView = super.hitTest(point)
+        
+        let stateManager = V2PrimaryScreenStateManager.shared
+        if stateManager.isLongScreenshotMode {
+            // 将 AppKit 坐标 (左下角) 转换为 SwiftUI 坐标 (左上角)
+            let localSwiftUIPoint = CGPoint(x: point.x, y: self.bounds.height - point.y)
+            
+            var isInside = false
+            if let selection = stateManager.selectedArea {
+                isInside = selection.contains(localSwiftUIPoint)
+            }
+            
+            let hitViewDesc = hitView != nil ? "\(type(of: hitView!))" : "nil"
+            
+            // 2. 判断是否应该穿透
+            if isInside {
+                // 如果命中的是 HostingView 本身，或者是一些背景类容器，则允许穿透
+                var shouldPenetrate = false
+                if hitView == nil || hitView == self {
+                    shouldPenetrate = true
+                } else if let hv = hitView {
+                    let className = String(describing: type(of: hv))
+                    // 核心修复：跳过 SwiftUI 内部的根视图和更新容器
+                    if className.contains("RootView") || className.contains("ViewUpdater") {
+                        shouldPenetrate = true
+                    }
+                }
+                
+                if shouldPenetrate {
+                    // ⚠️ 终极方案：强制让窗口瞬间忽略事件，确保穿透到底层应用
+                    // 这样可以解决系统级别的点击拦截问题，使得滚动和点击能直接作用于下方窗口
+                    DispatchQueue.main.async {
+                        self.window?.ignoresMouseEvents = true
+                        // 延迟极短时间恢复，确保当前的鼠标按下/滚动事件已经穿透
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
+                            self.window?.ignoresMouseEvents = false
+                        }
+                    }
+                    
+                    V2ScreenshotDebugView.onLog?("Penetrating to desktop @ \(Int(localSwiftUIPoint.x)),\(Int(localSwiftUIPoint.y))")
+                    return nil // 穿透到桌面
+                }
+            }
+            
+            V2ScreenshotDebugView.onLog?("HitTest - Blocking - Hit: \(hitViewDesc), Inside: \(isInside)")
+        }
+        
+        return hitView
+    }
+}
+
+/// 长图采集过程中的停止按钮面板
+class V2LongScreenshotControlPanel: NSPanel {
+    init(selection: CGRect, screen: NSScreen, onFinish: @escaping () -> Void) {
+        // 侧边栏布局：窄而长
+        let panelWidth: CGFloat = 180
+        let panelHeight: CGFloat = 460
+        
+        super.init(
+            contentRect: NSRect(x: 0, y: 0, width: panelWidth, height: panelHeight),
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        
+        self.level = .screenSaver + 2
+        self.backgroundColor = .clear
+        self.isOpaque = false
+        self.hasShadow = true
+        self.ignoresMouseEvents = false
+        
+        let contentView = NSHostingView(rootView: 
+            V2CaptureStopToolbarView(onFinish: onFinish)
+        )
+        self.contentView = contentView
+        
+        // 计算位置：优先放在选区右侧，间距 16px
+        let spacing: CGFloat = 16
+        
+        // 1. 尝试右侧
+        var x = screen.frame.minX + selection.maxX + spacing
+        
+        // 如果右侧放不下，则尝试左侧
+        if x + panelWidth > screen.frame.maxX - 20 {
+            x = screen.frame.minX + selection.minX - panelWidth - spacing
+        }
+        
+        // 2. 垂直居中于选区
+        let selectionCenterY = screen.frame.minY + (screen.frame.height - selection.midY)
+        var y = selectionCenterY - (panelHeight / 2)
+        
+        // 边界保护：确保不超出屏幕顶部或底部
+        y = max(screen.frame.minY + 20, min(y, screen.frame.maxY - panelHeight - 20))
+        
+        self.setFrameOrigin(NSPoint(x: x, y: y))
+    }
+}
+
+/// ✨ 自定义文本输入面板 - 允许 .borderless 窗口成为 key window
+/// 覆盖 canBecomeKey 让窗口能够接收键盘输入，同时保持 .borderless 样式（无偏移）
+class V2TextInputPanel: NSPanel {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { true }
+}
+
+struct V2CaptureStopToolbarView: View {
+    let onFinish: () -> Void
+    @ObservedObject var stateManager = V2PrimaryScreenStateManager.shared
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // 顶部：状态指示
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(Color.red)
+                    .frame(width: 8, height: 8)
+                    .opacity(stateManager.isCapturing ? 1.0 : 0.3)
+                    .animation(.easeInOut(duration: 0.8).repeatForever(), value: stateManager.isCapturing)
+                
+                Text("长图预览")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(.white)
+            }
+            .padding(.bottom, 4)
+            
+            // 中间：滚动预览区域 (高度自适应)
+            ScrollView(.vertical, showsIndicators: true) {
+                VStack(spacing: 2) {
+                    if stateManager.longScreenshotPreviews.isEmpty {
+                        VStack(spacing: 12) {
+                            Image(systemName: "scroll.fill")
+                                .font(.system(size: 32))
+                                .foregroundColor(.white.opacity(0.15))
+                            Text("向下滚动网页\n实时拼接图片")
+                                .font(.system(size: 11))
+                                .multilineTextAlignment(.center)
+                                .foregroundColor(.white.opacity(0.3))
+                        }
+                        .frame(height: 300)
+                    } else {
+                        ForEach(0..<stateManager.longScreenshotPreviews.count, id: \.self) { index in
+                            Image(nsImage: stateManager.longScreenshotPreviews[index])
+                                .resizable()
+                                .scaledToFit()
+                                .cornerRadius(4)
+                        }
+                    }
+                }
+                .padding(6)
+            }
+            .background(Color.black.opacity(0.2))
+            .cornerRadius(8)
+            .frame(maxHeight: .infinity)
+            
+            Divider()
+                .background(Color.white.opacity(0.1))
+            
+            // 底部：操作按钮
+            Button(action: onFinish) {
+                HStack {
+                    Image(systemName: "checkmark.circle.fill")
+                    Text("完成并保存")
+                        .font(.system(size: 12, weight: .bold))
+                }
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+                .background(Color.green)
+                .cornerRadius(8)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(16)
+        .background(
+            ZStack {
+                VisualEffectView(material: .hudWindow, blendingMode: .withinWindow)
+                    .clipShape(RoundedRectangle(cornerRadius: 20))
+                RoundedRectangle(cornerRadius: 20)
+                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
+            }
+        )
+        .shadow(color: .black.opacity(0.4), radius: 20, x: 0, y: 10)
+    }
+}
+
+/// 调试窗口控制器
+@MainActor
+class V2ScreenshotDebugController {
+    static var debugPanels: [NSPanel] = []
+    static var longScreenshotControlPanel: V2LongScreenshotControlPanel?
+    
+    static func show() {
+        // 先关闭旧的
+        close()
+        
+        // ⚠️ 同时尝试关闭可能正在进行的正式截图流程
+        V2CaptureController.shared.stopCapture()
+        
+        // ⚠️ 重置全局状态，确保每次进入调试模式都是干净的
+        V2PrimaryScreenStateManager.shared.reset()
+        
+        v2Logger.info("Controller - Starting multi-screen debug window with REAL windows...")
+        
+        // 获取真实窗口列表
+        let windowResult = WindowInfoService.shared.fetchAllWindows()
+        let allWindows: [WindowInfo]
+        
+        switch windowResult {
+        case .success(let windows):
+            // 过滤掉不需要的窗口：
+            // 1. 当前应用自身的窗口
+            // 2. 桌面/墙纸 (Wallpaper/Desktop) - 这些通常覆盖全屏且由 Finder 或 WindowServer 拥有
+            // 3. 菜单栏/Dock 栏等系统 UI
+            allWindows = windows.filter { window in
+                let name = window.ownerName
+                let isSelf = name == "Quite Note" || name == "QuiteNote"
+                let isSystemBackground = name == "Window Server" || name == "Dock" || (name == "Finder" && window.windowName == nil)
+                
+                // 只有不是自身且不是系统背景的窗口才显示交互矩形
+                return !isSelf && !isSystemBackground
+            }
+            v2Logger.info("Fetched \(allWindows.count) real windows (filtered system backgrounds)")
+        case .failure(let error):
+            v2Logger.error("Failed to fetch real windows: \(error.localizedDescription)")
+            allWindows = []
+        }
+        
+        for (index, screen) in NSScreen.screens.enumerated() {
+            v2Logger.info("Creating debug window for Screen \(index): \(screen.frame.debugDescription, privacy: .public)")
+            
+            let snapshot = V2ScreenshotDebugController.captureScreen(screen)
+            let view = V2ScreenshotDebugView(screen: screen, snapshot: snapshot, screenIndex: index, allWindows: allWindows)
+            
+            // ✅ 使用自定义面板类，允许 .borderless 样式下接收键盘输入
+            let panel = V2TextInputPanel(
+                contentRect: screen.frame,
+                styleMask: [.borderless],  // ✅ 简单样式，无偏移
+                backing: .buffered,
+                defer: false
+            )
+
+            panel.level = .screenSaver  // ✨ 最高级别，确保在所有窗口（包括浮球）之上
+            panel.backgroundColor = .clear
+            panel.isOpaque = false
+            panel.hasShadow = false
+            panel.ignoresMouseEvents = false
+            panel.acceptsMouseMovedEvents = true
+            panel.isReleasedWhenClosed = false
+            
+            // 关键：确保面板在对应的屏幕上
+            panel.setFrame(screen.frame, display: true)
+            
+            let hostingView = V2ScreenshotHostingView(rootView: view)
+            hostingView.frame = NSRect(origin: .zero, size: screen.frame.size)
+            hostingView.wantsLayer = true
+            hostingView.layer?.backgroundColor = NSColor.clear.cgColor
+            panel.contentView = hostingView
+            
+            panel.makeKeyAndOrderFront(nil)
+            debugPanels.append(panel)
+        }
+        
+        NSApp.activate(ignoringOtherApps: true)
+    }
+    
+    static func close() {
+        for panel in debugPanels {
+            panel.close()
+        }
+        debugPanels.removeAll()
+        
+        longScreenshotControlPanel?.close()
+        longScreenshotControlPanel = nil
+        
+        // ⚠️ 关闭调试模式时也重置全局状态
+        V2PrimaryScreenStateManager.shared.reset()
+    }
+    
+    /// 显示/隐藏长图采集控制面板
+    static func setLongScreenshotControlVisible(_ visible: Bool, selection: CGRect? = nil, screen: NSScreen? = nil) {
+        if visible {
+            if longScreenshotControlPanel == nil, let selection = selection, let screen = screen {
+                longScreenshotControlPanel = V2LongScreenshotControlPanel(selection: selection, screen: screen) {
+                    V2PrimaryScreenStateManager.shared.setCapturing(false)
+                    setLongScreenshotControlVisible(false)
+                }
+            }
+            longScreenshotControlPanel?.makeKeyAndOrderFront(nil)
+        } else {
+            longScreenshotControlPanel?.close()
+            longScreenshotControlPanel = nil
+        }
+        
+        // 同时根据状态设置所有主调试窗口是否忽略鼠标事件
+        for panel in debugPanels {
+            panel.ignoresMouseEvents = visible
+        }
+    }
+    
+    private static func captureScreen(_ screen: NSScreen) -> NSImage {
+        guard let displayID = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID,
+              let cgImage = CGDisplayCreateImage(displayID) else {
+            let img = NSImage(size: screen.frame.size)
+            img.lockFocus()
+            NSColor(calibratedWhite: 0.2, alpha: 1.0).set()
+            NSRect(origin: .zero, size: screen.frame.size).fill()
+            img.unlockFocus()
+            return img
+        }
+        
+        // ⚠️ 修复 Retina 模糊问题：确保图片尺寸与像素一致
+        let image = NSImage(cgImage: cgImage, size: screen.frame.size) // 逻辑尺寸
+        
+        // 显式设置像素尺寸，避免缩放模糊
+        image.size = screen.frame.size
+        return image
+    }
+}
+
+/// 标注放大镜预览组件（编辑模式下显示）
+struct AnnotationMagnifierPreview: View {
+    let snapshot: NSImage
+    let position: CGPoint  // 源点位置（鼠标位置）
+    let canvasSize: CGSize
+    let followMouse: Bool  // true=跟随鼠标，false=右上角固定
+    let selectionArea: CGRect  // ✨ 选区信息
+
+    private let radius: CGFloat = 60
+    private let scale: CGFloat = 2.0
+    private let padding: CGFloat = 20
+
+    var body: some View {
+        if followMouse {
+            // 模式2：跟随鼠标 - 放大镜在鼠标位置
+            magnifierAtMouse
+        } else {
+            // 模式1：源点-分离 - 源点在鼠标，放大镜在选区右上角
+            magnifierAtCorner
+        }
+    }
+
+    /// 模式2：放大镜跟随鼠标
+    private var magnifierAtMouse: some View {
+        Canvas { context, size in
+            // ✨ 设置高质量插值，确保预览高清
+            context.withCGContext { cgContext in
+                cgContext.interpolationQuality = .high
+            }
+            
+            // 边界约束
+            let minX = selectionArea.minX + radius
+            let maxX = selectionArea.maxX - radius
+            let minY = selectionArea.minY + radius
+            let maxY = selectionArea.maxY - radius
+            
+            let constrainedX = max(minX, min(maxX, position.x))
+            let constrainedY = max(minY, min(maxY, position.y))
+            
+            let magnifierRect = CGRect(x: constrainedX - radius, y: constrainedY - radius, width: radius * 2, height: radius * 2)
+
+            // 绘制放大的图像
+            context.drawLayer { layer in
+                layer.clip(to: Path(ellipseIn: magnifierRect))
+
+                let dx = constrainedX - position.x * scale
+                let dy = constrainedY - position.y * scale
+                layer.translateBy(x: dx, y: dy)
+                layer.scaleBy(x: scale, y: scale)
+                layer.draw(Image(nsImage: snapshot), in: CGRect(origin: .zero, size: canvasSize))
+            }
+
+            // 绘制边框
+            context.stroke(Path(ellipseIn: magnifierRect), with: .color(.white), lineWidth: 3)
+            context.stroke(Path(ellipseIn: magnifierRect), with: .color(.gray.opacity(0.3)), lineWidth: 1)
+        }
+        .frame(width: canvasSize.width, height: canvasSize.height)
+    }
+
+    /// 模式1：源点和放大镜分离
+    private var magnifierAtCorner: some View {
+        Canvas { context, size in
+            // ✨ 设置高质量插值，确保预览高清
+            context.withCGContext { cgContext in
+                cgContext.interpolationQuality = .high
+            }
+            
+            let corner = magnifierCenter  // ✨ 使用相对于选区的位置
+            let magnifierRect = CGRect(x: corner.x - radius, y: corner.y - radius, width: radius * 2, height: radius * 2)
+
+            // 1. 绘制虚线连接（源点 → 放大镜中心）
+            var linePath = Path()
+            linePath.move(to: position)
+            linePath.addLine(to: corner)
+            context.stroke(linePath, with: .color(.white.opacity(0.5)), style: StrokeStyle(lineWidth: 1, dash: [4, 2]))
+
+            // 2. 绘制源点小圆圈
+            let sourceDotRect = CGRect(x: position.x - 3, y: position.y - 3, width: 6, height: 6)
+            context.fill(Path(ellipseIn: sourceDotRect), with: .color(.white))
+
+            // 3. 绘制放大的图像
+            context.drawLayer { layer in
+                layer.clip(to: Path(ellipseIn: magnifierRect))
+
+                let dx = corner.x - position.x * scale
+                let dy = corner.y - position.y * scale
+                layer.translateBy(x: dx, y: dy)
+                layer.scaleBy(x: scale, y: scale)
+                layer.draw(Image(nsImage: snapshot), in: CGRect(origin: .zero, size: canvasSize))
+            }
+
+            // 4. 绘制边框
+            context.stroke(Path(ellipseIn: magnifierRect), with: .color(.white), lineWidth: 3)
+            context.stroke(Path(ellipseIn: magnifierRect), with: .color(.gray.opacity(0.3)), lineWidth: 1)
+        }
+        .frame(width: canvasSize.width, height: canvasSize.height)
+    }
+
+    /// ✨ 计算选区右上角位置（而不是整个 canvas 的右上角）
+    private var magnifierCenter: CGPoint {
+        return CGPoint(
+            x: selectionArea.maxX - radius - padding,  // ✨ 相对于选区右边界
+            y: selectionArea.minY + radius + padding    // ✨ 相对于选区上边界
+        )
     }
 }

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleExecutable</key>
+    <string>QuiteNote</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.quitenote.app.dev</string>
+    <key>CFBundleName</key>
+    <string>Quite Note Dev</string>
+    <key>CFBundleDisplayName</key>
+    <string>Quite Note Dev</string>
+    <key>CFBundleVersion</key>
+    <string>1.0.0</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0.0</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>LSMinimumSystemVersion</key>
+    <string>12.0</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon.icns</string>
+    <key>LSUIElement</key>
+    <true/>
+    <key>NSScreenCaptureDescription</key>
+    <string>Quite Note 需要屏幕录制权限来执行截图功能。</string>
+</dict>
+</plist>

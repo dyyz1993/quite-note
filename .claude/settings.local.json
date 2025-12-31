@@ -75,5 +75,9 @@
     ],
     "deny": [],
     "ask": []
+  },
+  "sandbox": {
+    "enabled": false,
+    "autoAllowBashIfSandboxed": false
   }
 }
