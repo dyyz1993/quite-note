@@ -67,6 +67,7 @@ class V2ScreenshotDebugController {
             panel.ignoresMouseEvents = false
             panel.acceptsMouseMovedEvents = true
             panel.isReleasedWhenClosed = false
+            panel.hidesOnDeactivate = false  // ✨ 防止失去焦点时自动隐藏
 
             // 关键：确保面板在对应的屏幕上
             panel.setFrame(screen.frame, display: true)
@@ -77,7 +78,13 @@ class V2ScreenshotDebugController {
             hostingView.layer?.backgroundColor = NSColor.clear.cgColor
             panel.contentView = hostingView
 
-            panel.makeKeyAndOrderFront(nil)
+            // ✨ 确保所有屏幕的面板都正确显示
+            // 只让第一个面板成为 key window，其他面板用 orderFrontRegardless
+            if index == 0 {
+                panel.makeKeyAndOrderFront(nil)
+            } else {
+                panel.orderFrontRegardless()
+            }
             debugPanels.append(panel)
         }
 

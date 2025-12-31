@@ -65,8 +65,13 @@ struct V2ScreenshotDebugView: View {
     }
     
     /// 是否应该完全释放（没有任何覆盖物，显示纯净画面）
+    /// - 阶段 0（无选区）：所有屏幕都不释放
+    /// - 阶段 1+（有选区）：只有当前操作屏幕不释放，其他屏幕释放
     private var isReleased: Bool {
-        hasAnySelection && primaryScreenManager.selectionScreen != screen
+        // 无选区时，所有屏幕都显示背景
+        guard hasAnySelection else { return false }
+        // 有选区时，只有当前操作屏幕显示背景
+        return !isCurrentlyPrimary
     }
     
     // 供外部使用的静态日志入口
@@ -367,13 +372,11 @@ struct V2ScreenshotDebugView: View {
                 Color.clear
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                // 1. 底层：原始截图 (长图模式下隐藏，显示桌面)
-                if !primaryScreenManager.isLongScreenshotMode {
-                    Image(nsImage: snapshot)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: screen.frame.width, height: screen.frame.height)
-                }
+                // 1. 底层：原始截图 (始终显示)
+                Image(nsImage: snapshot)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: screen.frame.width, height: screen.frame.height)
                 
                 // 2. 蒙层层：用于实现挖孔效果 (长图模式下隐藏)
                 if !primaryScreenManager.isLongScreenshotMode {
@@ -481,7 +484,7 @@ struct V2ScreenshotDebugView: View {
             }
         }
         .frame(width: screen.frame.width, height: screen.frame.height)
-        .background(isReleased || primaryScreenManager.isLongScreenshotMode ? Color.clear : Color.black) // ⚠️ 释放后或长图模式下必须透明
+        .background(isReleased ? Color.clear : Color.black)  // 释放时透明，否则黑色
         .onAppear {
             addLog("Debug window appeared on Screen \(screenIndex)")
             // 监听保存通知
@@ -492,7 +495,7 @@ struct V2ScreenshotDebugView: View {
             }
         }
         .onChange(of: isReleased) { released in
-            // 当屏幕被释放时，允许鼠标穿透，这样用户就能感觉到“释放”了
+            // 当屏幕被释放时，允许鼠标穿透，这样用户就能感觉到"释放"了
             // 直接从控制器中寻找对应的面板
             if let panel = V2ScreenshotDebugController.debugPanels.first(where: { $0.frame == screen.frame }) {
                 panel.ignoresMouseEvents = released
@@ -807,130 +810,24 @@ struct V2ScreenshotDebugView: View {
                         NSCursor.arrow.set()
                     }
                 }
-                .onTapGesture {
-                    // ✨ 修复：如果鼠标在 UI 上，不响应点击（防止点穿 UI 触发截图动作）
-                    if primaryScreenManager.isMouseOverUI {
-                        return
-                    }
-
-                    // 0. ✨ 选择工具的点选逻辑
-                    if primaryScreenManager.isEditing && primaryScreenManager.selectedTool == .cursor {
-                        // 寻找点击位置下的最顶层元素 (反向遍历以选中最上层)
-                        if let hitElement = primaryScreenManager.elements.reversed().first(where: { element in
-                            let rect = elementBoundingRect(element).insetBy(dx: -10, dy: -10)
-                            return rect.contains(mouseLocation)
-                        }) {
-                            // ✨ 如果点击的是已经选中的文本元素，再次点击进入编辑模式
-                            if hitElement.tool == .text && primaryScreenManager.selectedElementId == hitElement.id {
-                                primaryScreenManager.editingTextId = hitElement.id
-                                return
-                            }
-
-                            primaryScreenManager.selectedElementId = hitElement.id
-                            addLog("Element Selected: \(hitElement.tool)")
-                            return
-                        } else {
-                            // ✨ 点击空白处，如果正在编辑，则完成编辑
-                            if primaryScreenManager.editingTextId != nil {
-                                primaryScreenManager.finishTextEdit()
-                            }
-                            // 点击空白处取消选中
-                            primaryScreenManager.selectedElementId = nil
-                        }
-                    }
-
-                    // 1. ✨ 放大镜工具的点击固定逻辑
-                    if primaryScreenManager.isEditing && primaryScreenManager.selectedTool == .magnifier {
-                        if let selection = localSelectedArea, selection.contains(mouseLocation) {
-                            addLog("Magnifier Placed at: \(mouseLocation)")
-
-                            // 创建放大镜元素（根据模式决定位置）
-                            let magnifierElement: DrawingElement
-                            if primaryScreenManager.magnifierFollowMouse {
-                                // 模式2：跟随鼠标固定 - 放大镜就在鼠标位置
-                                magnifierElement = DrawingElement(
-                                    tool: .magnifier,
-                                    points: [mouseLocation],  // 视觉源点
-                                    color: .white,
-                                    lineWidth: primaryScreenManager.lineWidth,
-                                    fontSize: primaryScreenManager.fontSize,
-                                    magnifierSourcePoint: mouseLocation // 锁定放大内容
-                                )
-                            } else {
-                                // 模式1：源点-分离 - 源点在鼠标位置，显示在右上角
-                                magnifierElement = DrawingElement(
-                                    tool: .magnifier,
-                                    points: [mouseLocation],  // 视觉源点
-                                    color: .white,
-                                    lineWidth: primaryScreenManager.lineWidth,
-                                    fontSize: primaryScreenManager.fontSize,
-                                    magnifierOffset: .zero,  // 默认右上角
-                                    magnifierSourcePoint: mouseLocation // 锁定放大内容
-                                )
-                            }
-
-                            // 添加到元素列表
-                            primaryScreenManager.addElement(magnifierElement)
-
-                            // 自动选中并切换到选择模式
-                            primaryScreenManager.selectedElementId = magnifierElement.id
-                            primaryScreenManager.updateTool(.cursor)
-                            primaryScreenManager.magnifierPreviewPosition = nil  // 清除预览
-                            return
-                        }
-                    }
-
-                    // 2. ✨ 文本工具的点击进入编辑逻辑
-                    if primaryScreenManager.isEditing && primaryScreenManager.selectedTool == .text {
-                        if let selection = localSelectedArea, selection.contains(mouseLocation) {
-                            addLog("Text Tool Clicked at: \(mouseLocation)")
-
-                            // 创建文本元素（注意：text 参数必须在 fontSize 之前）
-                            let textElement = DrawingElement(
-                                tool: .text,
-                                points: [mouseLocation],  // 文本位置
-                                color: primaryScreenManager.selectedColor,
-                                lineWidth: primaryScreenManager.lineWidth,
-                                text: "",  // 初始为空，用户输入
-                                fontSize: primaryScreenManager.fontSize
-                            )
-
-                            // 添加到元素列表
-                            primaryScreenManager.addElement(textElement)
-
-                            // 设置编辑状态，显示 TextField
-                            primaryScreenManager.editingTextId = textElement.id
-                            return
-                        }
-                    }
-
-                    // 3. 如果有吸附的窗口，点击即选中 (仅在非编辑模式下)
-                    if !primaryScreenManager.isEditing,
-                       let rect = primaryScreenManager.globalHoveredRect,
-                       primaryScreenManager.hoverScreen == screen {
-                        addLog("Area Selected via Tap")
-                        primaryScreenManager.updateSelection(rect, on: screen)
-                        return
-                    }
-
-                    // 4. 如果点击了选区外
-                    if let selection = localSelectedArea, !selection.contains(mouseLocation) {
-                        // ✨ 修复：在编辑模式下，点击选区外不应该退出编辑模式
-                        // 只有通过 ESC 才能退出编辑模式
-                        if !primaryScreenManager.isEditing {
-                            addLog("Background Tapped - Clearing Selection")
-                            primaryScreenManager.updateSelection(nil, on: nil)
-                            primaryScreenManager.setEditing(false)
-                        } else {
-                            addLog("Background Tapped while Editing - Ignored")
-                        }
-                    }
-                }
+                // ⚠️ onTapGesture 已移除，点击逻辑统一到 DragGesture.onEnded 中处理
+                // 原因：onTapGesture 无法获取准确的点击位置，导致第一次点击无效
         }
         .allowsHitTesting(true)
                 .simultaneousGesture(
                     DragGesture(minimumDistance: 0)
                         .onChanged { value in
+                            // ✨ 修复：确保当前屏幕是主屏幕（防止第一次拖拽无效）
+                            if !isCurrentlyPrimary {
+                                primaryScreenManager.updatePrimaryScreen(screen)
+                            }
+
+                            // ✨ 修复：立即更新 mouseLocation，确保 onTapGesture 能获取正确位置
+                            self.mouseLocation = value.startLocation
+
+                            // ✨ 修复：主动更新 hover 状态，确保 hoverScreen 正确
+                            updateHoverState(at: value.startLocation)
+
                             // ✨ 关键修复：如果正在编辑文本
                             if primaryScreenManager.editingTextId != nil {
                                 // 检查点击位置是否在选区外
@@ -1154,6 +1051,98 @@ struct V2ScreenshotDebugView: View {
                     }
                 }
                 .onEnded { value in
+                    // ✨ 计算移动距离，判断是点击还是拖拽
+                    let dragDistance = sqrt(pow(value.translation.width, 2) + pow(value.translation.height, 2))
+                    let isClick = dragStartPoint == nil && dragDistance < 5
+
+                    // ✨ 如果是点击，处理点击逻辑
+                    if isClick {
+                        let clickLocation = value.startLocation
+
+                        // 0. ✨ 选择工具的点选逻辑
+                        if primaryScreenManager.isEditing && primaryScreenManager.selectedTool == .cursor {
+                            // 寻找点击位置下的最顶层元素
+                            if let hitElement = primaryScreenManager.elements.reversed().first(where: { element in
+                                let rect = elementBoundingRect(element).insetBy(dx: -10, dy: -10)
+                                return rect.contains(clickLocation)
+                            }) {
+                                if hitElement.tool == .text && primaryScreenManager.selectedElementId == hitElement.id {
+                                    primaryScreenManager.editingTextId = hitElement.id
+                                    addLog("Text Editing Started")
+                                    return
+                                }
+                                primaryScreenManager.selectedElementId = hitElement.id
+                                addLog("Element Selected: \(hitElement.tool)")
+                            } else {
+                                if primaryScreenManager.editingTextId != nil {
+                                    primaryScreenManager.finishTextEdit()
+                                }
+                                primaryScreenManager.selectedElementId = nil
+                            }
+                            return
+                        }
+
+                        // 1. ✨ 放大镜工具的点击固定逻辑
+                        if primaryScreenManager.isEditing && primaryScreenManager.selectedTool == .magnifier {
+                            if let selection = localSelectedArea, selection.contains(clickLocation) {
+                                let magnifierElement = DrawingElement(
+                                    tool: .magnifier,
+                                    points: [clickLocation],
+                                    color: .white,
+                                    lineWidth: primaryScreenManager.lineWidth,
+                                    fontSize: primaryScreenManager.fontSize,
+                                    magnifierSourcePoint: clickLocation
+                                )
+                                primaryScreenManager.addElement(magnifierElement)
+                                primaryScreenManager.selectedElementId = magnifierElement.id
+                                primaryScreenManager.updateTool(.cursor)
+                                addLog("Magnifier Placed")
+                                return
+                            }
+                        }
+
+                        // 2. ✨ 文本工具的点击逻辑
+                        if primaryScreenManager.isEditing && primaryScreenManager.selectedTool == .text {
+                            if let selection = localSelectedArea, selection.contains(clickLocation) {
+                                let textElement = DrawingElement(
+                                    tool: .text,
+                                    points: [clickLocation],
+                                    color: primaryScreenManager.selectedColor,
+                                    lineWidth: primaryScreenManager.lineWidth,
+                                    text: "",
+                                    fontSize: primaryScreenManager.fontSize
+                                )
+                                primaryScreenManager.addElement(textElement)
+                                primaryScreenManager.editingTextId = textElement.id
+                                addLog("Text Tool Clicked")
+                                return
+                            }
+                        }
+
+                        // 3. ✨ 如果有吸附的窗口，点击即选中
+                        if !primaryScreenManager.isEditing,
+                           let rect = primaryScreenManager.globalHoveredRect,
+                           primaryScreenManager.hoverScreen == screen {
+                            primaryScreenManager.updateSelection(rect, on: screen)
+                            addLog("Area Selected via Tap")
+                            return
+                        }
+
+                        // 4. ✨ 如果点击了选区外
+                        if let selection = localSelectedArea, !selection.contains(clickLocation) {
+                            if !primaryScreenManager.isEditing {
+                                primaryScreenManager.updateSelection(nil, on: nil)
+                                primaryScreenManager.setEditing(false)
+                                addLog("Selection Cleared")
+                            }
+                            return
+                        }
+
+                        // 点击处理完成，直接返回
+                        return
+                    }
+
+                    // 以下是拖拽逻辑
                     // 阶段 2: 结束绘图或移动
                     if primaryScreenManager.isEditing {
                         if isDraggingElement {
@@ -1164,14 +1153,14 @@ struct V2ScreenshotDebugView: View {
                             addLog("Element Dragging Ended")
                             return
                         }
-                        
+
                         if let element = primaryScreenManager.currentElement {
                             primaryScreenManager.addElement(element)
                             primaryScreenManager.currentElement = nil
                         }
                         return
                     }
-                    
+
                     if isMovingSelection || activeHandle != nil {
                         isMovingSelection = false
                         activeHandle = nil
@@ -1179,7 +1168,7 @@ struct V2ScreenshotDebugView: View {
                         addLog("Selection Modification Ended")
                         return
                     }
-                    
+
                     if let start = dragStartPoint {
                         let end = value.location
                         let rect = CGRect(
@@ -1191,15 +1180,12 @@ struct V2ScreenshotDebugView: View {
                         if rect.width > 5 && rect.height > 5 {
                             primaryScreenManager.updateSelection(rect, on: screen)
                             addLog("Area Selected: \(Int(rect.width))x\(Int(rect.height))")
-
-                            // ⚠️ 保持选区模式，不自动进入编辑模式
-                            // 用户需要点击工具栏的"编辑"按钮进入编辑模式
                         }
                     }
                     dragStartPoint = nil
                     dragCurrentPoint = nil
-                    
-                    // 选区结束，恢复悬停检测
+
+                    // 恢复悬停检测
                     updateHoverState(at: value.location)
                 }
         )

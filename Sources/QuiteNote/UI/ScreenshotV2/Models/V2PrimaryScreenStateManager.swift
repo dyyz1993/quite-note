@@ -88,6 +88,7 @@ class V2PrimaryScreenStateManager: ObservableObject {
     private init() {}
 
     /// 重置所有状态
+    /// ✨ 修复：确保所有状态都被彻底重置，避免残留状态导致bug
     func reset() {
         primaryScreen = nil
         selectedArea = nil
@@ -100,6 +101,11 @@ class V2PrimaryScreenStateManager: ObservableObject {
         globalHoveredRect = nil
         globalHoveredLabel = nil
         hoverScreen = nil
+
+        // ✨ 新增：重置这些状态，避免残留
+        magnifierPreviewPosition = nil
+        magnifierFollowMouse = true
+        isMouseOverUI = false
 
         // 重置标注系统状态
         elements = []
