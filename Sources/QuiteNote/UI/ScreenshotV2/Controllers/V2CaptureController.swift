@@ -54,12 +54,6 @@ class V2CaptureController: NSObject {
         }
     }
 
-    /// 仅运行简单蒙层测试（用于诊断）
-    func runMaskTestOnly() {
-        print("[V2CaptureController] ========== 仅运行蒙层测试 ==========")
-        SimpleMaskTest.show()
-    }
-
     /// 停止并清理当前截图流程
     func stopCapture() {
         print("[V2CaptureController] 停止截图流程")
