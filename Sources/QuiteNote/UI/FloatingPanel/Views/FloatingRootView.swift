@@ -281,7 +281,7 @@ struct FloatingRootView: View {
                 .help("截图 (⌥⌘C)")
 
                 HoverButton(icon: .bug, size: 14) {
-                    V2ScreenshotDebugController.show()
+                    V2ScreenshotController.show()
                 }
                 .help("验证截图布局 (Debug)")
             }

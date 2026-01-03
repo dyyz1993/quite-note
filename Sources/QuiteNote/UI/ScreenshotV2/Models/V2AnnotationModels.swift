@@ -5,7 +5,6 @@ enum AnnotationToolGroup: String, CaseIterable {
     case select = "mouse-pointer-2"
     case shape = "square"
     case line = "minus"
-    case text = "type"
     case draw = "pen-tool"
     case effect = "grid-3x3"
 }
@@ -17,7 +16,6 @@ enum AnnotationTool: String, CaseIterable {
     case circle = "circle"
     case arrow = "arrow-up-right"
     case line = "minus"
-    case text = "type"
     case pen = "pen-tool"
     case mosaic = "grid-3x3"
     case spotlight = "focus"
@@ -30,7 +28,6 @@ enum AnnotationTool: String, CaseIterable {
         case .cursor: return .select
         case .rectangle, .circle: return .shape
         case .arrow, .line: return .line
-        case .text: return .text
         case .pen: return .draw
         case .mosaic, .spotlight, .magnifier, .steps: return .effect
         }
@@ -41,7 +38,7 @@ enum AnnotationTool: String, CaseIterable {
         switch self {
         case .cursor, .mosaic, .spotlight, .magnifier:
             return false
-        case .rectangle, .circle, .arrow, .line, .text, .pen, .steps:
+        case .rectangle, .circle, .arrow, .line, .pen, .steps:
             return true
         }
     }
@@ -54,7 +51,6 @@ class AnnotationSettings {
     @AppStorage("lastSelectedTool_select") private var lastSelect = AnnotationTool.cursor.rawValue
     @AppStorage("lastSelectedTool_shape") private var lastShape = AnnotationTool.rectangle.rawValue
     @AppStorage("lastSelectedTool_line") private var lastLine = AnnotationTool.arrow.rawValue
-    @AppStorage("lastSelectedTool_text") private var lastText = AnnotationTool.text.rawValue
     @AppStorage("lastSelectedTool_draw") private var lastDraw = AnnotationTool.pen.rawValue
     @AppStorage("lastSelectedTool_effect") private var lastEffect = AnnotationTool.mosaic.rawValue
 
@@ -63,7 +59,6 @@ class AnnotationSettings {
         case .select: lastSelect = tool.rawValue
         case .shape: lastShape = tool.rawValue
         case .line: lastLine = tool.rawValue
-        case .text: lastText = tool.rawValue
         case .draw: lastDraw = tool.rawValue
         case .effect: lastEffect = tool.rawValue
         }
@@ -75,7 +70,6 @@ class AnnotationSettings {
         case .select: rawValue = lastSelect
         case .shape: rawValue = lastShape
         case .line: rawValue = lastLine
-        case .text: rawValue = lastText
         case .draw: rawValue = lastDraw
         case .effect: rawValue = lastEffect
         }
@@ -87,7 +81,6 @@ class AnnotationSettings {
         case .select: return .cursor
         case .shape: return .rectangle
         case .line: return .arrow
-        case .text: return .text
         case .draw: return .pen
         case .effect: return .mosaic
         }

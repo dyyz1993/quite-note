@@ -114,7 +114,19 @@ final class StatusBarController {
         export.isEnabled = true
         menu.addItem(export)
         menu.addItem(NSMenuItem.separator())
-        
+
+        // 🧪 开发工具
+        let testHeader = NSMenuItem(title: "开发工具", action: nil, keyEquivalent: "")
+        testHeader.isEnabled = false
+        menu.addItem(testHeader)
+
+        let algoTest = NSMenuItem(title: "🧪 运行算法对比测试", action: #selector(onAlgorithmTest), keyEquivalent: "t")
+        algoTest.keyEquivalentModifierMask = [.option, .command]
+        algoTest.target = self
+        algoTest.isEnabled = true
+        menu.addItem(algoTest)
+        menu.addItem(NSMenuItem.separator())
+
         // 最近记录快速访问
         let recentRecords = Array(store.records.sorted(by: { $0.createdAt > $1.createdAt }).prefix(5))
         if !recentRecords.isEmpty {
@@ -229,7 +241,17 @@ final class StatusBarController {
             setupMenu() // 更新菜单状态
         }
     }
-    
+
+    /// 菜单：运行算法对比测试（已移除拼接功能）
+    @objc private func onAlgorithmTest() {
+        let alert = NSAlert()
+        alert.messageText = "功能已移除"
+        alert.informativeText = "拼接功能已被移除，现在只保存原始帧到临时文件夹。"
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "确定")
+        alert.runModal()
+    }
+
     /// 菜单：关于应用
     @objc private func onAbout() {
         let alert = NSAlert()

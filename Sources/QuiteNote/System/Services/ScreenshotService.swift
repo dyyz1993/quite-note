@@ -172,7 +172,7 @@ final class ScreenshotService {
     /// 启动 V2 静态截图流程
     @MainActor
     func startV2Screenshot() {
-        print("[DEBUG ScreenshotService] 启动 V2 静态截图流程")
+        print("[DEBUG ScreenshotService] 启动 V2 截图流程")
 
         // ⚠️ 修复：即使权限被拒绝也继续，降级到基本截图
         let hasPermission = checkAndRequestPermission()
@@ -183,28 +183,12 @@ final class ScreenshotService {
             // ⚠️ 继续执行，而不是 return
         }
 
-        let controller = V2CaptureController.shared
-
-        // ⚠️ 关键：设置回调
-        controller.onComplete = { [weak self] image in
-            print("[DEBUG ScreenshotService] V2 截图完成，准备保存")
-            self?.saveScreenshotRecord(image: image)
-        }
-
-        controller.onCancel = {
-            print("[DEBUG ScreenshotService] V2 静态截图已取消")
-        }
-        
         // ⚠️ 传递隐藏/显示主窗口的回调
-        controller.onWillStart = { [weak self] in
-            self?.onWillStartScreenshot?()
-        }
-        
-        controller.onDidFinish = { [weak self] in
-            self?.onDidFinishScreenshot?()
-        }
+        onWillStartScreenshot?()
 
-        controller.startCapture()
+        // 直接调用 V2ScreenshotController
+        // 截图完成后会通过 NotificationCenter 发送 "SaveScreenshot" 通知
+        V2ScreenshotController.show()
     }
 
     /// 保存截图到记录中

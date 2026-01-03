@@ -77,6 +77,7 @@ enum IconName: String {
     case penTool = "pen-tool"
     case focus = "focus"
     case trash = "trash"
+    case scroll = "scroll"
 }
 
 /// SwiftUI 包装，渲染 Lucide 图标（不使用 SF Symbols 回退）

@@ -1,0 +1,348 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                        点击窗口到线框显示 - 完整数据流图                        ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ 阶段 0: 初始化与状态管理                                                       │
+├──────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  V2PrimaryScreenStateManager (全局状态管理器)                                │
+│  ├─ @Published var selectedArea: CGRect?           (选中区域)                │
+│  ├─ @Published var selectionScreen: NSScreen?       (选中屏幕)                │
+│  ├─ @Published var globalHoveredRect: CGRect?       (悬停区域) ⭐            │
+│  ├─ @Published var globalHoveredLabel: String?      (悬停标签)                │
+│  ├─ @Published var hoverScreen: NSScreen?           (悬停屏幕) ⭐            │
+│  └─ @Published var isEditing: Bool                  (编辑模式)                │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ 阶段 1: 鼠标悬停检测 (Hover Detection)                                         │
+├──────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │ 用户操作: 鼠标移动到窗口上                                           │    │
+│  └──────────────────────────┬──────────────────────────────────────────┘    │
+│                             │                                                │
+│                             ▼                                                │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │ V2ScreenshotView.swift Line 507                                     │    │
+│  │ Color.white.opacity(0.0001)                                         │    │
+│  │   .onContinuousHover { phase in                                     │    │
+│  │     case .active(let location):  ← 鼠标位置                         │    │
+│  │       mouseLocation = location                                      │    │
+│  │       updateHoverState(at: location)  ⭐ 调用更新方法               │    │
+│  └──────────────────────────┬──────────────────────────────────────────┘    │
+│                             │                                                │
+│                             ▼                                                │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │ V2ScreenshotView.swift Line 110-128                                 │    │
+│  │ func updateHoverState(at location: CGPoint) {                       │    │
+│  │   // Step 1: 坐标转换                                               │    │
+│  │   guard let globalPoint = V2CoordinateMapper.localToScreen(         │    │
+│  │     point: location, on: screen                                     │    │
+│  │   ) else { return }                                                 │    │
+│  │                                                                      │    │
+│  │   // Step 2: 查找最顶层窗口                                         │    │
+│  │   let found = windowsOnScreen.first { window in                     │    │
+│  │     window.bounds.contains(globalPoint)                             │    │
+│  │   }                                                                  │    │
+│  │                                                                      │    │
+│  │   // Step 3: 更新全局状态                                           │    │
+│  │   if let window = found {                                           │    │
+│  │     let rect = getLocalRect(for: window)                            │    │
+│  │     let label = "\(window.ownerName): \(window.windowName)"         │    │
+│  │     primaryScreenManager.updateHover(rect, label: label, on: screen)│ ⭐│
+│  │   } else {                                                          │    │
+│  │     let screenRect = CGRect(origin: .zero, size: screen.frame.size) │    │
+│  │     primaryScreenManager.updateHover(screenRect, label: "Full Screen",│  │
+│  │       on: screen)                                                   │    │
+│  │   }                                                                  │    │
+│  │ }                                                                    │    │
+│  └──────────────────────────┬──────────────────────────────────────────┘    │
+│                             │                                                │
+│                             ▼                                                │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │ V2PrimaryScreenStateManager.swift Line 170-174                      │    │
+│  │ func updateHover(_ rect: CGRect?, label: String?, on screen: NSScreen?)│  │
+│  │   globalHoveredRect = rect       ✅ @Published 触发更新              │    │
+│  │   globalHoveredLabel = label     ✅ @Published 触发更新              │    │
+│  │   hoverScreen = screen           ✅ @Published 触发更新              │    │
+│  │ }                                                                    │    │
+│  └──────────────────────────────────────────────────────────────────────┘    │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ 阶段 2: 悬停线框渲染 (Hover Wireframe Rendering)                              │
+├──────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │ SwiftUI 视图更新 (由 @Published 触发)                                │    │
+│  │                                                                      │    │
+│  │ V2ScreenshotView.swift Line 484-502                                 │    │
+│  │ private var snappedWireframeRect: CGRect? {                         │    │
+│  │   if let rect = primaryScreenManager.globalHoveredRect,             │    │
+│  │      primaryScreenManager.hoverScreen == screen {                   │    │
+│  │     // 处理全屏边界情况                                              │    │
+│  │     return adjustedRect                                             │    │
+│  │   }                                                                  │    │
+│  │   return nil                                                         │    │
+│  │ }                                                                    │    │
+│  └──────────────────────────┬──────────────────────────────────────────┘    │
+│                             │                                                │
+│                             ▼                                                │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │ V2ScreenshotView.swift Line 1082-1085                               │    │
+│  │ } else if let rect = snappedWireframeRect {                         │    │
+│  │   YellowWireframe(                                                  │    │
+│  │     rect: rect,                                                     │    │
+│  │     label: primaryScreenManager.globalHoveredLabel,                 │    │
+│  │     isDashed: true,                                                 │    │
+│  │     showBackground: true,                                           │    │
+│  │     opacity: 0.8                                                     │    │
+│  │   )                                                                  │    │
+│  │ }                                                                    │    │
+│  └──────────────────────────┬──────────────────────────────────────────┘    │
+│                             │                                                │
+│                             ▼                                                │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │ YellowWireframe.swift Line 4-52                                     │    │
+│  │ 渲染结果:                                                           │    │
+│  │   - 黄色虚线边框 (2px)                                              │    │
+│  │   - 窗口标题标签 (边框上方)                                         │    │
+│  │   - 半透明背景填充                                                  │    │
+│  │   - 无调整手柄 (仅悬停状态)                                         │    │
+│  └──────────────────────────────────────────────────────────────────────┘    │
+│                                                                              │
+│  ✅ 用户看到: 鼠标悬停在窗口上时显示的黄色虚线框                               │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ 阶段 3: 用户点击 (User Click)                                                 │
+├──────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │ 用户操作: 点击窗口                                                   │    │
+│  └──────────────────────────┬──────────────────────────────────────────┘    │
+│                             │                                                │
+│                             ▼                                                │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │ V2ScreenshotView.swift Line 582-842                                │    │
+│  │ DragGesture(minimumDistance: 0)                                    │    │
+│  │   .onEnded { value in                                              │    │
+│  │     // Step 1: 判断是否为点击                                       │    │
+│  │     let dragDistance = sqrt(pow(value.translation.width, 2) +      │    │
+│  │                              pow(value.translation.height, 2))      │    │
+│  │     let isClick = dragDistance < 5  ⭐ 移动距离 < 5像素             │    │
+│  │                                                                      │    │
+│  │     if isClick {                                                    │    │
+│  │       let clickLocation = value.startLocation                       │    │
+│  │                                                                      │    │
+│  │       // Step 2: 检查窗口吸附条件 ⭐⭐⭐                           │    │
+│  │       if !primaryScreenManager.isEditing,                           │    │
+│  │          let rect = primaryScreenManager.globalHoveredRect,         │    │
+│  │          primaryScreenManager.hoverScreen == screen {               │    │
+│  │                                                                      │    │
+│  │         // ⚠️ 关键检查点: globalHoveredRect 必须不为 nil!            │    │
+│  │         // ⚠️ 如果为 nil，点击选择失败!                              │    │
+│  │                                                                      │    │
+│  │         primaryScreenManager.updateSelection(rect, on: screen)  ⭐   │    │
+│  │         addLog("Area Selected via Tap")                             │    │
+│  │         return                                                       │    │
+│  │       }                                                              │    │
+│  │     }                                                                │    │
+│  │   }                                                                  │    │
+│  └──────────────────────────┬──────────────────────────────────────────┘    │
+│                             │                                                │
+│                             ▼                                                │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │ V2PrimaryScreenStateManager.swift Line 131-134                      │    │
+│  │ func updateSelection(_ rect: CGRect?, on screen: NSScreen?) {       │    │
+│  │   selectedArea = rect         ✅ @Published 触发更新                │    │
+│  │   selectionScreen = screen     ✅ @Published 触发更新                │    │
+│  │ }                                                                    │    │
+│  └──────────────────────────────────────────────────────────────────────┘    │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ 阶段 4: 选中线框渲染 (Selection Wireframe Rendering)                           │
+├──────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │ SwiftUI 视图更新 (由 @Published 触发)                                │    │
+│  │                                                                      │    │
+│  │ V2ScreenshotView.swift Line 55-57                                   │    │
+│  │ private var localSelectedArea: CGRect? {                            │    │
+│  │   return primaryScreenManager.selectionScreen == screen             │    │
+│  │     ? primaryScreenManager.selectedArea                             │    │
+│  │     : nil                                                            │    │
+│  │ }                                                                    │    │
+│  └──────────────────────────┬──────────────────────────────────────────┘    │
+│                             │                                                │
+│                             ▼                                                │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │ V2ScreenshotView.swift Line 1057-1086                               │    │
+│  │ private func buildDragOverlay() -> some View {                      │    │
+│  │   ZStack(alignment: .topLeading) {                                  │    │
+│  │     // 优先级1: 拖拽中                                               │    │
+│  │     if let start = dragStartPoint, let current = dragCurrentPoint { │    │
+│  │       YellowWireframe(...)  ← 拖拽线框                              │    │
+│  │                                                                      │    │
+│  │     // 优先级2: 已选中 ⭐ 选中目标!                                  │    │
+│  │     } else if let rect = localSelectedArea {                        │    │
+│  │       YellowWireframe(                                              │    │
+│  │         rect: rect,                                                 │    │
+│  │         label: "\(Int(rect.width)) x \(Int(rect.height))",          │    │
+│  │         isDashed: true,                                             │    │
+│  │         showBackground: false,                                      │    │
+│  │         showHandles: true  ⭐ 显示8个调整手柄                        │    │
+│  │       )                                                              │    │
+│  │                                                                      │    │
+│  │     // 优先级3: 悬停                                                 │    │
+│  │     } else if let rect = snappedWireframeRect {                     │    │
+│  │       YellowWireframe(...)  ← 悬停线框                              │    │
+│  │     }                                                                │    │
+│  │   }                                                                  │    │
+│  │ }                                                                    │    │
+│  └──────────────────────────┬──────────────────────────────────────────┘    │
+│                             │                                                │
+│                             ▼                                                │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │ YellowWireframe.swift Line 4-52                                     │    │
+│  │ 渲染结果:                                                           │    │
+│  │   - 黄色虚线边框 (2px)                                              │    │
+│  │   - 8个调整手柄 (四角 + 四边中点) ⭐                               │    │
+│  │   - 尺寸标签 (边框上方)                                             │    │
+│  │   - 无背景填充                                                      │    │
+│  └──────────────────────────────────────────────────────────────────────┘    │
+│                                                                              │
+│  ✅ 用户看到: 点击窗口后显示的带手柄的黄色虚线框                               │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                              数据流关键点总结                                  ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ 关键数据结构                                                                   │
+├──────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  globalHoveredRect (悬停矩形)                                                │
+│  ├─ 类型: CGRect?                                                            │
+│  ├─ 来源: updateHoverState() 方法计算                                        │
+│  ├─ 更新时机: 鼠标移动时 (onContinuousHover .active)                         │
+│  ├─ 生命周期: 瞬时状态 (随鼠标移动而变化)                                     │
+│  └─ ⚠️ 风险: 点击时可能为 nil 或已变化                                       │
+│                                                                              │
+│  selectedArea (选中矩形)                                                      │
+│  ├─ 类型: CGRect?                                                            │
+│  ├─ 来源: updateSelection() 方法设置                                         │
+│  ├─ 更新时机: 用户点击窗口时                                                  │
+│  ├─ 生命周期: 持久状态 (直到下次选择或重置)                                   │
+│  └─ ✅ 稳定: 不会随鼠标移动而变化                                            │
+│                                                                              │
+│  localSelectedArea (本地选区)                                                │
+│  ├─ 类型: CGRect? (计算属性)                                                 │
+│  ├─ 来源: 根据 selectedArea 和 selectionScreen 计算                          │
+│  ├─ 计算逻辑: selectionScreen == screen ? selectedArea : nil                │
+│  └─ ⚠️ 性能: 每次访问都重新计算                                              │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ 关键代码位置                                                                   │
+├──────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  悬停检测:     V2ScreenshotView.swift:507    (onContinuousHover)            │
+│  状态更新:     V2ScreenshotView.swift:560    (updateHoverState)             │
+│  全局状态:     V2PrimaryScreenStateManager.swift:170 (updateHover)           │
+│  点击判断:     V2ScreenshotView.swift:828    (dragDistance < 5)             │
+│  选择条件:     V2ScreenshotView.swift:836-838 (三个条件检查)                 │
+│  选择更新:     V2PrimaryScreenStateManager.swift:131 (updateSelection)       │
+│  本地选区:     V2ScreenshotView.swift:55-57  (localSelectedArea)             │
+│  悬停渲染:     V2ScreenshotView.swift:1082   (snappedWireframeRect)         │
+│  选中渲染:     V2ScreenshotView.swift:1074   (localSelectedArea)             │
+│  线框组件:     YellowWireframe.swift:4-52                                    │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ 数据丢失风险点                                                                 │
+├──────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  🔴 P0 - 关键风险:                                                           │
+│  ┌──────────────────────────────────────────────────────────────────────┐   │
+│  │ 风险1: globalHoveredRect 在点击时为 nil                               │   │
+│  │   位置: Line 837                                                     │   │
+│  │   原因: 鼠标移动、时序竞争、坐标转换失败                              │   │
+│  │   影响: 点击条件不满足，窗口选择失败                                  │   │
+│  │   修复: 在 onChanged 中捕获点击候选窗口                              │   │
+│  └──────────────────────────────────────────────────────────────────────┘   │
+│                                                                              │
+│  🔴 P0 - 关键风险:                                                           │
+│  ┌──────────────────────────────────────────────────────────────────────┐   │
+│  │ 风险2: 时序竞争 (hover.ended vs DragGesture.onEnded)                 │   │
+│  │   位置: Line 566 vs Line 824                                          │   │
+│  │   原因: 两个事件触发顺序不确定                                        │   │
+│  │   影响: globalHoveredRect 在点击前被清空                              │   │
+│  │   修复: 延迟清空或使用状态锁                                          │   │
+│  └──────────────────────────────────────────────────────────────────────┘   │
+│                                                                              │
+│  🟡 P1 - 重要风险:                                                           │
+│  ┌──────────────────────────────────────────────────────────────────────┐   │
+│  │ 风险3: 多屏切换导致屏幕不匹配                                          │   │
+│  │   位置: Line 838                                                     │   │
+│  │   原因: hoverScreen 与当前屏幕不一致                                  │   │
+│  │   影响: 点击条件不满足                                                │   │
+│  │   修复: 检查屏幕匹配性，更新 hoverScreen                              │   │
+│  └──────────────────────────────────────────────────────────────────────┘   │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                              快速诊断流程                                      ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+问题: 点击窗口后没有显示选中线框?
+
+诊断步骤:
+
+1. 添加日志到 Line 837:
+   print("globalHoveredRect: \(primaryScreenManager.globalHoveredRect?.debugDescription ?? "nil")")
+
+2. 添加日志到 Line 838:
+   print("hoverScreen: \(primaryScreenManager.hoverScreen?.localizedName ?? "nil")")
+   print("current screen: \(screen.localizedName)")
+
+3. 添加日志到 Line 839:
+   print("updateSelection called with rect: \(rect)")
+
+4. 添加日志到 Line 1074:
+   print("localSelectedArea: \(localSelectedArea?.debugDescription ?? "nil")")
+
+5. 根据日志结果定位问题:
+   - 如果 Step1 为 nil → 检查 updateHoverState 是否执行
+   - 如果 Step2 不匹配 → 检查多屏切换逻辑
+   - 如果 Step3 未执行 → 检查条件判断 (Line 836-838)
+   - 如果 Step4 为 nil → 检查 selectionScreen 匹配 (Line 56)
+
+════════════════════════════════════════════════════════════════════════════════
+
+文件输出位置:
+1. /Users/xuyingzhou/Project/study-mac-app/quite-note/DATA_FLOW_ANALYSIS.md
+   - 完整的代码级分析文档
+
+2. /Users/xuyingzhou/Project/study-mac-app/quite-note/DATA_FLOW_ANALYSIS_SUMMARY.md
+   - 可视化总结和快速参考
+
+3. /Users/xuyingzhou/Project/study-mac-app/quite-note/DATA_FLOW_VISUAL.txt
+   - ASCII 艺术数据流图

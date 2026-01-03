@@ -50,8 +50,6 @@ struct ElementRendererFactory {
             return ArrowRenderer()
         case .pen:
             return PenRenderer()
-        case .text:
-            return TextRenderer()
         case .steps:
             return StepsRenderer()
         case .mosaic:

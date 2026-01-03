@@ -29,6 +29,52 @@ class V2PrimaryScreenStateManager: ObservableObject {
     /// 长图截取的实时预览图列表 (这里暂时存图片，实际开发可能存路径或纹理)
     @Published var longScreenshotPreviews: [NSImage] = []
 
+    /// ✨ 新增：长截图实时合成预览（用于预览面板显示拼接后的效果）
+    @Published var longScreenshotCompositePreview: NSImage?
+
+    /// ✨ 新增：当前滚动偏移量（用于在预览面板上显示视口指示器）
+    @Published var currentScrollOffset: CGFloat = 0
+
+    /// ✨ 新增：选区高度（用于计算视口指示器的高度）
+    @Published var longScreenshotSelectionHeight: CGFloat = 0
+
+    /// ✨ 新增：每帧的滚动位置记录（用于精确的滚回引导）
+    /// Key: 帧索引, Value: 滚动偏移量（像素）
+    @Published var frameScrollPositions: [Int: CGFloat] = [:]
+
+    // ✨ 新增：质量监控相关状态（已移除拼接功能）
+
+    /// 是否显示质量警告面板（已移除）
+    @Published var showQualityWarning: Bool = false
+
+    // ✨ 新增：视觉引导相关状态
+
+    /// 是否显示滚回引导
+    @Published var isShowingScrollBackGuide: Bool = false
+
+    /// 引导目标帧索引
+    @Published var guideTargetFrameIndex: Int = 0
+
+    /// 引导目标滚动偏移
+    @Published var guideTargetScrollOffset: CGFloat = 0
+
+    /// 引导滚动方向
+    @Published var guideScrollDirection: ScrollDirection = .up
+
+    /// 引导距离目标的像素距离
+    @Published var guideDistanceToTarget: CGFloat = 0
+
+    // ✨ 新增：像素检测相关状态
+
+    /// 上一次检测到的变化百分比（用于 UI 显示）
+    @Published var lastChangePercentage: CGFloat = 0
+
+    /// 像素检测是否启用
+    @Published var pixelDetectionEnabled: Bool = true
+
+    /// 检测到的静止帧数（连续未达到阈值的帧数）
+    @Published var staticFrameCount: Int = 0
+
     // MARK: - 完整标注系统状态
 
     /// 标注元素列表
@@ -48,9 +94,6 @@ class V2PrimaryScreenStateManager: ObservableObject {
     func updateTool(_ tool: AnnotationTool) {
         selectedTool = tool
 
-        // ✨ 切换工具时，如果正在编辑文本，需要先完成编辑
-        finishTextEdit()
-
         // 如果切换到选择工具，默认选中最后一个元素
         if tool == .cursor {
             selectedElementId = elements.last?.id
@@ -64,8 +107,6 @@ class V2PrimaryScreenStateManager: ObservableObject {
     @Published var stepCounter: Int = 1
     /// 选中的元素 ID
     @Published var selectedElementId: UUID? = nil
-    /// 正在编辑的文本 ID
-    @Published var editingTextId: UUID? = nil
 
     /// 放大镜预览状态（鼠标跟随模式）
     @Published var magnifierPreviewPosition: CGPoint? = nil
@@ -97,6 +138,13 @@ class V2PrimaryScreenStateManager: ObservableObject {
         isLongScreenshotMode = false
         isCapturing = false
         longScreenshotPreviews = []
+        longScreenshotCompositePreview = nil  // ✅ 新增：清除合成预览
+        currentScrollOffset = 0  // ✅ 新增：清除滚动偏移
+        longScreenshotSelectionHeight = 0  // ✅ 新增：清除选区高度
+        frameScrollPositions = [:]  // ✅ 新增：清除帧滚动位置记录
+        lastChangePercentage = 0  // ✅ 新增：清除像素变化百分比
+        pixelDetectionEnabled = true  // ✅ 新增：重置像素检测启用状态
+        staticFrameCount = 0  // ✅ 新增：清除静止帧计数
         drawingPaths = []
         globalHoveredRect = nil
         globalHoveredLabel = nil
@@ -116,10 +164,6 @@ class V2PrimaryScreenStateManager: ObservableObject {
         fontSize = 20.0
         stepCounter = 1
         selectedElementId = nil
-        editingTextId = nil
-
-        // 关闭文本编辑面板
-        closeTextEditPanel()
     }
 
     /// 更新主屏幕
@@ -193,7 +237,6 @@ class V2PrimaryScreenStateManager: ObservableObject {
         elements = []
         currentElement = nil
         selectedElementId = nil
-        editingTextId = nil
         stepCounter = 1
     }
 
@@ -210,30 +253,5 @@ class V2PrimaryScreenStateManager: ObservableObject {
             elements.removeAll { $0.id == id }
             selectedElementId = nil
         }
-    }
-
-    // MARK: - 文本编辑面板管理
-
-    /// 关闭文本编辑面板（面板由 TextEditPanelRepresentable 管理）
-    func closeTextEditPanel() {
-        editingTextId = nil
-    }
-
-    /// ✨ 完成文本编辑：检查空文本并清理
-    /// 当用户退出文本编辑时调用，如果文本为空则删除该元素
-    func finishTextEdit() {
-        guard let editingId = editingTextId else { return }
-
-        // 检查当前编辑的文本是否为空
-        if let index = elements.firstIndex(where: { $0.id == editingId }) {
-            let element = elements[index]
-            if element.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                // 如果文本为空，移除该元素
-                elements.remove(at: index)
-            }
-        }
-
-        // 清除编辑状态
-        editingTextId = nil
     }
 }
