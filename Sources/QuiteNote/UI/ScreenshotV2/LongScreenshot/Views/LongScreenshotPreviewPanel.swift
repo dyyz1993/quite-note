@@ -65,15 +65,6 @@ class LongScreenshotPreviewPanel: NSPanel {
         let hostingView = NSHostingView(rootView: contentView)
         hostingView.autoresizingMask = [.width, .height]
         self.contentView = hostingView
-
-        // 订阅 ESC 键事件来关闭
-        NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            if event.keyCode == 53 { // ESC key
-                self?.close()
-                return nil
-            }
-            return event
-        }
     }
 
     deinit {

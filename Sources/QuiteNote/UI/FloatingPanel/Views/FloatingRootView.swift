@@ -30,6 +30,11 @@ class KeyboardInterceptView: NSView {
             // 监听本地键盘事件（不要求成为第一响应者）
             localMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
                 if event.keyCode == 53 { // ESC key code
+                    // 如果截图界面正在显示，不要拦截 ESC，让截图控制器处理
+                    if !V2ScreenshotController.debugPanels.isEmpty {
+                        return event
+                    }
+                    
                     print("[DEBUG AppKit] ESC key detected via local monitor")
                     NotificationCenter.default.post(name: .escKeyPressed, object: nil)
                     return nil // 消费事件，不让其他控件处理

@@ -20,8 +20,11 @@ class V2PrimaryScreenStateManager: ObservableObject {
     /// 选区所在的屏幕（全局共享）
     @Published var selectionScreen: NSScreen?
 
-    /// 是否处于编辑模式
-    @Published var isEditing: Bool = false
+    /// 是否处于编辑模式 (由 elements 或 selectedTool 决定)
+    var isEditing: Bool {
+        !elements.isEmpty || selectedTool != .cursor
+    }
+    
     /// 是否处于长图截取模式
     @Published var isLongScreenshotMode: Bool = false
     /// 是否正在执行长图采集 (用于隐藏 UI)
@@ -130,6 +133,13 @@ class V2PrimaryScreenStateManager: ObservableObject {
     /// ✨ 新增：鼠标是否悬停在 UI（工具栏等）上
     @Published var isMouseOverUI: Bool = false
 
+    /// ✨ 新增：ESC 键上次按下的时间
+    @Published var lastEscKeyPressTime: Date? = nil
+
+    /// ✨ 新增：Toast 消息
+    @Published var toastMessage: String? = nil
+    @Published var toastType: String = "info"
+
     /// 绘图路径列表（保留兼容，但推荐使用 elements）
     @Published var drawingPaths: [DrawingPath] = []
     
@@ -142,13 +152,26 @@ class V2PrimaryScreenStateManager: ObservableObject {
 
     private init() {}
 
+    /// 发送 Toast 消息
+    func postToast(_ message: String, type: String = "info") {
+        self.toastMessage = message
+        self.toastType = type
+        
+        // 3秒后自动清除
+        Task {
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            if self.toastMessage == message {
+                self.toastMessage = nil
+            }
+        }
+    }
+
     /// 重置所有状态
     /// ✨ 修复：确保所有状态都被彻底重置，避免残留状态导致bug
     func reset() {
         primaryScreen = nil
         selectedArea = nil
         selectionScreen = nil
-        isEditing = false
         isLongScreenshotMode = false
         isCapturing = false
         longScreenshotPreviews = []
@@ -178,6 +201,7 @@ class V2PrimaryScreenStateManager: ObservableObject {
         fontSize = 20.0
         stepCounter = 1
         selectedElementId = nil
+        lastEscKeyPressTime = nil
     }
 
     /// 更新主屏幕
@@ -193,9 +217,16 @@ class V2PrimaryScreenStateManager: ObservableObject {
     
     /// 切换编辑模式
     func setEditing(_ editing: Bool) {
-        isEditing = editing
         if editing {
             isLongScreenshotMode = false
+            // 如果当前是光标，切换到画笔
+            if selectedTool == .cursor {
+                updateTool(.pen)
+            }
+        } else {
+            // 退出编辑模式：清空元素并切回光标
+            elements = []
+            updateTool(.cursor)
         }
     }
     
@@ -203,7 +234,9 @@ class V2PrimaryScreenStateManager: ObservableObject {
     func setLongScreenshotMode(_ active: Bool) {
         isLongScreenshotMode = active
         if active {
-            isEditing = false
+            // 进入长图模式：清空标注并切回光标
+            elements = []
+            updateTool(.cursor)
         } else {
             isCapturing = false
         }

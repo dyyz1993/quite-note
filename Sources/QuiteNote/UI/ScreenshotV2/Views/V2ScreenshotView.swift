@@ -108,6 +108,14 @@ struct V2ScreenshotView: View {
     
     // 动态更新悬停状态：寻找鼠标位置下最顶层的窗口
     private func updateHoverState(at location: CGPoint) {
+        // ✨ 核心修复：如果已经有选区，不再执行窗口吸附检测
+        if hasAnySelection {
+            if primaryScreenManager.globalHoveredRect != nil {
+                primaryScreenManager.updateHover(nil, label: nil, on: nil)
+            }
+            return
+        }
+
         // 1. 坐标转换：将局部坐标转换为全局屏幕坐标
         guard let globalPoint = V2CoordinateMapper.localToScreen(point: location, on: screen) else { return }
         
@@ -198,14 +206,12 @@ struct V2ScreenshotView: View {
         return newRect
     }
 
-    // 保存到剪贴板并关闭
-    private func saveToClipboard(rect: CGRect) {
-        addLog("Saving selection to clipboard...")
-        
+    // 生成最终高清图片（合并底图和标注）
+    private func generateFinalImage(rect: CGRect) -> NSImage? {
         // ⚠️ 获取屏幕的缩放因子 (Retina 屏通常是 2.0)
         let scale = screen.backingScaleFactor
         
-        // 1. 计算像素坐标下的裁剪区域 (CGImage 使用 Top-Left 坐标系)
+        // 1. 计算像素坐标下的裁剪区域
         let pixelRect = CGRect(
             x: rect.origin.x * scale,
             y: rect.origin.y * scale,
@@ -213,17 +219,17 @@ struct V2ScreenshotView: View {
             height: rect.height * scale
         )
         
-        // 2. 直接使用初始化时预取的 snapshot (它是纯净的，不包含调试 UI)
+        // 2. 获取原始截图的高清 CGImage
         guard let fullCGImage = snapshot.cgImage(forProposedRect: nil, context: nil, hints: nil),
               let croppedCGImage = fullCGImage.cropping(to: pixelRect) else {
             addLog("Error: Failed to crop snapshot image")
-            return
+            return nil
         }
         
-        // 3. 创建基础图片
+        // 3. 创建基础图片 (保持原始像素密度)
         let finalImage = NSImage(cgImage: croppedCGImage, size: rect.size)
 
-        // 4. ✨ 渲染标注系统（图层叠加法 - 所见即所得）
+        // 4. ✨ 渲染标注系统 (所见即所得)
         if !primaryScreenManager.elements.isEmpty {
             // 创建导出用的画布视图 (不带辅助 UI)
             let exportCanvas = V2AnnotationCanvas(
@@ -234,13 +240,12 @@ struct V2ScreenshotView: View {
             )
             .frame(width: screenSize.width, height: screenSize.height)
 
-            // 使用 ImageRenderer 渲染标注层为透明图片
+            // 使用 ImageRenderer 渲染标注层为高清透明图片
             let renderer = ImageRenderer(content: exportCanvas)
             renderer.scale = scale
             
             if let annotationImage = renderer.nsImage {
                 // 裁剪标注图层到选区大小
-                // ⚠️ 注意：ImageRenderer 出来的 NSImage 坐标系和 CGImage 裁剪可能需要对应
                 if let fullAnnotationCGImage = annotationImage.cgImage(forProposedRect: nil, context: nil, hints: nil),
                    let croppedAnnotationCGImage = fullAnnotationCGImage.cropping(to: pixelRect) {
                     
@@ -253,18 +258,43 @@ struct V2ScreenshotView: View {
                 }
             }
         }
+        
+        return finalImage
+    }
 
-        // 5. 写入剪贴板
+    // 保存到剪贴板
+    private func saveToClipboard(rect: CGRect) {
+        addLog("Saving selection to clipboard...")
+        
+        guard let finalImage = generateFinalImage(rect: rect) else { return }
+
+        // 写入剪贴板
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.writeObjects([finalImage])
         
-        addLog("Saved to clipboard (Scale: \(scale))! Closing...")
+        addLog("Saved to clipboard! Closing...")
         
-        // 6. 关闭所有调试窗口
+        // 关闭所有调试窗口
         V2ScreenshotController.close()
     }
-    
+
+    // 保存到闪记
+    private func saveToFlashNotes(rect: CGRect) {
+        addLog("Saving selection to flash notes...")
+        
+        guard let finalImage = generateFinalImage(rect: rect) else { return }
+
+        // ⚠️ 关键：调用 ScreenshotService 保存到闪记
+        // 注意：ScreenshotService 需要访问 RecordStore
+        ScreenshotService.shared.saveScreenshotToFlashNotes(image: finalImage)
+        
+        addLog("Saved to flash notes! Closing...")
+        
+        // 关闭所有调试窗口
+        V2ScreenshotController.close()
+    }
+
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
             // ⚠️ 彻底释放逻辑：如果屏幕已释放，只保留最底层的透明背景，连图片都不渲染
@@ -293,7 +323,7 @@ struct V2ScreenshotView: View {
                 
                 // 3. 交互层：处理悬停和点击
                 buildInteractionLayer()
-                    .allowsHitTesting(!primaryScreenManager.isLongScreenshotMode)
+                    .allowsHitTesting(true) // ✨ 修复：始终允许点击，通过 contentShape 的 hole 穿透
                     .onChange(of: primaryScreenManager.isLongScreenshotMode) { isLongMode in
                         // 长图模式下，如果是当前屏幕有选区，则需要根据选区动态设置是否忽略鼠标事件
                         if let panel = V2ScreenshotController.screenPanelMap[screen] {
@@ -320,19 +350,8 @@ struct V2ScreenshotView: View {
                     buildAnnotationLayer()
                         .zIndex(60) // ⚠️ 确保在交互层之上，但低于工具栏
                 }
-                
-                // 5. 调试信息层 (最顶层) - 已隐藏
-                // if !primaryScreenManager.isCapturing {
-                //     V2DebugOverlayView(...)
-                
-                // 新增：长图滚动预览 (仅在长图模式下显示，且非采集过程中)
-                // ⚠️ 已注释：V2LongScreenshotPreview 组件不存在
-                // if primaryScreenManager.isLongScreenshotMode, let selection = localSelectedArea, !primaryScreenManager.isCapturing {
-                //     V2LongScreenshotPreview(selection: selection, screen: screen)
-                // }
 
                 // 新增：截图工具栏 (仅在有选区时显示)
-                // ⚠️ 长截图模式使用独立窗口 LongScreenshotControlPanel，不在这里显示工具栏
                 if let selection = localSelectedArea, !primaryScreenManager.isLongScreenshotMode {
                     if !primaryScreenManager.isCapturing {
                         // 普通截图模式：显示标注工具栏
@@ -342,47 +361,29 @@ struct V2ScreenshotView: View {
                     }
                 }
                 
+                // ✨ 新增：Toast 提示层
+                if let message = primaryScreenManager.toastMessage {
+                    Text(message)
+                        .font(.themeCaption)
+                        .foregroundColor(.themeTextPrimary)
+                        .padding(.horizontal, ThemeSpacing.px4.rawValue)
+                        .padding(.vertical, ThemeSpacing.px2.rawValue)
+                        .background(
+                            RoundedRectangle(cornerRadius: ThemeRadius.lg.rawValue)
+                                .fill(primaryScreenManager.toastType == "error" ? Color.themeStatusError : Color.themePanel)
+                        )
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                        .position(x: screenSize.width / 2, y: 100)
+                        .zIndex(2000)
+                        .animation(.easeOut(duration: ThemeDuration._300.rawValue), value: message)
+                }
+                
                 // 新增：长图采集过程中的悬浮停止按钮
                 // 此时按钮已经在独立的 V2LongScreenshotControlPanel 中显示
                 // 这里只需保留空逻辑或移除旧的内置 Toolbar
                 if primaryScreenManager.isCapturing {
                     // 空实现，UI 已经由独立窗口承载
                 }
-                
-                // 层级标签汇总 (已删除调试代码)
-                // if !primaryScreenManager.isCapturing {
-                //     VStack(alignment: .trailing, spacing: 4) {
-                //         LayerLabel(name: "Layer 5: Debug & Info Layer", color: .green)
-                //         LayerLabel(name: "Layer 4: Drag/Selection Layer", color: .blue)
-                //         LayerLabel(name: "Layer 3: Window Interaction", color: .red)
-                //         LayerLabel(name: "Layer 2: Mask Overlay", color: .black)
-                //         LayerLabel(name: "Layer 1: Background Layer", color: .gray)
-                //     }
-                //     .padding(10)
-                // }
-
-                // 鼠标跟随层级标签 (已删除调试代码)
-                // if currentLayerLevel > 0 && !primaryScreenManager.isCapturing {
-                //     VStack(alignment: .leading, spacing: 2) {
-                //         Text("Level \(currentLayerLevel)")
-                //             .font(.system(size: 10, weight: .bold))
-                //         Text(currentLayerName)
-                //             .font(.system(size: 10))
-                //     }
-                //     .padding(.horizontal, 8)
-                //     .padding(.vertical, 4)
-                //     .background(Color.black.opacity(0.8))
-                //     .foregroundColor(.yellow)
-                //     .cornerRadius(6)
-                //     .overlay(
-                //         RoundedRectangle(cornerRadius: 6)
-                //             .stroke(Color.yellow.opacity(0.5), lineWidth: 1)
-                //     )
-                //     .position(
-                //         x: mouseLocation.x + (mouseLocation.x > screen.frame.width - 150 ? -80 : 60),
-                //         y: mouseLocation.y + (mouseLocation.y > screen.frame.height - 100 ? -40 : 30)
-                //     )
-                // }
 
                 // ⚠️ 放大镜预览 (隶属于 Layer 5)
                 // 约束规则：
@@ -412,8 +413,15 @@ struct V2ScreenshotView: View {
                 }
             }
 
-            // 监听保存通知
+            // 监听保存通知 (Command+S)
             NotificationCenter.default.addObserver(forName: NSNotification.Name("SaveScreenshot"), object: nil, queue: .main) { _ in
+                if let selection = localSelectedArea {
+                    saveToFlashNotes(rect: selection)
+                }
+            }
+            
+            // 监听复制通知 (Command+C)
+            NotificationCenter.default.addObserver(forName: NSNotification.Name("CopyScreenshot"), object: nil, queue: .main) { _ in
                 if let selection = localSelectedArea {
                     saveToClipboard(rect: selection)
                 }
@@ -430,16 +438,6 @@ struct V2ScreenshotView: View {
                     panel.ignoresMouseEvents = false
                     addLog("Screen \(screenIndex) reclaimed - Mouse events captured")
                 }
-            }
-        }
-        .onExitCommand {
-            if hasAnySelection || primaryScreenManager.globalHoveredRect != nil {
-                addLog("ESC pressed - Resetting to Phase 0")
-                primaryScreenManager.updateSelection(nil, on: nil)
-                primaryScreenManager.updateHover(nil, label: nil, on: nil)
-            } else {
-                addLog("ESC pressed - Closing All Panels")
-                V2ScreenshotController.close()
             }
         }
     }
@@ -561,7 +559,19 @@ struct V2ScreenshotView: View {
                             // MARK: - onChanged: Phase 2 编辑模式交互
 
                     // 阶段 2: 编辑模式下的交互
-                    if primaryScreenManager.isEditing, let selection = localSelectedArea {
+                    if primaryScreenManager.isEditing {
+                        // ✨ 核心修复：锁定编辑模式下的全域交互
+                        // 1. 获取当前屏幕选区，如果当前屏幕没有选区但全域有选区，说明点击了错误的屏幕
+                        guard let selection = localSelectedArea else {
+                            if hasAnySelection { return }
+                            return // 兜底
+                        }
+                        
+                        // 2. 必须点击在选区内部才能开始交互
+                        if !selection.contains(value.startLocation) {
+                            return
+                        }
+
                         // 2.1 ✨ 选择工具的移动逻辑
                         if primaryScreenManager.selectedTool == .cursor {
                             if !isDraggingElement {
@@ -670,8 +680,8 @@ struct V2ScreenshotView: View {
                                         }
                                     }
                                 }
+                                return
                             }
-                            return
                         }
 
                         // 2.2 ✨ 绘图工具的创建逻辑
@@ -706,25 +716,26 @@ struct V2ScreenshotView: View {
 
                     // 阶段 1: 选区已经存在
                     if let currentSelection = localSelectedArea {
-                        // ⚠️ 编辑模式或长图模式下禁止调整选区位置和大小
-                        if primaryScreenManager.isEditing || primaryScreenManager.isLongScreenshotMode {
-                            return
-                        }
-                        
                         // 如果还没开始移动/调整，检查起始点
                         if !isMovingSelection && activeHandle == nil {
                             if let handle = getHandle(at: value.startLocation, in: currentSelection) {
+                                // ⚠️ 编辑模式或长图模式下禁止调整选区
+                                if primaryScreenManager.isEditing || primaryScreenManager.isLongScreenshotMode {
+                                    return
+                                }
                                 activeHandle = handle
                                 initialSelectionForMove = currentSelection
                                 addLog("Resizing Selection Started: \(handle)")
                             } else if currentSelection.contains(value.startLocation) {
+                                // ⚠️ 编辑模式或长图模式下禁止移动选区
+                                if primaryScreenManager.isEditing || primaryScreenManager.isLongScreenshotMode {
+                                    return
+                                }
                                 isMovingSelection = true
                                 initialSelectionForMove = currentSelection
                                 addLog("Moving Selection Started")
                             } else {
-                                // 点击外部，开始新的框选
-                                dragStartPoint = value.startLocation
-                                primaryScreenManager.updateSelection(nil, on: nil)
+                                // ✨ 核心修复：点击选区外部直接忽略（不重画、不消失）
                                 return
                             }
                         }
@@ -756,6 +767,9 @@ struct V2ScreenshotView: View {
                         // MARK: - onChanged: Phase 0 新选区创建
 
                         // 阶段 0: 还没有选区，执行正常框选
+                        // ✨ 核心修复：如果任意屏幕已经有选区了，禁止在当前屏幕开启新选区
+                        if hasAnySelection { return }
+
                         if dragStartPoint == nil {
                             dragStartPoint = value.startLocation
                             addLog("🐛 [Phase 0] Drag Started at: \(Int(value.startLocation.x)),\(Int(value.startLocation.y))")
@@ -775,7 +789,24 @@ struct V2ScreenshotView: View {
                     if isClick {
                         let clickLocation = value.startLocation
 
-                        // 0. ✨ 处理正在进行的文本编辑 (点击外部完成编辑)
+                        // ✨ 核心修复：锁定点击交互
+                        // 1. 如果全局已有选区
+                        if hasAnySelection {
+                            // 检查是否点击在当前屏幕的选区内
+                            let inLocalSelection = localSelectedArea?.contains(clickLocation) ?? false
+                            
+                            // 检查是否正在编辑文本（如果是，需要允许点击外部以完成编辑）
+                            let isEditingText = primaryScreenManager.selectedElementId != nil && 
+                                               primaryScreenManager.elements.first(where: { $0.id == primaryScreenManager.selectedElementId })?.tool == .text
+                            
+                            // 如果点击在选区外，且不是为了完成文本编辑，则直接忽略
+                            if !inLocalSelection && !isEditingText {
+                                addLog("Click outside selection ignored")
+                                return
+                            }
+                        }
+
+                        // 1. ✨ 处理正在进行的文本编辑 (点击外部完成编辑)
                         if let selectedId = primaryScreenManager.selectedElementId,
                            let element = primaryScreenManager.elements.first(where: { $0.id == selectedId }),
                            element.tool == .text {
@@ -799,7 +830,7 @@ struct V2ScreenshotView: View {
                         }
 
                         // 1. ✨ 阶段 0：窗口吸附选择（优先级最高）
-                        if !primaryScreenManager.isEditing,
+                        if !primaryScreenManager.isEditing && !hasAnySelection,
                            let rect = primaryScreenManager.globalHoveredRect,
                            primaryScreenManager.hoverScreen == screen {
                             // ✨ 同时更新选区和主屏幕，确保 isCurrentlyPrimary = true
@@ -903,9 +934,6 @@ struct V2ScreenshotView: View {
                                     addLog("Text Tool: New element created")
                                 }
                                 return
-                            } else {
-                                // 点击选区外，退出编辑
-                                primaryScreenManager.selectedElementId = nil
                             }
                         }
 
@@ -924,17 +952,6 @@ struct V2ScreenshotView: View {
                                 return
                             }
                         }
-
-                        // 5. ✨ 点击选区外，清除选区
-                        // ⚠️ 已修改：点击空白处无效，只能通过 ESC 键或取消按钮清除选区
-                        // if let selection = localSelectedArea, !selection.contains(clickLocation) {
-                        //     if !primaryScreenManager.isEditing {
-                        //         primaryScreenManager.updateSelection(nil, on: nil)
-                        //         primaryScreenManager.setEditing(false)
-                        //         addLog("Selection Cleared")
-                        //     }
-                        //     return
-                        // }
 
                         // 点击处理完成
                         return

@@ -12,13 +12,14 @@ class V2ScreenshotController {
     static var screenPanelMap: [NSScreen: NSPanel] = [:]
     static var longScreenshotControlPanel: LongScreenshotControlPanel?
     static var longScreenshotPreviewPanel: LongScreenshotPreviewPanel?
+    private static var localMonitor: Any?
 
     static func show() {
         // 先关闭旧的
         close()
 
-        // ⚠️ 重置全局状态，确保每次进入截图模式都是干净的
-        V2PrimaryScreenStateManager.shared.reset()
+        // ✨ 设置全局键盘监听
+        setupKeyboardMonitor()
 
         v2Logger.info("Controller - Starting multi-screen debug window with REAL windows...")
 
@@ -87,6 +88,12 @@ class V2ScreenshotController {
     }
 
     static func close() {
+        // 移除监听
+        if let monitor = localMonitor {
+            NSEvent.removeMonitor(monitor)
+            localMonitor = nil
+        }
+
         for panel in debugPanels {
             panel.close()
         }
@@ -101,6 +108,76 @@ class V2ScreenshotController {
 
         // ⚠️ 关闭调试模式时也重置全局状态
         V2PrimaryScreenStateManager.shared.reset()
+    }
+
+    private static func setupKeyboardMonitor() {
+        // 先重置状态
+        V2PrimaryScreenStateManager.shared.reset()
+        
+        localMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            // 只有在显示截图界面时才拦截
+            guard !debugPanels.isEmpty else { return event }
+            
+            // 处理 ESC (53)
+            if event.keyCode == 53 {
+                handleGlobalExitCommand()
+                return nil
+            }
+            
+            // 处理 Command+C/S
+            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            if flags == .command {
+                if event.charactersIgnoringModifiers == "s" {
+                    NotificationCenter.default.post(name: NSNotification.Name("SaveScreenshot"), object: nil)
+                    return nil
+                } else if event.charactersIgnoringModifiers == "c" {
+                    NotificationCenter.default.post(name: NSNotification.Name("CopyScreenshot"), object: nil)
+                    return nil
+                }
+            }
+            
+            return event
+        }
+    }
+    
+    private static func handleGlobalExitCommand() {
+        let manager = V2PrimaryScreenStateManager.shared
+        
+        // 1. 如果处于编辑状态（有标注内容 或 选择了工具），双击 ESC 退出
+        if manager.isEditing {
+            if let lastEscTime = manager.lastEscKeyPressTime,
+               Date().timeIntervalSince(lastEscTime) < 2.0 {
+                close()
+            } else {
+                let now = Date()
+                manager.lastEscKeyPressTime = now
+                manager.postToast("再按一次退出 (已保留标注内容)", type: "info")
+                
+                // ✨ 核心修复：2秒后如果没再按，自动重置状态，确下次按下仍是“第一次”
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                    // 只有当时间戳没变（即期间没再按过 ESC）时才清除
+                    if manager.lastEscKeyPressTime == now {
+                        manager.lastEscKeyPressTime = nil
+                        v2Logger.info("ESC double-press timeout - State reset")
+                    }
+                }
+            }
+            return
+        }
+        
+        // 2. 阶段返回逻辑：选区 -> 初始状态
+        if manager.selectedArea != nil {
+            manager.updateSelection(nil, on: nil)
+            manager.updateHover(nil, label: nil, on: nil)
+            // 重置工具和模式，确保回到纯净的初始态
+            manager.updateTool(.cursor)
+            manager.selectedElementId = nil
+            manager.isLongScreenshotMode = false
+            return
+        }
+        
+        // 3. 初始状态（无选区、无标注）按 ESC，直接退出
+        close()
     }
 
     /// 显示/隐藏长图采集预览面板
@@ -137,5 +214,20 @@ class V2ScreenshotController {
         // 显式设置像素尺寸，避免缩放模糊
         image.size = screen.frame.size
         return image
+    }
+
+    /// 支持文本输入的 NSPanel 子类
+    /// 关键：覆盖 canBecomeKey 和 canBecomeMain，使 .borderless 样式下仍能接收键盘输入
+    class V2TextInputPanel: NSPanel {
+        override var canBecomeKey: Bool { true }
+        override var canBecomeMain: Bool { true }
+        
+        // 允许第一响应者
+        override var acceptsFirstResponder: Bool { true }
+        
+        // 覆盖 cancelOperation (处理 ESC)
+        override func cancelOperation(_ sender: Any?) {
+            V2ScreenshotController.handleGlobalExitCommand()
+        }
     }
 }

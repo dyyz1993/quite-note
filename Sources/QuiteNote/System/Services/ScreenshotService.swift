@@ -191,6 +191,11 @@ final class ScreenshotService {
         V2ScreenshotController.show()
     }
 
+    /// 保存截图到闪记
+    func saveScreenshotToFlashNotes(image: NSImage) {
+        saveScreenshotRecord(image: image)
+    }
+
     /// 保存截图到记录中
     private func saveScreenshotRecord(image: NSImage) {
         self.screenshotCount += 1

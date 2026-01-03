@@ -41,7 +41,16 @@ struct V2AnnotationToolbar: View {
             Divider().frame(height: 24).background(Color.white.opacity(0.2))
             actionButtonsGroup
             Divider().frame(width: 1, height: 24).background(Color.white.opacity(0.2))
-            saveButton
+            
+            // 保存按钮 (Command+S)
+            actionButton(icon: .save, action: {
+                NotificationCenter.default.post(name: NSNotification.Name("SaveScreenshot"), object: nil)
+            }, tooltip: "保存到闪记 (Command+S)", primary: true)
+            
+            // 复制按钮 (Command+C)
+            actionButton(icon: .copy, action: {
+                NotificationCenter.default.post(name: NSNotification.Name("CopyScreenshot"), object: nil)
+            }, tooltip: "复制到剪贴板 (Command+C)", primary: true)
         }
         .padding(8)
         .background(
@@ -107,69 +116,6 @@ struct V2AnnotationToolbar: View {
             }, tooltip: "删除选中")
             actionButton(icon: .trash, action: { stateManager.clearElements() }, tooltip: "清空全部")
         }
-    }
-
-    private var functionButtonsGroup: some View {
-        HStack(spacing: 8) {
-            // 长图模式按钮 - 已隐藏
-            // longScreenshotButton
-
-            saveButton
-        }
-    }
-
-    private var longScreenshotButton: some View {
-        Button(action: {
-            // ✨ 关键改进：独立启动长截图流程，不依赖主视图模式切换
-            guard let selection = stateManager.selectedArea else { return }
-
-            // ✨ 独立启动长截图流程
-            // - 会自动根据 selection 坐标检测在哪个屏幕上
-            // - 会自动关闭主视图
-            // - 会创建独立窗口
-            LongScreenshotFlowController.startIndependently(
-                selection: selection,
-                targetScreen: nil  // 自动检测屏幕
-            ) { result in
-                switch result {
-                case .success(let image):
-                    print("长截图成功，尺寸: \(image.size)")
-                case .failure(let error):
-                    print("长截图失败: \(error.localizedDescription)")
-                }
-            }
-        }) {
-            HStack(spacing: 4) {
-                Image(systemName: "scroll")
-                Text("长图")
-                    .font(.system(size: 12, weight: .medium))
-            }
-            .foregroundColor(.white)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(Color.purple.opacity(0.8))
-            .cornerRadius(6)
-        }
-        .buttonStyle(.plain)
-        .help("长截图模式 - 滚动采集并自动拼接")
-    }
-
-    private var saveButton: some View {
-        Button(action: {
-            NotificationCenter.default.post(name: NSNotification.Name("SaveScreenshot"), object: nil)
-        }) {
-            HStack(spacing: 4) {
-                LucideView(name: .check, size: 14, color: .white)
-                Text("完成")
-                    .font(.system(size: 12, weight: .medium))
-            }
-            .foregroundColor(.white)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(Color.blue)
-            .cornerRadius(6)
-        }
-        .buttonStyle(.plain)
     }
 
     /// 子工具栏
