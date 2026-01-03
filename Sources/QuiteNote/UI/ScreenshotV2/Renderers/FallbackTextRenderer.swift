@@ -3,6 +3,9 @@ import AppKit
 
 /// 文本渲染器的回退实现（用于 macOS 13.0 或更早版本）
 struct FallbackTextRenderer: ElementRenderer {
+    static func supports(_ tool: AnnotationTool) -> Bool {
+        return tool == .text
+    }
 
     func render(
         element: DrawingElement,
@@ -31,18 +34,6 @@ struct FallbackTextRenderer: ElementRenderer {
             // 计算文本尺寸
             let textSize = (line as NSString).size(withAttributes: attributes)
 
-            // 可选：添加半透明背景提高可读性
-            if element.color != .white && element.color != .yellow {
-                let bgRect = CGRect(
-                    x: startPoint.x - 2,
-                    y: y - 2,
-                    width: textSize.width + 4,
-                    height: textSize.height + 4
-                )
-                context.fill(Path(roundedRect: bgRect, cornerRadius: 4),
-                           with: .color(.black.opacity(0.3)))
-            }
-
             // 创建图像并绘制
             let image = NSImage(size: textSize)
             image.lockFocus()
@@ -50,9 +41,7 @@ struct FallbackTextRenderer: ElementRenderer {
             attributedString.draw(at: .zero)
             image.unlockFocus()
 
-            if let nsImage = image {
-                context.draw(Image(nsImage), at: CGPoint(x: startPoint.x, y: y))
-            }
+            context.draw(Image(nsImage: image), at: CGPoint(x: startPoint.x, y: y))
         }
     }
 }

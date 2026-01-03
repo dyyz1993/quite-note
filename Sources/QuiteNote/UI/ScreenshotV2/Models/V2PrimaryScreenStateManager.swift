@@ -227,8 +227,18 @@ class V2PrimaryScreenStateManager: ObservableObject {
     /// 添加标注元素
     func addElement(_ element: DrawingElement) {
         elements.append(element)
+        selectedElementId = element.id
+        
+        // 如果是步骤工具，增加计数器
         if element.tool == .steps {
             stepCounter += 1
+        }
+    }
+
+    /// 更新元素的文本
+    func updateElementText(id: UUID, text: String) {
+        if let index = elements.firstIndex(where: { $0.id == id }) {
+            elements[index].text = text
         }
     }
 

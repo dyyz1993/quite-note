@@ -52,10 +52,10 @@ class V2ScreenshotController {
             let snapshot = V2ScreenshotController.captureScreen(screen)
             let view = V2ScreenshotView(screen: screen, snapshot: snapshot, screenIndex: index, allWindows: allWindows)
 
-            // ✅ 使用普通 NSPanel
-            let panel = NSPanel(
+            // ✅ 使用支持文本输入的 V2TextInputPanel
+            let panel = V2TextInputPanel(
                 contentRect: screen.frame,
-                styleMask: [.borderless],
+                styleMask: [.borderless, .nonactivatingPanel],
                 backing: .buffered,
                 defer: false
             )
@@ -80,6 +80,7 @@ class V2ScreenshotController {
 
             panel.orderFront(nil)
             debugPanels.append(panel)
+            V2ScreenshotController.screenPanelMap[screen] = panel
         }
 
         NSApp.activate(ignoringOtherApps: true)
@@ -90,6 +91,7 @@ class V2ScreenshotController {
             panel.close()
         }
         debugPanels.removeAll()
+        screenPanelMap.removeAll()
 
         // 关闭长截图面板
         longScreenshotControlPanel?.close()

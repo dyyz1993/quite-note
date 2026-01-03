@@ -58,6 +58,8 @@ struct ElementRendererFactory {
             return MagnifierRenderer()
         case .spotlight:
             return SpotlightRenderer()
+        case .text:
+            return V2TextRenderer()
         case .cursor:
             fatalError("Cursor tool should not be rendered")
         }

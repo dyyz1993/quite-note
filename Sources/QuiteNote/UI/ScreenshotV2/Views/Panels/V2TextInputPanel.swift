@@ -5,4 +5,7 @@ import AppKit
 class V2TextInputPanel: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
+    
+    // 允许第一响应者
+    override var acceptsFirstResponder: Bool { true }
 }

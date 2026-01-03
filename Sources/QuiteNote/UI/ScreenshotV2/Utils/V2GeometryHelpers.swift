@@ -12,12 +12,30 @@ extension V2ScreenshotView {
         switch element.tool {
         case .magnifier:
             return boundingRectForMagnifier(element, selection: selection, screenSize: screenSize)
+        case .text:
+            return boundingRectForText(element)
         default:
             return boundingRectForPoints(element.points)
         }
     }
 
     // MARK: - 私有辅助方法
+
+    /// 计算文本元素的边界框
+    private func boundingRectForText(_ element: DrawingElement) -> CGRect {
+        guard let start = element.points.first else { return .zero }
+        
+        // ✨ 精确计算文本边界
+        let lines = element.text.components(separatedBy: .newlines)
+        let lineHeight = element.fontSize * 1.3
+        
+        // 估算每行宽度 (SwiftUI Text 默认系统字体中，平均宽度约为字号的 0.6)
+        let maxChars = lines.map { $0.count }.max() ?? 0
+        let estimatedWidth = CGFloat(max(1, maxChars)) * element.fontSize * 0.6 + 16 // 16 是 padding.horizontal
+        let totalHeight = CGFloat(max(1, lines.count)) * lineHeight + 12 // 12 是 padding.vertical
+        
+        return CGRect(x: start.x, y: start.y, width: estimatedWidth, height: totalHeight)
+    }
 
     /// 计算放大镜元素的边界框
     private func boundingRectForMagnifier(_ element: DrawingElement, selection: CGRect?, screenSize: CGSize) -> CGRect {

@@ -318,6 +318,7 @@ struct V2ScreenshotView: View {
                 // 4.5. 标注层：显示绘图内容 (长图模式下隐藏标注)
                 if !primaryScreenManager.isLongScreenshotMode {
                     buildAnnotationLayer()
+                        .zIndex(60) // ⚠️ 确保在交互层之上，但低于工具栏
                 }
                 
                 // 5. 调试信息层 (最顶层) - 已隐藏
@@ -774,6 +775,29 @@ struct V2ScreenshotView: View {
                     if isClick {
                         let clickLocation = value.startLocation
 
+                        // 0. ✨ 处理正在进行的文本编辑 (点击外部完成编辑)
+                        if let selectedId = primaryScreenManager.selectedElementId,
+                           let element = primaryScreenManager.elements.first(where: { $0.id == selectedId }),
+                           element.tool == .text {
+                            
+                            // 检查是否点击在当前文本编辑框附近（增加容错）
+                            let rect = elementBoundingRect(element, selection: localSelectedArea, screenSize: screenSize).insetBy(dx: -15, dy: -15)
+                            if !rect.contains(clickLocation) {
+                                // 点击了外部，完成并结束编辑
+                                if element.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                    primaryScreenManager.elements.removeAll { $0.id == selectedId }
+                                }
+                                primaryScreenManager.selectedElementId = nil
+                                addLog("Text Edit: Finished by clicking away")
+                                
+                                // ✨ 关键修复：点击空白处失焦后，不要在同一次点击中创建新文本
+                                return
+                            } else {
+                                // 点击在框内，不重复执行逻辑，让 TextField 保持焦点
+                                return
+                            }
+                        }
+
                         // 1. ✨ 阶段 0：窗口吸附选择（优先级最高）
                         if !primaryScreenManager.isEditing,
                            let rect = primaryScreenManager.globalHoveredRect,
@@ -821,7 +845,69 @@ struct V2ScreenshotView: View {
                             }
                         }
 
-                        // 4. ✨ 点击选区外，清除选区
+                        // 4. ✨ 文本工具的点击
+                        if primaryScreenManager.isEditing && primaryScreenManager.selectedTool == .text {
+                            if let selection = localSelectedArea, selection.contains(clickLocation) {
+                                // 如果当前已经选中了一个元素，点击空白处时先取消选中，而不立即创建
+                                if primaryScreenManager.selectedElementId != nil {
+                                    primaryScreenManager.selectedElementId = nil
+                                    addLog("Text Tool: Deselected current element")
+                                    return
+                                }
+
+                                // 否则正常执行点击选中或创建逻辑
+                                if let hitElement = primaryScreenManager.elements.reversed().first(where: { element in
+                                    let rect = elementBoundingRect(element, selection: localSelectedArea, screenSize: screenSize).insetBy(dx: -5, dy: -5)
+                                    return element.tool == .text && rect.contains(clickLocation)
+                                }) {
+                                    primaryScreenManager.selectedElementId = hitElement.id
+                                    addLog("Text Tool: Selected existing element")
+                                } else {
+                                    // 否则创建新元素
+                                    let textElement = DrawingElement(
+                                        tool: .text,
+                                        points: [clickLocation],
+                                        color: primaryScreenManager.selectedColor,
+                                        lineWidth: primaryScreenManager.lineWidth,
+                                        text: "",
+                                        fontSize: primaryScreenManager.fontSize
+                                    )
+                                    primaryScreenManager.addElement(textElement)
+                                    primaryScreenManager.selectedElementId = textElement.id
+                                    
+                                    // ✨ 确保当前窗口成为 Key Window 以接收键盘输入
+                                    if let panel = V2ScreenshotController.screenPanelMap[screen] {
+                                        panel.makeKey()
+                                        NSApp.activate(ignoringOtherApps: true)
+                                        addLog("Text Tool: Panel made Key Window")
+                                    }
+                                    
+                                    addLog("Text Tool: New element created")
+                                }
+                                return
+                            } else {
+                                // 点击选区外，退出编辑
+                                primaryScreenManager.selectedElementId = nil
+                            }
+                        }
+
+                        // 5. ✨ 点击已有文本元素进行再次编辑
+                        if primaryScreenManager.isEditing && primaryScreenManager.selectedTool == .cursor {
+                            if let hitElement = primaryScreenManager.elements.reversed().first(where: { element in
+                                let rect = elementBoundingRect(element, selection: localSelectedArea, screenSize: screenSize).insetBy(dx: -5, dy: -5)
+                                return element.tool == .text && rect.contains(clickLocation)
+                            }) {
+                                primaryScreenManager.selectedElementId = hitElement.id
+                                if let panel = V2ScreenshotController.screenPanelMap[screen] {
+                                    panel.makeKey()
+                                    NSApp.activate(ignoringOtherApps: true)
+                                }
+                                addLog("Text Tool: Selected existing element for editing")
+                                return
+                            }
+                        }
+
+                        // 5. ✨ 点击选区外，清除选区
                         // ⚠️ 已修改：点击空白处无效，只能通过 ESC 键或取消按钮清除选区
                         // if let selection = localSelectedArea, !selection.contains(clickLocation) {
                         //     if !primaryScreenManager.isEditing {
@@ -933,28 +1019,59 @@ struct V2ScreenshotView: View {
     @ViewBuilder
     private func buildAnnotationLayer() -> some View {
         if primaryScreenManager.isEditing {
-            // 使用新的完整标注系统
-            V2AnnotationCanvas(
-                stateManager: primaryScreenManager,
-                canvasSize: screenSize,
-                baseImage: snapshot
-            )
-            .zIndex(20)
-
-            // ✨ 放大镜预览（标注层的一部分）
-            if let previewPos = primaryScreenManager.magnifierPreviewPosition,
-               isCurrentlyPrimary,
-               let selection = localSelectedArea {  // ✨ 需要选区信息来计算正确位置
-                AnnotationMagnifierPreview(
-                    snapshot: snapshot,
-                    position: previewPos,
+            ZStack {
+                // 1. Canvas 渲染已有的非文本元素（或所有元素）
+                V2AnnotationCanvas(
+                    stateManager: primaryScreenManager,
                     canvasSize: screenSize,
-                    followMouse: primaryScreenManager.magnifierFollowMouse,
-                    selectionArea: selection  // ✨ 传递选区信息
+                    baseImage: snapshot
                 )
-                .zIndex(25)
-                .allowsHitTesting(false)  // ✨ 关键：不拦截事件，让 Layer 3 能够正常监听
+                .zIndex(20)
+
+                // 2. ✨ 文本编辑器 (仅在选中了文本工具时显示)
+                if let selectedId = primaryScreenManager.selectedElementId,
+                   let element = primaryScreenManager.elements.first(where: { $0.id == selectedId }),
+                   element.tool == .text,
+                   primaryScreenManager.selectedTool == .text {
+                    
+                    let pos = element.points.first ?? .zero
+                    
+                    // ✨ 修复：改用 ZStack + offset 定位，避免 .position() 导致的布局压缩
+                    ZStack(alignment: .topLeading) {
+                        AnnotationTextEditorView(
+                            text: Binding(
+                                get: { element.text },
+                                set: { primaryScreenManager.updateElementText(id: selectedId, text: $0) }
+                            ),
+                            color: element.color,
+                            fontSize: element.fontSize,
+                            onCommit: {
+                                primaryScreenManager.selectedElementId = nil
+                            }
+                        )
+                    }
+                    .offset(x: pos.x, y: pos.y) // ✨ 关键修复：移除 +8 偏移，让编辑器内边距(8px)正好对齐渲染起点
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .zIndex(30)
+                }
+
+                // 3. ✨ 放大镜预览
+                if let previewPos = primaryScreenManager.magnifierPreviewPosition,
+                   isCurrentlyPrimary,
+                   let selection = localSelectedArea {
+                    AnnotationMagnifierPreview(
+                        snapshot: snapshot,
+                        position: previewPos,
+                        canvasSize: screenSize,
+                        followMouse: primaryScreenManager.magnifierFollowMouse,
+                        selectionArea: selection
+                    )
+                    .zIndex(25)
+                    .allowsHitTesting(false)
+                }
             }
+            // ✨ 核心需求：文本不能在线框外编辑，超出的部分被遮住
+            .clipShape(Rectangle().path(in: localSelectedArea ?? CGRect(origin: .zero, size: screenSize)))
         }
     }
     

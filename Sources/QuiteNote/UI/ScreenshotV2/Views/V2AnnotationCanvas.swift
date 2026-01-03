@@ -12,6 +12,15 @@ struct V2AnnotationCanvas: View {
         Canvas { context, size in
             // 渲染已有元素
             for element in stateManager.elements {
+                // ✨ 修复：仅在非导出模式下过滤掉正在编辑的元素，避免“双重显示”
+                if !isExporting {
+                    // 只有在【文本工具】模式下且选中该元素时，才跳过 Canvas 渲染
+                    // 因为这种情况下我们会显示 AnnotationTextEditorView
+                    if element.id == stateManager.selectedElementId && stateManager.selectedTool == .text {
+                        continue
+                    }
+                }
+                
                 renderElement(element, in: &context, size: size)
             }
 
@@ -126,6 +135,19 @@ struct V2AnnotationCanvas: View {
             }
 
             return circleRect
+        }
+
+        // ✨ 特殊处理文本：估算文本边界框以便选中
+        if element.tool == .text {
+            guard let start = element.points.first else { return .zero }
+            
+            // 使用更精确的估算方法，或者通过 Text 测量（这里采用更稳健的估算）
+            let lines = element.text.components(separatedBy: .newlines)
+            let maxChars = lines.map { $0.count }.max() ?? 0
+            let width = CGFloat(maxChars) * (element.fontSize * 0.65) + 30 // 增加 padding 容错
+            let height = CGFloat(lines.count) * (element.fontSize * 1.3) + 20
+            
+            return CGRect(x: start.x, y: start.y, width: max(width, 40), height: max(height, 40))
         }
 
         // 其他工具使用原有逻辑

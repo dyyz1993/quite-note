@@ -21,8 +21,8 @@ class TextEditController: ObservableObject {
             points: [position],
             color: stateManager.selectedColor,
             lineWidth: 0,
-            fontSize: stateManager.fontSize,
-            text: ""
+            text: "",
+            fontSize: stateManager.fontSize
         )
 
         // 创建编辑状态

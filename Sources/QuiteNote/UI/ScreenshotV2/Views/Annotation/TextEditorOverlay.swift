@@ -52,11 +52,13 @@ struct TextEditorOverlay: View {
         .onExitCommand {
             cancelEditing()
         }
+        /*
         // 监听快捷键
         .onKeyPress(.init("s"), modifiers: .command) {
             finishEditing()
             return .handled
         }
+        */
     }
 
     private func finishEditing() {
