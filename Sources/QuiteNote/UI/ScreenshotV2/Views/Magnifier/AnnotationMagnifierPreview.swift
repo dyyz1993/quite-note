@@ -7,8 +7,9 @@ struct AnnotationMagnifierPreview: View {
     let canvasSize: CGSize
     let followMouse: Bool  // true=跟随鼠标，false=右上角固定
     let selectionArea: CGRect  // ✨ 选区信息
+    let currentFontSize: CGFloat // ✨ 当前设置的字号（用于控制放大镜半径）
 
-    private let radius: CGFloat = 60
+    private var radius: CGFloat { currentFontSize * 2.5 } // 与渲染器保持一致
     private let scale: CGFloat = 2.0
     private let padding: CGFloat = 20
 

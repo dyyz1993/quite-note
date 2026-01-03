@@ -10,25 +10,6 @@ struct V2FloatingToolbar: View {
     var body: some View {
         // 普通截图模式：显示标注工具栏
         V2AnnotationToolbar(stateManager: stateManager)
-            .overlay(alignment: .topLeading) {
-                if stateManager.isEditing {
-                    // 仅在编辑模式显示退出按钮
-                    Button(action: { stateManager.setEditing(false) }) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "xmark.circle.fill")
-                            Text("退出")
-                        }
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Color.red.opacity(0.8))
-                        .cornerRadius(6)
-                    }
-                    .buttonStyle(.plain)
-                    .padding(8)
-                }
-            }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .onHover { hovering in

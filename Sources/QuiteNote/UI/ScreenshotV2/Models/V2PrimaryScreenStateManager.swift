@@ -103,8 +103,22 @@ class V2PrimaryScreenStateManager: ObservableObject {
         }
     }
     
-    /// 步骤计数器
+    /// 序号计数器（不再直接使用，改为计算得出）
     @Published var stepCounter: Int = 1
+    
+    /// 获取下一个可用的序号（自动补齐空缺）
+    func getNextStepNumber() -> Int {
+        let existingNumbers = Set(elements.filter { $0.tool == .steps }.map { $0.stepNumber })
+        if existingNumbers.isEmpty { return 1 }
+        
+        // 查找最小的空缺
+        var next = 1
+        while existingNumbers.contains(next) {
+            next += 1
+        }
+        return next
+    }
+
     /// 选中的元素 ID
     @Published var selectedElementId: UUID? = nil
 
@@ -233,6 +247,34 @@ class V2PrimaryScreenStateManager: ObservableObject {
         if element.tool == .steps {
             stepCounter += 1
         }
+    }
+
+    /// 更新元素的粗细/大小 (连续值调节)
+    func updateElementSizeContinuous(_ id: UUID, value: CGFloat) {
+        guard let index = elements.firstIndex(where: { $0.id == id }) else { return }
+        let tool = elements[index].tool
+        
+        if tool == .text || tool == .mosaic || tool == .magnifier {
+            elements[index].fontSize = value
+        } else {
+            elements[index].lineWidth = value
+        }
+        objectWillChange.send()
+    }
+
+    /// 更新元素的粗细/大小 (离散档位调节)
+    func updateElementSize(_ id: UUID, level: CGFloat) {
+        guard let index = elements.firstIndex(where: { $0.id == id }) else { return }
+        let tool = elements[index].tool
+        
+        if tool == .text || tool == .mosaic || tool == .magnifier {
+            let sizes: [CGFloat] = [16, 24, 36]
+            elements[index].fontSize = sizes[Int(level - 1)]
+        } else {
+            let widths: [CGFloat] = [2, 5, 10]
+            elements[index].lineWidth = widths[Int(level - 1)]
+        }
+        objectWillChange.send()
     }
 
     /// 更新元素的文本

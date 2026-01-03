@@ -45,6 +45,30 @@ enum AnnotationTool: String, CaseIterable {
             return true
         }
     }
+
+    /// 是否支持大小/粗细选择
+    var supportsSize: Bool {
+        switch self {
+        case .cursor, .spotlight, .steps:
+            return false
+        case .rectangle, .circle, .arrow, .line, .pen, .text, .mosaic, .magnifier:
+            return true
+        }
+    }
+
+    /// 获取 Size 的范围 (min, max, default)
+    var sizeRange: (min: CGFloat, max: CGFloat, default: CGFloat) {
+        switch self {
+        case .text:
+            return (12, 72, 24)
+        case .mosaic:
+            return (10, 50, 20)
+        case .magnifier:
+            return (30, 100, 50)
+        default: // 画笔、形状等线条工具
+            return (1, 20, 5)
+        }
+    }
 }
 
 /// 工具记忆管理

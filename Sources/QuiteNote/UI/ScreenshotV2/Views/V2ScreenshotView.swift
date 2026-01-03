@@ -845,6 +845,24 @@ struct V2ScreenshotView: View {
                             }
                         }
 
+                        // 3.5 ✨ 序号（步骤）工具的点击
+                        if primaryScreenManager.isEditing && primaryScreenManager.selectedTool == .steps {
+                            if let selection = localSelectedArea, selection.contains(clickLocation) {
+                                let stepNumber = primaryScreenManager.getNextStepNumber()
+                                let stepElement = DrawingElement(
+                                    tool: .steps,
+                                    points: [clickLocation],
+                                    color: primaryScreenManager.selectedColor,
+                                    lineWidth: primaryScreenManager.lineWidth,
+                                    fontSize: primaryScreenManager.fontSize,
+                                    stepNumber: stepNumber
+                                )
+                                primaryScreenManager.addElement(stepElement)
+                                addLog("Step Placed: \(stepNumber)")
+                                return
+                            }
+                        }
+
                         // 4. ✨ 文本工具的点击
                         if primaryScreenManager.isEditing && primaryScreenManager.selectedTool == .text {
                             if let selection = localSelectedArea, selection.contains(clickLocation) {
@@ -1064,7 +1082,8 @@ struct V2ScreenshotView: View {
                         position: previewPos,
                         canvasSize: screenSize,
                         followMouse: primaryScreenManager.magnifierFollowMouse,
-                        selectionArea: selection
+                        selectionArea: selection,
+                        currentFontSize: primaryScreenManager.fontSize // ✨ 传入实时字号
                     )
                     .zIndex(25)
                     .allowsHitTesting(false)

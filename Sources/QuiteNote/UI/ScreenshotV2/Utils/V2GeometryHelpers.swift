@@ -14,12 +14,21 @@ extension V2ScreenshotView {
             return boundingRectForMagnifier(element, selection: selection, screenSize: screenSize)
         case .text:
             return boundingRectForText(element)
+        case .steps:
+            return boundingRectForSteps(element)
         default:
             return boundingRectForPoints(element.points)
         }
     }
 
     // MARK: - 私有辅助方法
+
+    /// 计算步骤元素的边界框
+    private func boundingRectForSteps(_ element: DrawingElement) -> CGRect {
+        guard let start = element.points.first else { return .zero }
+        let radius: CGFloat = 12 // 与 V2StepsRenderer 中的 radius 一致
+        return CGRect(x: start.x - radius, y: start.y - radius, width: radius * 2, height: radius * 2)
+    }
 
     /// 计算文本元素的边界框
     private func boundingRectForText(_ element: DrawingElement) -> CGRect {

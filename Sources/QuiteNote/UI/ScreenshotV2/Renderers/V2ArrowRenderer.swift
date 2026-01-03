@@ -19,7 +19,7 @@ struct ArrowRenderer: ElementRenderer {
 
         // 绘制箭头头部
         let angle = atan2(end.y - start.y, end.x - start.x)
-        let headLen: CGFloat = 15
+        let headLen: CGFloat = 10 + element.lineWidth * 1.5 // 根据线宽动态调整箭头大小
         let arrowPath = Path { p in
             p.move(to: end)
             p.addLine(to: CGPoint(x: end.x - headLen * cos(angle - .pi/6), y: end.y - headLen * sin(angle - .pi/6)))

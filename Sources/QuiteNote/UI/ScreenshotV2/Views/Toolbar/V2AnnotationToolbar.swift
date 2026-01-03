@@ -23,25 +23,38 @@ struct V2AnnotationToolbar: View {
             mainToolbarContent
         }
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: expandedGroup)
-        .frame(maxWidth: 650)
+        .frame(maxWidth: 650) // 恢复宽度，新交互更省空间
     }
 
     private var mainToolbarContent: some View {
         HStack(spacing: 12) {
             toolSelectionGroup
+            
             if stateManager.selectedTool.supportsColor {
                 colorSelectionGroup
             }
+            
+            if stateManager.selectedTool.supportsSize {
+                sizeSelectionGroup
+            }
+            
             Divider().frame(height: 24).background(Color.white.opacity(0.2))
             actionButtonsGroup
             Divider().frame(width: 1, height: 24).background(Color.white.opacity(0.2))
-            functionButtonsGroup
+            saveButton
         }
         .padding(8)
         .background(
             RoundedRectangle(cornerRadius: 12)
                 .fill(Color.black.opacity(0.7))
         )
+    }
+
+    private var sizeSelectionGroup: some View {
+        Group {
+            Divider().frame(height: 24).background(Color.white.opacity(0.2))
+            V2SizeDragControl(stateManager: stateManager)
+        }
     }
 
     private var toolSelectionGroup: some View {
