@@ -78,6 +78,7 @@ enum IconName: String {
     case focus = "focus"
     case trash = "trash"
     case scroll = "scroll"
+    case cloudDownload = "cloud-download"
 }
 
 /// SwiftUI 包装，渲染 Lucide 图标（不使用 SF Symbols 回退）
@@ -92,6 +93,8 @@ struct LucideView: View {
     private static var foundBundles: [Bundle] = []
     /// 是否已经执行过初始扫描
     private static var hasScannedBundles = false
+    /// 用于线程同步的锁
+    private static let lock = NSLock()
 
     var body: some View {
         Group {
@@ -119,6 +122,9 @@ struct LucideView: View {
 
     /// 获取缓存或加载图标
     private func getCachedImage(for id: String) -> NSImage? {
+        Self.lock.lock()
+        defer { Self.lock.unlock() }
+
         if let cached = Self.iconCache.object(forKey: id as NSString) {
             return cached
         }

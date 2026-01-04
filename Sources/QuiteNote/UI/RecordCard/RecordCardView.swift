@@ -56,6 +56,7 @@ struct RecordCardView: View, Equatable {
             }
         }
         .onHover { hovering = $0 }
+        .pointingHandCursor()
     }
 
     // MARK: - 拖拽手柄
@@ -84,13 +85,9 @@ struct RecordCardView: View, Equatable {
     /// 根据记录类型获取文件URL
     private func getFileURL(from record: Record) -> URL? {
         switch record.type {
-        case .file:
-            // 文件记录：返回原文件URL
-            return record.sourceUrl.flatMap { URL(string: $0) }
-
-        case .folder:
-            // 文件夹记录：返回文件夹URL
-            return record.sourceUrl.flatMap { URL(string: $0) }
+        case .file, .folder, .image, .screenshot:
+            // 资源记录：解析虚拟路径
+            return record.sourceUrl.flatMap { FileCoordinator.shared.resolveVirtualPath($0) }
 
         case .text:
             // 文本记录：创建临时 .md 文件
@@ -109,21 +106,41 @@ struct RecordCardView: View, Equatable {
     }
 
     private var cardHeader: some View {
-        HStack(alignment: .top, spacing: 12) {
-            // Content
+        HStack(alignment: .center, spacing: 12) {
+            // Only show thumbnail for media types
+            if record.type == .image || record.type == .screenshot {
+                RecordThumbnailView(record: record, size: 48)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        if let url = getFileURL(from: record) {
+                            FileOpener.open(url: url, preferredEditor: PreferencesManager.shared.preferredEditor)
+                        }
+                    }
+            }
+            
+            // Middle: Content
             VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .center, spacing: 8) {
-                    // Type Icon
-                    LucideView(name: typeIconLucide, size: 14, color: .themeTextSecondary)
-                        .frame(width: 18, height: 18)
-                        .background(Color.themeHoverLight)
-                        .cornerRadius(4)
+                    // Small icon for non-media types (except text which is clean)
+                    if record.type != .image && record.type != .screenshot && record.type != .text {
+                        LucideView(name: typeIconLucide, size: 12, color: .themeTextTertiary)
+                            .frame(width: 16, height: 16)
+                            .background(Color.themeHoverLight)
+                            .cornerRadius(3)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                if let url = getFileURL(from: record) {
+                                    FileOpener.open(url: url, preferredEditor: PreferencesManager.shared.preferredEditor)
+                                }
+                            }
+                    }
 
                     // Title
                     Text(displayTitle)
                         .font(.system(size: 14, weight: .medium)) // text-sm font-medium
                         .foregroundColor(record.aiStatus == "pending" ? Color.themeStatusPending : Color.themeTextPrimary)
                         .lineLimit(1)
+                        .contentShape(Rectangle())
                     
                     // Status Icon (AI/Star)
                     if let statusIcon = statusIconLucide {
@@ -135,83 +152,83 @@ struct RecordCardView: View, Equatable {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
                         Text(formattedDate)
-                        Rectangle().fill(Color.themeGray700).frame(width: 2, height: 10)
-                        Text("\(record.content.count) 字符")
-
+                        
                         if let app = record.sourceApp {
-                            Rectangle().fill(Color.themeGray700).frame(width: 2, height: 10)
+                            Rectangle().fill(Color.themeGray700).frame(width: 1, height: 10)
                             HStack(spacing: 4) {
                                 LucideView(name: .appWindowMac, size: 10, color: .themeTextTertiary)
                                 Text(app)
                                     .lineLimit(1)
-                                    .fixedSize(horizontal: true, vertical: false)
                             }
                         }
 
                         if let urlString = record.sourceUrl, let url = URL(string: urlString) {
-                            Rectangle().fill(Color.themeGray700).frame(width: 2, height: 10)
+                            Rectangle().fill(Color.themeGray700).frame(width: 1, height: 10)
                             HStack(spacing: 4) {
                                 LucideView(name: .link, size: 10, color: .themeTextTertiary)
                                 Text(url.isFileURL ? url.lastPathComponent : urlString)
                                     .lineLimit(1)
-                                    .fixedSize(horizontal: true, vertical: false)
                             }
                             .onTapGesture {
-                                if url.isFileURL {
-                                    FileOpener.open(url: url, preferredEditor: PreferencesManager.shared.preferredEditor)
-                                } else {
-                                    NSWorkspace.shared.open(url)
+                                if let finalUrl = getFileURL(from: record) {
+                                    FileOpener.open(url: finalUrl, preferredEditor: PreferencesManager.shared.preferredEditor)
                                 }
-                                HapticFeedbackManager.shared.lightImpact()
                             }
                             .pointingHandCursor()
-                            .help(url.isFileURL ? "在 Finder 中显示: \(url.path)" : "在浏览器中打开: \(urlString)")
+                            .help(url.isFileURL ? "在编辑器或 Finder 中打开: \(url.path)" : "在浏览器中打开: \(urlString)")
                         }
 
                         if !record.tags.isEmpty {
-                            Rectangle().fill(Color.themeGray700).frame(width: 2, height: 10)
+                            Rectangle().fill(Color.themeGray700).frame(width: 1, height: 10)
                             HStack(spacing: 4) {
-                                ForEach(record.tags.prefix(3), id: \.self) { tag in
-                                    TagView(text: tag, color: .themeBlue400, bgColor: .themeActive) {
-                                        searchTerm = tag
-                                    }
+                                ForEach(record.tags, id: \.self) { tag in
+                                    Text("#\(tag)")
+                                        .font(.system(size: 10, weight: .medium))
+                                        .foregroundColor(.themeBlue400)
                                 }
                             }
                         }
+                        
+                        Text("•")
+                        
+                        Text("\(record.content.count) 字符")
+                            .font(.system(size: 10, design: .monospaced))
                     }
                 }
-                .font(.system(size: 10, design: .monospaced))
+                .font(.system(size: 10))
                 .foregroundColor(.themeTextTertiary)
 
                 // Keywords Row (New)
                 if !record.keywords.isEmpty {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 6) {
-                            ForEach(record.keywords.prefix(10), id: \.self) { keyword in
+                            ForEach(record.keywords, id: \.self) { keyword in
                                 let displayKeyword = keyword.hasPrefix("#") ? keyword : "#\(keyword)"
                                 Text(displayKeyword)
                                     .font(.system(size: 10, weight: .medium, design: .monospaced))
                                     .foregroundColor(.themePurple400)
-                                    .onTapGesture {
-                                        searchTerm = keyword
-                                    }
-                                    .pointingHandCursor()
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 1)
+                                    .background(Color.themePurple500.opacity(0.1))
+                                    .cornerRadius(4)
                             }
                         }
                     }
-                    .frame(height: 14)
+                    .frame(height: 18)
                 }
             }
-
-            Spacer()
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             // Actions - 始终显示按钮，提高可用性
             actionButtonsView
+                .padding(.trailing, 12)
         }
-        .padding(12) // p-3
+        .frame(height: 72) // 统一卡片高度
+        .padding(.leading, 12)
         .contentShape(Rectangle())
         .onTapGesture {
-            // 使用更快的动画减少卡顿
+            // 还原：点击卡片任何非功能区仅用于展开/折叠
             withAnimation(.easeInOut(duration: 0.25)) {
                 expandedId = isExpanded ? nil : record.id
             }
@@ -220,6 +237,28 @@ struct RecordCardView: View, Equatable {
 
     private var actionButtonsView: some View {
         HStack(spacing: 6) {
+            // 打开按钮 (针对文件和文件夹)
+            if record.type == .file || record.type == .folder || record.type == .image || record.type == .screenshot {
+                IconButton(icon: record.type == .folder ? .folder : .arrowUpRight, color: .themeTextSecondary) {
+                    if let url = getFileURL(from: record) {
+                        FileOpener.open(url: url, preferredEditor: PreferencesManager.shared.preferredEditor)
+                    }
+                }
+                .help(record.type == .folder ? "打开文件夹" : "在外部打开")
+            }
+
+            // 文件夹同步按钮
+            if record.type == .folder {
+                let isSynced = record.sourceUrl?.contains("SyncedFolders") ?? false
+                IconButton(
+                    icon: isSynced ? .refreshCw : .cloudDownload,
+                    color: isSynced ? .themeStatusSuccess : .themeTextSecondary
+                ) {
+                    store.syncFolder(record)
+                }
+                .help(isSynced ? "已同步到本地" : "同步文件夹到本地")
+            }
+
             IconButton(icon: record.starred ? .star : .starOff, color: record.starred ? .themeYellow500 : .themeTextSecondary) {
                 store.toggleStar(record)
             }
@@ -489,17 +528,49 @@ struct RecordCardView: View, Equatable {
     }
 
     private var originalContentBody: some View {
-        SelectableTextView(
-            text: record.content,
-            fontSize: 11,
-            isMonospaced: true,
-             textColor: NSColor(red: 209/255, green: 213/255, blue: 221/255, alpha: 1.0), // themeGray300
-             showScrollbar: true // 原文长，需要滚动条
-          )
-          .frame(minHeight: 250, maxHeight: 650) // 进一步调高，提供更好视野，减少滚动频率
-        .background(Color.themePanel)
-        .cornerRadius(4)
-        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.themeBorder, lineWidth: 1).allowsHitTesting(false))
+        VStack(alignment: .leading, spacing: 12) {
+            if let urlString = record.sourceUrl, 
+               let url = FileCoordinator.shared.resolveVirtualPath(urlString),
+               (record.type == .image || record.type == .screenshot) {
+                // 图片大图预览
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .cornerRadius(8)
+                            .onTapGesture {
+                                NSWorkspace.shared.open(url)
+                            }
+                            .help("点击在外部查看")
+                    case .failure:
+                        Text("图片加载失败")
+                            .foregroundColor(.themeStatusError)
+                    case .empty:
+                        ProgressView()
+                    @unknown default:
+                        EmptyView()
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(10)
+                .background(Color.themePanel)
+                .cornerRadius(8)
+            }
+            
+            SelectableTextView(
+                text: record.content,
+                fontSize: 11,
+                isMonospaced: true,
+                textColor: NSColor(red: 209/255, green: 213/255, blue: 221/255, alpha: 1.0), // themeGray300
+                showScrollbar: true // 原文长，需要滚动条
+            )
+            .frame(minHeight: record.type == .image || record.type == .screenshot ? 100 : 250, maxHeight: 650)
+            .background(Color.themePanel)
+            .cornerRadius(4)
+            .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.themeBorder, lineWidth: 1).allowsHitTesting(false))
+        }
     }
 
     @ViewBuilder
@@ -545,16 +616,10 @@ struct RecordCardView: View, Equatable {
 
     /// 实现Equatable协议，减少不必要的重绘
     static func == (lhs: RecordCardView, rhs: RecordCardView) -> Bool {
-        return lhs.record.id == rhs.record.id &&
-               lhs.record.content == rhs.record.content &&
-               lhs.record.title == rhs.record.title &&
-               lhs.record.summary == rhs.record.summary &&
-               lhs.record.starred == rhs.record.starred &&
-               lhs.record.aiStatus == rhs.record.aiStatus &&
-               lhs.record.tags == rhs.record.tags &&
-               lhs.record.keywords == rhs.record.keywords &&
-               lhs.isExpanded == rhs.isExpanded &&
-               lhs.searchTerm == rhs.searchTerm
+        lhs.record == rhs.record &&
+        lhs.isExpanded == rhs.isExpanded &&
+        lhs.searchTerm == rhs.searchTerm &&
+        lhs.deleteCountdown == rhs.deleteCountdown
     }
 }
 
@@ -646,7 +711,7 @@ private extension RecordCardView {
             if record.type == .folder {
                 // 文件夹记录：显示 "文件夹名 (文件数) 个文件"
                 if let urlString = record.sourceUrl,
-                   let url = URL(string: urlString) {
+                   let url = FileCoordinator.shared.resolveVirtualPath(urlString) {
                     let folderName = url.lastPathComponent
                     let name = folderName.isEmpty ? "文件夹" : folderName
                     if let count = record.fileCount {
@@ -705,12 +770,10 @@ private extension RecordCardView {
     }
 
     var statusIconLucide: IconName? {
-        // 1. 优先显示星标图标
-        if record.starred { return .star }
-
-        // 2. 其次显示总结状态
+        // 1. 优先显示总结状态
         if record.summary != nil { return .sparkles }
         
+        // 2. 其次显示 AI 处理状态
         switch record.aiStatus {
         case "pending": return .zap
         case "fail": return .alertTriangle
@@ -720,14 +783,15 @@ private extension RecordCardView {
     }
 
     var statusColor: Color {
-        // 1. 优先显示收藏颜色
-        if record.starred { return .themeYellow500 }
-
+        // 如果有总结，显示紫色
         if record.summary != nil { return .themePurple500 }
+        
+        // 否则根据 AI 状态显示颜色
         switch record.aiStatus {
         case "pending": return .themeYellow500
         case "fail": return .themeRed500
         default:
+            // 如果是已收藏但没有总结/处理中的状态，图标区域不显示，所以这里返回默认灰色
             return .themeGray500
         }
     }

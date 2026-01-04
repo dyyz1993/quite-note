@@ -199,9 +199,24 @@ final class ScreenshotService {
     /// 保存截图到记录中
     private func saveScreenshotRecord(image: NSImage) {
         self.screenshotCount += 1
-        let timestamp = Int(Date().timeIntervalSince1970)
         let message = "截图 \(self.screenshotCount)"
+        let timestamp = Int(Date().timeIntervalSince1970)
         let hash = "screenshot_\(timestamp)_\(self.screenshotCount)"
+
+        var sourceUrl: String? = nil
+        
+        // 使用 FileCoordinator 保存截图
+        do {
+            let localURL = try FileCoordinator.shared.storeImage(image, type: .screenshot, originalName: "screenshot.png")
+            sourceUrl = FileCoordinator.shared.convertToVirtualPath(from: localURL)
+            
+            // 预生成缩略图
+            ThumbnailGenerator.shared.getThumbnailURLAsync(for: localURL) { _ in }
+            
+            print("[DEBUG ScreenshotService] 截图已通过 FileCoordinator 保存: \(sourceUrl ?? "nil")")
+        } catch {
+            print("[DEBUG ScreenshotService] 保存截图失败: \(error.localizedDescription)")
+        }
 
         // 1. 发送轻提示
         self.recordStore?.postLightHint(message)
@@ -211,6 +226,7 @@ final class ScreenshotService {
             content: message,
             hash: hash,
             sourceApp: "Screen Capture",
+            sourceUrl: sourceUrl,
             type: .screenshot,
             skipAI: true
         )

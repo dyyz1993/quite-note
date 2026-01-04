@@ -2,6 +2,7 @@ import Foundation
 import Combine
 import CoreData
 import os.log
+import SwiftUI
 
 /// 管理记录的增删改查、搜索与轻提示分发
 /// 重构后：核心状态管理，委托具体操作给专门的处理类
@@ -30,6 +31,15 @@ final class RecordStore: ObservableObject {
     @Published var summaryTrigger: Int = 20
     @Published var summaryLimit: Int = 100
 
+    /// 是否启用自动去重
+    @Published var dedupEnabled: Bool = true
+
+    /// 最大记录保留数
+    @Published var maxRecords: Int = 200
+
+    /// 附件存储路径
+    @Published var attachmentsPath: String = ""
+
     /// 搜索历史（直接存储，同步到 searchHistoryManager）
     @Published var searchHistory: [String] = []
 
@@ -46,6 +56,9 @@ final class RecordStore: ObservableObject {
 
     /// 上次粘贴成功的时间，用于 UI 反馈
     @Published var lastPasteSuccessAt: Date? = nil
+
+    /// 是否折叠收藏夹
+    @Published var isStarredCollapsed: Bool = false
 
     // MARK: - 子组件
 
@@ -97,6 +110,58 @@ final class RecordStore: ObservableObject {
         return currentAttachmentsDirectory
     }
 
+    /// 处理拖拽的文件 URL 列表和直接传入的图片对象
+    /// - Parameters:
+    ///   - urls: 文件 URL 数组
+    ///   - images: 直接传入的 NSImage 数组（常用于网页拖拽）
+    func handleDroppedContent(urls: [URL], images: [NSImage]) {
+        print("[DEBUG] RecordStore handleDroppedContent 开始处理, URL数量: \(urls.count), 图片数量: \(images.count)")
+        
+        // 1. 处理 URL
+        if !urls.isEmpty {
+            handleDroppedUrls(urls)
+        }
+        
+        // 2. 处理直接传入的图片对象
+        for image in images {
+            do {
+                // 网页拖拽的图片通常没有文件名，生成一个
+                let fileName = "web_drag_image.png"
+                let storedURL = try FileCoordinator.shared.storeImage(image, type: .image, originalName: fileName)
+                
+                if let virtualPath = FileCoordinator.shared.convertToVirtualPath(from: storedURL) {
+                    let content = "网页拖拽图片: \(fileName)"
+                    let hash = ClipboardService.sha1(content + UUID().uuidString) // 避免相同内容的图片 hash 重复
+                    
+                    addRecord(
+                        content: content,
+                        hash: hash,
+                        sourceApp: "Web Drag",
+                        sourceUrl: virtualPath,
+                        type: .image,
+                        skipAI: true,
+                        fileName: fileName
+                    )
+                    
+                    // 生成缩略图
+                    ThumbnailGenerator.shared.getThumbnailURLAsync(for: storedURL) { _ in }
+                    print("[DEBUG] 网页拖拽图片已持久化: \(virtualPath)")
+                }
+            } catch {
+                print("[DEBUG] 网页拖拽图片持久化失败: \(error.localizedDescription)")
+            }
+        }
+        
+        if !images.isEmpty {
+            // 发送触觉反馈
+            HapticFeedbackManager.shared.success()
+            // 触发 UI 成功动画
+            DispatchQueue.main.async {
+                self.lastPasteSuccessAt = Date()
+            }
+        }
+    }
+
     /// 处理拖拽的文件 URL 列表
     /// - Parameter urls: 文件 URL 数组
     func handleDroppedUrls(_ urls: [URL]) {
@@ -104,101 +169,86 @@ final class RecordStore: ObservableObject {
         for url in urls {
             // 获取文件路径
             var finalUrl = url
-            let path = url.path
             let fileName = url.lastPathComponent
-            
-            print("[DEBUG] 正在处理文件: \(fileName), 路径: \(path)")
             
             // 检查是否是文件夹
             var isDirectory: ObjCBool = false
-            let exists = FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory)
+            let exists = FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory)
             let isFolder = exists && isDirectory.boolValue
             
-            // 检查是否是临时文件 (File Promises 或 Caches)
-            let isTemporary = path.contains("filePromises") || path.contains("Library/Caches")
-            if isTemporary && !isFolder {
-                print("[DEBUG] 检测到临时文件，准备持久化备份...")
-                // 使用 FileUtil 获取唯一文件名，还原原始名字
-                let destination = FileUtil.getUniqueURL(for: fileName, in: attachmentsDirectory)
+            // 确定记录类型
+            var recordType: RecordType = isFolder ? .folder : .file
+            let imageExtensions = ["png", "jpg", "jpeg", "gif", "tiff", "bmp", "webp", "heic"]
+            if !isFolder && imageExtensions.contains(url.pathExtension.lowercased()) {
+                recordType = .image
+            }
+            
+            // 使用 FileCoordinator 持久化非文件夹资源
+            var sourceUrlStr: String = url.path
+            if !isFolder {
                 do {
-                    try FileManager.default.copyItem(at: url, to: destination)
-                    finalUrl = destination
-                    print("[DEBUG] 文件已成功备份到: \(destination.path)")
+                    let type: ResourceType = (recordType == .image) ? .image : .file
+                    let storedURL = try FileCoordinator.shared.storeFile(at: url, type: type)
+                    finalUrl = storedURL
+                    if let virtualPath = FileCoordinator.shared.convertToVirtualPath(from: storedURL) {
+                        sourceUrlStr = virtualPath
+                    }
+                    
+                    // 如果是图片，生成缩略图
+                    if recordType == .image {
+                        ThumbnailGenerator.shared.getThumbnailURLAsync(for: storedURL) { _ in }
+                    }
+                    print("[DEBUG] 文件已持久化: \(sourceUrlStr)")
                 } catch {
-                    print("[DEBUG] 文件备份失败: \(error.localizedDescription)")
+                    print("[DEBUG] 文件持久化失败: \(error.localizedDescription)")
                 }
             }
             
-            // 确定记录类型和 AI 跳过标志
-            var recordType: RecordType = isFolder ? .folder : .file
-            let skipAI = isFolder // 文件夹默认跳过 AI
+            let skipAI = isFolder || recordType == .image
             
-            // 尝试读取文件内容（仅限文本文件）
+            // 处理内容显示
             var content = ""
-            let sourceUrl = finalUrl.absoluteString
-            
-            // 检查文件是否存在
-            if !FileManager.default.fileExists(atPath: finalUrl.path) {
-                print("[DEBUG] 错误: 文件不存在於路径: \(finalUrl.path)")
-                content = "错误: 文件不存在\n路径: \(finalUrl.path)"
-            } else if isFolder {
-                // 文件夹处理逻辑：生成 tree 结构
+            if isFolder {
                 let treeResult = generateTreeStructure(for: finalUrl)
                 content = treeResult.content
                 let fileCount = treeResult.fileCount
-                let hash = ClipboardService.sha1(content)  // 计算 hash
+                let hash = ClipboardService.sha1(content)
 
-                print("[DEBUG] 识别为文件夹，文件数: \(fileCount)")
-
-                // 添加记录时传入文件数量
                 addRecord(
                     content: content,
                     hash: hash,
                     sourceApp: "Folder Drag",
-                    sourceUrl: sourceUrl,
-                    type: recordType,
+                    sourceUrl: sourceUrlStr,
+                    type: .folder,
                     skipAI: skipAI,
                     fileName: fileName,
                     fileCount: fileCount
                 )
-                continue  // 跳过后续的通用 addRecord
+                continue
             } else {
-                do {
-                    // 只要是文件，统一设为 .file 类型，确保能通过文件筛选找到
-                    recordType = .file
-                    
-                    // 简单的文本检测：如果是已知文本扩展名，尝试读取内容用于 AI 总结
-                    let textExtensions = ["txt", "md", "js", "ts", "swift", "py", "html", "css", "json", "yml", "yaml", "xml", "c", "cpp", "h"]
-                    if textExtensions.contains(finalUrl.pathExtension.lowercased()) || isTemporary {
+                // 文本文件读取逻辑
+                let textExtensions = ["txt", "md", "js", "ts", "swift", "py", "html", "css", "json", "yml", "yaml", "xml", "c", "cpp", "h"]
+                if textExtensions.contains(finalUrl.pathExtension.lowercased()) {
+                    do {
                         content = try String(contentsOf: finalUrl, encoding: .utf8)
-                        print("[DEBUG] 成功读取文本文件内容，长度: \(content.count)")
-                    } else {
-                        // 非文本文件记录基本信息
-                        content = "文件路径: \(finalUrl.path)\n文件名: \(fileName)"
-                        print("[DEBUG] 非文本文件，记录路径信息")
+                    } catch {
+                        content = "文件路径: \(finalUrl.path)\n(内容读取失败)"
                     }
-                } catch {
-                    print("[DEBUG] 读取文件内容失败: \(error.localizedDescription)")
-                    content = "文件路径: \(finalUrl.path)\n文件名: \(fileName)\n(内容读取失败: \(error.localizedDescription))"
+                } else {
+                    content = "文件路径: \(finalUrl.path)\n文件名: \(fileName)"
                 }
             }
             
-            // 计算哈希用于去重
-            let data = Data(content.utf8)
-            let hash = data.reduce(into: "") { $0 += String(format: "%02x", $1) }
-            
-            // 添加记录
-            print("[DEBUG] 准备调用 addRecord...")
+            let hash = ClipboardService.sha1(content)
             addRecord(
                 content: content,
                 hash: hash,
-                sourceApp: isFolder ? "Folder Drag" : "File Drag",
-                sourceUrl: sourceUrl,
+                sourceApp: "File Drag",
+                sourceUrl: sourceUrlStr,
                 type: recordType,
                 skipAI: skipAI,
-                fileName: isFolder ? fileName : nil
+                fileName: fileName
             )
-            print("[DEBUG] addRecord 调用完成")
         }
         
         // 发送触觉反馈
@@ -206,20 +256,12 @@ final class RecordStore: ObservableObject {
         // 触发 UI 成功动画
         DispatchQueue.main.async {
             self.lastPasteSuccessAt = Date()
-            print("[DEBUG] lastPasteSuccessAt 已更新")
         }
     }
 
-    // MARK: - 配置
-
-    private let prefs = PreferencesManager.shared
-    @Published var dedupEnabled: Bool = true
-    @Published var maxRecords: Int = 100
-    @Published var attachmentsPath: String = ""
-    @Published var isStarredCollapsed: Bool = false
-
     // MARK: - 内存管理
 
+    private let prefs = PreferencesManager.shared
     private let memoryManager = MemoryManager.shared
     private var memoryOptimizationCancellable: AnyCancellable?
 
@@ -650,20 +692,65 @@ final class RecordStore: ObservableObject {
         return notifier.shouldShowPasteSuccessAnimation()
     }
 
-    // MARK: - 其他操作
+    /// 同步文件夹到本地
+    func syncFolder(_ record: Record) {
+        guard record.type == .folder, let sourceUrl = record.sourceUrl else { return }
+        
+        // 如果已经是同步过的虚拟路径，则不再重复同步
+        if sourceUrl.hasPrefix("app://attachments/SyncedFolders") {
+            Self.logger.info("文件夹已同步: \(sourceUrl)")
+            return
+        }
+        
+        let sourceURL = URL(fileURLWithPath: sourceUrl)
+        
+        // 后台执行同步
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                let storedURL = try FileCoordinator.shared.storeFile(at: sourceURL, type: .syncedFolder)
+                if let virtualPath = FileCoordinator.shared.convertToVirtualPath(from: storedURL) {
+                    DispatchQueue.main.async {
+                        self.updateRecordSourceUrl(id: record.id, newUrl: virtualPath)
+                        self.notifier.postLightHint("文件夹同步成功")
+                    }
+                }
+            } catch {
+                Self.logger.error("文件夹同步失败: \(error.localizedDescription)")
+                DispatchQueue.main.async {
+                    self.notifier.postLightHint("同步失败: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+    
+    private func updateRecordSourceUrl(id: UUID, newUrl: String) {
+        if let idx = records.firstIndex(where: { $0.id == id }) {
+            records[idx].sourceUrl = newUrl
+            
+            // 更新数据库
+            do {
+                try repository.updateSourceUrl(id: id, sourceUrl: newUrl)
+            } catch {
+                Self.logger.error("更新数据库 sourceUrl 失败: \(error.localizedDescription)")
+            }
+        }
+    }
 
     /// 切换收藏状态
     func toggleStar(_ record: Record) {
         if let idx = records.firstIndex(where: { $0.id == record.id }) {
-            records[idx].starred.toggle()
-
-            // 异步更新数据库
-            do { try repository.toggleStar(id: record.id) }
-            catch {
-                Self.logger.error("切换收藏状态失败: \(error.localizedDescription)")
+            // 先在主线程更新 UI 状态，确保即时响应
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                records[idx].starred.toggle()
+                sortRecordsInPlace()
             }
 
-            sortRecordsInPlace()
+            // 异步更新数据库
+            do {
+                try repository.toggleStar(id: record.id)
+            } catch {
+                Self.logger.error("切换收藏状态失败: \(error.localizedDescription)")
+            }
         }
     }
 

@@ -485,6 +485,7 @@ struct FloatingRootView: View {
 
         let dispatchGroup = DispatchGroup()
         var urls: [URL] = []
+        var images: [NSImage] = []
 
         for provider in providers {
             dispatchGroup.enter()
@@ -492,17 +493,27 @@ struct FloatingRootView: View {
             let types = provider.registeredTypeIdentifiers
             print("[DEBUG] provider 注册的类型: \(types)")
 
-            // 优先尝试 URL
-            if provider.canLoadObject(ofClass: URL.self) {
+            // 1. 优先尝试直接加载图片对象 (针对网页拖拽图片非常有效)
+            if provider.canLoadObject(ofClass: NSImage.self) {
+                _ = provider.loadObject(ofClass: NSImage.self) { image, error in
+                    if let image = image as? NSImage {
+                        print("[DEBUG] 成功解析为 NSImage")
+                        images.append(image)
+                    }
+                    dispatchGroup.leave()
+                }
+            }
+            // 2. 其次尝试 URL
+            else if provider.canLoadObject(ofClass: URL.self) {
                 _ = provider.loadObject(ofClass: URL.self) { url, error in
                     if let url = url {
-                        print("[DEBUG] 成功解析为 URL: \(url.path)")
+                        print("[DEBUG] 成功解析为 URL: \(url.absoluteString)")
                         urls.append(url)
                     }
                     dispatchGroup.leave()
                 }
             }
-            // 其次尝试 String
+            // 3. 最后尝试 String
             else if provider.canLoadObject(ofClass: String.self) {
                 _ = provider.loadObject(ofClass: String.self) { str, error in
                     if let str = str {
@@ -510,6 +521,10 @@ struct FloatingRootView: View {
                         if str.starts(with: "/") {
                             let url = URL(fileURLWithPath: str)
                             urls.append(url)
+                        } else if str.starts(with: "http") {
+                            if let url = URL(string: str) {
+                                urls.append(url)
+                            }
                         }
                     }
                     dispatchGroup.leave()
@@ -539,11 +554,12 @@ struct FloatingRootView: View {
         }
 
         dispatchGroup.notify(queue: DispatchQueue.main) {
-            if !urls.isEmpty {
-                print("[DEBUG] 最终接收到 \(urls.count) 个文件")
-                store.handleDroppedUrls(urls)
+            if !urls.isEmpty || !images.isEmpty {
+                print("[DEBUG] 最终接收到 \(urls.count) 个 URL 和 \(images.count) 张图片")
+                store.handleDroppedContent(urls: urls, images: images)
                 HapticFeedbackManager.shared.mediumImpact()
-                store.postToast("已导入 \(urls.count) 个文件", type: "success")
+                let totalCount = urls.count + images.count
+                store.postToast("已导入 \(totalCount) 个内容", type: "success")
             } else {
                 print("[DEBUG] 未能解析到任何有效内容")
                 store.postToast("未能解析文件", type: "error")

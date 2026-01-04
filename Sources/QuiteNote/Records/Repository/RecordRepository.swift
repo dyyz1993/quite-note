@@ -93,6 +93,17 @@ final class RecordRepository {
         }
     }
 
+    /// 更新记录的 sourceUrl
+    func updateSourceUrl(id: UUID, sourceUrl: String) throws {
+        stack.performBackgroundTask { context in
+            let req = NSFetchRequest<CDRecord>(entityName: "CDRecord")
+            req.predicate = NSPredicate(format: "id == %@", id as CVarArg)
+            guard let cd = try? context.fetch(req).first else { return }
+            cd.sourceUrl = sourceUrl
+            try? context.save()
+        }
+    }
+
     /// 更新记录的 AI 信息
     func updateAI(
         id: UUID,
