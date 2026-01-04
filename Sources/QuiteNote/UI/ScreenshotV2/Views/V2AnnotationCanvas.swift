@@ -59,8 +59,15 @@ struct V2AnnotationCanvas: View {
                 selectionArea: stateManager.selectedArea
             ))
             
-            // 基础选中框（稍微扩大一点）
-            var rect = baseRect.insetBy(dx: -4, dy: -4)
+            // 基础选中框
+            // 💡 关键修复：马赛克工具不需要额外的 inset，因为它本身就是一个精准的填充区域
+            // 其他工具（如画笔、形状）需要稍微扩大一点以便选中
+            var rect: CGRect
+            if element.tool == .mosaic {
+                rect = baseRect
+            } else {
+                rect = baseRect.insetBy(dx: -4, dy: -4)
+            }
             
             // 约束选中框在线框（选区）内
             if let selection = stateManager.selectedArea {

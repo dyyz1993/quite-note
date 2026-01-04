@@ -1,4 +1,13 @@
 {
+    "env": {
+    "ANTHROPIC_AUTH_TOKEN": "sk-flux-99308966ac1742948cd149f99507e63d",
+    "ANTHROPIC_BASE_URL": "http://localhost:3000",
+    "API_TIMEOUT_MS": "3000000",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "glm-4.6",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "glm-4.7",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "glm-4.7"
+  },
   "permissions": {
     "allow": [
       "Bash(cat:*)",
