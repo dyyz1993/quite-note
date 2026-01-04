@@ -88,33 +88,16 @@ struct ScreenshotSettingsTab: View {
                     Spacer()
                     
                     HStack(spacing: 8) {
-                        HStack(spacing: 4) {
-                            let flags = NSEvent.ModifierFlags(rawValue: UInt(prefs.screenshotShortcutFlags))
-                            if flags.contains(.command) { shortcutBadge("⌘") }
-                            if flags.contains(.shift) { shortcutBadge("⇧") }
-                            if flags.contains(.option) { shortcutBadge("⌥") }
-                            if flags.contains(.control) { shortcutBadge("⌃") }
-                        }
-                        
-                        TextField("", text: Binding(
-                            get: { prefs.screenshotShortcut.uppercased() },
-                            set: { newValue in
-                                if let char = newValue.last {
-                                    prefs.setScreenshotShortcut(String(char).lowercased())
-                                } else if newValue.isEmpty {
-                                    prefs.setScreenshotShortcut("")
-                                }
-                            }
-                        ))
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 12, weight: .medium, design: .monospaced))
-                        .frame(width: 20)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Color.themeHoverMedium)
-                        .cornerRadius(4)
-                        .foregroundColor(.themeTextPrimary)
+                        ShortcutRecorderView(
+                            shortcut: Binding(
+                                get: { prefs.screenshotShortcut },
+                                set: { prefs.setScreenshotShortcut($0) }
+                            ),
+                            modifiers: Binding(
+                                get: { prefs.screenshotShortcutFlags },
+                                set: { prefs.setScreenshotShortcutFlags($0) }
+                            )
+                        )
                     }
                     .padding(8)
                     .background(Color.themeInput)
@@ -122,7 +105,7 @@ struct ScreenshotSettingsTab: View {
                     .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.themeBorderSubtle))
                 }
                 
-                Text("修改后需重启应用生效。默认：⌘ + ⇧ + S")
+                Text("点击上方框进行录入。修改后立即生效。默认：⌘ + ⇧ + S")
                     .font(.themeCaption)
                     .foregroundColor(.themeTextTertiary)
                     .frame(maxWidth: .infinity, alignment: .trailing)

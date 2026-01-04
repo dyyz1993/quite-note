@@ -5,29 +5,16 @@ struct RecordThumbnailView: View {
     let record: Record
     let size: CGFloat
     
-    @State private var thumbnailURL: URL?
+    @State private var loadedImage: NSImage?
     
     var body: some View {
         Group {
-            if let url = thumbnailURL {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(width: size, height: size)
-                            .clipped()
-                    case .failure:
-                        fallbackIcon
-                    case .empty:
-                        ProgressView()
-                            .scaleEffect(0.5)
-                            .frame(width: size, height: size)
-                    @unknown default:
-                        fallbackIcon
-                    }
-                }
+            if let nsImage = loadedImage {
+                Image(nsImage: nsImage)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: size, height: size)
+                    .clipped()
             } else {
                 fallbackIcon
             }
@@ -45,6 +32,9 @@ struct RecordThumbnailView: View {
     }
     
     private func loadThumbnail() {
+        // 如果已经加载过，不再重复加载
+        if loadedImage != nil { return }
+
         guard let urlString = record.sourceUrl else { return }
         
         // 1. 解析虚拟路径或原始路径
@@ -52,7 +42,16 @@ struct RecordThumbnailView: View {
         
         // 2. 异步获取缩略图
         ThumbnailGenerator.shared.getThumbnailURLAsync(for: sourceURL) { url in
-            self.thumbnailURL = url
+            guard let url = url else { return }
+            
+            // 3. 预加载图片到内存，避免 AsyncImage 的一闪一闪
+            DispatchQueue.global(qos: .userInteractive).async {
+                if let nsImage = NSImage(contentsOf: url) {
+                    DispatchQueue.main.async {
+                        self.loadedImage = nsImage
+                    }
+                }
+            }
         }
     }
     

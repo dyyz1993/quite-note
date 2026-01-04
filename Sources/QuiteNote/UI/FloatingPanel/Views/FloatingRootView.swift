@@ -101,6 +101,23 @@ struct FloatingRootView: View {
                 }
                 .zIndex(100) // 确保在最顶层
             }
+
+            // 全局图片预览层
+            if let previewRecord = store.previewRecord {
+                RecordThumbnailView(record: previewRecord, size: 200)
+                    .background(Color.white)
+                    .cornerRadius(8)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color.themeBorder, lineWidth: 1)
+                    )
+                    .shadow(color: Color.themeShadowHeavy, radius: 10, x: 0, y: 4)
+                    .position(x: store.previewLocation.x + store.previewOffset.width, 
+                              y: store.previewLocation.y + store.previewOffset.height)
+                    .zIndex(2000) // 绝对最高层级
+                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                    .allowsHitTesting(false) // 预览图不响应交互
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .ignoresSafeArea()

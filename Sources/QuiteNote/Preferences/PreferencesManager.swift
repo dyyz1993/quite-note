@@ -100,8 +100,14 @@ final class PreferencesManager: ObservableObject {
     func setAttachmentsPath(_ v: String?) { d.set(v, forKey: "attachmentsPath") }
     func setPreferredEditor(_ v: String) { d.set(v, forKey: "preferredEditor") }
 
-    func setScreenshotShortcut(_ v: String) { d.set(v, forKey: "screenshotShortcut") }
-    func setScreenshotShortcutFlags(_ v: Int) { d.set(v, forKey: "screenshotShortcutFlags") }
+    func setScreenshotShortcut(_ v: String) { 
+        objectWillChange.send()
+        d.set(v, forKey: "screenshotShortcut") 
+    }
+    func setScreenshotShortcutFlags(_ v: Int) { 
+        objectWillChange.send()
+        d.set(v, forKey: "screenshotShortcutFlags") 
+    }
     func setScreenshotSaveToClipboard(_ v: Bool) { d.set(v, forKey: "screenshotSaveToClipboard") }
 
     func setOpenAIBaseURL(_ v: String) { d.set(v, forKey: "openAIBaseURL") }

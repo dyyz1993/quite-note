@@ -29,6 +29,23 @@ struct FileOpener {
     ///   - url: 文件 URL
     ///   - preferredEditor: 偏好设置中的编辑器名称
     static func open(url: URL, preferredEditor: String) {
+        // 1. 判断是否是图片类型
+        let isImage: Bool
+        if let type = try? url.resourceValues(forKeys: [.contentTypeKey]).contentType {
+            isImage = type.conforms(to: .image)
+        } else {
+            // 后备方案：通过后缀判断
+            let ext = url.pathExtension.lowercased()
+            isImage = ["png", "jpg", "jpeg", "gif", "webp", "tiff", "bmp", "heic"].contains(ext)
+        }
+
+        // 2. 如果是图片，直接用系统默认（通常是预览应用），不走编辑器
+        if isImage {
+            NSWorkspace.shared.open(url)
+            return
+        }
+
+        // 3. 非图片类型，继续走原有的编辑器逻辑
         let editor = Editor(rawValue: preferredEditor)
         
         var appUrl: URL? = nil

@@ -13,6 +13,7 @@ struct RecordCardView: View, Equatable {
     @State private var showOriginalContent = false
     @State private var showContent = false // 控制内容延迟显示
     @State private var showFullContent = false // 控制是否显示完整内容
+    @State private var thumbnailHoverTask: Task<Void, Never>? = nil // 新增：缩略图悬停延迟任务
 
     // 删除撤回逻辑
     @State var deleteCountdown = 0
@@ -35,8 +36,10 @@ struct RecordCardView: View, Equatable {
                     cardExpandedContent
                 }
             }
-            .background(Color.themeItem)
-            .cornerRadius(8)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color.themeItem)
+            )
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
                     .stroke(isExpanded ? Color.themeFocused : Color.clear, lineWidth: 1)
@@ -65,7 +68,7 @@ struct RecordCardView: View, Equatable {
             if !isExpanded {
                 Triangle()
                     .fill(Color.clear)
-                    .frame(width: 32, height: 32)
+                    .frame(width: 16, height: 16)
                     .contentShape(Triangle())
                     .onHover { hovered in
                         if hovered {
@@ -116,6 +119,7 @@ struct RecordCardView: View, Equatable {
                 }
             }
         }
+        .zIndex(isExpanded ? 100 : 1) // 展开时层级较高
         .pointingHandCursor()
     }
 
@@ -146,23 +150,50 @@ struct RecordCardView: View, Equatable {
 
     private var cardHeader: some View {
         HStack(alignment: .center, spacing: 12) {
-            // Only show thumbnail for media types
-            if record.type == .image || record.type == .screenshot {
-                RecordThumbnailView(record: record, size: 48)
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        if let url = getFileURL(from: record) {
-                            FileOpener.open(url: url, preferredEditor: PreferencesManager.shared.preferredEditor)
-                        }
-                    }
-            }
-            
             // Middle: Content
             VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .center, spacing: 8) {
-                    // Small icon for non-media types (except text which is clean)
-                    if record.type != .image && record.type != .screenshot && record.type != .text {
-                        LucideView(name: typeIconLucide, size: 12, color: .themeTextTertiary)
+                    // 缩略图或图标 (图标大小 16x16)
+                    if record.type == .image || record.type == .screenshot {
+                        GeometryReader { geo in
+                            RecordThumbnailView(record: record, size: 16)
+                                .onHover { hovered in
+                                    thumbnailHoverTask?.cancel()
+                                    if hovered {
+                                        thumbnailHoverTask = Task {
+                                            try? await Task.sleep(nanoseconds: 300 * 1_000_000) // 延迟 300ms
+                                            if !Task.isCancelled {
+                                                // 获取图标在全局坐标系中的位置
+                                                let frame = geo.frame(in: .global)
+                                                // 设置预览位置：在图标右侧，垂直居中
+                                                store.previewLocation = CGPoint(x: frame.maxX + 110, y: frame.midY)
+                                                store.previewOffset = .zero
+                                                
+                                                withAnimation(.spring(response: 0.2)) {
+                                                    store.previewRecord = record
+                                                }
+                                            }
+                                        }
+                                    } else {
+                                        withAnimation(.spring(response: 0.2)) {
+                                            // 只有当当前预览的是这条记录时才清除，防止快速移动导致闪烁
+                                            if store.previewRecord?.id == record.id {
+                                                store.previewRecord = nil
+                                            }
+                                        }
+                                    }
+                                }
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    if let url = getFileURL(from: record) {
+                                        FileOpener.open(url: url, preferredEditor: PreferencesManager.shared.preferredEditor)
+                                    }
+                                }
+                        }
+                        .frame(width: 16, height: 16)
+                    } else if record.type != .text {
+                        // 非图片类型的图标
+                        LucideView(name: typeIconLucide, size: 10, color: .themeTextTertiary)
                             .frame(width: 16, height: 16)
                             .background(Color.themeHoverLight)
                             .cornerRadius(3)
@@ -551,15 +582,23 @@ struct RecordCardView: View, Equatable {
     }
 
     private var copyOriginalButton: some View {
-        Button(action: {
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(record.content, forType: .string)
+        let isImage = record.type == .image || record.type == .screenshot
+        return Button(action: {
+            if isImage, let urlString = record.sourceUrl, let url = FileCoordinator.shared.resolveVirtualPath(urlString) {
+                // 复制图片文件到剪贴板
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.writeObjects([url as NSURL])
+                store.postToast("已复制图片", type: "success")
+            } else {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(record.content, forType: .string)
+                store.postToast("已复制原文", type: "success")
+            }
             HapticFeedbackManager.shared.lightImpact()
-            store.postToast("已复制原文", type: "success")
         }) {
             HStack(spacing: 4) {
                 LucideView(name: .copy, size: 10, color: .themeTextSecondary)
-                Text("复制原文")
+                Text(isImage ? "复制图片" : "复制原文")
             }
             .font(.system(size: 10))
             .foregroundColor(.themeTextSecondary)
@@ -573,10 +612,11 @@ struct RecordCardView: View, Equatable {
     }
 
     private var originalContentBody: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        let isImage = record.type == .image || record.type == .screenshot
+        return VStack(alignment: .leading, spacing: 12) {
             if let urlString = record.sourceUrl, 
                let url = FileCoordinator.shared.resolveVirtualPath(urlString),
-               (record.type == .image || record.type == .screenshot) {
+               isImage {
                 // 图片大图预览
                 AsyncImage(url: url) { phase in
                     switch phase {
@@ -611,7 +651,7 @@ struct RecordCardView: View, Equatable {
                 textColor: NSColor(red: 209/255, green: 213/255, blue: 221/255, alpha: 1.0), // themeGray300
                 showScrollbar: true // 原文长，需要滚动条
             )
-            .frame(minHeight: record.type == .image || record.type == .screenshot ? 100 : 250, maxHeight: 650)
+            .frame(minHeight: isImage ? 40 : 250, maxHeight: 650)
             .background(Color.themePanel)
             .cornerRadius(4)
             .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.themeBorder, lineWidth: 1).allowsHitTesting(false))

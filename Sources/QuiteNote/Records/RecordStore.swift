@@ -64,6 +64,13 @@ final class RecordStore: ObservableObject {
     /// 标记是否正在内部拖拽（用于屏蔽应用自身的导入蒙层）
     @Published var isInternalDragging: Bool = false
 
+    /// 全局预览记录
+    @Published var previewRecord: Record? = nil
+    /// 全局预览位置
+    @Published var previewLocation: CGPoint = .zero
+    /// 全局预览偏移量（相对于触发点）
+    @Published var previewOffset: CGSize = .zero
+
     // MARK: - 子组件
 
     /// 搜索器
