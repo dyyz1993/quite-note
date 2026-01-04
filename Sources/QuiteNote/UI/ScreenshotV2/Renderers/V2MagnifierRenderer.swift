@@ -1,8 +1,12 @@
 import SwiftUI
+import CoreGraphics
 
 /// 放大镜渲染器
 struct MagnifierRenderer: ElementRenderer {
     private let scale: CGFloat = 2.0
+    
+    // ✨ 新增：用于缓存高分辨率图像片段，避免重复计算
+    private static var patchCache: [UUID: NSImage] = [:]
 
     func render(
         element: DrawingElement,
@@ -25,8 +29,6 @@ struct MagnifierRenderer: ElementRenderer {
         )
         let end = constrainedMagnifierPosition(rawEnd, radius: radius, in: config)
 
-        print("[DEBUG RENDER] start: \(start), contentSource: \(contentSource), dynamic end: \(end), offset: \(element.magnifierOffset)")
-
         drawMagnifier(
             from: start,
             contentSource: contentSource,
@@ -35,6 +37,8 @@ struct MagnifierRenderer: ElementRenderer {
             size: config.canvasSize,
             baseImage: config.baseImage,
             radius: radius,
+            scale: element.magnifierScale, // ✨ 使用元素自带的倍率
+            color: element.color,
             isPreview: false
         )
     }
@@ -89,7 +93,9 @@ struct MagnifierRenderer: ElementRenderer {
         in context: inout GraphicsContext,
         size: CGSize,
         baseImage: NSImage?,
-        radius: CGFloat = 60
+        radius: CGFloat = 60,
+        scale: CGFloat = 2.0, // ✨ 新增倍率参数
+        color: Color = .white
     ) {
         drawMagnifier(
             from: start,
@@ -99,6 +105,8 @@ struct MagnifierRenderer: ElementRenderer {
             size: size,
             baseImage: baseImage,
             radius: radius,
+            scale: scale, // ✨ 传递倍率
+            color: color,
             isPreview: true
         )
     }
@@ -113,6 +121,8 @@ struct MagnifierRenderer: ElementRenderer {
         size: CGSize,
         baseImage: NSImage?,
         radius: CGFloat = 60,
+        scale: CGFloat = 2.0, // ✨ 允许自定义倍率
+        color: Color = .white,
         isPreview: Bool = false
     ) {
         guard let image = baseImage else { return }
@@ -143,35 +153,67 @@ struct MagnifierRenderer: ElementRenderer {
             linePath.move(to: start)
             linePath.addLine(to: edgePoint)
             let lineOpacity = isPreview ? 0.3 : 0.5
-            context.stroke(linePath, with: .color(.white.opacity(lineOpacity)), style: StrokeStyle(lineWidth: 1, dash: [4, 2]))
+            context.stroke(linePath, with: .color(color.opacity(lineOpacity)), style: StrokeStyle(lineWidth: 1, dash: [4, 2]))
         }
 
         // 2. 绘制放大镜内容（在源点之前绘制，避免遮挡源点）
         context.drawLayer { layer in
-            // ✨ 设置高质量插值，确保放大后依然高清
-            layer.withCGContext { cgContext in
-                cgContext.interpolationQuality = .high
-            }
-
             // 裁剪为圆形
             layer.clip(to: Path(ellipseIn: magnifierRect))
 
-            // 绘制放大的图片部分
-            let dx = end.x - contentSource.x * scale
-            let dy = end.y - contentSource.y * scale
-
-            layer.translateBy(x: dx, y: dy)
-            layer.scaleBy(x: scale, y: scale)
-            layer.draw(Image(nsImage: image), in: CGRect(origin: .zero, size: size))
+            // ✨ 核心改进：不再缩放整个图层，而是计算源图像的像素区域并直接绘制
+            // 这样可以确保我们直接利用 NSImage 内部 CGImage 的原始像素
+            if let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) {
+                // 计算像素级别的坐标
+                // ✨ 核心改进：直接使用 cgImage 的真实宽高，不依赖 image.size
+                let pixelWidth = CGFloat(cgImage.width)
+                let pixelHeight = CGFloat(cgImage.height)
+                
+                // 采样区域相对于画布尺寸的比例
+                let sampleRect = CGRect(
+                    x: contentSource.x - radius / scale,
+                    y: contentSource.y - radius / scale,
+                    width: (radius / scale) * 2,
+                    height: (radius / scale) * 2
+                )
+                
+                let scaleX = pixelWidth / size.width
+                let scaleY = pixelHeight / size.height
+                
+                let pixelRect = CGRect(
+                    x: sampleRect.origin.x * scaleX,
+                    y: sampleRect.origin.y * scaleY,
+                    width: sampleRect.width * scaleX,
+                    height: sampleRect.height * scaleY
+                )
+                
+                if let cropped = cgImage.cropping(to: pixelRect) {
+                    layer.withCGContext { cgContext in
+                        // ✨ 使用最高级别的插值
+                        cgContext.interpolationQuality = .high
+                        cgContext.setShouldAntialias(true)
+                        cgContext.setAllowsAntialiasing(true)
+                    }
+                    // 指定 scale 为 1.0，让系统明白 cropped 就是原始像素
+                    layer.draw(Image(decorative: cropped, scale: 1.0, orientation: .up), in: magnifierRect)
+                }
+            } else {
+                // 降级方案：原有的缩放逻辑
+                let dx = end.x - contentSource.x * scale
+                let dy = end.y - contentSource.y * scale
+                layer.translateBy(x: dx, y: dy)
+                layer.scaleBy(x: scale, y: scale)
+                layer.draw(Image(nsImage: image), in: CGRect(origin: .zero, size: size))
+            }
         }
 
         // 3. 绘制装饰边框
-        context.stroke(Path(ellipseIn: magnifierRect), with: .color(.white), lineWidth: 3)
+        context.stroke(Path(ellipseIn: magnifierRect), with: .color(color), lineWidth: 3)
         context.stroke(Path(ellipseIn: magnifierRect), with: .color(.gray.opacity(0.3)), lineWidth: 1)
 
         // 4. 在起始位置画一个小圆点，表示来源（仅固化态显示且源点不在圆圈内）
         if !isPreview && !shouldHideSource {
-            context.fill(Path(ellipseIn: CGRect(x: start.x-3, y: start.y-3, width: 6, height: 6)), with: .color(.white))
+            context.fill(Path(ellipseIn: CGRect(x: start.x-3, y: start.y-3, width: 6, height: 6)), with: .color(color))
             context.stroke(Path(ellipseIn: CGRect(x: start.x-3, y: start.y-3, width: 6, height: 6)), with: .color(.black.opacity(0.3)), lineWidth: 0.5)
         }
     }

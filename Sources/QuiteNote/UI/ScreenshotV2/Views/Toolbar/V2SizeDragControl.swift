@@ -13,8 +13,9 @@ struct V2SizeDragControl: View {
     private let minInnerSize: CGFloat = 3
     
     var body: some View {
-        let range = stateManager.selectedTool.sizeRange
-        let currentValue = stateManager.selectedTool == .text || stateManager.selectedTool == .mosaic || stateManager.selectedTool == .magnifier 
+        let activeTool = getActiveTool()
+        let range = activeTool.sizeRange
+        let currentValue = activeTool == .text || activeTool == .mosaic || activeTool == .magnifier 
             ? stateManager.fontSize 
             : stateManager.lineWidth
             
@@ -70,8 +71,17 @@ struct V2SizeDragControl: View {
         return minInnerSize + (maxInnerSize - minInnerSize) * percent
     }
     
+    private func getActiveTool() -> AnnotationTool {
+        if stateManager.selectedTool == .cursor,
+           let id = stateManager.selectedElementId,
+           let element = stateManager.elements.first(where: { $0.id == id }) {
+            return element.tool
+        }
+        return stateManager.selectedTool
+    }
+    
     private func updateValue(_ value: CGFloat) {
-        let tool = stateManager.selectedTool
+        let tool = getActiveTool()
         if tool == .text || tool == .mosaic || tool == .magnifier {
             stateManager.fontSize = value
         } else {

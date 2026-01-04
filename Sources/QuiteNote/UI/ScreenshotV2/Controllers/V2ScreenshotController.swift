@@ -14,9 +14,26 @@ class V2ScreenshotController {
     static var longScreenshotPreviewPanel: LongScreenshotPreviewPanel?
     private static var localMonitor: Any?
 
+    /// ✨ 新增：互斥锁，确保同一时间只有一个截图流程在运行
+    private static var isShowing = false
+
     static func show() {
-        // 先关闭旧的
-        close()
+        // ✨ 互斥锁逻辑：如果已经在显示中，则直接返回，防止重复触发
+        guard !isShowing else {
+            v2Logger.info("Controller - Already showing, ignoring duplicate show() request")
+            return
+        }
+        
+        // 先检查是否已经有 panel，如果有也说明在显示中
+        if !debugPanels.isEmpty {
+            v2Logger.info("Controller - Panels not empty, ignoring show() request")
+            return
+        }
+
+        isShowing = true
+        
+        // 清理可能残留的状态
+        cleanup()
 
         // ✨ 设置全局键盘监听
         setupKeyboardMonitor()
@@ -87,7 +104,8 @@ class V2ScreenshotController {
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    static func close() {
+    /// ✨ 内部清理逻辑，不重置 isShowing 锁
+    private static func cleanup() {
         // 移除监听
         if let monitor = localMonitor {
             NSEvent.removeMonitor(monitor)
@@ -108,6 +126,13 @@ class V2ScreenshotController {
 
         // ⚠️ 关闭调试模式时也重置全局状态
         V2PrimaryScreenStateManager.shared.reset()
+    }
+
+    static func close() {
+        // 先执行清理
+        cleanup()
+        // 最后重置状态锁
+        isShowing = false
     }
 
     private static func setupKeyboardMonitor() {

@@ -87,11 +87,32 @@ class V2PrimaryScreenStateManager: ObservableObject {
     /// 当前选中的工具
     @Published var selectedTool: AnnotationTool = .cursor
     /// 当前选中的颜色
-    @Published var selectedColor: Color = .red
+    @Published var selectedColor: Color = .red {
+        didSet {
+            // ✨ 核心需求：如果当前有选中的元素，同步更新其颜色
+            if let id = selectedElementId,
+               let index = elements.firstIndex(where: { $0.id == id }) {
+                elements[index].color = selectedColor
+                objectWillChange.send()
+            }
+        }
+    }
     /// 线条宽度
     @Published var lineWidth: CGFloat = 4.0
     /// 字体大小
     @Published var fontSize: CGFloat = 20.0
+    /// 放大镜倍率 (1.0 - 5.0)
+    @Published var magnifierScale: CGFloat = 2.0 {
+        didSet {
+            // ✨ 核心需求：如果当前选中了放大镜，同步更新其倍率
+            if let id = selectedElementId,
+               let index = elements.firstIndex(where: { $0.id == id }),
+               elements[index].tool == .magnifier {
+                elements[index].magnifierScale = magnifierScale
+                objectWillChange.send()
+            }
+        }
+    }
     
     /// 更新当前工具
     func updateTool(_ tool: AnnotationTool) {
@@ -105,9 +126,6 @@ class V2PrimaryScreenStateManager: ObservableObject {
             selectedElementId = nil
         }
     }
-    
-    /// 序号计数器（不再直接使用，改为计算得出）
-    @Published var stepCounter: Int = 1
     
     /// 获取下一个可用的序号（自动补齐空缺）
     func getNextStepNumber() -> Int {
@@ -123,7 +141,18 @@ class V2PrimaryScreenStateManager: ObservableObject {
     }
 
     /// 选中的元素 ID
-    @Published var selectedElementId: UUID? = nil
+    @Published var selectedElementId: UUID? = nil {
+        didSet {
+            // ✨ 核心需求：选中元素时，同步更新工具栏状态
+            if let id = selectedElementId,
+               let element = elements.first(where: { $0.id == id }) {
+                self.selectedColor = element.color
+                self.lineWidth = element.lineWidth
+                self.fontSize = element.fontSize
+                self.magnifierScale = element.magnifierScale
+            }
+        }
+    }
 
     /// 放大镜预览状态（鼠标跟随模式）
     @Published var magnifierPreviewPosition: CGPoint? = nil
@@ -199,7 +228,7 @@ class V2PrimaryScreenStateManager: ObservableObject {
         selectedColor = .red
         lineWidth = 4.0
         fontSize = 20.0
-        stepCounter = 1
+        magnifierScale = 2.0  // ✅ 新增：重置倍率
         selectedElementId = nil
         lastEscKeyPressTime = nil
     }
@@ -275,11 +304,6 @@ class V2PrimaryScreenStateManager: ObservableObject {
     func addElement(_ element: DrawingElement) {
         elements.append(element)
         selectedElementId = element.id
-        
-        // 如果是步骤工具，增加计数器
-        if element.tool == .steps {
-            stepCounter += 1
-        }
     }
 
     /// 更新元素的粗细/大小 (连续值调节)
@@ -322,7 +346,6 @@ class V2PrimaryScreenStateManager: ObservableObject {
         elements = []
         currentElement = nil
         selectedElementId = nil
-        stepCounter = 1
     }
 
     /// 撤销最后一个元素

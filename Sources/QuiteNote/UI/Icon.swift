@@ -79,6 +79,7 @@ enum IconName: String {
     case trash = "trash"
     case scroll = "scroll"
     case cloudDownload = "cloud-download"
+    case zoomIn = "zoom-in"
 }
 
 /// SwiftUI 包装，渲染 Lucide 图标（不使用 SF Symbols 回退）

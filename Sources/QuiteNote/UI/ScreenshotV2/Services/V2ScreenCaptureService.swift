@@ -41,20 +41,41 @@ class V2ScreenCaptureService {
     /// - Parameter screen: 目标屏幕
     /// - Returns: 截图，失败返回 nil
     private func captureScreenSync(_ screen: NSScreen) -> NSImage? {
-        // 获取屏幕的 Display ID
-        guard let displayID = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID else {
-            logger.error("无法获取 Display ID for \(screen.localizedName)")
-            return nil
-        }
+        // 使用 CGWindowListCreateImage 替代 CGDisplayCreateImage 以确保获取最高质量的截图
+        // 特别是在 Retina 屏幕上，这样可以更可靠地获取 2x/3x 的像素数据
+        let screenRect = screen.frame
+        let mainScreenHeight = NSScreen.screens.first?.frame.height ?? 0
+        
+        // 转换坐标系：SwiftUI/AppKit (origin top-left, but screens are bottom-left) 
+        // -> CoreGraphics (origin top-left)
+        let cgRect = CGRect(
+            x: screenRect.origin.x,
+            y: mainScreenHeight - screenRect.origin.y - screenRect.height,
+            width: screenRect.width,
+            height: screenRect.height
+        )
 
-        // 使用 CGDisplayCreateImage 截图
-        guard let cgImage = CGDisplayCreateImage(displayID) else {
-            logger.error("CGDisplayCreateImage 失败 for display \(displayID)")
+        guard let cgImage = CGWindowListCreateImage(
+            cgRect,
+            .optionAll,
+            kCGNullWindowID,
+            [.bestResolution, .nominalResolution]
+        ) else {
+            logger.error("CGWindowListCreateImage 失败 for screen \(screen.localizedName)")
             return nil
         }
 
         // 转换为 NSImage
-        return NSImage(cgImage: cgImage, size: screen.frame.size)
+        let image = NSImage(cgImage: cgImage, size: screen.frame.size)
+        
+        // ✨ 核心改进：显式预加载 CGImage 的像素数据。
+        // 有时候 NSImage 内部是延迟加载的，或者在不同上下文中返回的分辨率不一致。
+        // 通过 force-fetching 确保 NSImage 内部持有的就是原始高分像素。
+        if let rep = image.representations.first as? NSBitmapImageRep {
+            _ = rep.bitmapData // 强制加载像素
+        }
+        
+        return image
     }
 
     /// 捕获单个屏幕的截图（公开方法，保持向后兼容）

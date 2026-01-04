@@ -436,6 +436,28 @@ struct V2ScreenshotView: View {
         }
         .frame(width: screen.frame.width, height: screen.frame.height)
         .background(isReleased ? Color.clear : Color.black)  // 释放时透明，否则黑色
+        // ✨ 新增：处理滚轮事件，用于调节放大倍率
+        .onScrollWheel { event in
+            guard primaryScreenManager.isEditing else { return }
+            
+            // 1. 如果选中了放大镜工具（正在预览）
+            if primaryScreenManager.selectedTool == .magnifier {
+                let delta = -event.scrollingDeltaY * 0.05
+                let newScale = max(1.0, min(5.0, primaryScreenManager.magnifierScale + delta))
+                primaryScreenManager.magnifierScale = newScale
+                return
+            }
+            
+            // 2. 如果当前选中了一个已有的放大镜元素
+            if let id = primaryScreenManager.selectedElementId,
+               let index = primaryScreenManager.elements.firstIndex(where: { $0.id == id }),
+               primaryScreenManager.elements[index].tool == .magnifier {
+                let delta = -event.scrollingDeltaY * 0.05
+                let newScale = max(1.0, min(5.0, primaryScreenManager.elements[index].magnifierScale + delta))
+                primaryScreenManager.elements[index].magnifierScale = newScale
+                primaryScreenManager.objectWillChange.send()
+            }
+        }
         .onAppear {
             addLog("Debug window appeared on Screen \(screenIndex)")
 
@@ -610,21 +632,58 @@ struct V2ScreenshotView: View {
                         // 2.1 ✨ 选择工具的移动逻辑
                         if primaryScreenManager.selectedTool == .cursor {
                             if !isDraggingElement {
-                                // 检查是否点中了已选中的元素（或点中一个新元素）
+                                // 1. 优先检查当前已选中的元素
+                                var targetElement: DrawingElement? = nil
                                 if let selectedId = primaryScreenManager.selectedElementId,
                                    let element = primaryScreenManager.elements.first(where: { $0.id == selectedId }) {
+                                    let rect = elementBoundingRect(element, selection: localSelectedArea, screenSize: screenSize).insetBy(dx: -10, dy: -10)
                                     
+                                    // 序号工具圆形判定
+                                    var hit = false
+                                    if element.tool == .steps {
+                                        if let center = element.points.first {
+                                            let dist = sqrt(pow(value.startLocation.x - center.x, 2) + pow(value.startLocation.y - center.y, 2))
+                                            hit = dist <= rect.width / 2
+                                        }
+                                    } else {
+                                        hit = rect.contains(value.startLocation)
+                                    }
+                                    
+                                    if hit {
+                                        targetElement = element
+                                    }
+                                }
+                                
+                                // 2. 如果没点中已选中的，检查是否点中了其他任何元素（实现一键选中并拖拽）
+                                if targetElement == nil {
+                                    if let hit = primaryScreenManager.elements.reversed().first(where: { element in
+                                        let rect = elementBoundingRect(element, selection: localSelectedArea, screenSize: screenSize).insetBy(dx: -10, dy: -10)
+                                        if element.tool == .steps {
+                                            if let center = element.points.first {
+                                                let dist = sqrt(pow(value.startLocation.x - center.x, 2) + pow(value.startLocation.y - center.y, 2))
+                                                return dist <= rect.width / 2
+                                            }
+                                        }
+                                        return rect.contains(value.startLocation)
+                                    }) {
+                                        targetElement = hit
+                                        primaryScreenManager.selectedElementId = hit.id // 立即选中
+                                        addLog("Element Selected via Drag: \(hit.tool)")
+                                    }
+                                }
+                                
+                                // 3. 如果确认了拖拽目标，初始化状态
+                                if let element = targetElement {
                                     if element.tool == .magnifier {
-                                        // 1. 优先检查是否点中视觉源点 (小圆圈)
+                                        // 放大镜特殊逻辑
                                         let start = element.points.first!
-                                        let dotRect = CGRect(x: start.x - 15, y: start.y - 15, width: 30, height: 30) // 增大热区
+                                        let dotRect = CGRect(x: start.x - 15, y: start.y - 15, width: 30, height: 30)
                                         if dotRect.contains(value.startLocation) {
                                             isDraggingElement = true
                                             magnifierDragTarget = .sourceDot
                                             initialElementPoints = element.points
                                             addLog("Dragging Magnifier Source Dot")
                                         } else {
-                                            // 2. 检查是否点中放大镜圆圈
                                             let circleRect = elementBoundingRect(element, selection: localSelectedArea, screenSize: screenSize).insetBy(dx: -5, dy: -5)
                                             if circleRect.contains(value.startLocation) {
                                                 isDraggingElement = true
@@ -634,13 +693,10 @@ struct V2ScreenshotView: View {
                                             }
                                         }
                                     } else {
-                                        let rect = elementBoundingRect(element, selection: localSelectedArea, screenSize: screenSize).insetBy(dx: -10, dy: -10)
-                                        if rect.contains(value.startLocation) {
-                                            isDraggingElement = true
-                                            initialElementPoints = element.points
-                                            initialMagnifierOffset = element.magnifierOffset
-                                            addLog("Dragging Element: \(element.tool)")
-                                        }
+                                        isDraggingElement = true
+                                        initialElementPoints = element.points
+                                        initialMagnifierOffset = element.magnifierOffset
+                                        addLog("Dragging Element: \(element.tool)")
                                     }
                                 }
                             }
@@ -726,16 +782,18 @@ struct V2ScreenshotView: View {
                         // ✨ 关键修复：只允许在选区内绘制，且排除点击触发型工具（放大镜）
                         if selection.contains(value.location) {
                             if primaryScreenManager.currentElement == nil {
-                                // 排除通过点击创建的工具，避免重复创建
-                                guard primaryScreenManager.selectedTool != .magnifier else { return }
+                                // 排除通过点击创建的工具，避免重复创建和逻辑冲突
+                                // .steps, .text, .magnifier 均在 onEnded 中通过 Tap 逻辑处理
+                                guard primaryScreenManager.selectedTool != .magnifier &&
+                                      primaryScreenManager.selectedTool != .steps &&
+                                      primaryScreenManager.selectedTool != .text else { return }
 
                                 primaryScreenManager.currentElement = DrawingElement(
                                     tool: primaryScreenManager.selectedTool,
                                     points: [value.location],
                                     color: primaryScreenManager.selectedColor,
                                     lineWidth: primaryScreenManager.lineWidth,
-                                    fontSize: primaryScreenManager.fontSize,
-                                    stepNumber: primaryScreenManager.stepCounter
+                                    fontSize: primaryScreenManager.fontSize
                                 )
                             } else {
                                 // ✨ 只添加选区内的点
@@ -822,6 +880,20 @@ struct V2ScreenshotView: View {
 
                     // ✨ 如果是点击，处理点击逻辑
                     if isClick {
+                        // ⚠️ 核心修复：点击也属于手势结束，必须重置所有拖拽/移动状态
+                        // 否则会导致状态残留，下次拖拽时旧元素会“飞走”
+                        defer {
+                            isDraggingElement = false
+                            isMovingSelection = false
+                            activeHandle = nil
+                            dragStartPoint = nil
+                            dragCurrentPoint = nil
+                            initialElementPoints = []
+                            initialSelectionForMove = nil
+                            initialMagnifierOffset = .zero
+                            magnifierDragTarget = nil
+                        }
+
                         let clickLocation = value.startLocation
 
                         // ✨ 核心修复：锁定点击交互
@@ -882,6 +954,15 @@ struct V2ScreenshotView: View {
                         if primaryScreenManager.isEditing && primaryScreenManager.selectedTool == .cursor {
                             if let hitElement = primaryScreenManager.elements.reversed().first(where: { element in
                                 let rect = elementBoundingRect(element, selection: localSelectedArea, screenSize: screenSize).insetBy(dx: -10, dy: -10)
+                                
+                                // ✨ 序号工具使用圆形热区判断
+                                if element.tool == .steps {
+                                    guard let center = element.points.first else { return false }
+                                    let radius = rect.width / 2
+                                    let distance = sqrt(pow(clickLocation.x - center.x, 2) + pow(clickLocation.y - center.y, 2))
+                                    return distance <= radius
+                                }
+                                
                                 return rect.contains(clickLocation)
                             }) {
                                 primaryScreenManager.selectedElementId = hitElement.id
@@ -898,7 +979,7 @@ struct V2ScreenshotView: View {
                                 let magnifierElement = DrawingElement(
                                     tool: .magnifier,
                                     points: [clickLocation],
-                                    color: .white,
+                                    color: primaryScreenManager.selectedColor,
                                     lineWidth: primaryScreenManager.lineWidth,
                                     fontSize: primaryScreenManager.fontSize,
                                     magnifierSourcePoint: clickLocation
@@ -914,6 +995,21 @@ struct V2ScreenshotView: View {
                         // 3.5 ✨ 序号（步骤）工具的点击
                         if primaryScreenManager.isEditing && primaryScreenManager.selectedTool == .steps {
                             if let selection = localSelectedArea, selection.contains(clickLocation) {
+                                // ⚠️ 核心修复：如果点击的是现有的序号，则选中它，而不是创建新的
+                                // 这能防止用户在想选择序号时意外创建出重叠的新序号
+                                if let hitElement = primaryScreenManager.elements.reversed().first(where: { element in
+                                    guard element.tool == .steps else { return false }
+                                    let rect = elementBoundingRect(element, selection: localSelectedArea, screenSize: screenSize).insetBy(dx: -5, dy: -5)
+                                    guard let center = element.points.first else { return false }
+                                    let radius = rect.width / 2
+                                    let distance = sqrt(pow(clickLocation.x - center.x, 2) + pow(clickLocation.y - center.y, 2))
+                                    return distance <= radius
+                                }) {
+                                    primaryScreenManager.selectedElementId = hitElement.id
+                                    addLog("Steps Tool: Selected existing sequence number")
+                                    return
+                                }
+
                                 let stepNumber = primaryScreenManager.getNextStepNumber()
                                 let stepElement = DrawingElement(
                                     tool: .steps,
@@ -1135,7 +1231,9 @@ struct V2ScreenshotView: View {
                         canvasSize: screenSize,
                         followMouse: primaryScreenManager.magnifierFollowMouse,
                         selectionArea: selection,
-                        currentFontSize: primaryScreenManager.fontSize // ✨ 传入实时字号
+                        currentFontSize: primaryScreenManager.fontSize, // ✨ 传入实时字号
+                        currentScale: primaryScreenManager.magnifierScale, // ✨ 传入实时倍率
+                        color: primaryScreenManager.selectedColor // ✨ 传入实时颜色
                     )
                     .zIndex(25)
                     .allowsHitTesting(false)

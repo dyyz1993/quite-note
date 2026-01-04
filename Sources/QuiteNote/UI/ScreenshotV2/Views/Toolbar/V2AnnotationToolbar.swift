@@ -38,6 +38,11 @@ struct V2AnnotationToolbar: View {
                 sizeSelectionGroup
             }
             
+            // ✨ 新增：放大镜倍率调节
+            if stateManager.selectedTool == .magnifier || (stateManager.selectedTool == .cursor && isSelectedElementMagnifier) {
+                magnifierScaleGroup
+            }
+            
             Divider().frame(height: 24).background(Color.white.opacity(0.2))
             actionButtonsGroup
             Divider().frame(width: 1, height: 24).background(Color.white.opacity(0.2))
@@ -64,6 +69,21 @@ struct V2AnnotationToolbar: View {
             Divider().frame(height: 24).background(Color.white.opacity(0.2))
             V2SizeDragControl(stateManager: stateManager)
         }
+    }
+
+    private var magnifierScaleGroup: some View {
+        Group {
+            Divider().frame(height: 24).background(Color.white.opacity(0.2))
+            V2MagnifierScaleControl(stateManager: stateManager)
+        }
+    }
+
+    private var isSelectedElementMagnifier: Bool {
+        if let id = stateManager.selectedElementId,
+           let element = stateManager.elements.first(where: { $0.id == id }) {
+            return element.tool == .magnifier
+        }
+        return false
     }
 
     private var toolSelectionGroup: some View {

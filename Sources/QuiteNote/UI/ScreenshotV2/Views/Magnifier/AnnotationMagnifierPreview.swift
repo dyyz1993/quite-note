@@ -8,9 +8,10 @@ struct AnnotationMagnifierPreview: View {
     let followMouse: Bool  // true=跟随鼠标，false=右上角固定
     let selectionArea: CGRect  // ✨ 选区信息
     let currentFontSize: CGFloat // ✨ 当前设置的字号（用于控制放大镜半径）
+    let currentScale: CGFloat // ✨ 新增：当前设置的放大倍率
+    let color: Color // ✨ 当前选中的颜色
 
     private var radius: CGFloat { currentFontSize * 2.5 } // 与渲染器保持一致
-    private let scale: CGFloat = 2.0
     private let padding: CGFloat = 20
 
     var body: some View {
@@ -29,6 +30,8 @@ struct AnnotationMagnifierPreview: View {
             // ✨ 设置高质量插值，确保预览高清
             context.withCGContext { cgContext in
                 cgContext.interpolationQuality = .high
+                cgContext.setShouldAntialias(true)
+                cgContext.setAllowsAntialiasing(true)
             }
 
             // 边界约束
@@ -46,15 +49,48 @@ struct AnnotationMagnifierPreview: View {
             context.drawLayer { layer in
                 layer.clip(to: Path(ellipseIn: magnifierRect))
 
-                let dx = constrainedX - position.x * scale
-                let dy = constrainedY - position.y * scale
-                layer.translateBy(x: dx, y: dy)
-                layer.scaleBy(x: scale, y: scale)
-                layer.draw(Image(nsImage: snapshot), in: CGRect(origin: .zero, size: canvasSize))
+                // ✨ 核心改进：直接从原始 CGImage 采样像素
+                if let cgImage = snapshot.cgImage(forProposedRect: nil, context: nil, hints: nil) {
+                    let pixelWidth = CGFloat(cgImage.width)
+                    let pixelHeight = CGFloat(cgImage.height)
+                    
+                    let sampleRect = CGRect(
+                        x: position.x - radius / currentScale,
+                        y: position.y - radius / currentScale,
+                        width: (radius / currentScale) * 2,
+                        height: (radius / currentScale) * 2
+                    )
+                    
+                    let scaleX = pixelWidth / canvasSize.width
+                    let scaleY = pixelHeight / canvasSize.height
+                    
+                    let pixelRect = CGRect(
+                        x: sampleRect.origin.x * scaleX,
+                        y: sampleRect.origin.y * scaleY,
+                        width: sampleRect.width * scaleX,
+                        height: sampleRect.height * scaleY
+                    )
+                    
+                    if let cropped = cgImage.cropping(to: pixelRect) {
+                        layer.withCGContext { cgContext in
+                            cgContext.interpolationQuality = .high
+                            cgContext.setShouldAntialias(true)
+                            cgContext.setAllowsAntialiasing(true)
+                        }
+                        layer.draw(Image(decorative: cropped, scale: 1.0, orientation: .up), in: magnifierRect)
+                    }
+                } else {
+                    // 降级方案
+                    let dx = constrainedX - position.x * currentScale
+                    let dy = constrainedY - position.y * currentScale
+                    layer.translateBy(x: dx, y: dy)
+                    layer.scaleBy(x: currentScale, y: currentScale)
+                    layer.draw(Image(nsImage: snapshot), in: CGRect(origin: .zero, size: canvasSize))
+                }
             }
 
             // 绘制边框
-            context.stroke(Path(ellipseIn: magnifierRect), with: .color(.white), lineWidth: 3)
+            context.stroke(Path(ellipseIn: magnifierRect), with: .color(color), lineWidth: 3)
             context.stroke(Path(ellipseIn: magnifierRect), with: .color(.gray.opacity(0.3)), lineWidth: 1)
         }
         .frame(width: canvasSize.width, height: canvasSize.height)
@@ -66,6 +102,8 @@ struct AnnotationMagnifierPreview: View {
             // ✨ 设置高质量插值，确保预览高清
             context.withCGContext { cgContext in
                 cgContext.interpolationQuality = .high
+                cgContext.setShouldAntialias(true)
+                cgContext.setAllowsAntialiasing(true)
             }
 
             let corner = magnifierCenter  // ✨ 使用相对于选区的位置
@@ -75,25 +113,58 @@ struct AnnotationMagnifierPreview: View {
             var linePath = Path()
             linePath.move(to: position)
             linePath.addLine(to: corner)
-            context.stroke(linePath, with: .color(.white.opacity(0.5)), style: StrokeStyle(lineWidth: 1, dash: [4, 2]))
+            context.stroke(linePath, with: .color(color.opacity(0.5)), style: StrokeStyle(lineWidth: 1, dash: [4, 2]))
 
             // 2. 绘制源点小圆圈
             let sourceDotRect = CGRect(x: position.x - 3, y: position.y - 3, width: 6, height: 6)
-            context.fill(Path(ellipseIn: sourceDotRect), with: .color(.white))
+            context.fill(Path(ellipseIn: sourceDotRect), with: .color(color))
 
             // 3. 绘制放大的图像
             context.drawLayer { layer in
                 layer.clip(to: Path(ellipseIn: magnifierRect))
 
-                let dx = corner.x - position.x * scale
-                let dy = corner.y - position.y * scale
-                layer.translateBy(x: dx, y: dy)
-                layer.scaleBy(x: scale, y: scale)
-                layer.draw(Image(nsImage: snapshot), in: CGRect(origin: .zero, size: canvasSize))
+                // ✨ 核心改进：直接从原始 CGImage 采样像素
+                if let cgImage = snapshot.cgImage(forProposedRect: nil, context: nil, hints: nil) {
+                    let pixelWidth = CGFloat(cgImage.width)
+                    let pixelHeight = CGFloat(cgImage.height)
+                    
+                    let sampleRect = CGRect(
+                        x: position.x - radius / currentScale,
+                        y: position.y - radius / currentScale,
+                        width: (radius / currentScale) * 2,
+                        height: (radius / currentScale) * 2
+                    )
+                    
+                    let scaleX = pixelWidth / canvasSize.width
+                    let scaleY = pixelHeight / canvasSize.height
+                    
+                    let pixelRect = CGRect(
+                        x: sampleRect.origin.x * scaleX,
+                        y: sampleRect.origin.y * scaleY,
+                        width: sampleRect.width * scaleX,
+                        height: sampleRect.height * scaleY
+                    )
+                    
+                    if let cropped = cgImage.cropping(to: pixelRect) {
+                        layer.withCGContext { cgContext in
+                            cgContext.interpolationQuality = .high
+                            cgContext.setShouldAntialias(true)
+                            cgContext.setAllowsAntialiasing(true)
+                        }
+                        layer.draw(Image(decorative: cropped, scale: 1.0, orientation: .up), in: magnifierRect)
+                    }
+                } else {
+                    // 降级方案
+                    let dx = corner.x - position.x * currentScale
+                    let dy = corner.y - position.y * currentScale
+                    layer.translateBy(x: dx, y: dy)
+                    layer.scaleBy(x: currentScale, y: currentScale)
+                    layer.draw(Image(nsImage: snapshot), in: CGRect(origin: .zero, size: canvasSize))
+                }
             }
 
             // 4. 绘制边框
-            context.stroke(Path(ellipseIn: magnifierRect), with: .color(.white), lineWidth: 3)
+            context.stroke(Path(ellipseIn: magnifierRect), with: .color(color), lineWidth: 3)
             context.stroke(Path(ellipseIn: magnifierRect), with: .color(.gray.opacity(0.3)), lineWidth: 1)
         }
         .frame(width: canvasSize.width, height: canvasSize.height)

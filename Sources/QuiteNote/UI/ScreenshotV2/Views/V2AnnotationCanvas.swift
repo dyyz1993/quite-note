@@ -67,18 +67,27 @@ struct V2AnnotationCanvas: View {
                 rect = rect.intersection(selection)
             }
             
-            context.stroke(Path(rect), with: .color(.blue.opacity(0.5)), lineWidth: 1)
-
+            // ✨ 序号工具使用圆形选中框，其他工具使用矩形
+            if element.tool == .steps {
+                context.stroke(Path(ellipseIn: rect), with: .color(.blue.opacity(0.5)), lineWidth: 1)
+            } else {
+                context.stroke(Path(rect), with: .color(.blue.opacity(0.5)), lineWidth: 1)
+            }
+            
             // 绘制四个角的控制点
-            let corners = [
-                CGPoint(x: rect.minX, y: rect.minY),
-                CGPoint(x: rect.maxX, y: rect.minY),
-                CGPoint(x: rect.minX, y: rect.maxY),
-                CGPoint(x: rect.maxX, y: rect.maxY)
-            ]
-            for corner in corners {
-                context.fill(Path(ellipseIn: CGRect(x: corner.x - 3, y: corner.y - 3, width: 6, height: 6)), with: .color(.white))
-                context.stroke(Path(ellipseIn: CGRect(x: corner.x - 3, y: corner.y - 3, width: 6, height: 6)), with: .color(.blue), lineWidth: 1)
+            // ✨ 序号工具不需要控制点（因为它是固定大小的点击标注）
+            if element.tool != .steps {
+                let corners = [
+                    CGPoint(x: rect.minX, y: rect.minY),
+                    CGPoint(x: rect.maxX, y: rect.minY),
+                    CGPoint(x: rect.minX, y: rect.maxY),
+                    CGPoint(x: rect.maxX, y: rect.maxY)
+                ]
+                
+                for corner in corners {
+                    context.fill(Path(ellipseIn: CGRect(x: corner.x - 3, y: corner.y - 3, width: 6, height: 6)), with: .color(.white))
+                    context.stroke(Path(ellipseIn: CGRect(x: corner.x - 3, y: corner.y - 3, width: 6, height: 6)), with: .color(.blue), lineWidth: 1)
+                }
             }
         }
     }
@@ -148,6 +157,13 @@ struct V2AnnotationCanvas: View {
             let height = CGFloat(lines.count) * (element.fontSize * 1.3) + 20
             
             return CGRect(x: start.x, y: start.y, width: max(width, 40), height: max(height, 40))
+        }
+
+        // ✨ 特殊处理序号：边界框应为背景圆圈的范围
+        if element.tool == .steps {
+            guard let start = element.points.first else { return .zero }
+            let radius: CGFloat = 12 // 需与 V2StepsRenderer.swift 保持一致
+            return CGRect(x: start.x - radius, y: start.y - radius, width: radius * 2, height: radius * 2)
         }
 
         // 其他工具使用原有逻辑

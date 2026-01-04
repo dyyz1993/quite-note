@@ -39,9 +39,9 @@ enum AnnotationTool: String, CaseIterable {
     /// 是否支持颜色选择
     var supportsColor: Bool {
         switch self {
-        case .cursor, .mosaic, .spotlight, .magnifier:
+        case .cursor, .mosaic, .spotlight:
             return false
-        case .rectangle, .circle, .arrow, .line, .pen, .steps, .text:
+        case .rectangle, .circle, .arrow, .line, .pen, .steps, .text, .magnifier:
             return true
         }
     }
@@ -130,6 +130,7 @@ struct DrawingElement: Identifiable {
     var stepNumber: Int = 1
     var magnifierOffset: CGSize = .zero  // 放大镜显示位置的偏移量
     var magnifierSourcePoint: CGPoint? = nil // 放大镜实际放大的源点（内容锁定位置）
+    var magnifierScale: CGFloat = 2.0   // ✨ 新增：放大倍率 (1.0 - 5.0)
 }
 
 /// 裁剪框调整手柄
