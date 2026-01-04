@@ -1,5 +1,7 @@
 import Foundation
 
+import SwiftUI
+
 /// 记录类型
 enum RecordType: String, Codable, CaseIterable {
     case text = "text"
@@ -8,6 +10,41 @@ enum RecordType: String, Codable, CaseIterable {
     case image = "image"
     case video = "video"
     case screenshot = "screenshot"
+    
+    var localizedName: String {
+        switch self {
+        case .text: return "纯文本"
+        case .file: return "文件"
+        case .folder: return "文件夹"
+        case .image: return "照片" // 修改为 "照片" 以保持一致
+        case .video: return "视频"
+        case .screenshot: return "截图"
+        }
+    }
+
+    /// 统一图标
+    var icon: IconName {
+        switch self {
+        case .text: return .type
+        case .file: return .fileText
+        case .folder: return .folder
+        case .image: return .image
+        case .video: return .video
+        case .screenshot: return .camera
+        }
+    }
+
+    /// 统一主题色
+    var themeColor: Color {
+        switch self {
+        case .text: return .themeTextSecondary
+        case .file: return .themePurple400
+        case .folder: return .themeYellow500
+        case .image: return .themeGreen500
+        case .video: return .themeRed500
+        case .screenshot: return .themeBlue400
+        }
+    }
 }
 
 /// 记录模型：标题、内容、创建时间与去重哈希
@@ -29,6 +66,7 @@ struct Record: Identifiable, Equatable {
     var type: RecordType = .text
     var skipAI: Bool = false
     var fileCount: Int? = nil  // 文件夹包含的文件数量
+    var size: Int64 = 0       // 文件大小 (bytes)
 
     static func == (lhs: Record, rhs: Record) -> Bool {
         lhs.id == rhs.id &&
@@ -47,6 +85,7 @@ struct Record: Identifiable, Equatable {
         lhs.sourceUrl == rhs.sourceUrl &&
         lhs.type == rhs.type &&
         lhs.skipAI == rhs.skipAI &&
-        lhs.fileCount == rhs.fileCount
+        lhs.fileCount == rhs.fileCount &&
+        lhs.size == rhs.size
     }
 }

@@ -190,15 +190,25 @@ struct FloatingRootView: View {
             Color.themePanel // 使用主题文件中的面板颜色
             // 移除了 WindowDragHandler() - 侧边栏不再支持窗口拖拽
 
-            VStack(spacing: 20) {
-                Spacer().frame(height: 40) // 顶部留空
+            VStack(spacing: 4) {
+                Spacer().frame(height: 52) // 顶部留空
 
                 // 类型筛选按钮组
-                filterButton(type: RecordType.text, icon: .fileText)
-                filterButton(type: RecordType.image, icon: .image)
-                filterButton(type: RecordType.screenshot, icon: .camera)
-                filterButton(type: RecordType.file, icon: .paperclip)
-                filterButton(type: RecordType.folder, icon: .folder)
+                SidebarFilterButton(type: .text, isSelected: store.filterType == .text) {
+                    store.toggleFilterType(.text)
+                }
+                SidebarFilterButton(type: .image, isSelected: store.filterType == .image) {
+                    store.toggleFilterType(.image)
+                }
+                SidebarFilterButton(type: .screenshot, isSelected: store.filterType == .screenshot) {
+                    store.toggleFilterType(.screenshot)
+                }
+                SidebarFilterButton(type: .file, isSelected: store.filterType == .file) {
+                    store.toggleFilterType(.file)
+                }
+                SidebarFilterButton(type: .folder, isSelected: store.filterType == .folder) {
+                    store.toggleFilterType(.folder)
+                }
 
                 Spacer()
 
@@ -210,35 +220,6 @@ struct FloatingRootView: View {
         .frame(width: 64) // 调整为固定 64px
         .zIndex(10)
         .overlay(Rectangle().frame(width: ThemeSpacing.border1, height: nil, alignment: .trailing).foregroundColor(Color.themeBorder).allowsHitTesting(false), alignment: .trailing)
-    }
-
-    /// 类型筛选按钮
-    private func filterButton(type: RecordType, icon: IconName) -> some View {
-        let isSelected = store.filterType == type
-
-        return Button(action: {
-            withAnimation(.spring(response: 0.3)) {
-                store.toggleFilterType(type)
-            }
-        }) {
-            ZStack {
-                if isSelected {
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(Color.themeBlue600.opacity(0.15))
-                        .frame(width: 44, height: 44)
-                        .transition(.scale.combined(with: .opacity))
-                }
-
-                LucideView(
-                    name: icon,
-                    size: 20,
-                    color: isSelected ? .themeBlue400 : .themeGray400
-                )
-            }
-        }
-        .buttonStyle(.plain)
-        .pointingHandCursor()
-        .help(isSelected ? "取消筛选" : "筛选\(type.rawValue)")
     }
 
     /// 右侧主内容视图
@@ -364,8 +345,9 @@ struct FloatingRootView: View {
                         if store.records.isEmpty {
                             emptyStateView
                         } else {
-                            let starred = store.records.filter { $0.starred }
-                            let others = store.records.filter { !$0.starred }
+                            let filtered = store.filteredRecords()
+                            let starred = filtered.filter { $0.starred }
+                            let others = filtered.filter { !$0.starred }
 
                             // 收藏部分
                             if !starred.isEmpty {
@@ -381,6 +363,10 @@ struct FloatingRootView: View {
                                 Section(header: !starred.isEmpty ? otherSectionHeader : nil) {
                                     listViewContent(items: others)
                                 }
+                            }
+                            
+                            if filtered.isEmpty {
+                                emptyStateView
                             }
 
                             // 加载更多指示器
@@ -612,7 +598,7 @@ struct FloatingRootView: View {
     /// 其他部分 Header
     private var otherSectionHeader: some View {
         HStack {
-            Text("所有记录")
+            Text(store.filterType == nil ? "所有记录" : "所有\(store.filterType!.localizedName)")
                 .font(.system(size: 12, weight: .bold))
                 .foregroundColor(.themeGray400)
             Spacer()
@@ -638,9 +624,7 @@ struct FloatingRootView: View {
     /// 列表内容视图
     @ViewBuilder
     private func listViewContent(items: [Record]) -> some View {
-        let filtered = store.filterType == nil ? items : items.filter { $0.type == store.filterType }
-        
-        ForEach(filtered, id: \.id) { record in // 明确指定 id
+        ForEach(items, id: \.id) { record in // 明确指定 id
             RecordCardView(
                 record: record,
                 expandedId: $expandedId,
@@ -773,6 +757,50 @@ struct FloatingRootView: View {
         .frame(height: 32) // h-8
         .background(Color.black.opacity(0.2)) // bg-black/20
         .overlay(Rectangle().frame(height: 1).foregroundColor(Color.themeBorder).allowsHitTesting(false), alignment: .top)
+    }
+}
+
+// MARK: - Sidebar Components
+
+/// 侧边栏筛选按钮组件，包含悬停动效
+struct SidebarFilterButton: View {
+    let type: RecordType
+    let isSelected: Bool
+    let action: () -> Void
+    
+    @State private var isHovered = false
+    
+    var body: some View {
+        Button(action: {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                action()
+            }
+        }) {
+            ZStack {
+                // 背景高亮
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(isSelected ? type.themeColor.opacity(0.15) : (isHovered ? Color.themeHoverLight : Color.clear))
+                    .frame(width: 44, height: 44)
+                    .scaleEffect(isSelected ? 1.0 : (isHovered ? 0.95 : 0.9))
+                
+                // 图标
+                LucideView(
+                    name: type.icon,
+                    size: 20,
+                    color: isSelected ? type.themeColor : (isHovered ? .themeTextPrimary : .themeGray400)
+                )
+                .offset(y: isHovered && !isSelected ? -2 : 0) // 悬停且未选中时向上移动
+                .scaleEffect(isHovered ? 1.1 : 1.0) // 悬停时轻微放大
+            }
+        }
+        .buttonStyle(.plain)
+        .onHover { inside in
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                isHovered = inside
+            }
+        }
+        .pointingHandCursor()
+        .help(isSelected ? "取消筛选" : "筛选\(type.localizedName)")
     }
 }
 

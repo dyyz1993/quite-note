@@ -5,6 +5,7 @@ struct MagnifierView: View {
     let snapshot: NSImage
     let location: CGPoint
     let screen: NSScreen
+    let color: Color // 添加自定义颜色支持
 
     private let magnifierSize: CGFloat = 120
     private let zoomScale: CGFloat = 3.0
@@ -68,20 +69,20 @@ struct MagnifierView: View {
                 Group {
                     // 纵向线
                     Rectangle()
-                        .fill(Color.white.opacity(0.8))
+                        .fill(color.opacity(0.8)) // 使用自定义颜色
                         .frame(width: 0.5, height: magnifierSize)
                         .shadow(color: .black.opacity(0.5), radius: 0.5)
 
                     // 横向线
                     Rectangle()
-                        .fill(Color.white.opacity(0.8))
+                        .fill(color.opacity(0.8)) // 使用自定义颜色
                         .frame(width: magnifierSize, height: 0.5)
                         .shadow(color: .black.opacity(0.5), radius: 0.5)
                 }
 
                 // 外框边框
                 Rectangle()
-                    .stroke(Color.white, lineWidth: 1)
+                    .stroke(color, lineWidth: 1) // 使用自定义颜色
                     .frame(width: magnifierSize, height: magnifierSize)
                     .shadow(radius: 4)
             }
@@ -95,6 +96,10 @@ struct MagnifierView: View {
                     .foregroundColor(.white)
 
                 HStack(spacing: 4) {
+                    Circle() // 将正方形改为小圆点
+                        .fill(color) // 使用工具的主题颜色
+                        .frame(width: 6, height: 6)
+                    
                     Rectangle()
                         .fill(pixelColor)
                         .frame(width: 8, height: 8)

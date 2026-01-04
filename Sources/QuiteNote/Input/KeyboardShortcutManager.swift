@@ -44,11 +44,18 @@ final class KeyboardShortcutManager {
         onScreenshot?()
     }
 
-    /// 启动全局快捷键监听
+    /// 启动键盘快捷键监听
     func start() {
         logger.info("启动键盘快捷键监听")
         
+        // 检查辅助功能权限
+        checkAccessibilityPermissions()
+        
+        // 缓存当前的快捷键配置并注册全局热键
+        updateCachedShortcuts()
+        
         // 全局粘贴事件监听（当应用没有焦点时）
+        // ⚠️ 粘贴仍然使用监视器，因为我们不需要拦截它，只是感知
         pasteMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] e in
             guard let self = self else { return }
             
@@ -61,99 +68,155 @@ final class KeyboardShortcutManager {
             }
         }
         
-        // 全局快捷键监听（应用内外都有效）
-        globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] e in
-            guard let self else { return }
-            let flags = e.modifierFlags
-            let char = e.charactersIgnoringModifiers?.lowercased()
-            
-            // ⌥⌘ 快捷键组合
-            if flags.contains(.command) && flags.contains(.option) {
-                switch char {
-                case "r": self.onTogglePanel?()           // ⌥⌘R 显示/隐藏面板
-                case "a": self.onToggleAI?()              // ⌥⌘A 切换AI
-                case "c": self.onCaptureClipboard?()      // ⌥⌘C 采集剪贴板
-                case "e": self.onExport?()                 // ⌥⌘E 导出记录
-                case "d": self.onForceCenter?()           // ⌥⌘D 强制居中（调试）
-                default: break
-                }
+        // ⚠️ 移除旧的全局监视器，因为它对截图快捷键不够可靠
+        // globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] e in
+        //     guard let self = self else { return }
+        //     _ = self.handleKeyEvent(e, isGlobal: true)
+        // }
+        
+        // 应用内快捷键监听（应用在前台时有效）
+        localMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] e in
+            guard let self = self else { return e }
+            if self.handleKeyEvent(e, isGlobal: false) {
+                return nil // 消费事件
             }
-            
-            // ⌥⌘⇧ 快捷键组合
-            if flags.contains(.command) && flags.contains(.option) && flags.contains(.shift) {
-                switch char {
-                case "r": self.onForceCenter?()            // ⌥⌘⇧R 强制居中
-                case "a": self.onBulkSummarize?()         // ⌥⌘⇧A 批量提炼
-                default: break
-                }
+            return e // 不消费事件，继续传递
+        }
+    }
+
+    /// 检查并提示辅助功能权限
+    private func checkAccessibilityPermissions() {
+        let options: [String: Any] = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true]
+        let accessEnabled = AXIsProcessTrustedWithOptions(options as CFDictionary)
+        if !accessEnabled {
+            logger.warning("未授予辅助功能权限，全局快捷键可能无法生效。")
+        } else {
+            logger.info("已确认辅助功能权限。")
+        }
+    }
+
+    /// 更新快捷键缓存
+    func refresh() {
+        updateCachedShortcuts()
+    }
+
+    private var cachedShortcut: String = ""
+    private var cachedFlags: NSEvent.ModifierFlags = []
+
+    private func updateCachedShortcuts() {
+        cachedShortcut = PreferencesManager.shared.screenshotShortcut.lowercased()
+        let rawFlags = UInt(PreferencesManager.shared.screenshotShortcutFlags)
+        cachedFlags = NSEvent.ModifierFlags(rawValue: rawFlags).intersection([.command, .option, .shift, .control])
+        
+        logger.info("已更新快捷键缓存: \(self.cachedShortcut), flags: \(self.cachedFlags.rawValue)")
+        
+        // 注册全局热键 (Carbon API)
+        if !cachedShortcut.isEmpty {
+            GlobalHotkeyManager.shared.register(
+                key: cachedShortcut,
+                modifiers: cachedFlags,
+                id: 1001
+            ) { [weak self] in
+                self?.logger.info("Carbon 全局热键触发: 截图")
+                self?.triggerScreenshot()
             }
+        } else {
+            GlobalHotkeyManager.shared.unregister(id: 1001)
+        }
+        
+        // 注册其他全局功能热键
+        registerOtherGlobalHotkeys()
+    }
+    
+    private func registerOtherGlobalHotkeys() {
+        let manager = GlobalHotkeyManager.shared
+        let cmdOpt: NSEvent.ModifierFlags = [.command, .option]
+        let cmdOptShift: NSEvent.ModifierFlags = [.command, .option, .shift]
+        
+        // ⌥⌘ R: Toggle Panel
+        manager.register(key: "r", modifiers: cmdOpt, id: 2001) { [weak self] in self?.onTogglePanel?() }
+        // ⌥⌘ A: Toggle AI
+        manager.register(key: "a", modifiers: cmdOpt, id: 2002) { [weak self] in self?.onToggleAI?() }
+        // ⌥⌘ C: Capture Clipboard
+        manager.register(key: "c", modifiers: cmdOpt, id: 2003) { [weak self] in self?.onCaptureClipboard?() }
+        // ⌥⌘ E: Export
+        manager.register(key: "e", modifiers: cmdOpt, id: 2004) { [weak self] in self?.onExport?() }
+        // ⌥⌘ D: Force Center
+        manager.register(key: "d", modifiers: cmdOpt, id: 2005) { [weak self] in self?.onForceCenter?() }
+        
+        // ⌥⌘⇧ R: Force Center (Backup)
+        manager.register(key: "r", modifiers: cmdOptShift, id: 3001) { [weak self] in self?.onForceCenter?() }
+        // ⌥⌘⇧ A: Bulk Summarize
+        manager.register(key: "a", modifiers: cmdOptShift, id: 3002) { [weak self] in self?.onBulkSummarize?() }
+    }
 
-            // 截图快捷键 (从 PreferencesManager 读取)
-            let prefShortcut = PreferencesManager.shared.screenshotShortcut.lowercased()
-            let prefFlagsRaw = UInt(PreferencesManager.shared.screenshotShortcutFlags)
-            let prefFlags = NSEvent.ModifierFlags(rawValue: prefFlagsRaw)
+    /// 统一处理按键事件
+    /// - Returns: 是否消费了该事件
+    private func handleKeyEvent(_ e: NSEvent, isGlobal: Bool) -> Bool {
+        // 获取修饰键，排除掉不相关的 flag
+        let flags = e.modifierFlags.intersection([.command, .option, .shift, .control])
+        
+        // 获取按键字符
+        let char = e.charactersIgnoringModifiers?.lowercased() ?? ""
+        
+        if char.isEmpty { return false }
 
-            // 只保留关键修饰键进行比较 (cmd, opt, shift, ctrl)
-            let relevantFlags: NSEvent.ModifierFlags = [.command, .option, .shift, .control]
-            let currentFlags = flags.intersection(relevantFlags)
-            let targetFlags = prefFlags.intersection(relevantFlags)
+        // 1. 检查截图快捷键
+        if flags == cachedFlags && char == cachedShortcut {
+            triggerScreenshot()
+            return true
+        }
 
-            if currentFlags == targetFlags && char == prefShortcut {
-                self.logger.info("全局快捷键触发: 截图")
-                self.triggerScreenshot()  // ⚠️ 使用防抖方法
+        // 2. ⌥⌘ 快捷键组合
+        if flags.contains(.command) && flags.contains(.option) {
+            switch char {
+            case "r": self.onTogglePanel?(); return true
+            case "a": self.onToggleAI?(); return true
+            case "c": self.onCaptureClipboard?(); return true
+            case "e": self.onExport?(); return true
+            case "d": self.onForceCenter?(); return true
+            default: break
             }
         }
         
-        // 应用内快捷键监听（仅在应用前台有效）
-        localMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] e in
-            guard let self else { return e }
-            let flags = e.modifierFlags
-            let char = e.charactersIgnoringModifiers?.lowercased()
-            
-            // 截图快捷键 (应用内也支持)
-            let prefShortcut = PreferencesManager.shared.screenshotShortcut.lowercased()
-            let prefFlagsRaw = UInt(PreferencesManager.shared.screenshotShortcutFlags)
-            let prefFlags = NSEvent.ModifierFlags(rawValue: prefFlagsRaw)
-            let relevantFlags: NSEvent.ModifierFlags = [.command, .option, .shift, .control]
-            let currentFlags = flags.intersection(relevantFlags)
-            let targetFlags = prefFlags.intersection(relevantFlags)
-
-            if currentFlags == targetFlags && char == prefShortcut {
-                self.logger.info("应用内快捷键触发: 截图")
-                self.triggerScreenshot()  // ⚠️ 使用防抖方法
-                return nil // 消费事件
+        // 3. ⌥⌘⇧ 快捷键组合
+        if flags.contains(.command) && flags.contains(.option) && flags.contains(.shift) {
+            switch char {
+            case "r": self.onForceCenter?(); return true
+            case "a": self.onBulkSummarize?(); return true
+            default: break
             }
-            
+        }
+
+        // 4. 仅限应用内处理的快捷键
+        if !isGlobal {
             // Cmd+V 粘贴快捷键（应用内无输入框聚焦时）
-            if flags.contains(.command) && char == "v" {
-                // 检查当前焦点是否在文本输入框中
+            if flags == .command && char == "v" {
                 if let focusedView = NSApp.keyWindow?.firstResponder,
                    focusedView is NSTextView || focusedView is NSTextField {
-                    // 如果焦点在文本输入框中，不处理，让系统默认粘贴行为生效
-                    return e
+                    return false
                 } else {
-                    // 如果焦点不在文本输入框中，处理粘贴事件
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                         self.onGlobalPaste?()
                     }
-                    return nil // 消费事件，防止系统默认粘贴行为
+                    return true
                 }
             }
             
             // Cmd+, 打开设置
-            if flags.contains(.command) && e.characters == "," {
+            if flags == .command && char == "," {
                 self.onOpenSettings?()
-                return nil // 消费事件
+                return true
             }
             
             // Cmd+Q 退出应用
-            if flags.contains(.command) && e.characters?.lowercased() == "q" {
+            if flags == .command && char == "q" {
                 self.onQuit?()
-                return nil // 消费事件
+                return true
             }
-            
-            return e // 不消费事件，继续传递
         }
+
+        return false
     }
 
     /// 停止快捷键监听
@@ -161,6 +224,16 @@ final class KeyboardShortcutManager {
         if let m = globalMonitor { NSEvent.removeMonitor(m) }
         if let m = localMonitor { NSEvent.removeMonitor(m) }
         if let m = pasteMonitor { NSEvent.removeMonitor(m) }
+        
+        // 注销所有全局热键
+        GlobalHotkeyManager.shared.unregister(id: 1001)
+        GlobalHotkeyManager.shared.unregister(id: 2001)
+        GlobalHotkeyManager.shared.unregister(id: 2002)
+        GlobalHotkeyManager.shared.unregister(id: 2003)
+        GlobalHotkeyManager.shared.unregister(id: 2004)
+        GlobalHotkeyManager.shared.unregister(id: 2005)
+        GlobalHotkeyManager.shared.unregister(id: 3001)
+        GlobalHotkeyManager.shared.unregister(id: 3002)
     }
     
     deinit { 

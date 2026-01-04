@@ -208,30 +208,44 @@ struct V2ScreenshotView: View {
 
     // 生成最终高清图片（合并底图和标注）
     private func generateFinalImage(rect: CGRect) -> NSImage? {
-        // ⚠️ 获取屏幕的缩放因子 (Retina 屏通常是 2.0)
-        let scale = screen.backingScaleFactor
+        guard rect.width > 0 && rect.height > 0 else { return nil }
         
-        // 1. 计算像素坐标下的裁剪区域
-        let pixelRect = CGRect(
-            x: rect.origin.x * scale,
-            y: rect.origin.y * scale,
-            width: rect.width * scale,
-            height: rect.height * scale
-        )
-        
-        // 2. 获取原始截图的高清 CGImage
-        guard let fullCGImage = snapshot.cgImage(forProposedRect: nil, context: nil, hints: nil),
-              let croppedCGImage = fullCGImage.cropping(to: pixelRect) else {
-            addLog("Error: Failed to crop snapshot image")
+        // 1. 获取底层的 CGImage 和 真实的缩放倍率
+        // ⚠️ 不直接使用 screen.backingScaleFactor，因为系统设置可能导致差异
+        guard let fullCGImage = snapshot.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+            addLog("Error: Failed to get CGImage from snapshot")
             return nil
         }
         
-        // 3. 创建基础图片 (保持原始像素密度)
+        let pixelWidth = CGFloat(fullCGImage.width)
+        let pixelHeight = CGFloat(fullCGImage.height)
+        let scaleX = pixelWidth / snapshot.size.width
+        let scaleY = pixelHeight / snapshot.size.height
+        
+        addLog("Debug: Snapshot size: \(snapshot.size), Pixel size: \(pixelWidth)x\(pixelHeight), Scale: \(scaleX)x\(scaleY)")
+        
+        // 2. 计算像素裁剪区域 (CGImage 裁剪坐标系是 Top-Left)
+        // ⚠️ 关键：移除之前的 Y 轴翻转，因为 CGDisplayCreateImage 出来的就是 Top-Left
+        let pixelRect = CGRect(
+            x: rect.origin.x * scaleX,
+            y: rect.origin.y * scaleY,
+            width: rect.width * scaleX,
+            height: rect.height * scaleY
+        )
+        
+        addLog("Debug: Rect in points: \(rect), Rect in pixels: \(pixelRect)")
+        
+        guard let croppedCGImage = fullCGImage.cropping(to: pixelRect) else {
+            addLog("Error: CGImage cropping failed")
+            return nil
+        }
+        
+        // 3. 创建结果 NSImage
         let finalImage = NSImage(cgImage: croppedCGImage, size: rect.size)
-
-        // 4. ✨ 渲染标注系统 (所见即所得)
+        
+        // 4. ✨ 叠加标注系统
         if !primaryScreenManager.elements.isEmpty {
-            // 创建导出用的画布视图 (不带辅助 UI)
+            // 获取全屏标注图层
             let exportCanvas = V2AnnotationCanvas(
                 stateManager: primaryScreenManager,
                 canvasSize: screenSize,
@@ -240,22 +254,37 @@ struct V2ScreenshotView: View {
             )
             .frame(width: screenSize.width, height: screenSize.height)
 
-            // 使用 ImageRenderer 渲染标注层为高清透明图片
             let renderer = ImageRenderer(content: exportCanvas)
-            renderer.scale = scale
+            // 标注图层的渲染必须匹配屏幕缩放
+            renderer.scale = screen.backingScaleFactor
             
             if let annotationImage = renderer.nsImage {
-                // 裁剪标注图层到选区大小
-                if let fullAnnotationCGImage = annotationImage.cgImage(forProposedRect: nil, context: nil, hints: nil),
-                   let croppedAnnotationCGImage = fullAnnotationCGImage.cropping(to: pixelRect) {
-                    
-                    let croppedAnnotationImage = NSImage(cgImage: croppedAnnotationCGImage, size: rect.size)
-                    
-                    // 将透明标注图层叠加到底图上
-                    finalImage.lockFocus()
-                    croppedAnnotationImage.draw(in: CGRect(origin: .zero, size: rect.size), from: .zero, operation: .sourceOver, fraction: 1.0)
-                    finalImage.unlockFocus()
-                }
+                // 将标注图层也裁剪到相同区域并叠加
+                let resultWithAnnotations = NSImage(size: rect.size)
+                resultWithAnnotations.lockFocus()
+                
+                // 绘制底图
+                finalImage.draw(in: CGRect(origin: .zero, size: rect.size))
+                
+                // 绘制标注层 (注意：NSImage.draw 还是需要 Y 轴翻转，但这次是在裁剪后的坐标系内)
+                // 实际上，如果我们把标注层也裁剪了，直接画上去就行
+                // 为了简单，我们先用最稳妥的办法：在 NSImage 级别绘制
+                
+                // 裁剪标注图层
+                let annSourceRect = CGRect(
+                    x: rect.origin.x,
+                    y: annotationImage.size.height - rect.origin.y - rect.height,
+                    width: rect.width,
+                    height: rect.height
+                )
+                
+                annotationImage.draw(in: CGRect(origin: .zero, size: rect.size),
+                                   from: annSourceRect,
+                                   operation: .sourceOver,
+                                   fraction: 1.0)
+                
+                resultWithAnnotations.unlockFocus()
+                return resultWithAnnotations
             }
         }
         
@@ -316,6 +345,7 @@ struct V2ScreenshotView: View {
                         dragStartPoint: dragStartPoint,
                         dragCurrentPoint: dragCurrentPoint,
                         localSelectedArea: localSelectedArea,
+                        snappedRect: snappedWireframeRect,
                         isCurrentlyPrimary: isCurrentlyPrimary,
                         hasPrimaryScreen: primaryScreenManager.primaryScreen != nil
                     )
@@ -391,11 +421,16 @@ struct V2ScreenshotView: View {
                 // 2. 仅在尚未完成选区 (Phase 0) 且 未开始拖拽 时显示
                 // 3. 必须监测到鼠标移动过 (hasMouseMoved)
                 if isCurrentlyPrimary && !hasAnySelection && dragStartPoint == nil && hasMouseMoved && !primaryScreenManager.isCapturing {
-                    MagnifierView(snapshot: snapshot, location: mouseLocation, screen: screen)
-                        .position(
-                            x: mouseLocation.x + (mouseLocation.x > screen.frame.width - 150 ? -100 : 100),
-                            y: mouseLocation.y + (mouseLocation.y > screen.frame.height - 150 ? -100 : 100)
-                        )
+                    MagnifierView(
+                        snapshot: snapshot,
+                        location: mouseLocation,
+                        screen: screen,
+                        color: primaryScreenManager.selectedColor // 传递当前标注系统的颜色
+                    )
+                    .position(
+                        x: mouseLocation.x + (mouseLocation.x > screen.frame.width - 150 ? -100 : 100),
+                        y: mouseLocation.y + (mouseLocation.y > screen.frame.height - 150 ? -100 : 100)
+                    )
                 }
             }
         }
@@ -1133,7 +1168,7 @@ struct V2ScreenshotView: View {
                 let _ = print("   screen.frame: \(screen.frame)")
 
                 if rect.width > 3 || rect.height > 3 {
-                    YellowWireframe(rect: rect, label: "\(Int(rect.width)) x \(Int(rect.height))", isDashed: true, showBackground: true, isEditing: primaryScreenManager.isEditing, isLongScreenshotMode: primaryScreenManager.isLongScreenshotMode)
+                    YellowWireframe(rect: rect, label: "\(Int(rect.width)) x \(Int(rect.height))", isDashed: true, showBackground: false, isEditing: primaryScreenManager.isEditing, isLongScreenshotMode: primaryScreenManager.isLongScreenshotMode)
                 }
             }
 
@@ -1141,7 +1176,7 @@ struct V2ScreenshotView: View {
             if let rect = localSelectedArea, dragStartPoint == nil {
                 let _ = print("🐛 [buildDragOverlay] Creating YellowWireframe for selected area: \(rect)")
                 let _ = print("   screen\(screenIndex), localSelectedArea: \(rect)")
-                YellowWireframe(rect: rect, label: "\(Int(rect.width)) x \(Int(rect.height))", isDashed: true, showBackground: false, isEditing: primaryScreenManager.isEditing, isLongScreenshotMode: primaryScreenManager.isLongScreenshotMode, showHandles: true)
+                YellowWireframe(rect: rect, label: "\(Int(rect.width)) x \(Int(rect.height))", isDashed: false, showBackground: false, isEditing: primaryScreenManager.isEditing, isLongScreenshotMode: primaryScreenManager.isLongScreenshotMode, showHandles: true)
                 .onContinuousHover { phase in
                     if case .active(_) = phase {
                         self.currentLayerName = "Selection (Layer 4)"
@@ -1155,7 +1190,7 @@ struct V2ScreenshotView: View {
                dragStartPoint == nil,
                localSelectedArea == nil,
                !isReleased {
-                YellowWireframe(rect: rect, label: primaryScreenManager.globalHoveredLabel, isDashed: true, showBackground: true, isEditing: primaryScreenManager.isEditing, isLongScreenshotMode: primaryScreenManager.isLongScreenshotMode, opacity: 0.8)
+                YellowWireframe(rect: rect, label: primaryScreenManager.globalHoveredLabel, isDashed: false, showBackground: false, isEditing: primaryScreenManager.isEditing, isLongScreenshotMode: primaryScreenManager.isLongScreenshotMode, opacity: 1.0)
                     .animation(.easeOut(duration: 0.15), value: rect)
             }
         }

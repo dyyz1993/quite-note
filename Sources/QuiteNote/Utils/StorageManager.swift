@@ -28,75 +28,71 @@ final class StorageManager {
     static let shared = StorageManager()
     private init() {}
     
+    /// 缓存的统计结果
+    private var cachedStats: StorageStats = .empty
+    private var lastCalculatedAt: Date = .distantPast
+    private var lastRecordCount: Int = 0
+    private var lastAttachmentsPath: String = ""
+
     /// 计算指定目录和记录列表的存储统计信息
     /// - Parameters:
     ///   - directory: 附件存储目录 URL
     ///   - records: 当前记录列表
+    ///   - force: 是否强制重新计算
     /// - Returns: 统计结果
-    func calculateStats(for directory: URL, records: [Record]) -> StorageStats {
-        let fileManager = FileManager.default
+    func calculateStats(for directory: URL, records: [Record], force: Bool = false) -> StorageStats {
+        // 如果不是强制刷新，且记录数量和路径没变，直接返回缓存
+        if !force && 
+           records.count == lastRecordCount && 
+           directory.path == lastAttachmentsPath && 
+           Date().timeIntervalSince(lastCalculatedAt) < 60 {
+            return cachedStats
+        }
+
         var totalSize: Int64 = 0
-        var fileCount: Int64 = 0
         var typeDistribution: [String: Int64] = [:]
         var categoryStats: [RecordType: (count: Int, size: Int64)] = [:]
         
-        // 1. 先扫描目录获取物理文件信息
-        guard let enumerator = fileManager.enumerator(at: directory, 
-                                                    includingPropertiesForKeys: [URLResourceKey.fileSizeKey, URLResourceKey.isDirectoryKey],
-                                                    options: [.skipsHiddenFiles]) else {
-            return .empty
-        }
-        
-        var fileSizes: [String: Int64] = [:] // fileName -> size
-        
-        for case let fileURL as URL in enumerator {
-            do {
-                let resourceValues = try fileURL.resourceValues(forKeys: [URLResourceKey.fileSizeKey, URLResourceKey.isDirectoryKey])
-                
-                if let isDirectory = resourceValues.isDirectory, isDirectory {
-                    continue
-                }
-                
-                if let fileSize = resourceValues.fileSize {
-                    let size = Int64(fileSize)
-                    totalSize += size
-                    fileCount += 1
-                    
-                    let fileName = fileURL.lastPathComponent
-                    fileSizes[fileName] = size
-                    
-                    let ext = fileURL.pathExtension.lowercased()
-                    let key = ext.isEmpty ? "other" : ext
-                    typeDistribution[key, default: 0] += size
-                }
-            } catch {
-                print("[DEBUG] StorageManager error: \(error.localizedDescription)")
-            }
-        }
-        
-        // 2. 根据记录列表进行分类统计
+        // 直接从记录列表中进行分类统计，不再扫描磁盘
+        // 这极大地提高了性能，特别是在记录很多时
         for record in records {
             let type = record.type
+            let size = record.size
+            
             let current = categoryStats[type, default: (0, 0)]
+            categoryStats[type] = (current.count + 1, current.size + size)
             
-            var recordSize: Int64 = 0
-            if type != .text {
-                // 对于非文本记录，尝试匹配文件大小
-                let fileName = URL(fileURLWithPath: record.content).lastPathComponent
-                recordSize = fileSizes[fileName] ?? 0
+            totalSize += size
+            
+            // 类型分布统计
+            let ext: String
+            if type == .text {
+                ext = "txt"
+            } else if let path = record.sourceUrl ?? record.content.components(separatedBy: "\n").first {
+                ext = URL(fileURLWithPath: path).pathExtension.lowercased()
+            } else {
+                ext = "other"
             }
-            
-            categoryStats[type] = (current.count + 1, current.size + recordSize)
+            let key = ext.isEmpty ? "other" : ext
+            typeDistribution[key, default: 0] += size
         }
         
-        // 3. 转换为最终的 StorageStats
+        // 转换为最终的 StorageStats
         let finalCategoryStats = categoryStats.mapValues { 
             StorageStats.CategoryStat(count: $0.count, size: $0.size) 
         }
         
-        return StorageStats(totalSize: totalSize, 
-                          fileCount: fileCount, 
+        let newStats = StorageStats(totalSize: totalSize, 
+                          fileCount: Int64(records.count), 
                           typeDistribution: typeDistribution,
                           categoryStats: finalCategoryStats)
+        
+        // 更新缓存
+        self.cachedStats = newStats
+        self.lastCalculatedAt = Date()
+        self.lastRecordCount = records.count
+        self.lastAttachmentsPath = directory.path
+        
+        return newStats
     }
 }

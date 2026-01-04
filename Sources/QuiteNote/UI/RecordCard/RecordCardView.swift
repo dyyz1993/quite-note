@@ -858,14 +858,7 @@ private extension RecordCardView {
     }
 
     var typeIconLucide: IconName {
-        switch record.type {
-        case .folder: return .folder
-        case .file: return .paperclip
-        case .text: return .fileText
-        case .image: return .image
-        case .video: return .video
-        case .screenshot: return .camera
-        }
+        record.type.icon
     }
 
     var statusIconLucide: IconName? {

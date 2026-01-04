@@ -98,6 +98,18 @@ struct ScreenshotSettingsTab: View {
                                 set: { prefs.setScreenshotShortcutFlags($0) }
                             )
                         )
+                        
+                        if !prefs.screenshotShortcut.isEmpty {
+                            Button(action: {
+                                prefs.setScreenshotShortcut("")
+                                prefs.setScreenshotShortcutFlags(0)
+                            }) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundColor(.themeTextTertiary)
+                            }
+                            .buttonStyle(.plain)
+                            .help("重置快捷键")
+                        }
                     }
                     .padding(8)
                     .background(Color.themeInput)
@@ -235,6 +247,39 @@ struct ScreenshotSettingsTab: View {
                     get: { prefs.screenshotSaveToClipboard },
                     set: { prefs.setScreenshotSaveToClipboard($0) }
                 ))
+            }
+            
+            Divider().background(Color.themeBorderSubtle)
+            
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("保存截图最大条数")
+                        .font(.themeBody)
+                        .foregroundColor(.themeTextSecondary)
+                    Text("超过此数量后将自动删除最早的截图记录")
+                        .font(.themeCaption)
+                        .foregroundColor(.themeTextTertiary)
+                }
+                Spacer()
+                
+                HStack(spacing: 8) {
+                    TextField("", value: Binding(
+                        get: { prefs.maxScreenshots },
+                        set: { prefs.setMaxScreenshots($0) }
+                    ), formatter: NumberFormatter())
+                        .textFieldStyle(.plain)
+                        .font(.themeBody)
+                        .foregroundColor(.themeTextPrimary)
+                        .frame(width: 60)
+                        .multilineTextAlignment(.trailing)
+                        .padding(6)
+                        .background(Color.themeInput)
+                        .cornerRadius(6)
+                    
+                    Text("条")
+                        .font(.themeCaption)
+                        .foregroundColor(.themeTextSecondary)
+                }
             }
         }
         .padding(20)

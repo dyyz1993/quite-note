@@ -96,7 +96,13 @@ final class CoreDataStack {
         skipAIAttr.isOptional = false
         skipAIAttr.defaultValue = false
 
-        entity.properties = [idAttr, titleAttr, contentAttr, createdAtAttr, digestAttr, aiStatusAttr, summaryAttr, summaryConfAttr, starredAttr, copiedAtAttr, tagsAttr, keywordsAttr, sourceAppAttr, sourceUrlAttr, typeAttr, skipAIAttr]
+        let sizeAttr = NSAttributeDescription()
+        sizeAttr.name = "size"
+        sizeAttr.attributeType = .integer64AttributeType
+        sizeAttr.isOptional = false
+        sizeAttr.defaultValue = 0
+
+        entity.properties = [idAttr, titleAttr, contentAttr, createdAtAttr, digestAttr, aiStatusAttr, summaryAttr, summaryConfAttr, starredAttr, copiedAtAttr, tagsAttr, keywordsAttr, sourceAppAttr, sourceUrlAttr, typeAttr, skipAIAttr, sizeAttr]
         model.entities = [entity]
 
         container = NSPersistentContainer(name: "QuiteNote", managedObjectModel: model)

@@ -190,8 +190,8 @@ class LongScreenshotWindowCoordinator: ObservableObject {
 
         // 更新距离显示
         let targetOffset = V2PrimaryScreenStateManager.shared.guideTargetScrollOffset
-        let distance = abs(targetOffset - currentOffset)
-
+        let _ = abs(targetOffset - currentOffset)
+        
         // 通过更新状态管理器来触发视图更新
         // 注意：ScrollBackGuideView 需要使用 @ObservedObject 来监听距离变化
     }
@@ -506,7 +506,7 @@ struct LongScreenshotToolbarContentView: View {
                 // 开始滚动按钮
                 ToolbarButton(icon: "record.circle", color: .red, label: "开始滚动") {
                     Task { @MainActor in
-                        await LongScreenshotFlowController.shared.startCapture(
+                        LongScreenshotFlowController.shared.startCapture(
                             selection: selection,
                             screen: screen,
                             config: .default

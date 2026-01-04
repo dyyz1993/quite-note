@@ -143,8 +143,8 @@ class V2ScreenshotController {
     private static func handleGlobalExitCommand() {
         let manager = V2PrimaryScreenStateManager.shared
         
-        // 1. 如果处于编辑状态（有标注内容 或 选择了工具），双击 ESC 退出
-        if manager.isEditing {
+        // 1. 如果有标注内容，为了防止误操作，需要双击 ESC 退出
+        if !manager.elements.isEmpty {
             if let lastEscTime = manager.lastEscKeyPressTime,
                Date().timeIntervalSince(lastEscTime) < 2.0 {
                 close()
@@ -153,30 +153,27 @@ class V2ScreenshotController {
                 manager.lastEscKeyPressTime = now
                 manager.postToast("再按一次退出 (已保留标注内容)", type: "info")
                 
-                // ✨ 核心修复：2秒后如果没再按，自动重置状态，确下次按下仍是“第一次”
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                    // 只有当时间戳没变（即期间没再按过 ESC）时才清除
                     if manager.lastEscKeyPressTime == now {
                         manager.lastEscKeyPressTime = nil
-                        v2Logger.info("ESC double-press timeout - State reset")
                     }
                 }
             }
             return
         }
         
-        // 2. 阶段返回逻辑：选区 -> 初始状态
+        // 2. 阶段返回逻辑：如果有选区，先清除选区
         if manager.selectedArea != nil {
             manager.updateSelection(nil, on: nil)
             manager.updateHover(nil, label: nil, on: nil)
-            // 重置工具和模式，确保回到纯净的初始态
+            // 重置工具和模式
             manager.updateTool(.cursor)
             manager.selectedElementId = nil
             manager.isLongScreenshotMode = false
             return
         }
         
-        // 3. 初始状态（无选区、无标注）按 ESC，直接退出
+        // 3. 初始状态或仅选择了工具但未画图，直接退出
         close()
     }
 

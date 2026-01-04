@@ -104,6 +104,17 @@ final class RecordRepository {
         }
     }
 
+    /// 更新记录的大小
+    func updateSize(id: UUID, size: Int64) throws {
+        stack.performBackgroundTask { context in
+            let req = NSFetchRequest<CDRecord>(entityName: "CDRecord")
+            req.predicate = NSPredicate(format: "id == %@", id as CVarArg)
+            guard let cd = try? context.fetch(req).first else { return }
+            cd.size = size
+            try? context.save()
+        }
+    }
+
     /// 更新记录的 AI 信息
     func updateAI(
         id: UUID,
@@ -201,7 +212,8 @@ final class RecordRepository {
             sourceApp: cd.sourceApp,
             sourceUrl: cd.sourceUrl,
             type: RecordType(rawValue: cd.type ?? "text") ?? .text,
-            skipAI: cd.skipAI
+            skipAI: cd.skipAI,
+            size: cd.size
         )
     }
 
@@ -222,5 +234,6 @@ final class RecordRepository {
         cd.sourceUrl = record.sourceUrl
         cd.type = record.type.rawValue
         cd.skipAI = record.skipAI
+        cd.size = record.size
     }
 }

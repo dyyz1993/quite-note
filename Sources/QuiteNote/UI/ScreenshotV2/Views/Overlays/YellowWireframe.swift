@@ -14,7 +14,12 @@ struct YellowWireframe: View {
     var body: some View {
         GeometryReader { _ in
             ZStack(alignment: .topLeading) {
-                // 边框
+                // 边框和背景 (如果是吸附状态且开启了背景)
+                if showBackground {
+                    Rectangle()
+                        .fill(Color.yellow.opacity(0.05)) // 极低透明度的背景，增强吸附感
+                }
+                
                 Rectangle()
                     .stroke(
                         Color.yellow.opacity(opacity),

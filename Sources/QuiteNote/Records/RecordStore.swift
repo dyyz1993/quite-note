@@ -410,6 +410,31 @@ final class RecordStore: ObservableObject {
             }
         }
         
+        // 计算文件大小
+        var calculatedSize: Int64 = 0
+        if type != .text {
+            if let path = sourceUrl {
+                let fileURL: URL?
+                if path.starts(with: "/") {
+                    fileURL = URL(fileURLWithPath: path)
+                } else {
+                    fileURL = FileCoordinator.shared.resolveVirtualPath(path)
+                }
+                
+                if let url = fileURL {
+                    do {
+                        let attrs = try FileManager.default.attributesOfItem(atPath: url.path)
+                        calculatedSize = attrs[.size] as? Int64 ?? 0
+                    } catch {
+                        print("[DEBUG] 获取文件大小失败: \(error.localizedDescription)")
+                    }
+                }
+            }
+        } else {
+            // 文本记录的大小即为其字符串长度（估算）
+            calculatedSize = Int64(content.utf8.count)
+        }
+        
         let record = Record(
             id: id,
             title: nil,
@@ -427,7 +452,8 @@ final class RecordStore: ObservableObject {
             sourceUrl: sourceUrl,
             type: type,
             skipAI: skipAI,
-            fileCount: fileCount
+            fileCount: fileCount,
+            size: calculatedSize
         )
 
         do { try repository.save(record) }
@@ -1077,8 +1103,59 @@ final class RecordStore: ObservableObject {
 
     // MARK: - 数据加载
 
+    /// 从数据库加载所有记录
     private func loadFromStore() {
-        loadFromStore(pageSize: 50, offset: 0)
+        do {
+            records = try repository.fetchRecords(limit: 1000, offset: 0)
+            print("[DEBUG] RecordStore 从数据库加载了 \(records.count) 条记录")
+            
+            // 异步补全缺失的 size 信息（针对旧数据）
+            DispatchQueue.global(qos: .utility).async { [weak self] in
+                self?.backfillMissingSizes()
+            }
+        } catch {
+            Self.logger.error("从数据库加载记录失败: \(error.localizedDescription)")
+        }
+    }
+
+    /// 为旧记录补全缺失的 size 信息
+    private func backfillMissingSizes() {
+        let recordsToUpdate = records.filter { $0.type != .text && $0.size == 0 }
+        guard !recordsToUpdate.isEmpty else { return }
+        
+        print("[DEBUG] 开始补全 \(recordsToUpdate.count) 条旧记录的 size 信息")
+        
+        for record in recordsToUpdate {
+            var size: Int64 = 0
+            
+            // 尝试获取物理路径
+            var fileURL: URL? = nil
+            if let path = record.sourceUrl {
+                if path.starts(with: "/") {
+                    fileURL = URL(fileURLWithPath: path)
+                } else {
+                    fileURL = FileCoordinator.shared.resolveVirtualPath(path)
+                }
+            }
+            
+            if let url = fileURL {
+                do {
+                    let attrs = try FileManager.default.attributesOfItem(atPath: url.path)
+                    size = attrs[.size] as? Int64 ?? 0
+                } catch {}
+            }
+            
+            if size > 0 {
+                // 更新内存和数据库
+                DispatchQueue.main.async { [weak self] in
+                    if let idx = self?.records.firstIndex(where: { $0.id == record.id }) {
+                        self?.records[idx].size = size
+                        // 这里可以考虑批量保存，或者直接单条保存
+                        try? self?.repository.updateSize(id: record.id, size: size)
+                    }
+                }
+            }
+        }
     }
 
     /// 分页加载记录，提高性能

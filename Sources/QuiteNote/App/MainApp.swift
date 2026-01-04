@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import UserNotifications
+import Combine
 
 @main
 struct MainApp: App {
@@ -23,6 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var floatingPanelController: FloatingPanelController?
     private var clipboard: ClipboardService?
     private var shortcuts: KeyboardShortcutManager?
+    private var cancellables = Set<AnyCancellable>()
 
     // 公开的 store 和 bluetooth 属性供 PreferencesView 使用
     var recordStore: RecordStore!
@@ -151,11 +153,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         shortcuts?.onGlobalPaste = { [weak self] in
             self?.handleGlobalPaste()
         }
-        shortcuts?.onScreenshot = { [weak self] in
+        shortcuts?.onScreenshot = {
             // 使用统一截图入口
             ScreenshotService.shared.startScreenshot()
         }
         shortcuts?.start()
+        
+        // 观察配置变化，更新快捷键缓存
+        PreferencesManager.shared.objectWillChange
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                // 延迟一小段时间等待 UserDefaults 更新完成
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    self?.shortcuts?.refresh()
+                }
+            }
+            .store(in: &cancellables)
         
         // 检查辅助功能权限（静默检查，不触发弹窗）
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {

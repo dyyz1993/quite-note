@@ -7,6 +7,8 @@ struct FileSettingsTab: View {
     @State private var preferredEditor: String = "System Default"
     @State private var showResetConfirm = false
     
+    @State private var isRefreshing = false
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
             statsSection
@@ -16,7 +18,9 @@ struct FileSettingsTab: View {
         }
         .onAppear {
             preferredEditor = PreferencesManager.shared.preferredEditor
-            refreshStats()
+            Task {
+                await refreshStats()
+            }
         }
     }
 
@@ -148,8 +152,14 @@ struct FileSettingsTab: View {
                 
                 Spacer()
                 
-                Button(action: refreshStats) {
+                Button(action: {
+                    Task {
+                        await refreshStats(force: true)
+                    }
+                }) {
                     LucideView(name: .refreshCw, size: 14, color: .themeBlue500)
+                        .rotationEffect(.degrees(isRefreshing ? 360 : 0))
+                        .animation(isRefreshing ? .linear(duration: 1).repeatForever(autoreverses: false) : .default, value: isRefreshing)
                 }
                 .buttonStyle(.plain)
                 .pointingHandCursor()
@@ -202,20 +212,14 @@ struct FileSettingsTab: View {
 
                 // 分类明细列表
                 VStack(spacing: 1) {
-                    let categories: [(RecordType, IconName, Color)] = [
-                        (.screenshot, .camera, .themeBlue400),
-                        (.image, .image, .themeGreen500),
-                        (.file, .fileText, .themePurple400),
-                        (.folder, .folder, .themeYellow500),
-                        (.text, .type, .themeTextSecondary)
-                    ]
+                    let categories: [RecordType] = [.screenshot, .image, .file, .folder, .text]
                     
-                    ForEach(categories, id: \.0) { type, icon, color in
+                    ForEach(categories, id: \.self) { type in
                         let stat = stats.categoryStats[type] ?? StorageStats.CategoryStat(count: 0, size: 0)
                         
                         HStack(spacing: 12) {
-                            LucideView(name: icon, size: 14, color: color)
-                            Text(displayName(for: type))
+                            LucideView(name: type.icon, size: 14, color: type.themeColor)
+                            Text(type.localizedName)
                                 .font(.themeBody)
                                 .foregroundColor(.themeTextPrimary)
                             
@@ -240,12 +244,14 @@ struct FileSettingsTab: View {
                             Button(action: { 
                                         store.confirm(
                                             title: "确认清理",
-                                            message: "确定要清理所有 \(displayName(for: type)) 记录吗？关联的物理文件将被移动到废纸篓。此操作不可撤销记录本身。",
+                                            message: "确定要清理所有 \(type.localizedName) 记录吗？关联的物理文件将被移动到废纸篓。此操作不可撤销记录本身。",
                                             confirmTitle: "确认清理",
                                             isDestructive: true
                                         ) {
                                             store.deleteRecords(ofType: type)
-                                            refreshStats()
+                                            Task {
+                                                await refreshStats()
+                                            }
                                         }
                                     }) {
                                         LucideView(name: .trash2, size: 14, color: .themeStatusError.opacity(0.6))
@@ -271,17 +277,6 @@ struct FileSettingsTab: View {
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.themeHoverLight))
     }
 
-    private func displayName(for type: RecordType) -> String {
-        switch type {
-        case .screenshot: return "截图"
-        case .image: return "照片"
-        case .file: return "文件"
-        case .folder: return "文件夹"
-        case .text: return "纯文本"
-        case .video: return "视频"
-        }
-    }
-
     private var dangerSection: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 8) {
@@ -301,7 +296,9 @@ struct FileSettingsTab: View {
                     PreferencesManager.shared.resetAll()
                     store.loadPreferences()
                     preferredEditor = "System Default"
-                    refreshStats()
+                    Task {
+                        await refreshStats()
+                    }
                 }
             }) {
                 HStack(spacing: 8) {
@@ -332,8 +329,21 @@ struct FileSettingsTab: View {
         pasteboard.setString(store.currentAttachmentsDirectory.path, forType: .string)
     }
 
-    private func refreshStats() {
-        stats = StorageManager.shared.calculateStats(for: store.currentAttachmentsDirectory, records: store.records)
+    private func refreshStats(force: Bool = false) async {
+        guard !isRefreshing else { return }
+        isRefreshing = true
+        
+        let dir = store.currentAttachmentsDirectory
+        let records = store.records
+        
+        let newStats = await Task.detached {
+            StorageManager.shared.calculateStats(for: dir, records: records, force: force)
+        }.value
+        
+        await MainActor.run {
+            self.stats = newStats
+            self.isRefreshing = false
+        }
     }
     
     private func colorForIndex(_ index: Int) -> Color {
@@ -376,7 +386,9 @@ struct FileSettingsTab: View {
                 DispatchQueue.main.async {
                     store.attachmentsPath = url.path
                     store.savePreferences()
-                    refreshStats()
+                    Task {
+                        await refreshStats()
+                    }
                 }
             }
         }

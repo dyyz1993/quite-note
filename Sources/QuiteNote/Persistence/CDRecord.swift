@@ -19,4 +19,5 @@ final class CDRecord: NSManagedObject {
     @NSManaged var sourceUrl: String?
     @NSManaged var type: String?
     @NSManaged var skipAI: Bool
+    @NSManaged var size: Int64
 }

@@ -27,6 +27,17 @@ final class StatusBarController {
         store.$records
             .sink { [weak self] _ in self?.setupMenu() }
             .store(in: &cancellables)
+            
+        // 监听偏好设置变化，更新快捷键
+        PreferencesManager.shared.objectWillChange
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                // 延迟一帧确保数据已更新
+                DispatchQueue.main.async {
+                    self?.setupMenu()
+                }
+            }
+            .store(in: &cancellables)
     }
 
     /// 构建菜单与状态更新
@@ -92,8 +103,12 @@ final class StatusBarController {
         capture.isEnabled = true
         menu.addItem(capture)
 
-        let screenshot = NSMenuItem(title: "捕获屏幕截图", action: #selector(onScreenshot), keyEquivalent: "s")
-        screenshot.keyEquivalentModifierMask = [.command, .shift]
+        // 动态读取截图快捷键
+        let screenshotShortcut = PreferencesManager.shared.screenshotShortcut
+        let screenshotFlags = NSEvent.ModifierFlags(rawValue: UInt(PreferencesManager.shared.screenshotShortcutFlags))
+        
+        let screenshot = NSMenuItem(title: "捕获屏幕截图", action: #selector(onScreenshot), keyEquivalent: screenshotShortcut)
+        screenshot.keyEquivalentModifierMask = screenshotFlags
         screenshot.target = self
         screenshot.isEnabled = true
         menu.addItem(screenshot)

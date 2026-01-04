@@ -7,6 +7,7 @@ struct V2MaskOverlayView: View {
     let dragStartPoint: CGPoint?
     let dragCurrentPoint: CGPoint?
     let localSelectedArea: CGRect?
+    let snappedRect: CGRect?
     let isCurrentlyPrimary: Bool
     let hasPrimaryScreen: Bool
 
@@ -36,7 +37,11 @@ struct V2MaskOverlayView: View {
             )
         }
         // 2. 如果已有选区，挖选区的孔
-        return localSelectedArea
+        if let selection = localSelectedArea {
+            return selection
+        }
+        // 3. 如果有吸附矩形，挖吸附的孔
+        return snappedRect
     }
 
     /// 计算蒙层透明度
@@ -56,23 +61,15 @@ struct V2MaskOverlayView: View {
     @ViewBuilder
     private func maskContent(holeRect: CGRect?, opacity: Double) -> some View {
         ZStack(alignment: .topLeading) {
+            // 使用 Shape 挖孔比 blendMode 更可靠
             Color.black.opacity(opacity)
-                .animation(.easeInOut(duration: V2TimeConstants.opacityAnimationDuration), value: opacity)
-                .compositingGroup()
-                .mask {
-                    Rectangle()
-                        .overlay(alignment: .topLeading) {
-                            // 执行挖孔
-                            if let rect = holeRect {
-                                Rectangle()
-                                    .frame(width: rect.width, height: rect.height)
-                                    .offset(x: rect.minX, y: rect.minY)
-                                    .blendMode(.destinationOut)
-                                    .animation(.easeOut(duration: V2TimeConstants.holeAnimationDuration), value: rect)
-                            }
-                        }
-                }
+                .mask(
+                    InvertedRectangle(hole: holeRect)
+                        .fill(style: FillStyle(eoFill: true))
+                )
         }
         .allowsHitTesting(false)
+        .animation(.easeInOut(duration: V2TimeConstants.holeAnimationDuration), value: holeRect)
+        .animation(.easeInOut(duration: V2TimeConstants.opacityAnimationDuration), value: opacity)
     }
 }
