@@ -142,7 +142,7 @@ struct FileSettingsTab: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 8) {
                 LucideView(name: .database, size: 16, color: .themeYellow500)
-                Text("存储统计报告")
+                Text("存储统计与管理")
                     .font(.themeH2)
                     .foregroundColor(.themeTextPrimary)
                 
@@ -156,90 +156,130 @@ struct FileSettingsTab: View {
             }
             
             VStack(alignment: .leading, spacing: 12) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("--- ATTACHMENT STORAGE REPORT ---")
-                        .font(.system(size: 10, weight: .bold, design: .monospaced))
-                        .foregroundColor(.themeGray400)
-                        .padding(.bottom, 4)
-
-                    HStack {
-                        Text("TOTAL VOLUME")
-                            .font(.system(size: 10, weight: .bold, design: .monospaced))
-                            .foregroundColor(.themeGray500)
-                        Spacer()
+                // 总览数据
+                HStack(spacing: 20) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("总占用")
+                            .font(.themeCaptionSmall)
+                            .foregroundColor(.themeTextTertiary)
                         Text(stats.formattedTotalSize)
-                            .font(.system(size: 12, weight: .bold, design: .monospaced))
+                            .font(.themeH2)
                             .foregroundColor(.themeBlue400)
                     }
                     
-                    HStack {
-                        Text("FILE COUNT")
-                            .font(.system(size: 10, weight: .bold, design: .monospaced))
-                            .foregroundColor(.themeGray500)
-                        Spacer()
-                        Text("\(stats.fileCount)")
-                            .font(.system(size: 12, weight: .bold, design: .monospaced))
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("总条数")
+                            .font(.themeCaptionSmall)
+                            .foregroundColor(.themeTextTertiary)
+                        Text("\(store.records.count) 条")
+                            .font(.themeH2)
                             .foregroundColor(.themePurple400)
                     }
                     
-                    GeometryReader { geo in
-                        ZStack(alignment: .leading) {
-                            Rectangle()
-                                .fill(Color.themeHoverLight)
-                                .frame(height: 6)
-                            
-                            HStack(spacing: 0) {
-                                let sortedTypes = stats.typeDistribution.sorted { $0.value > $1.value }.prefix(4)
-                                ForEach(Array(sortedTypes.enumerated()), id: \.offset) { index, item in
-                                    let width = geo.size.width * CGFloat(item.value) / CGFloat(max(1, stats.totalSize))
-                                    Rectangle()
-                                        .fill(colorForIndex(index))
-                                        .frame(width: width, height: 6)
+                    Spacer()
+                    
+                    VStack(alignment: .trailing, spacing: 4) {
+                                Text("截图保留上限")
+                                    .font(.themeCaptionSmall)
+                                    .foregroundColor(.themeTextTertiary)
+                                HStack(spacing: 8) {
+                                    TextField("", value: $store.maxScreenshots, formatter: NumberFormatter())
+                                        .textFieldStyle(.plain)
+                                        .font(.themeH2)
+                                        .foregroundColor(.themeTextPrimary)
+                                        .frame(width: 50)
+                                        .multilineTextAlignment(.trailing)
+                                        .onChange(of: store.maxScreenshots) { newValue in
+                                            PreferencesManager.shared.setMaxScreenshots(newValue)
+                                        }
+                                    Text("条")
+                                        .font(.themeCaption)
+                                        .foregroundColor(.themeTextSecondary)
                                 }
                             }
-                        }
-                    }
-                    .frame(height: 6)
-                    .cornerRadius(3)
-                    
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("+-- DISTRIBUTION ------------------+")
-                            .font(.system(size: 10, design: .monospaced))
-                            .foregroundColor(.themeGray600)
-                        
-                        let sortedTypes = stats.typeDistribution.sorted { $0.value > $1.value }.prefix(5)
-                        if sortedTypes.isEmpty {
-                            Text("|  (No data available)              |")
-                                .font(.system(size: 10, design: .monospaced))
-                                .foregroundColor(.themeGray500)
-                        } else {
-                            ForEach(Array(sortedTypes), id: \.key) { ext, size in
-                                let formattedSize = ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
-                                let extStr = ".\(ext)"
-                                let extPadding = String(repeating: " ", count: max(1, 10 - extStr.count))
-                                let sizePadding = String(repeating: " ", count: max(1, 15 - formattedSize.count))
-                                Text("|  \(extStr)\(extPadding):\(sizePadding)\(formattedSize)  |")
-                                    .font(.system(size: 10, design: .monospaced))
-                                    .foregroundColor(.themeGray400)
-                            }
-                        }
-                        
-                        Text("+----------------------------------+")
-                            .font(.system(size: 10, design: .monospaced))
-                            .foregroundColor(.themeGray600)
-                    }
-                    .padding(.top, 4)
                 }
-                .padding(16)
-                .background(Color.themeInput.opacity(0.5))
-                .cornerRadius(10)
-                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.themeHoverLight))
+                .padding(.bottom, 8)
+
+                // 分类明细列表
+                VStack(spacing: 1) {
+                    let categories: [(RecordType, IconName, Color)] = [
+                        (.screenshot, .camera, .themeBlue400),
+                        (.image, .image, .themeGreen500),
+                        (.file, .fileText, .themePurple400),
+                        (.folder, .folder, .themeYellow500),
+                        (.text, .type, .themeTextSecondary)
+                    ]
+                    
+                    ForEach(categories, id: \.0) { type, icon, color in
+                        let stat = stats.categoryStats[type] ?? StorageStats.CategoryStat(count: 0, size: 0)
+                        
+                        HStack(spacing: 12) {
+                            LucideView(name: icon, size: 14, color: color)
+                            Text(displayName(for: type))
+                                .font(.themeBody)
+                                .foregroundColor(.themeTextPrimary)
+                            
+                            Spacer()
+                            
+                            Text("\(stat.count) 条")
+                                .font(.themeCaption)
+                                .foregroundColor(.themeTextSecondary)
+                            
+                            if type != .text && type != .folder {
+                                Text(stat.formattedSize)
+                                    .font(.themeCaption)
+                                    .foregroundColor(.themeTextTertiary)
+                                    .frame(width: 60, alignment: .trailing)
+                            } else {
+                                Text("--")
+                                    .font(.themeCaption)
+                                    .foregroundColor(.themeTextTertiary)
+                                    .frame(width: 60, alignment: .trailing)
+                            }
+                            
+                            Button(action: { 
+                                        store.confirm(
+                                            title: "确认清理",
+                                            message: "确定要清理所有 \(displayName(for: type)) 记录吗？关联的物理文件将被移动到废纸篓。此操作不可撤销记录本身。",
+                                            confirmTitle: "确认清理",
+                                            isDestructive: true
+                                        ) {
+                                            store.deleteRecords(ofType: type)
+                                            refreshStats()
+                                        }
+                                    }) {
+                                        LucideView(name: .trash2, size: 14, color: .themeStatusError.opacity(0.6))
+                                    .padding(6)
+                                    .background(Color.themeStatusError.opacity(0.1))
+                                    .cornerRadius(4)
+                            }
+                            .buttonStyle(.plain)
+                            .pointingHandCursor()
+                        }
+                        .padding(.vertical, 8)
+                        .padding(.horizontal, 12)
+                        .background(Color.themeGray800.opacity(0.2))
+                    }
+                }
+                .cornerRadius(8)
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.themeBorder, lineWidth: 1))
             }
         }
         .padding(20)
         .background(Color.themeGray800.opacity(0.4))
         .cornerRadius(12)
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.themeHoverLight))
+    }
+
+    private func displayName(for type: RecordType) -> String {
+        switch type {
+        case .screenshot: return "截图"
+        case .image: return "照片"
+        case .file: return "文件"
+        case .folder: return "文件夹"
+        case .text: return "纯文本"
+        case .video: return "视频"
+        }
     }
 
     private var dangerSection: some View {
@@ -251,7 +291,19 @@ struct FileSettingsTab: View {
                     .foregroundColor(.themeRed500)
             }
             
-            Button(action: { showResetConfirm = true }) {
+            Button(action: { 
+                store.confirm(
+                    title: "确认重置",
+                    message: "这将重置 AI 提示词、编辑器偏好、路径配置等所有设置到默认状态。此操作不可撤销。",
+                    confirmTitle: "确认重置",
+                    isDestructive: true
+                ) {
+                    PreferencesManager.shared.resetAll()
+                    store.loadPreferences()
+                    preferredEditor = "System Default"
+                    refreshStats()
+                }
+            }) {
                 HStack(spacing: 8) {
                     LucideView(name: .rotateCcw, size: 14, color: .themeRed400)
                     Text("恢复出厂设置 (重置所有配置)")
@@ -267,17 +319,6 @@ struct FileSettingsTab: View {
             }
             .buttonStyle(.plain)
             .pointingHandCursor()
-            .alert("确认重置", isPresented: $showResetConfirm) {
-                Button("取消", role: .cancel) {}
-                Button("确认重置", role: .destructive) {
-                    PreferencesManager.shared.resetAll()
-                    store.loadPreferences()
-                    preferredEditor = "System Default"
-                    refreshStats()
-                }
-            } message: {
-                Text("这将重置 AI 提示词、编辑器偏好、路径配置等所有设置到默认状态。此操作不可撤销。")
-            }
         }
         .padding(20)
         .background(Color.themeGray800.opacity(0.4))
@@ -292,11 +333,11 @@ struct FileSettingsTab: View {
     }
 
     private func refreshStats() {
-        stats = StorageManager.shared.calculateStats(for: store.currentAttachmentsDirectory)
+        stats = StorageManager.shared.calculateStats(for: store.currentAttachmentsDirectory, records: store.records)
     }
     
     private func colorForIndex(_ index: Int) -> Color {
-        let colors: [Color] = [.themeBlue500, .themePurple500, .themeGreen500, .themeYellow500, .themeRed500]
+        let colors: [Color] = [.themeBlue400, .themePurple400, .themeGreen400, .themeYellow400]
         return colors[index % colors.count]
     }
     

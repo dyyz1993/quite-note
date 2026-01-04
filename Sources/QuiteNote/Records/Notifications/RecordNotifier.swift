@@ -7,6 +7,7 @@ final class RecordNotifier {
 
     @Published var lightHint: String? = nil
     @Published var toast: ToastMessage? = nil
+    @Published var confirmConfig: ConfirmConfig? = nil
 
     // MARK: - 动画状态追踪
 
@@ -34,6 +35,32 @@ final class RecordNotifier {
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
             self?.toast = nil
         }
+    }
+
+    // MARK: - Confirmation Dialog
+
+    /// 显示统一确认对话框
+    func confirm(
+        title: String,
+        message: String,
+        confirmTitle: String = "确定",
+        cancelTitle: String? = "取消",
+        isDestructive: Bool = false,
+        action: @escaping () -> Void = {}
+    ) {
+        confirmConfig = ConfirmConfig(
+            title: title,
+            message: message,
+            confirmTitle: confirmTitle,
+            cancelTitle: cancelTitle,
+            isDestructive: isDestructive,
+            action: action
+        )
+    }
+
+    /// 隐藏确认对话框
+    func dismissConfirm() {
+        confirmConfig = nil
     }
 
     // MARK: - 动画状态

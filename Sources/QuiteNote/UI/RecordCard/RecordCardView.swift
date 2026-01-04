@@ -8,27 +8,26 @@ struct RecordCardView: View, Equatable {
     @Binding var searchTerm: String
     let store: RecordStore
     @State private var hovering = false
+    @State private var isDragHovered = false // 新增：拖拽感应区悬停状态
+    @State private var isDragging = false // 新增：是否正在拖拽中
     @State private var showOriginalContent = false
     @State private var showContent = false // 控制内容延迟显示
     @State private var showFullContent = false // 控制是否显示完整内容
 
     // 删除撤回逻辑
-    @State private var deleteCountdown = 0
+    @State var deleteCountdown = 0
     @State private var deleteTimer: Timer? = nil
 
     // 缓存计算结果，避免重复计算
-    private var isExpanded: Bool {
+    var isExpanded: Bool {
         expandedId == record.id
     }
 
     // 使用@ViewBuilder优化条件渲染
     @ViewBuilder
     var body: some View {
-        HStack(spacing: 0) {
-            // 拖拽手柄
-            dragHandle
-
-            // 卡片内容
+        ZStack(alignment: .topLeading) {
+            // 卡片主体内容
             VStack(alignment: .leading, spacing: 0) {
                 cardHeader
 
@@ -36,48 +35,88 @@ struct RecordCardView: View, Equatable {
                     cardExpandedContent
                 }
             }
-        }
-        // 简化背景和边框，减少重绘
-        .background(Color.themeItem)
-        .cornerRadius(8) // rounded-lg
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(isExpanded ? Color.themeFocused : Color.clear, lineWidth: 1)
-                .allowsHitTesting(false)
-        )
-        // 只在展开状态时应用阴影，减少性能开销
-        .shadow(color: isExpanded ? Color.themeShadowMedium : .clear, radius: 10, x: 0, y: 2)
-        .animation(.easeOut(duration: 0.2), value: isExpanded) // 减少动画时长
-        .onChange(of: isExpanded) { expanded in
-            // 当折叠时，重置内容显示状态，优化性能
-            if !expanded {
-                showContent = false
-                showFullContent = false
-            }
-        }
-        .onHover { hovering = $0 }
-        .pointingHandCursor()
-    }
-
-    // MARK: - 拖拽手柄
-
-    private var dragHandle: some View {
-        Image(systemName: "line.3.horizontal")
-            .foregroundColor(hovering ? Color.themeTextSecondary : Color.themeGray500)
-            .frame(width: 16, height: 44)
-            .contentShape(Rectangle())
-            .background(
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(hovering ? Color.themeHoverLight : Color.clear)
-                    .padding(.horizontal, 2)
+            .background(Color.themeItem)
+            .cornerRadius(8)
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(isExpanded ? Color.themeFocused : Color.clear, lineWidth: 1)
+                    .allowsHitTesting(false)
             )
+            .shadow(color: isExpanded ? Color.themeShadowMedium : .clear, radius: 10, x: 0, y: 2)
+            .opacity(isDragging ? 0.5 : 1.0)
+            .scaleEffect(isDragging ? 0.98 : 1.0)
             .onDrag {
-                guard let fileURL = getFileURL(from: record) else {
-                    return NSItemProvider(object: "" as NSString)
+                // 只有在折叠状态且蒙层已激活时，整个卡片才可拖拽
+                if !isExpanded && isDragHovered {
+                    isDragging = true
+                    store.isInternalDragging = true
+                    
+                    guard let fileURL = getFileURL(from: record) else {
+                        isDragging = false
+                        return NSItemProvider(object: "" as NSString)
+                    }
+                    return NSItemProvider(item: fileURL as NSURL, typeIdentifier: UTType.fileURL.identifier)
                 }
-                return NSItemProvider(item: fileURL as NSURL, typeIdentifier: UTType.fileURL.identifier)
+                // 否则返回空 provider，不触发拖拽
+                return NSItemProvider()
             }
-            .help("拖拽导出到 Finder 或编辑器")
+            
+            // 左上角隐藏三角感应区 (仅折叠状态)
+            if !isExpanded {
+                Triangle()
+                    .fill(Color.clear)
+                    .frame(width: 32, height: 32)
+                    .contentShape(Triangle())
+                    .onHover { hovered in
+                        if hovered {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                isDragHovered = true
+                            }
+                        }
+                    }
+                    // 保留三角区的 onDrag 确保最初触发点有效
+                    .onDrag {
+                        isDragging = true
+                        store.isInternalDragging = true
+                        
+                        guard let fileURL = getFileURL(from: record) else {
+                            isDragging = false
+                            return NSItemProvider(object: "" as NSString)
+                        }
+                        return NSItemProvider(item: fileURL as NSURL, typeIdentifier: UTType.fileURL.identifier)
+                    }
+
+                // 拖拽蒙层
+                if isDragHovered {
+                    ZStack {
+                        Color.themeBackground.opacity(0.85)
+                            .blur(radius: 2)
+                        
+                        VStack(spacing: 8) {
+                            LucideView(name: .mousePointer2, size: 24, color: .themeBlue500)
+                            Text("拖拽移动")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundColor(.themeTextPrimary)
+                        }
+                    }
+                    .cornerRadius(8)
+                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                    .allowsHitTesting(false) // 让蒙层不干扰底层的拖拽感应
+                }
+            }
+        }
+        .animation(.easeOut(duration: 0.2), value: isExpanded)
+        .onHover { isHovering in
+            hovering = isHovering
+            if !isHovering {
+                // 离开整个卡片时才重置蒙层状态
+                withAnimation(.easeOut(duration: 0.2)) {
+                    isDragHovered = false
+                    isDragging = false // 确保离开时也重置拖拽状态
+                }
+            }
+        }
+        .pointingHandCursor()
     }
 
     // MARK: - 辅助函数
@@ -182,9 +221,18 @@ struct RecordCardView: View, Equatable {
                             Rectangle().fill(Color.themeGray700).frame(width: 1, height: 10)
                             HStack(spacing: 4) {
                                 ForEach(record.tags, id: \.self) { tag in
-                                    Text("#\(tag)")
-                                        .font(.system(size: 10, weight: .medium))
-                                        .foregroundColor(.themeBlue400)
+                                    Button(action: {
+                                        // 修复：tag 不需要加 # 符号进行搜索
+                                        searchTerm = tag
+                                        HapticFeedbackManager.shared.lightImpact()
+                                    }) {
+                                        // 修复：UI 上也不显示 # 符号
+                                        Text(tag)
+                                            .font(.system(size: 10, weight: .medium))
+                                            .foregroundColor(.themeBlue400)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .pointingHandCursor()
                                 }
                             }
                         }
@@ -204,13 +252,20 @@ struct RecordCardView: View, Equatable {
                         HStack(spacing: 6) {
                             ForEach(record.keywords, id: \.self) { keyword in
                                 let displayKeyword = keyword.hasPrefix("#") ? keyword : "#\(keyword)"
-                                Text(displayKeyword)
-                                    .font(.system(size: 10, weight: .medium, design: .monospaced))
-                                    .foregroundColor(.themePurple400)
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 1)
-                                    .background(Color.themePurple500.opacity(0.1))
-                                    .cornerRadius(4)
+                                Button(action: {
+                                    searchTerm = keyword
+                                    HapticFeedbackManager.shared.lightImpact()
+                                }) {
+                                    Text(displayKeyword)
+                                        .font(.system(size: 10, weight: .medium, design: .monospaced))
+                                        .foregroundColor(.themePurple400)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 1)
+                                        .background(Color.themePurple500.opacity(0.1))
+                                        .cornerRadius(4)
+                                }
+                                .buttonStyle(.plain)
+                                .pointingHandCursor()
                             }
                         }
                     }
@@ -237,16 +292,6 @@ struct RecordCardView: View, Equatable {
 
     private var actionButtonsView: some View {
         HStack(spacing: 6) {
-            // 打开按钮 (针对文件和文件夹)
-            if record.type == .file || record.type == .folder || record.type == .image || record.type == .screenshot {
-                IconButton(icon: record.type == .folder ? .folder : .arrowUpRight, color: .themeTextSecondary) {
-                    if let url = getFileURL(from: record) {
-                        FileOpener.open(url: url, preferredEditor: PreferencesManager.shared.preferredEditor)
-                    }
-                }
-                .help(record.type == .folder ? "打开文件夹" : "在外部打开")
-            }
-
             // 文件夹同步按钮
             if record.type == .folder {
                 let isSynced = record.sourceUrl?.contains("SyncedFolders") ?? false
@@ -613,7 +658,21 @@ struct RecordCardView: View, Equatable {
             }
         }
     }
+}
 
+/// 用于拖拽感应的三角形形状
+struct Triangle: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
+        path.closeSubpath()
+        return path
+    }
+}
+
+extension RecordCardView {
     /// 实现Equatable协议，减少不必要的重绘
     static func == (lhs: RecordCardView, rhs: RecordCardView) -> Bool {
         lhs.record == rhs.record &&

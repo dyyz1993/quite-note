@@ -45,7 +45,7 @@ final class PreferencesManager: ObservableObject {
     var summaryTrigger: Int { max(0, d.integer(forKey: "summaryTrigger")) }
     var summaryLimit: Int { max(50, d.integer(forKey: "summaryLimit")) }
     var dedupEnabled: Bool { d.object(forKey: "dedupEnabled") == nil ? true : d.bool(forKey: "dedupEnabled") }
-    var maxRecords: Int { let v = d.integer(forKey: "maxRecords"); return v == 0 ? 100 : v }
+    var maxScreenshots: Int { let v = d.integer(forKey: "maxScreenshots"); return v == 0 ? 200 : v }
     var debounceSeconds: Int { let v = d.integer(forKey: "debounceSeconds"); return v == 0 ? 1 : v }
     var windowLock: Bool { d.object(forKey: "windowLock") == nil ? false : d.bool(forKey: "windowLock") }
     var animationsEnabled: Bool { d.object(forKey: "animationsEnabled") == nil ? true : d.bool(forKey: "animationsEnabled") }
@@ -73,9 +73,9 @@ final class PreferencesManager: ObservableObject {
            - **内容属性**: 如 [代码, 文档, 密钥, 配置, 链接, 笔记]
            - **技术/工具**: 如 [Swift, Python, OpenAI, AWS, Git]
            - **业务/场景**: 如 [支付, 认证, 部署, 需求, 学习]
-           识别规则：识别内容的分类。
+           识别规则：识别内容的分类，**严禁包含 # 符号**。
         4. **keywords**: 提取 3-10 个精细化的搜索关键词。
-           - 必须以 # 开头（如 #APIKey, #SwiftUI, #Deployment）。
+           - **必须以 # 开头**（如 #APIKey, #SwiftUI, #Deployment）。
            - 关键词应包含具体的技术栈、工具名或业务场景。
            - 总数不得超过 10 个。
         5. **confidence**: 0-1 之间的分析置信度。
@@ -92,7 +92,7 @@ final class PreferencesManager: ObservableObject {
     func setSummaryTrigger(_ v: Int) { d.set(v, forKey: "summaryTrigger") }
     func setSummaryLimit(_ v: Int) { d.set(v, forKey: "summaryLimit") }
     func setDedupEnabled(_ v: Bool) { d.set(v, forKey: "dedupEnabled") }
-    func setMaxRecords(_ v: Int) { d.set(v, forKey: "maxRecords") }
+    func setMaxScreenshots(_ v: Int) { d.set(v, forKey: "maxScreenshots") }
     func setDebounceSeconds(_ v: Int) { d.set(v, forKey: "debounceSeconds") }
     func setWindowLock(_ v: Bool) { d.set(v, forKey: "windowLock") }
     func setAnimationsEnabled(_ v: Bool) { d.set(v, forKey: "animationsEnabled") }
@@ -132,7 +132,7 @@ final class PreferencesManager: ObservableObject {
         objectWillChange.send()
         let keys = [
             "enableAI", "titleLimit", "summaryTrigger", "summaryLimit", 
-            "dedupEnabled", "maxRecords", "debounceSeconds", "windowLock", 
+            "dedupEnabled", "maxScreenshots", "debounceSeconds", "windowLock", 
             "animationsEnabled", "rememberWindowPosition", "attachmentsPath",
             "openAIBaseURL", "openAIModel", "aiSystemPrompt", "aiUserPrompt",
             "preferredEditor"

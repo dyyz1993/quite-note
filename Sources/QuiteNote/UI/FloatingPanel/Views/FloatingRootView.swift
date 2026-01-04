@@ -93,6 +93,14 @@ struct FloatingRootView: View {
                     .transition(.opacity) // 简化转换，移除复杂的 scale 转换以提升性能
                     .zIndex(0)
             }
+            
+            // 统一确认对话框
+            if let config = store.confirmConfig {
+                UnifiedConfirmView(config: config) {
+                    store.dismissConfirm()
+                }
+                .zIndex(100) // 确保在最顶层
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .ignoresSafeArea()
@@ -170,18 +178,10 @@ struct FloatingRootView: View {
 
                 // 类型筛选按钮组
                 filterButton(type: RecordType.text, icon: .fileText)
+                filterButton(type: RecordType.image, icon: .image)
+                filterButton(type: RecordType.screenshot, icon: .camera)
                 filterButton(type: RecordType.file, icon: .paperclip)
                 filterButton(type: RecordType.folder, icon: .folder)
-
-                // 分隔线
-                Rectangle()
-                    .fill(Color.themeBorderSubtle)
-                    .frame(width: 32, height: 1)
-                    .padding(.vertical, 4)
-
-                // 未来可以增加图片和视频
-                // filterButton(type: .image, icon: .image)
-                // filterButton(type: .video, icon: .video)
 
                 Spacer()
 
@@ -278,19 +278,6 @@ struct FloatingRootView: View {
     /// 蓝牙视图
     private var bluetoothView: some View {
         HStack(spacing: ThemeSpacing.px3.rawValue) {
-            // 截图按钮
-            HStack(spacing: 4) {
-                HoverButton(icon: .camera, size: 16) {
-                    ScreenshotService.shared.startScreenshot()
-                }
-                .help("截图 (⌥⌘C)")
-
-                HoverButton(icon: .bug, size: 14) {
-                    V2ScreenshotController.show()
-                }
-                .help("验证截图布局 (Debug)")
-            }
-
             Group {
                 if let name = bluetooth.connectedDeviceName {
                     LucideView(name: .bluetoothConnected, size: 14, color: .themeBlue400)
@@ -399,15 +386,26 @@ struct FloatingRootView: View {
                 .padding(16) // p-4
             }
             .onDrop(of: [.item, .fileURL, .text, .url], isTargeted: $isDroppingFiles) { providers in
+                if store.isInternalDragging {
+                    store.isInternalDragging = false // 重置状态
+                    isDroppingFiles = false
+                    return false
+                }
                 print("[DEBUG] onDrop 被调用！providers 数量: \(providers.count)")
                 handleDroppedFiles(providers: providers)
                 return true
             }
 
             // 拖入视觉反馈动画
-            if isDroppingFiles {
+            if isDroppingFiles && !store.isInternalDragging {
                 dropFeedbackOverlay
                     .allowsHitTesting(false)  // 让事件穿透到下层的 onDrop
+            }
+        }
+        .onChange(of: isDroppingFiles) { dropping in
+            // 如果拖拽结束（不管是成功还是离开），重置内部拖拽标记
+            if !dropping {
+                store.isInternalDragging = false
             }
         }
         .onChange(of: searchTerm) { newValue in

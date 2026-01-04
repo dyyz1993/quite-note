@@ -3,36 +3,17 @@ import SwiftUI
 /// 记录设置标签页视图
 struct HistorySettingsTab: View {
     @ObservedObject var store: RecordStore
-    @State private var showClearConfirmation = false
-    @State private var showImportAlert = false
-    @State private var importAlertMessage = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
             // 自动去重开关
             dedupSection
 
-            // 记录保留条数
-            maxRecordsSection
-
             // 记录统计
             recordsInfoSection
 
             // 数据管理
             dataManagementSection
-        }
-        .alert("确认清空", isPresented: $showClearConfirmation) {
-            Button("取消", role: .cancel) { }
-            Button("清空", role: .destructive) {
-                clearAllRecords()
-            }
-        } message: {
-            Text("确定要清空所有记录吗？此操作不可撤销。")
-        }
-        .alert("导入结果", isPresented: $showImportAlert) {
-            Button("确定", role: .cancel) { }
-        } message: {
-            Text(importAlertMessage)
         }
     }
 
@@ -59,27 +40,6 @@ struct HistorySettingsTab: View {
         .cornerRadius(8)
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.themeHoverLight).allowsHitTesting(false))
     }
-
-    // MARK: - Max Records Section
-
-    private var maxRecordsSection: some View {
-        VStack(spacing: 16) {
-            NativeSliderRow(label: "记录保留条数", value: Binding(
-                get: { Double(store.maxRecords) },
-                set: { store.maxRecords = Int($0); store.savePreferences() }
-            ), range: 50...1000, step: 50)
-
-            Text("当前版本模拟限制在 \(store.maxRecords) 条。生产版可配置。")
-                .font(.system(size: 10))
-                .foregroundColor(.themeGray500)
-        }
-        .padding(16)
-        .background(Color.themePanel)
-        .cornerRadius(8)
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.themeHoverLight).allowsHitTesting(false))
-    }
-
-
 
     // MARK: - Records Info Section
 
@@ -158,7 +118,14 @@ struct HistorySettingsTab: View {
 
             // 清空按钮（带确认）
             Button(action: {
-                showClearConfirmation = true
+                store.confirm(
+                    title: "确认清空",
+                    message: "确定要清空所有记录吗？此操作不可撤销。",
+                    confirmTitle: "清空",
+                    isDestructive: true
+                ) {
+                    clearAllRecords()
+                }
             }) {
                 HStack {
                     LucideView(name: .trash2, size: 12, color: .themeRed500)
@@ -225,17 +192,22 @@ struct HistorySettingsTab: View {
                     let markdownContent = try String(contentsOf: url, encoding: .utf8)
                     let count = self.store.importFromMarkdown(markdownContent)
                     DispatchQueue.main.async {
-                        if count > 0 {
-                            self.importAlertMessage = "成功导入 \(count) 条记录"
-                        } else {
-                            self.importAlertMessage = "未找到可导入的记录，请检查文件格式"
-                        }
-                        self.showImportAlert = true
+                        let message = count > 0 ? "成功导入 \(count) 条记录" : "未找到可导入的记录，请检查文件格式"
+                        self.store.confirm(
+                            title: "导入结果",
+                            message: message,
+                            confirmTitle: "确定",
+                            cancelTitle: nil
+                        )
                     }
                 } catch {
                     DispatchQueue.main.async {
-                        self.importAlertMessage = "导入失败: \(error.localizedDescription)"
-                        self.showImportAlert = true
+                        self.store.confirm(
+                            title: "导入失败",
+                            message: error.localizedDescription,
+                            confirmTitle: "确定",
+                            cancelTitle: nil
+                        )
                     }
                 }
             }

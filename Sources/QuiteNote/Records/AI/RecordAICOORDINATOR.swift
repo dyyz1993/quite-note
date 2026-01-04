@@ -89,7 +89,12 @@ final class RecordAICOORDINATOR {
                     var finalTags: [String]? = s.tags
                     if let aiTags = s.tags {
                         let autoTags = record.tags
-                        finalTags = Array(Set(autoTags + aiTags)).sorted()
+                        // 确保 AI 生成的标签不带 #
+                        let cleanedAITags = aiTags.map { t -> String in
+                            let trimmed = t.trimmingCharacters(in: .whitespacesAndNewlines)
+                            return trimmed.hasPrefix("#") ? String(trimmed.dropFirst()) : trimmed
+                        }
+                        finalTags = Array(Set(autoTags + cleanedAITags)).sorted()
                     }
 
                     // 处理关键词：确保都有 # 前缀且不超过 10 个
@@ -174,7 +179,12 @@ final class RecordAICOORDINATOR {
                         var finalTags: [String]? = s.tags
                         if let aiTags = s.tags {
                             let autoTags = record.tags
-                            finalTags = Array(Set(autoTags + aiTags)).sorted()
+                            // 确保 AI 生成的标签不带 #
+                            let cleanedAITags = aiTags.map { t -> String in
+                                let trimmed = t.trimmingCharacters(in: .whitespacesAndNewlines)
+                                return trimmed.hasPrefix("#") ? String(trimmed.dropFirst()) : trimmed
+                            }
+                            finalTags = Array(Set(autoTags + cleanedAITags)).sorted()
                         }
 
                         // 处理关键词

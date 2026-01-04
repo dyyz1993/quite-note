@@ -17,10 +17,8 @@ struct ScreenshotSettingsTab: View {
             if screenCaptureGranted && accessibilityGranted {
                 shortcutSection
                 behaviorSection
-                previewSection
             } else {
                 permissionRequiredHint
-                previewSection // 即使没有权限也允许测试预览 UI
             }
         }
         .onAppear {
@@ -32,44 +30,6 @@ struct ScreenshotSettingsTab: View {
         }
     }
     
-    // MARK: - Preview Section
-
-    private var previewSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(spacing: 8) {
-                LucideView(name: .camera, size: 16, color: .themePurple400)
-                Text("UI 预览测试")
-                    .font(.themeH2)
-                    .foregroundColor(.themeTextPrimary)
-            }
-
-            Text("无需截图权限即可预览截图后的操作界面，方便验证 UI 样式。")
-                .font(.themeCaption)
-                .foregroundColor(.themeTextTertiary)
-
-            Button(action: {
-                // 使用统一截图入口进行测试
-                ScreenshotService.shared.startScreenshot()
-            }) {
-                HStack(spacing: 8) {
-                    LucideView(name: .eye, size: 14, color: .white)
-                    Text("打开预览界面")
-                        .font(.themeBody)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .background(Color.themeStatusLoading)
-                .cornerRadius(8)
-                .foregroundColor(.white)
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(20)
-        .background(Color.themeCard)
-        .cornerRadius(12)
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.themeBorderSubtle))
-    }
-
     private func autoRequestPermissions() {
         // 1. 更新当前状态
         updatePermissionStatus()

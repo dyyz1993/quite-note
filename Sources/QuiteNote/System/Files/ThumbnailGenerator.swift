@@ -39,6 +39,14 @@ final class ThumbnailGenerator {
             }
         }
     }
+
+    /// 删除指定资源的缩略图
+    func removeThumbnail(for sourceURL: URL) {
+        let cacheDir = FileCoordinator.shared.getDirectoryURL(for: .thumbnail)
+        let hash = String(sourceURL.path.hashValue)
+        let thumbnailURL = cacheDir.appendingPathComponent("\(hash).jpg")
+        try? fileManager.removeItem(at: thumbnailURL)
+    }
     
     // MARK: - Private Helpers
     

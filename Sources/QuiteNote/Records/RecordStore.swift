@@ -24,6 +24,7 @@ final class RecordStore: ObservableObject {
     /// 通知（直接存储，同步到 notifier）
     @Published var lightHint: String? = nil
     @Published var toast: ToastMessage? = nil
+    @Published var confirmConfig: ConfirmConfig? = nil
 
     /// AI 配置（直接存储，同步到 aiCoordinator）
     @Published var enableAI: Bool = true
@@ -34,8 +35,8 @@ final class RecordStore: ObservableObject {
     /// 是否启用自动去重
     @Published var dedupEnabled: Bool = true
 
-    /// 最大记录保留数
-    @Published var maxRecords: Int = 200
+    /// 最大截图保留数
+    @Published var maxScreenshots: Int = 200
 
     /// 附件存储路径
     @Published var attachmentsPath: String = ""
@@ -60,6 +61,9 @@ final class RecordStore: ObservableObject {
     /// 是否折叠收藏夹
     @Published var isStarredCollapsed: Bool = false
 
+    /// 标记是否正在内部拖拽（用于屏蔽应用自身的导入蒙层）
+    @Published var isInternalDragging: Bool = false
+
     // MARK: - 子组件
 
     /// 搜索器
@@ -79,13 +83,38 @@ final class RecordStore: ObservableObject {
     private var searchHistoryCancellable: AnyCancellable?
     private var toastCancellable: AnyCancellable?
     private var lightHintCancellable: AnyCancellable?
+    private var confirmCancellable: AnyCancellable?
 
     /// 暴露 AI 服务（用于 UI 访问）
     var ai: AIServiceProtocol? {
         aiCoordinator.ai
     }
 
-    // MARK: - 文件拖拽处理
+    /// 隐藏确认对话框
+    func dismissConfirm() {
+        notifier.dismissConfirm()
+    }
+
+    /// 显示统一确认对话框
+    func confirm(
+        title: String,
+        message: String,
+        confirmTitle: String = "确定",
+        cancelTitle: String? = "取消",
+        isDestructive: Bool = false,
+        action: @escaping () -> Void = {}
+    ) {
+        notifier.confirm(
+            title: title,
+            message: message,
+            confirmTitle: confirmTitle,
+            cancelTitle: cancelTitle,
+            isDestructive: isDestructive,
+            action: action
+        )
+    }
+
+    // MARK: - 附件处理逻辑
 
     /// 附件存储目录
     public var currentAttachmentsDirectory: URL {
@@ -328,6 +357,12 @@ final class RecordStore: ObservableObject {
             .sink { [weak self] newValue in
                 self?.lightHint = newValue
             }
+
+        // 订阅 confirmConfig 更新
+        confirmCancellable = notifier.$confirmConfig
+            .sink { [weak self] newValue in
+                self?.confirmConfig = newValue
+            }
     }
 
     // MARK: - 核心操作：添加记录
@@ -405,10 +440,23 @@ final class RecordStore: ObservableObject {
             self.notifier.markPasteSuccess()
             self.lastPasteSuccessAt = Date()
             self.notifier.postToast("已自动创建新记录", type: "success")
-        }
 
-        // 限制最大记录数
-        if records.count > maxRecords { records = Array(records.prefix(maxRecords)) }
+            // 限制截图最大保留数 (仅针对截图类型)
+            if type == .screenshot {
+                let screenshots = self.records.filter { $0.type == .screenshot }
+                if screenshots.count > self.maxScreenshots {
+                    // 找出最旧的非收藏截图进行清理
+                    let oldScreenshots = screenshots
+                        .filter { !$0.starred } // 不清理收藏的
+                        .sorted { $0.createdAt < $1.createdAt }
+                    
+                    if let toDelete = oldScreenshots.first {
+                        self.delete(toDelete)
+                        print("[DEBUG] 已自动清理超过上限的旧截图: \(toDelete.id)")
+                    }
+                }
+            }
+        }
 
         // 4. 触发 AI 总结 (如果启用)
         syncToAICoordinator()
@@ -489,8 +537,47 @@ final class RecordStore: ObservableObject {
 
     // MARK: - 核心操作：删除记录
 
+    /// 按类型删除记录
+    func deleteRecords(ofType type: RecordType) {
+        let toDelete = records.filter { $0.type == type }
+        for record in toDelete {
+            delete(record)
+        }
+    }
+
     /// 删除指定记录
     func delete(_ record: Record) {
+        // 1. 如果是文件/图片/截图，尝试将关联的物理文件移动到废纸篓
+        if record.type != .text {
+            // 优先从 sourceUrl 获取物理路径
+            var fileURL: URL? = nil
+            if let path = record.sourceUrl {
+                if path.starts(with: "/") {
+                    fileURL = URL(fileURLWithPath: path)
+                } else {
+                    // 解析虚拟路径 (如: attachment://...)
+                    fileURL = FileCoordinator.shared.resolveVirtualPath(path)
+                }
+            }
+            
+            if let url = fileURL {
+                // 安全检查：只有在附件目录下的文件才真正处理
+                let attachmentsPath = currentAttachmentsDirectory.path
+                if url.path.contains(attachmentsPath) {
+                    // 使用 trashItem 代替 removeItem，更安全
+                    do {
+                        try FileManager.default.trashItem(at: url, resultingItemURL: nil)
+                        print("[DEBUG] 已将物理文件移至废纸篓: \(url.path)")
+                    } catch {
+                        print("[DEBUG] 移至废纸篓失败: \(error.localizedDescription)")
+                    }
+                    // 缩略图可以直接删除，因为它是可以重新生成的缓存
+                    ThumbnailGenerator.shared.removeThumbnail(for: url)
+                }
+            }
+        }
+
+        // 2. 从内存和数据库删除
         records.removeAll { $0.id == record.id }
         aiCoordinator.markTagsNeedUpdate()
         repository.delete(id: record.id)
@@ -1111,17 +1198,19 @@ final class RecordStore: ObservableObject {
 
     // MARK: - 偏好设置
 
+    /// 从 UserDefaults 加载偏好设置
     func loadPreferences() {
         enableAI = prefs.enableAI
         titleLimit = prefs.titleLimit
         summaryTrigger = prefs.summaryTrigger
         summaryLimit = prefs.summaryLimit
         dedupEnabled = prefs.dedupEnabled
-        maxRecords = prefs.maxRecords
+        maxScreenshots = prefs.maxScreenshots
         attachmentsPath = prefs.attachmentsPath ?? ""
 
         // 同步到 AI 协调器
         syncToAICoordinator()
+        syncToSearcher()
 
         // 延迟初始化AI服务
         if enableAI {
@@ -1142,7 +1231,7 @@ final class RecordStore: ObservableObject {
         prefs.setSummaryTrigger(summaryTrigger)
         prefs.setSummaryLimit(summaryLimit)
         prefs.setDedupEnabled(dedupEnabled)
-        prefs.setMaxRecords(maxRecords)
+        prefs.setMaxScreenshots(maxScreenshots)
         prefs.setAttachmentsPath(attachmentsPath.isEmpty ? nil : attachmentsPath)
 
         aiCoordinator.savePreferences()
