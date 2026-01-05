@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 
 /// 贴纸视图 - 支持多页切换、Markdown 输入、尺寸调整
 struct StickyNoteView: View {
@@ -7,116 +8,89 @@ struct StickyNoteView: View {
     @FocusState private var isFocused: Bool
     @State private var showControlsOverride: Bool = false // 强制隐藏控制条
     
+    // 命令发布者，用于工具栏与编辑器的通信
+    private let commandPublisher = PassthroughSubject<StickyNoteCommand, Never>()
+    
     var body: some View {
         ZStack(alignment: .bottom) {
             // 背景和主体
             VStack(spacing: 0) {
-                // 内容区域
-                ScrollView {
-                    // 使用 TextEditor 并尝试简单的 Markdown 样式（如果系统支持）
-                    TextEditor(text: Binding(
-                        get: { note.currentContent },
-                        set: { val in 
-                            handleTextChange(val)
-                        }
-                    ))
-                    .font(.themeBody)
-                    .foregroundColor(.themeTextPrimary)
-                    .scrollContentBackground(.hidden)
-                    .padding(ThemeSpacing.px2.rawValue)
-                    .frame(minHeight: 150)
-                }
-                .background(Color.themeBackground.opacity(isFocused && !showControlsOverride ? 0.95 : 0.7)) // 失焦降低透明度
-                .focused($isFocused)
-                .overlay(
-                    // 简单的待办点击层（如果需要，这只是一个示意，真正的交互需要更复杂的自定义 TextEditor）
-                    Group {
-                        if note.currentContent.contains("- [ ]") || note.currentContent.contains("- [x]") {
-                            // 这里可以添加逻辑，但 SwiftUI 原生 TextEditor 不支持内联点击
-                        }
+                // 顶部拖拽手柄 - 固定高度，不随状态改变
+                Rectangle()
+                    .fill(Color.themeBackground)
+                    .frame(height: 14)
+                    .overlay(
+                        Capsule()
+                            .fill(Color.themeTextTertiary.opacity(0.3))
+                            .frame(width: 24, height: 3)
+                    )
+                    .contentShape(Rectangle())
+                    .onHover { hovering in
+                        if hovering { isHovered = true }
                     }
-                )
                 
-                // 底部控制条 (仅在获得焦点时显示)
-                if isFocused && !showControlsOverride {
-                    HStack(spacing: ThemeSpacing.px2.rawValue) {
-                        // 1. 编辑工具组 (待办、加粗)
-                        HStack(spacing: 12) {
-                            Button(action: { toggleTodo() }) {
-                                LucideView(name: .check, size: 11, color: .themeTextSecondary)
-                            }
-                            .buttonStyle(.plain)
-                            .help("待办列表")
-                            
-                            Button(action: { toggleBold() }) {
-                                LucideView(name: .bold, size: 11, color: .themeTextSecondary)
-                            }
-                            .buttonStyle(.plain)
-                            .help("加粗")
-                        }
-                        .padding(.leading, 12) // 往里缩一点，避免干扰左下角手柄
-                        
-                        Spacer()
-                        
-                        // 2. 页面切换组 (1 2 3)
-                        HStack(spacing: 8) {
-                            ForEach(0..<note.pages.count, id: \.self) { index in
-                                Button(action: {
-                                    note.currentPageIndex = index
-                                    StickyNoteManager.shared.updateNote(note)
-                                }) {
-                                    Text("\(index + 1)")
-                                        .font(.system(size: 10, weight: note.currentPageIndex == index ? .bold : .regular))
-                                        .foregroundColor(note.currentPageIndex == index ? .themeTextPrimary : .themeTextTertiary)
-                                        .frame(width: 18, height: 18)
-                                        .background(note.currentPageIndex == index ? Color.themeHoverStrong : Color.clear)
-                                        .cornerRadius(4)
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                        
-                        Spacer()
-                        
-                        // 3. 操作组 (存入记录、删除)
-                        HStack(spacing: 12) {
-                            Button(action: { 
-                                StickyNoteManager.shared.saveToRecords(note: note)
-                                // 存入后清空当前页内容
-                                note.currentContent = ""
+                // 内容区域 - 占据剩余所有空间
+                ZStack(alignment: .bottom) {
+                    StickyNoteEditor(
+                        text: Binding(
+                            get: { note.currentContent },
+                            set: { val in 
+                                note.currentContent = val
                                 StickyNoteManager.shared.updateNote(note)
-                            }) {
-                                LucideView(name: .save, size: 11, color: .themeTextSecondary)
                             }
-                            .buttonStyle(.plain)
-                            .help("存入记录并清空")
-                            
-                            Button(action: {
-                                StickyNoteManager.shared.deleteNote(note)
-                            }) {
-                                LucideView(name: .trash, size: 13, color: .themeStatusError.opacity(0.8))
+                        ),
+                        fontSize: 13,
+                        isFocused: isFocused,
+                        onFocusChange: { focused in
+                            if isFocused != focused {
+                                withAnimation(.themeDuration300) {
+                                    isFocused = focused
+                                }
                             }
-                            .buttonStyle(.plain)
-                            .help("删除贴纸")
-                        }
-                        .padding(.trailing, 12) // 往里缩一点，避免干扰右下角手柄
+                        },
+                        commandPublisher: commandPublisher.eraseToAnyPublisher()
+                    )
+                    .padding(.bottom, 42) // 核心：始终保留底部预留空间，防止工具栏遮挡最后一行文字，同时保证不抖动
+                    .focused($isFocused)
+                    
+                    // 底部控制条 - 浮动在预留空间之上
+                    if isFocused && !showControlsOverride {
+                        StickyNoteToolbar(note: $note, isFocused: $isFocused, onCommand: { command in
+                            commandPublisher.send(command)
+                        })
+                        .padding(.bottom, 6)
+                        .transition(.asymmetric(
+                            insertion: .move(edge: .bottom).combined(with: .opacity),
+                            removal: .opacity
+                        ))
                     }
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 8)
-                    .background(Color.themeGray800) // 使用实色背景，防止透明度过高看不清
-                    .transition(.opacity)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color.themeBackground.opacity(isFocused ? 0.98 : 0.9))
             }
             .clipShape(RoundedRectangle(cornerRadius: ThemeRadius.lg.rawValue))
             .overlay(
                 RoundedRectangle(cornerRadius: ThemeRadius.lg.rawValue)
-                    .stroke(isFocused && !showControlsOverride ? Color.themeBlue500.opacity(0.8) : Color.themeBorder, lineWidth: 1)
+                    .stroke(isFocused ? Color.themeBlue500.opacity(0.5) : Color.themeBorder, lineWidth: 1)
             )
+            // ... 保持原有通知处理不变 ...
             .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("StickyNoteBlur"))) { notification in
                     // 这里的通知由 StickyNoteWindow 发出，确保失焦时立即隐藏
                     if let blurId = notification.object as? UUID, blurId == note.id {
-                        showControlsOverride = true
-                        isFocused = false
+                        withAnimation(.themeDuration300) {
+                            showControlsOverride = true
+                            isFocused = false
+                        }
+                    }
+                }
+                .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification)) { notification in
+                    // 监听窗口失去 key 状态，确保失焦逻辑触发
+                    if let window = notification.object as? NSWindow, 
+                       (window as? StickyNoteWindow)?.contentView is NSHostingView<StickyNoteView> {
+                        withAnimation(.themeDuration300) {
+                            showControlsOverride = true
+                            isFocused = false
+                        }
                     }
                 }
                 .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("StickyNoteFocus"))) { notification in
@@ -162,53 +136,132 @@ struct StickyNoteView: View {
         }
     }
     
-    /// 处理文本变化，支持自动补全
-    private func handleTextChange(_ newValue: String) {
-        var processedValue = newValue
-        
-        // 自动补全待办事项: 如果当前行以 - [ ] 或 - [x] 开头，且用户按下了换行
-        if newValue.count > note.currentContent.count && newValue.hasSuffix("\n") {
-            let lines = note.currentContent.components(separatedBy: .newlines)
-            if let lastLine = lines.last {
-                let trimmed = lastLine.trimmingCharacters(in: .whitespaces)
-                if trimmed.hasPrefix("- [ ]") {
-                    processedValue += "- [ ] "
-                } else if trimmed.hasPrefix("- [x]") {
-                    processedValue += "- [ ] " // 默认补全未完成
+    // MARK: - Helper Methods
+
+    private func saveToRecords() {
+        StickyNoteManager.shared.saveToRecords(note: note)
+        // 存入后清空当前页内容
+        note.currentContent = ""
+        StickyNoteManager.shared.updateNote(note)
+    }
+}
+
+/// 底部工具栏组件
+struct StickyNoteToolbar: View {
+    @Binding var note: StickyNoteModel
+    @FocusState.Binding var isFocused: Bool
+    var onCommand: (StickyNoteCommand) -> Void
+    
+    var body: some View {
+        HStack(spacing: 0) {
+            // 1. 编辑工具组
+            HStack(spacing: 8) {
+                StickyNoteToolbarButton(name: .square, tooltip: "待办列表", action: { onCommand(.toggleTodo) })
+                StickyNoteToolbarButton(name: .bold, tooltip: "加粗", action: { onCommand(.toggleBold) })
+                StickyNoteToolbarButton(name: .strikethrough, tooltip: "删除线", action: { onCommand(.toggleStrikethrough) })
+                
+                // 颜色选择器
+                HStack(spacing: 4) {
+                    ColorDot(color: .themeYellow400, hex: "FACC15", onCommand: onCommand)
+                    ColorDot(color: .themeBlue400, hex: "60A5FA", onCommand: onCommand)
+                    ColorDot(color: .themeGreen400, hex: "4ADE80", onCommand: onCommand)
+                    ColorDot(color: .themeRed400, hex: "F87171", onCommand: onCommand)
+                    
+                    Button(action: { onCommand(.resetFormat) }) {
+                        Image(systemName: "arrow.counterclockwise.circle")
+                            .font(.system(size: 10))
+                            .foregroundColor(.themeTextTertiary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("重置颜色")
+                }
+                .padding(.horizontal, 4)
+                .background(Color.themeHoverLight.cornerRadius(4))
+            }
+            
+            Spacer(minLength: 4)
+            
+            // 2. 页面切换组
+            HStack(spacing: 4) {
+                ForEach(0..<note.pages.count, id: \.self) { index in
+                    Button(action: {
+                        note.currentPageIndex = index
+                        StickyNoteManager.shared.updateNote(note)
+                    }) {
+                        Text("\(index + 1)")
+                            .font(.system(size: 9, weight: note.currentPageIndex == index ? .bold : .medium))
+                            .foregroundColor(note.currentPageIndex == index ? .themeTextPrimary : .themeTextTertiary)
+                            .frame(width: 16, height: 16)
+                            .background(note.currentPageIndex == index ? Color.themeHoverStrong : Color.clear)
+                            .cornerRadius(3)
+                    }
+                    .buttonStyle(.plain)
                 }
             }
-        }
-        
-        note.currentContent = processedValue
-        StickyNoteManager.shared.updateNote(note)
-    }
-    
-    private func toggleTodo() {
-        let content = note.currentContent
-        var lines = content.components(separatedBy: .newlines)
-        
-        // 简单逻辑：如果是空或者最后一行没有待办，则添加；否则切换最后一行的状态
-        if let lastLine = lines.last {
-            if lastLine.trimmingCharacters(in: .whitespaces).hasPrefix("- [ ]") {
-                lines[lines.count - 1] = lastLine.replacingOccurrences(of: "- [ ]", with: "- [x]")
-            } else if lastLine.trimmingCharacters(in: .whitespaces).hasPrefix("- [x]") {
-                lines[lines.count - 1] = lastLine.replacingOccurrences(of: "- [x]", with: "- [ ]")
-            } else {
-                lines[lines.count - 1] = "- [ ] " + lastLine
+            
+            Spacer(minLength: 4)
+            
+            // 3. 操作组
+            HStack(spacing: 8) {
+                StickyNoteToolbarButton(name: .save, tooltip: "存入并清空", action: { 
+                    StickyNoteManager.shared.saveToRecords(note: note)
+                    note.currentContent = ""
+                    StickyNoteManager.shared.updateNote(note)
+                })
+                
+                StickyNoteToolbarButton(name: .trash, tooltip: "删除贴纸", color: .themeStatusError.opacity(0.9), action: {
+                    StickyNoteManager.shared.deleteNote(note)
+                })
             }
-        } else {
-            lines.append("- [ ] ")
         }
-        
-        note.currentContent = lines.joined(separator: "\n")
-        StickyNoteManager.shared.updateNote(note)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color.themeCard.opacity(0.98))
+                .shadow(color: Color.black.opacity(0.4), radius: 8, x: 0, y: 4)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color.white.opacity(0.1), lineWidth: 0.5)
+        )
+        .padding(.horizontal, 8)
     }
+}
+
+/// 工具栏按钮封装
+struct StickyNoteToolbarButton: View {
+    let name: IconName
+    let tooltip: String
+    var color: Color = .themeTextSecondary
+    let action: () -> Void
     
-    private func toggleBold() {
-        // 使用 Lucide 图标替换原来的 B 文本 (已经在 body 中修改过调用处)
-        // 简单实现：在当前内容末尾添加 **
-        note.currentContent += "****"
-        StickyNoteManager.shared.updateNote(note)
+    var body: some View {
+        Button(action: action) {
+            LucideView(name: name, size: 12, color: color)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(tooltip)
+    }
+}
+
+
+/// 颜色选择小圆点组件
+struct ColorDot: View {
+    let color: Color
+    let hex: String
+    var onCommand: (StickyNoteCommand) -> Void
+    
+    var body: some View {
+        Button(action: {
+            onCommand(.applyColor(hex: hex))
+        }) {
+            Circle()
+                .fill(color)
+                .frame(width: 8, height: 8)
+        }
+        .buttonStyle(.plain)
     }
 }
 

@@ -67,6 +67,7 @@ enum IconName: String {
     case circle = "circle"
     case type = "type"
     case bold = "bold"
+    case strikethrough = "strikethrough"
     case highlighter = "highlighter"
     case crop = "crop"
     case arrowUpRight = "arrow-up-right"
@@ -81,6 +82,8 @@ enum IconName: String {
     case scroll = "scroll"
     case cloudDownload = "cloud-download"
     case zoomIn = "zoom-in"
+    case list = "list"
+    case listOrdered = "list-ordered"
 }
 
 /// SwiftUI 包装，渲染 Lucide 图标（不使用 SF Symbols 回退）

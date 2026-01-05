@@ -83,9 +83,16 @@ class StickyNoteHostingView<Content: View>: NSHostingView<Content> {
             removeTrackingArea(existingArea)
         }
         
+        // 关键修复：扩大追踪区域，包含窗口的所有边缘
+        let options: NSTrackingArea.Options = [
+            .mouseEnteredAndExited,
+            .activeAlways,
+            .inVisibleRect
+        ]
+        
         let area = NSTrackingArea(
             rect: self.bounds,
-            options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+            options: options,
             owner: self,
             userInfo: nil
         )
@@ -107,17 +114,29 @@ class StickyNoteHostingView<Content: View>: NSHostingView<Content> {
         focusTimer?.invalidate()
         focusTimer = nil
         
-        // 鼠标离开时延迟 0.3s 放弃 Key 状态，防止误触
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+        // 延迟失焦，给用户一定的反应时间
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
             guard let self = self, let window = self.window else { return }
             
-            // 检查鼠标当前是否真的在窗口外
+            // 获取当前鼠标位置（屏幕坐标）
             let mouseLocation = NSEvent.mouseLocation
-            let screenFrame = window.frame
-            if !NSMouseInRect(mouseLocation, screenFrame, false) {
+            
+            // 检查鼠标是否在窗口范围内（增加更宽容的 20px 容错边距）
+            let windowFrame = window.frame.insetBy(dx: -20, dy: -20)
+            let isMouseStillInside = windowFrame.contains(mouseLocation)
+            
+            if !isMouseStillInside {
+                // 如果正在编辑，除非鼠标离开更远（150px），否则不失焦
+                if let textView = window.firstResponder as? NSTextView, textView.isEditable {
+                    let extendedFrame = window.frame.insetBy(dx: -150, dy: -150)
+                    if extendedFrame.contains(mouseLocation) {
+                        return 
+                    }
+                }
+                
+                // 执行失焦
                 if window.isKeyWindow {
-                    window.resignKey()
-                    // 通知视图强制更新焦点状态
+                    // 只有当窗口确实是 Key 且鼠标离开了才尝试 resign
                     NotificationCenter.default.post(name: NSNotification.Name("StickyNoteBlur"), object: self.noteId)
                 }
             }
