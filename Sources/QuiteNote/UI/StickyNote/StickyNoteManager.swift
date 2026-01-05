@@ -87,8 +87,29 @@ final class StickyNoteManager: ObservableObject {
     
     /// 创建新贴纸
     func createNewNote() {
+        // 获取当前鼠标位置和屏幕
+        let mouseLocation = NSEvent.mouseLocation
+        let screens = NSScreen.screens
+        let currentScreen = screens.first { NSMouseInRect(mouseLocation, $0.frame, false) } ?? NSScreen.main ?? screens.first
+        
+        let width: CGFloat = 300
+        let height: CGFloat = 200
+        
+        // 默认将贴纸中心放在鼠标位置
+        var x = mouseLocation.x - width / 2
+        var y = mouseLocation.y - height / 2
+        
+        // 确保贴纸在屏幕范围内
+        if let screen = currentScreen {
+            let screenFrame = screen.visibleFrame
+            
+            // 限制在屏幕边界内，并留出一点边距
+            x = max(screenFrame.minX + 10, min(x, screenFrame.maxX - width - 10))
+            y = max(screenFrame.minY + 10, min(y, screenFrame.maxY - height - 10))
+        }
+        
         let newNote = StickyNoteModel(
-            frame: NSRect(x: 400, y: 400, width: 300, height: 200)
+            frame: NSRect(x: x, y: y, width: width, height: height)
         )
         notes.append(newNote)
         showWindow(for: newNote)
