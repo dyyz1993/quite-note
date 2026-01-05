@@ -32,6 +32,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// 应用启动回调：初始化状态栏与悬浮窗
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // 初始化贴纸管理器
+        _ = StickyNoteManager.shared
+        
         let bundlePath = Bundle.main.bundlePath
         let bundleID = Bundle.main.bundleIdentifier ?? "unknown"
         print("[DEBUG] 应用启动中...")

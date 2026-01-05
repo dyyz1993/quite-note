@@ -119,6 +119,27 @@ struct FloatingRootView: View {
                     .allowsHitTesting(false) // 预览图不响应交互
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("StickyNoteSaveToRecord"))) { notification in
+            print("[DEBUG] FloatingRootView received StickyNoteSaveToRecord notification")
+            if let userInfo = notification.userInfo,
+               let content = userInfo["content"] as? String {
+                let typeStr = userInfo["type"] as? String ?? "text"
+                let source = userInfo["source"] as? String ?? "Sticky Note"
+                let hash = ClipboardService.sha1(content + UUID().uuidString)
+                
+                print("[DEBUG] Saving sticky note to store: \(content.prefix(20))...")
+                store.addRecord(
+                    content: content,
+                    hash: hash,
+                    sourceApp: source,
+                    type: typeStr == "text" ? .text : .file
+                )
+                
+                // 确保 UI 切换到主列表并显示新纪录
+                store.filterType = nil // 显示全部
+                print("[DEBUG] Store records count after add: \(store.records.count)")
+            }
+        }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .ignoresSafeArea()
         .onHover { hovering in onHoverChanged?(hovering) }

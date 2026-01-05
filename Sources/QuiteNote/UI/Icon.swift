@@ -66,6 +66,7 @@ enum IconName: String {
     case square = "square"
     case circle = "circle"
     case type = "type"
+    case bold = "bold"
     case highlighter = "highlighter"
     case crop = "crop"
     case arrowUpRight = "arrow-up-right"

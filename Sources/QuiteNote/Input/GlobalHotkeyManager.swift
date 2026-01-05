@@ -82,9 +82,12 @@ final class GlobalHotkeyManager {
         
         if status == noErr, let ref = carbonHotkey {
             hotkeys[id] = HotkeyInfo(id: id, handler: handler, carbonHotkey: ref)
-            print("[DEBUG] Registered global hotkey: \(key) (keyCode: \(keyCode)) with modifiers: \(modifiers)")
+            print("[DEBUG] Successfully registered global hotkey: \(key) (keyCode: \(keyCode)) with modifiers: \(modifiers), id: \(id)")
         } else {
-            print("[DEBUG] Failed to register global hotkey: \(status)")
+            print("[DEBUG] FAILED to register global hotkey: \(key), status: \(status), id: \(id)")
+            if status == -9868 { // eventHotKeyExistsErr
+                print("[DEBUG] Error: Hotkey already exists or is reserved by system/another app")
+            }
         }
     }
     

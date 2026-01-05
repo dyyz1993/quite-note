@@ -97,6 +97,12 @@ final class StatusBarController {
         force.isEnabled = true
         menu.addItem(force)
         
+        let newSticky = NSMenuItem(title: "新建贴纸", action: #selector(onNewStickyNote), keyEquivalent: "n")
+        newSticky.keyEquivalentModifierMask = [.command, .shift]
+        newSticky.target = self
+        newSticky.isEnabled = true
+        menu.addItem(newSticky)
+        
         let capture = NSMenuItem(title: "采集当前剪贴板", action: #selector(onCapture), keyEquivalent: "c")
         capture.keyEquivalentModifierMask = [.option, .command]
         capture.target = self
@@ -192,6 +198,10 @@ final class StatusBarController {
     @objc private func onForceShow() {
         print("[DEBUG] 状态栏菜单点击：强制显示并居中")
         forceShowAction()
+    }
+
+    @objc private func onNewStickyNote() {
+        StickyNoteManager.shared.createNewNote()
     }
 
     /// 菜单：打开设置
