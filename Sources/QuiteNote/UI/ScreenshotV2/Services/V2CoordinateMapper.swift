@@ -113,15 +113,18 @@ struct V2CoordinateMapper {
             // AppKit: 左下角原点
             if screenFrame.contains(appKitPoint) {
                 // 转换为该屏幕的 CoreGraphics 坐标
+                // 算法：CG_Y = PrimaryScreenHeight - AppKit_Y
+                // 注意：CoreGraphics 的 (0,0) 始终是主屏幕的左上角
+                let primaryScreenHeight = NSScreen.screens.first?.frame.height ?? 0
                 return CGPoint(
                     x: appKitPoint.x,
-                    y: screenFrame.maxY - appKitPoint.y + screenFrame.minY
+                    y: primaryScreenHeight - appKitPoint.y
                 )
             }
         }
 
         // 降级：使用主屏幕
-        let mainScreenHeight = NSScreen.main?.frame.height ?? 0
+        let mainScreenHeight = NSScreen.screens.first?.frame.height ?? 0
         return CGPoint(
             x: appKitPoint.x,
             y: mainScreenHeight - appKitPoint.y
@@ -132,24 +135,11 @@ struct V2CoordinateMapper {
     /// - Parameter cgPoint: CoreGraphics 坐标（左上角原点）
     /// - Returns: AppKit 坐标（左下角原点）
     static func coreGraphicsToAppKit(_ cgPoint: CGPoint) -> CGPoint {
-        // 找到包含这个点的屏幕
-        for screen in NSScreen.screens {
-            if let screenBounds = V2ScreenCaptureService.shared.getScreenBounds(screen) {
-                if screenBounds.contains(cgPoint) {
-                    // 转换为该屏幕的 AppKit 坐标
-                    return CGPoint(
-                        x: cgPoint.x,
-                        y: screenBounds.maxY - cgPoint.y + screenBounds.minY
-                    )
-                }
-            }
-        }
-
-        // 降级：使用主屏幕
-        let mainScreenHeight = NSScreen.main?.frame.height ?? 0
+        // 算法：AppKit_Y = PrimaryScreenHeight - CG_Y
+        let primaryScreenHeight = NSScreen.screens.first?.frame.height ?? 0
         return CGPoint(
             x: cgPoint.x,
-            y: mainScreenHeight - cgPoint.y
+            y: primaryScreenHeight - cgPoint.y
         )
     }
 

@@ -225,12 +225,12 @@ struct V2ScreenshotView: View {
         addLog("Debug: Snapshot size: \(snapshot.size), Pixel size: \(pixelWidth)x\(pixelHeight), Scale: \(scaleX)x\(scaleY)")
         
         // 2. 计算像素裁剪区域 (CGImage 裁剪坐标系是 Top-Left)
-        // ⚠️ 关键：移除之前的 Y 轴翻转，因为 CGDisplayCreateImage 出来的就是 Top-Left
+        // ⚠️ 关键：使用整数像素坐标避免偏移，且移除之前的 Y 轴翻转，因为 CGDisplayCreateImage 出来的就是 Top-Left
         let pixelRect = CGRect(
-            x: rect.origin.x * scaleX,
-            y: rect.origin.y * scaleY,
-            width: rect.width * scaleX,
-            height: rect.height * scaleY
+            x: (rect.origin.x * scaleX).rounded(),
+            y: (rect.origin.y * scaleY).rounded(),
+            width: (rect.width * scaleX).rounded(),
+            height: (rect.height * scaleY).rounded()
         )
         
         addLog("Debug: Rect in points: \(rect), Rect in pixels: \(pixelRect)")
@@ -259,18 +259,35 @@ struct V2ScreenshotView: View {
             renderer.scale = screen.backingScaleFactor
             
             if let annotationImage = renderer.nsImage {
-                // 将标注图层也裁剪到相同区域并叠加
+                // ✨ 核心修复：创建一个具有正确比例的图片，并确保绘制时坐标系正确
                 let resultWithAnnotations = NSImage(size: rect.size)
+                
+                // 确保结果图片也有正确的 representations，以便在 Retina 屏幕上清晰
+                let rep = NSBitmapImageRep(
+                    bitmapDataPlanes: nil,
+                    pixelsWide: Int(pixelRect.width),
+                    pixelsHigh: Int(pixelRect.height),
+                    bitsPerSample: 8,
+                    samplesPerPixel: 4,
+                    hasAlpha: true,
+                    isPlanar: false,
+                    colorSpaceName: .deviceRGB,
+                    bytesPerRow: 0,
+                    bitsPerPixel: 0
+                )
+                if let rep = rep {
+                    resultWithAnnotations.addRepresentation(rep)
+                }
+                
                 resultWithAnnotations.lockFocus()
                 
-                // 绘制底图
+                // 1. 先画底图
                 finalImage.draw(in: CGRect(origin: .zero, size: rect.size))
                 
-                // 绘制标注层 (注意：NSImage.draw 还是需要 Y 轴翻转，但这次是在裁剪后的坐标系内)
-                // 实际上，如果我们把标注层也裁剪了，直接画上去就行
-                // 为了简单，我们先用最稳妥的办法：在 NSImage 级别绘制
-                
-                // 裁剪标注图层
+                // 2. 再画标注
+                // 💡 关键：NSImage.draw(in:from:...) 的 fromRect 是相对于图片自身的坐标系（AppKit 默认左下角）
+                // 而 ImageRenderer 生成的 NSImage 是 Top-Down 的。
+                // 我们需要将 Top-Left 的 rect 转换为 Bottom-Left 的 sourceRect
                 let annSourceRect = CGRect(
                     x: rect.origin.x,
                     y: annotationImage.size.height - rect.origin.y - rect.height,
