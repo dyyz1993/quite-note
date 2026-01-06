@@ -133,11 +133,13 @@ struct RecordCardView: View, Equatable {
             return record.sourceUrl.flatMap { FileCoordinator.shared.resolveVirtualPath($0) }
 
         case .text:
-            // 文本记录：创建临时 .md 文件
-            let tempDir = FileManager.default.temporaryDirectory
-            let timestamp = DateFormatter.timestampFormatter.string(from: record.createdAt)
-            let filename = (record.title ?? "记录") + "_" + timestamp + ".md"
-            let fileURL = tempDir.appendingPathComponent(filename)
+            // 文本记录：创建临时 .md 文件，使用唯一子目录以保持原名
+            let tempBaseDir = FileManager.default.temporaryDirectory.appendingPathComponent("QuiteNote_Export")
+            let uniqueDir = tempBaseDir.appendingPathComponent(UUID().uuidString)
+            try? FileManager.default.createDirectory(at: uniqueDir, withIntermediateDirectories: true)
+            
+            let filename = (record.title ?? "记录") + ".md"
+            let fileURL = uniqueDir.appendingPathComponent(filename)
 
             // 写入内容到临时文件
             try? record.content.write(to: fileURL, atomically: true, encoding: .utf8)
@@ -236,8 +238,15 @@ struct RecordCardView: View, Equatable {
                             Rectangle().fill(Color.themeGray700).frame(width: 1, height: 10)
                             HStack(spacing: 4) {
                                 LucideView(name: .link, size: 10, color: .themeTextTertiary)
-                                Text(url.isFileURL ? url.lastPathComponent : urlString)
-                                    .lineLimit(1)
+                                if url.isFileURL {
+                                    Text(url.lastPathComponent)
+                                        .lineLimit(1)
+                                        .frame(maxWidth: 120, alignment: .leading)
+                                } else {
+                                    Text(url.host ?? urlString)
+                                        .lineLimit(1)
+                                        .frame(maxWidth: 100, alignment: .leading)
+                                }
                             }
                             .onTapGesture {
                                 if let finalUrl = getFileURL(from: record) {
@@ -807,21 +816,28 @@ private extension RecordCardView {
             return "AI 正在分析内容..."
         default:
             if let t = record.title, !t.isEmpty { return t }
-            if record.type == .folder {
-                // 文件夹记录：显示 "文件夹名 (文件数) 个文件"
-                if let urlString = record.sourceUrl,
-                   let url = FileCoordinator.shared.resolveVirtualPath(urlString) {
-                    let folderName = url.lastPathComponent
-                    let name = folderName.isEmpty ? "文件夹" : folderName
-                    if let count = record.fileCount {
-                        return "\(name) (\(count) 个文件)"
+            
+            // 如果没有标题，尝试从路径中解析文件名
+            if let urlString = record.sourceUrl,
+               let url = FileCoordinator.shared.resolveVirtualPath(urlString) {
+                let fileName = url.lastPathComponent
+                if !fileName.isEmpty {
+                    if record.type == .folder, let count = record.fileCount {
+                        return "\(fileName) (\(count) 个文件)"
                     }
-                    return name
+                    return fileName
                 }
-                return "文件夹"
             }
-            if record.type == .file { return "文件" }
-            return record.content.count > 30 ? String(record.content.prefix(30)) + "..." : record.content
+            
+            // 兜底显示逻辑
+            switch record.type {
+            case .folder: return "文件夹"
+            case .file: return "文件"
+            case .image: return "照片"
+            case .screenshot: return "截图"
+            default:
+                return record.content.count > 30 ? String(record.content.prefix(30)) + "..." : record.content
+            }
         }
     }
 

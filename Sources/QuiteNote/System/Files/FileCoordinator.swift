@@ -51,23 +51,26 @@ final class FileCoordinator {
         return rootURL.appendingPathComponent("Attachments/\(type.rawValue)", isDirectory: true)
     }
     
-    /// 生成唯一的资源文件名
-    /// 格式: yyyyMMdd_HHmmss_[ShortHash]_[OriginalName]
-    func generateUniqueFileName(originalName: String) -> String {
+    /// 生成唯一的子目录名
+    /// 格式: yyyyMMdd_HHmmss_[ShortHash]
+    private func generateUniqueDirectoryName() -> String {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyyMMdd_HHmmss"
         let dateStr = formatter.string(from: Date())
-        
         let randomHash = String(UUID().uuidString.prefix(4)).lowercased()
-        let sanitizedName = sanitizeFileName(originalName)
-        
-        return "\(dateStr)_\(randomHash)_\(sanitizedName)"
+        return "\(dateStr)_\(randomHash)"
     }
     
     /// 安全地保存文件到指定类型目录
     func storeFile(at sourceURL: URL, type: ResourceType) throws -> URL {
-        let fileName = generateUniqueFileName(originalName: sourceURL.lastPathComponent)
-        let destinationURL = getDirectoryURL(for: type).appendingPathComponent(fileName)
+        let uniqueDir = generateUniqueDirectoryName()
+        let destinationDir = getDirectoryURL(for: type).appendingPathComponent(uniqueDir, isDirectory: true)
+        
+        // 创建唯一子目录
+        try fileManager.createDirectory(at: destinationDir, withIntermediateDirectories: true)
+        
+        let fileName = sanitizeFileName(sourceURL.lastPathComponent)
+        let destinationURL = destinationDir.appendingPathComponent(fileName)
         
         // 如果是文件夹同步，使用不同的拷贝逻辑
         if type == .syncedFolder {
@@ -81,9 +84,15 @@ final class FileCoordinator {
     
     /// 将 NSImage 保存到指定类型目录
     func storeImage(_ image: NSImage, type: ResourceType, originalName: String? = nil) throws -> URL {
+        let uniqueDir = generateUniqueDirectoryName()
+        let destinationDir = getDirectoryURL(for: type).appendingPathComponent(uniqueDir, isDirectory: true)
+        
+        // 创建唯一子目录
+        try fileManager.createDirectory(at: destinationDir, withIntermediateDirectories: true)
+        
         let baseName = originalName ?? "image.png"
-        let fileName = generateUniqueFileName(originalName: baseName)
-        let destinationURL = getDirectoryURL(for: type).appendingPathComponent(fileName)
+        let fileName = sanitizeFileName(baseName)
+        let destinationURL = destinationDir.appendingPathComponent(fileName)
         
         guard let tiffData = image.tiffRepresentation,
               let bitmapImage = NSBitmapImageRep(data: tiffData),

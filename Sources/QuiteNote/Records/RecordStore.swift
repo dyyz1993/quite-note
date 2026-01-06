@@ -437,7 +437,7 @@ final class RecordStore: ObservableObject {
         
         let record = Record(
             id: id,
-            title: nil,
+            title: fileName,
             content: content,
             createdAt: now,
             hash: hash,
