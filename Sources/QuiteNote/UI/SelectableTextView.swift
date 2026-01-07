@@ -32,9 +32,15 @@ struct SelectableTextView: NSViewRepresentable {
         textView.usesFontPanel = false
         textView.isRichText = false
         
-        // 设置字体
+        // 设置字体 - 优先使用更适合 ASCII 艺术的 Menlo 字体
         if isMonospaced {
-            textView.font = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
+            if let menloFont = NSFont(name: "Menlo", size: fontSize) {
+                textView.font = menloFont
+                // 确保字符间距为 0，防止一些双线字符因为微小的间距导致对齐失败
+                textView.defaultParagraphStyle = .default
+            } else {
+                textView.font = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
+            }
         } else {
             textView.font = NSFont.systemFont(ofSize: fontSize)
         }
@@ -56,7 +62,11 @@ struct SelectableTextView: NSViewRepresentable {
         
         // 更新样式
         if isMonospaced {
-            textView.font = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
+            if let menloFont = NSFont(name: "Menlo", size: fontSize) {
+                textView.font = menloFont
+            } else {
+                textView.font = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
+            }
         } else {
             textView.font = NSFont.systemFont(ofSize: fontSize)
         }

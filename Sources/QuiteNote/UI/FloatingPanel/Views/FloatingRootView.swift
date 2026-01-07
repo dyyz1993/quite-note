@@ -410,13 +410,33 @@ struct FloatingRootView: View {
                 .padding(16) // p-4
             }
             .onDrop(of: [.item, .fileURL, .text, .url], isTargeted: $isDroppingFiles) { providers in
+                // 展开模式特有：拦截内部拖拽（防止拖拽记录卡片时触发导入蒙层）
                 if store.isInternalDragging {
-                    store.isInternalDragging = false // 重置状态
+                    store.isInternalDragging = false
                     isDroppingFiles = false
                     return false
                 }
-                print("[DEBUG] onDrop 被调用！providers 数量: \(providers.count)")
-                handleDroppedFiles(providers: providers)
+
+                print("[DEBUG FloatingRootView] onDrop 被调用，providers 数量: \(providers.count)")
+
+                // 使用统一的拖拽解析器
+                DragDropParser.parse(providers: providers) { [weak store] result in
+                    guard let store = store else { return }
+
+                    if !result.isEmpty {
+                        print("[DEBUG FloatingRootView] 接收到有效内容 - URLs: \(result.urls.count), Images: \(result.images.count)")
+
+                        // 调用统一的处理方法（支持 URL 和图片）
+                        store.handleDroppedContent(urls: result.urls, images: result.images)
+
+                        // 展开模式特有的 UI 反馈
+                        HapticFeedbackManager.shared.mediumImpact()
+                        store.postToast("已导入 \(result.totalCount) 个内容", type: "success")
+                    } else {
+                        print("[DEBUG FloatingRootView] 未能解析到任何有效内容")
+                        store.postToast("未能解析文件", type: "error")
+                    }
+                }
                 return true
             }
 
@@ -499,94 +519,6 @@ struct FloatingRootView: View {
         }
         .transition(.opacity.combined(with: .scale(scale: 0.95)))
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isDroppingFiles)
-    }
-
-    /// 处理拖入的文件
-    private func handleDroppedFiles(providers: [NSItemProvider]) {
-        print("[DEBUG] handleDroppedFiles 被调用，providers 数量: \(providers.count)")
-
-        let dispatchGroup = DispatchGroup()
-        var urls: [URL] = []
-        var images: [NSImage] = []
-
-        for provider in providers {
-            dispatchGroup.enter()
-
-            let types = provider.registeredTypeIdentifiers
-            print("[DEBUG] provider 注册的类型: \(types)")
-
-            // 1. 优先尝试直接加载图片对象 (针对网页拖拽图片非常有效)
-            if provider.canLoadObject(ofClass: NSImage.self) {
-                _ = provider.loadObject(ofClass: NSImage.self) { image, error in
-                    if let image = image as? NSImage {
-                        print("[DEBUG] 成功解析为 NSImage")
-                        images.append(image)
-                    }
-                    dispatchGroup.leave()
-                }
-            }
-            // 2. 其次尝试 URL
-            else if provider.canLoadObject(ofClass: URL.self) {
-                _ = provider.loadObject(ofClass: URL.self) { url, error in
-                    if let url = url {
-                        print("[DEBUG] 成功解析为 URL: \(url.absoluteString)")
-                        urls.append(url)
-                    }
-                    dispatchGroup.leave()
-                }
-            }
-            // 3. 最后尝试 String
-            else if provider.canLoadObject(ofClass: String.self) {
-                _ = provider.loadObject(ofClass: String.self) { str, error in
-                    if let str = str {
-                        print("[DEBUG] 成功解析为 String: \(str)")
-                        if str.starts(with: "/") {
-                            let url = URL(fileURLWithPath: str)
-                            urls.append(url)
-                        } else if str.starts(with: "http") {
-                            if let url = URL(string: str) {
-                                urls.append(url)
-                            }
-                        }
-                    }
-                    dispatchGroup.leave()
-                }
-            }
-            else {
-                // 如果都失败了，尝试通过 loadItem 加载原始数据
-                if let firstType = types.first {
-                    print("[DEBUG] 尝试加载第一个类型的数据: \(firstType)")
-                    provider.loadItem(forTypeIdentifier: firstType, options: nil) { item, error in
-                        if let url = item as? URL {
-                            print("[DEBUG] loadItem 成功获取 URL: \(url.path)")
-                            urls.append(url)
-                        } else if let data = item as? Data,
-                                  let url = URL(dataRepresentation: data, relativeTo: nil) {
-                            print("[DEBUG] loadItem 从 Data 获取到 URL: \(url.path)")
-                            urls.append(url)
-                        } else if let item = item {
-                            print("[DEBUG] loadItem 获取到未知对象类型: \(type(of: item))")
-                        }
-                        dispatchGroup.leave()
-                    }
-                } else {
-                    dispatchGroup.leave()
-                }
-            }
-        }
-
-        dispatchGroup.notify(queue: DispatchQueue.main) {
-            if !urls.isEmpty || !images.isEmpty {
-                print("[DEBUG] 最终接收到 \(urls.count) 个 URL 和 \(images.count) 张图片")
-                store.handleDroppedContent(urls: urls, images: images)
-                HapticFeedbackManager.shared.mediumImpact()
-                let totalCount = urls.count + images.count
-                store.postToast("已导入 \(totalCount) 个内容", type: "success")
-            } else {
-                print("[DEBUG] 未能解析到任何有效内容")
-                store.postToast("未能解析文件", type: "error")
-            }
-        }
     }
 
     /// 收藏部分 Header

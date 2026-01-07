@@ -319,7 +319,7 @@ struct RecordCardView: View, Equatable {
             actionButtonsView
                 .padding(.trailing, 12)
         }
-        .frame(height: 72) // 统一卡片高度
+        .frame(minHeight: 72) // 使用最小高度，允许在内容较多或系统字体变大时伸展
         .padding(.leading, 12)
         .contentShape(Rectangle())
         .onTapGesture {
@@ -435,19 +435,16 @@ struct RecordCardView: View, Equatable {
     }
 
     private var cardExpandedContent: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // Expanded Content Area
-            VStack(alignment: .leading, spacing: 12) {
-                // 延迟加载内容，提升展开性能
-                if showContent {
-                    summarySection
-                    originalContentSection
-                    toggleOriginalContentButton
-                }
+        VStack(alignment: .leading, spacing: 12) {
+            // 延迟加载内容，提升展开性能
+            if showContent {
+                summarySection
+                originalContentSection
+                toggleOriginalContentButton
             }
-            .padding(12)
-            .padding(.top, 0)
         }
+        .padding(12)
+        .padding(.top, 0)
         .onAppear {
             onAppearAction()
         }
@@ -569,7 +566,7 @@ struct RecordCardView: View, Equatable {
     @ViewBuilder
     private var originalContentSection: some View {
         if record.summary == nil || showOriginalContent {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 4) {
                 originalContentHeader
                 originalContentBody
             }
@@ -658,10 +655,11 @@ struct RecordCardView: View, Equatable {
                 fontSize: 11,
                 isMonospaced: true,
                 textColor: NSColor(red: 209/255, green: 213/255, blue: 221/255, alpha: 1.0), // themeGray300
+                inset: CGSize(width: 8, height: 8), // 稍微减小内边距，给内容更多空间
                 showScrollbar: true // 原文长，需要滚动条
             )
             .frame(minHeight: isImage ? 40 : 250, maxHeight: 650)
-            .background(Color.themePanel)
+            .background(Color.themeBackground) // 使用更深的背景色，使 ASCII 艺术更清晰
             .cornerRadius(4)
             .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.themeBorder, lineWidth: 1).allowsHitTesting(false))
         }

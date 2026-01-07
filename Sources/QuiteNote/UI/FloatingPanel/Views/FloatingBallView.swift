@@ -63,67 +63,23 @@ struct FloatingBallView: View {
         .frame(width: 80, height: 80) // Container matches window size
         .contentShape(Circle())
         .onDrop(of: [.item, .fileURL, .text, .url], isTargeted: $isTargeted) { providers in
-            print("[DEBUG] onDrop 触发，providers 数量: \(providers.count)")
-            
-            let dispatchGroup = DispatchGroup()
-            var urls: [URL] = []
-            
-            for provider in providers {
-                dispatchGroup.enter()
-                
-                let types = provider.registeredTypeIdentifiers
-                print("[DEBUG] provider 注册的类型: \(types)")
-                
-                // 优先尝试 URL
-                if provider.canLoadObject(ofClass: URL.self) {
-                    _ = provider.loadObject(ofClass: URL.self) { url, error in
-                        if let url = url {
-                            print("[DEBUG] 成功解析为 URL: \(url)")
-                            urls.append(url)
-                        }
-                        dispatchGroup.leave()
+            // 使用统一的拖拽解析器
+            DragDropParser.parse(providers: providers) { [weak store] result in
+                guard let store = store else { return }
+
+                if !result.isEmpty {
+                    print("[DEBUG FloatingBallView] 接收到有效内容 - URLs: \(result.urls.count), Images: \(result.images.count)")
+
+                    // 调用统一的处理方法（支持 URL 和图片）
+                    store.handleDroppedContent(urls: result.urls, images: result.images)
+
+                    // 浮球模式特有的 UI 反馈
+                    if !result.images.isEmpty {
+                        // 如果有图片，触发成功动画
+                        triggerAISuccessAnimation()
                     }
-                } 
-                // 其次尝试 String
-                else if provider.canLoadObject(ofClass: String.self) {
-                    _ = provider.loadObject(ofClass: String.self) { str, error in
-                        if let str = str {
-                            print("[DEBUG] 成功解析为 String: \(str)")
-                            if str.starts(with: "/") {
-                                let url = URL(fileURLWithPath: str)
-                                urls.append(url)
-                            }
-                        }
-                        dispatchGroup.leave()
-                    }
-                }
-                else {
-                    // 如果都失败了，尝试通过 loadItem 加载原始数据
-                    if let firstType = types.first {
-                        print("[DEBUG] 尝试加载第一个类型的数据: \(firstType)")
-                        provider.loadItem(forTypeIdentifier: firstType, options: nil) { item, error in
-                            if let url = item as? URL {
-                                print("[DEBUG] loadItem 成功获取 URL: \(url)")
-                                urls.append(url)
-                            } else if let data = item as? Data {
-                                print("[DEBUG] loadItem 获取到 Data，大小: \(data.count)")
-                            } else if let item = item {
-                                print("[DEBUG] loadItem 获取到未知对象类型: \(type(of: item))")
-                            }
-                            dispatchGroup.leave()
-                        }
-                    } else {
-                        dispatchGroup.leave()
-                    }
-                }
-            }
-            
-            dispatchGroup.notify(queue: .main) {
-                if !urls.isEmpty {
-                    print("[DEBUG] 最终接收到有效内容，数量: \(urls.count)")
-                    store.handleDroppedUrls(urls)
                 } else {
-                    print("[DEBUG] 未能解析到任何有效内容")
+                    print("[DEBUG FloatingBallView] 未能解析到任何有效内容")
                 }
             }
             return true
