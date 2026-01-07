@@ -36,6 +36,7 @@ struct RecordCardView: View, Equatable {
                     cardExpandedContent
                 }
             }
+            .clipShape(RoundedRectangle(cornerRadius: 8)) // 裁剪内容，确保不超出边界
             .background(
                 RoundedRectangle(cornerRadius: 8)
                     .fill(Color.themeItem)
@@ -46,6 +47,7 @@ struct RecordCardView: View, Equatable {
                     .allowsHitTesting(false)
             )
             .shadow(color: isExpanded ? Color.themeShadowMedium : .clear, radius: 10, x: 0, y: 2)
+            .compositingGroup() // 确保所有内容作为一个整体渲染，防止内容穿透
             .opacity(isDragging ? 0.5 : 1.0)
             .scaleEffect(isDragging ? 0.98 : 1.0)
             .onDrag {
@@ -108,7 +110,7 @@ struct RecordCardView: View, Equatable {
                 }
             }
         }
-        .animation(.easeOut(duration: 0.2), value: isExpanded)
+        // 移除了全局动画，避免 zIndex 变化时的布局冲突
         .onHover { isHovering in
             hovering = isHovering
             if !isHovering {
@@ -119,7 +121,6 @@ struct RecordCardView: View, Equatable {
                 }
             }
         }
-        .zIndex(isExpanded ? 100 : 1) // 展开时层级较高
         .pointingHandCursor()
     }
 
@@ -257,28 +258,8 @@ struct RecordCardView: View, Equatable {
                             .help(url.isFileURL ? "在编辑器或 Finder 中打开: \(url.path)" : "在浏览器中打开: \(urlString)")
                         }
 
-                        if !record.tags.isEmpty {
-                            Rectangle().fill(Color.themeGray700).frame(width: 1, height: 10)
-                            HStack(spacing: 4) {
-                                ForEach(record.tags, id: \.self) { tag in
-                                    Button(action: {
-                                        // 修复：tag 不需要加 # 符号进行搜索
-                                        searchTerm = tag
-                                        HapticFeedbackManager.shared.lightImpact()
-                                    }) {
-                                        // 修复：UI 上也不显示 # 符号
-                                        Text(tag)
-                                            .font(.system(size: 10, weight: .medium))
-                                            .foregroundColor(.themeBlue400)
-                                    }
-                                    .buttonStyle(.plain)
-                                    .pointingHandCursor()
-                                }
-                            }
-                        }
-                        
                         Text("•")
-                        
+
                         Text("\(record.content.count) 字符")
                             .font(.system(size: 10, design: .monospaced))
                     }
@@ -286,22 +267,21 @@ struct RecordCardView: View, Equatable {
                 .font(.system(size: 10))
                 .foregroundColor(.themeTextTertiary)
 
-                // Keywords Row (New)
-                if !record.keywords.isEmpty {
+                // Tags Row - 在折叠状态显示标签
+                if !record.tags.isEmpty {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 6) {
-                            ForEach(record.keywords, id: \.self) { keyword in
-                                let displayKeyword = keyword.hasPrefix("#") ? keyword : "#\(keyword)"
+                            ForEach(record.tags, id: \.self) { tag in
                                 Button(action: {
-                                    searchTerm = keyword
+                                    searchTerm = tag
                                     HapticFeedbackManager.shared.lightImpact()
                                 }) {
-                                    Text(displayKeyword)
+                                    Text(tag)
                                         .font(.system(size: 10, weight: .medium, design: .monospaced))
-                                        .foregroundColor(.themePurple400)
+                                        .foregroundColor(.themeBlue400)
                                         .padding(.horizontal, 6)
                                         .padding(.vertical, 1)
-                                        .background(Color.themePurple500.opacity(0.1))
+                                        .background(Color.themeBlue500.opacity(0.1))
                                         .cornerRadius(4)
                                 }
                                 .buttonStyle(.plain)
@@ -440,15 +420,16 @@ struct RecordCardView: View, Equatable {
             if showContent {
                 summarySection
                 originalContentSection
-                toggleOriginalContentButton
             }
         }
         .padding(12)
+        .padding(.bottom, 20) // 固定底部 padding，防止 shadow 与下一个卡片重叠
         .padding(.top, 0)
+        .contentShape(Rectangle()) // 确保整个区域（包括 padding）都能捕获点击，防止穿透
+        .animation(.easeOut(duration: 0.2), value: showContent) // 局部动画，只针对内容显示
         .onAppear {
             onAppearAction()
         }
-        .transition(.opacity)
     }
 
     @ViewBuilder
@@ -458,6 +439,36 @@ struct RecordCardView: View, Equatable {
                 summaryHeader
                 summaryBody
                 keywordsView
+
+                // 当有总结且原文折叠时，显示"显示原文"按钮
+                if record.summary != nil && !showOriginalContent {
+                    HStack {
+                        Spacer()
+                        Button(action: {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                showOriginalContent = true
+                            }
+                            // 发送通知，让父视图知道原文展开状态变化
+                            NotificationCenter.default.post(
+                                name: Notification.Name("OriginalContentToggled"),
+                                object: ["recordId": record.id, "isExpanded": true]
+                            )
+                        }) {
+                            HStack(spacing: 4) {
+                                LucideView(name: .eye, size: 10, color: .themeTextSecondary)
+                                Text("显示原文")
+                            }
+                            .font(.system(size: 10))
+                            .foregroundColor(.themeTextSecondary)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.themeHoverLight)
+                            .cornerRadius(4)
+                        }
+                        .buttonStyle(.plain)
+                        .pointingHandCursor()
+                    }
+                }
             }
         }
     }
@@ -566,10 +577,11 @@ struct RecordCardView: View, Equatable {
     @ViewBuilder
     private var originalContentSection: some View {
         if record.summary == nil || showOriginalContent {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 0) {
                 originalContentHeader
                 originalContentBody
             }
+            .id("original-content-\(record.id.uuidString)") // 添加 ID 以支持滚动定位
         }
     }
 
@@ -583,112 +595,147 @@ struct RecordCardView: View, Equatable {
             .foregroundColor(.themeTextTertiary)
             .textCase(.uppercase)
             Spacer()
-            copyOriginalButton
         }
-    }
-
-    private var copyOriginalButton: some View {
-        let isImage = record.type == .image || record.type == .screenshot
-        return Button(action: {
-            if isImage, let urlString = record.sourceUrl, let url = FileCoordinator.shared.resolveVirtualPath(urlString) {
-                // 复制图片文件到剪贴板
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.writeObjects([url as NSURL])
-                store.postToast("已复制图片", type: "success")
-            } else {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(record.content, forType: .string)
-                store.postToast("已复制原文", type: "success")
-            }
-            HapticFeedbackManager.shared.lightImpact()
-        }) {
-            HStack(spacing: 4) {
-                LucideView(name: .copy, size: 10, color: .themeTextSecondary)
-                Text(isImage ? "复制图片" : "复制原文")
-            }
-            .font(.system(size: 10))
-            .foregroundColor(.themeTextSecondary)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 2)
-            .background(Color.themeHoverLight)
-            .cornerRadius(4)
-        }
-        .buttonStyle(.plain)
-        .pointingHandCursor()
     }
 
     private var originalContentBody: some View {
         let isImage = record.type == .image || record.type == .screenshot
-        return VStack(alignment: .leading, spacing: 12) {
-            if let urlString = record.sourceUrl, 
-               let url = FileCoordinator.shared.resolveVirtualPath(urlString),
-               isImage {
-                // 图片大图预览
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
-                            .cornerRadius(8)
-                            .onTapGesture {
-                                NSWorkspace.shared.open(url)
-                            }
-                            .help("点击在外部查看")
-                    case .failure:
-                        Text("图片加载失败")
-                            .foregroundColor(.themeStatusError)
-                    case .empty:
-                        ProgressView()
-                    @unknown default:
-                        EmptyView()
+
+        return ZStack(alignment: .topLeading) {
+            // 原文内容
+            VStack(alignment: .leading, spacing: 12) {
+                if let urlString = record.sourceUrl,
+                   let url = FileCoordinator.shared.resolveVirtualPath(urlString),
+                   isImage {
+                    // 图片大图预览
+                    AsyncImage(url: url) { phase in
+                        switch phase {
+                        case .success(let image):
+                            image
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .cornerRadius(8)
+                                .onTapGesture {
+                                    NSWorkspace.shared.open(url)
+                                }
+                                .help("点击在外部查看")
+                        case .failure:
+                            Text("图片加载失败")
+                                .foregroundColor(.themeStatusError)
+                        case .empty:
+                            ProgressView()
+                        @unknown default:
+                            EmptyView()
+                        }
                     }
+                    .frame(maxWidth: .infinity)
+                    .padding(10)
+                    .background(Color.themePanel)
+                    .cornerRadius(8)
                 }
-                .frame(maxWidth: .infinity)
-                .padding(10)
-                .background(Color.themePanel)
-                .cornerRadius(8)
+
+                SelectableTextView(
+                    text: record.content,
+                    fontSize: 11,
+                    isMonospaced: true,
+                    textColor: NSColor(red: 209/255, green: 213/255, blue: 221/255, alpha: 1.0), // themeGray300
+                    inset: CGSize(width: 8, height: 8), // 稍微减小内边距，给内容更多空间
+                    showScrollbar: true // 原文长，需要滚动条
+                )
+                .frame(minHeight: 350, maxHeight: 650) // 增加最小高度到 350pt，确保内容显示更充分
+                .background(Color.themeBackground) // 使用更深的背景色，使 ASCII 艺术更清晰
+                .cornerRadius(4)
+                .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.themeBorder, lineWidth: 1).allowsHitTesting(false))
+                // 悬浮按钮：折叠原文 + 复制
+                .overlay(alignment: .topTrailing) {
+                    HStack(spacing: 4) {
+                        // 折叠原文按钮（仅在有 summary 且原文展开时显示）
+                        if record.summary != nil && showOriginalContent {
+                            Button(action: {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    showOriginalContent = false
+                                }
+                                // 发送通知，让父视图更新间距
+                                NotificationCenter.default.post(
+                                    name: Notification.Name("OriginalContentToggled"),
+                                    object: ["recordId": record.id, "isExpanded": false]
+                                )
+                                // 发送通知，让父视图滚动到卡片顶部
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                                    NotificationCenter.default.post(
+                                        name: Notification.Name("ScrollToCard"),
+                                        object: ["recordId": record.id.uuidString]
+                                    )
+                                }
+                            }) {
+                                LucideView(name: .eyeOff, size: 12, color: .themeTextSecondary)
+                                    .frame(width: 24, height: 24)
+                                    .background(Color.themeBackground.opacity(0.9))
+                                    .cornerRadius(4)
+                                    .shadow(color: Color.themeShadowHeavy, radius: 4, x: 0, y: 2)
+                            }
+                            .buttonStyle(.plain)
+                            .help("折叠原文")
+                        }
+
+                        // 复制按钮（始终显示）
+                        Button(action: {
+                            let isImageType = record.type == .image || record.type == .screenshot
+                            if isImageType, let urlString = record.sourceUrl, let url = FileCoordinator.shared.resolveVirtualPath(urlString) {
+                                // 复制图片文件到剪贴板
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.writeObjects([url as NSURL])
+                                store.postToast("已复制图片", type: "success")
+                            } else {
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.setString(record.content, forType: .string)
+                                store.postToast("已复制原文", type: "success")
+                            }
+                            HapticFeedbackManager.shared.lightImpact()
+                        }) {
+                            LucideView(name: .copy, size: 12, color: .themeTextSecondary)
+                                .frame(width: 24, height: 24)
+                                .background(Color.themeBackground.opacity(0.9))
+                                .cornerRadius(4)
+                                .shadow(color: Color.themeShadowHeavy, radius: 4, x: 0, y: 2)
+                        }
+                        .buttonStyle(.plain)
+                        .help(isImage ? "复制图片" : "复制原文")
+                    }
+                    .padding(6)
+                }
             }
-            
-            SelectableTextView(
-                text: record.content,
-                fontSize: 11,
-                isMonospaced: true,
-                textColor: NSColor(red: 209/255, green: 213/255, blue: 221/255, alpha: 1.0), // themeGray300
-                inset: CGSize(width: 8, height: 8), // 稍微减小内边距，给内容更多空间
-                showScrollbar: true // 原文长，需要滚动条
+            // GeometryReader 监听布局变化
+            .background(
+                GeometryReader { geometry in
+                    Color.clear
+                        .onAppear {
+                            // 初次出现时发送通知
+                            sendLayoutNotification(height: geometry.size.height)
+                        }
+                        .onChange(of: geometry.size.height) { newHeight in
+                            // 高度变化时发送通知（包括展开/折叠原文）
+                            sendLayoutNotification(height: newHeight)
+                        }
+                }
             )
-            .frame(minHeight: isImage ? 40 : 250, maxHeight: 650)
-            .background(Color.themeBackground) // 使用更深的背景色，使 ASCII 艺术更清晰
-            .cornerRadius(4)
-            .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.themeBorder, lineWidth: 1).allowsHitTesting(false))
         }
     }
 
-    @ViewBuilder
-    private var toggleOriginalContentButton: some View {
-        if record.summary != nil {
-            HStack {
-                Spacer()
-                Button(action: {
-                    withAnimation(.easeInOut(duration: 0.15)) {
-                        showOriginalContent.toggle()
-                    }
-                }) {
-                    HStack(spacing: 4) {
-                        LucideView(name: showOriginalContent ? .eyeOff : .eye, size: 10, color: .themeTextSecondary)
-                        Text(showOriginalContent ? "隐藏原文" : "显示原文")
-                    }
-                    .font(.system(size: 10))
-                    .foregroundColor(.themeTextSecondary)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Color.themeHoverLight)
-                    .cornerRadius(4)
-                }
-                .buttonStyle(.plain)
-                .pointingHandCursor()
-            }
+    // 发送布局完成通知
+    private func sendLayoutNotification(height: CGFloat) {
+        // 只在原文已展开且有有效高度时发送
+        guard showOriginalContent && height > 100 else { return }
+
+        // 延迟发送，确保 SwiftUI 完成布局计算
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            NotificationCenter.default.post(
+                name: Notification.Name("OriginalContentLayoutComplete"),
+                object: [
+                    "recordId": record.id.uuidString,
+                    "height": height
+                ]
+            )
         }
     }
 

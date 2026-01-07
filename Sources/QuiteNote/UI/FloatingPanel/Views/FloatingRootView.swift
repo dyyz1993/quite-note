@@ -73,6 +73,7 @@ struct FloatingRootView: View {
     @State private var isLoadingMore: Bool = false // 是否正在加载更多
     @State private var hasMoreRecords: Bool = true // 是否还有更多记录
     @State private var isDroppingFiles: Bool = false // 是否正在拖入文件
+    @State private var originalContentExpandedIds: Set<UUID> = [] // 跟踪展开原文的卡片 ID
 
     var body: some View {
         ZStack(alignment: .center) {
@@ -360,8 +361,9 @@ struct FloatingRootView: View {
     /// 列表内容视图
     private var listContentView: some View {
         ZStack {
-            ScrollView {
-                LazyVStack(spacing: 12, pinnedViews: [.sectionHeaders]) { // 使用LazyVStack提高性能，并固定Header
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(spacing: 12, pinnedViews: [.sectionHeaders]) { // 恢复 LazyVStack，保持性能
                     if searchTerm.isEmpty {
                         if store.records.isEmpty {
                             emptyStateView
@@ -409,6 +411,44 @@ struct FloatingRootView: View {
                 }
                 .padding(16) // p-4
             }
+            // 监听原文框布局完成，然后精确滚动
+            .onReceive(NotificationCenter.default.publisher(for: Notification.Name("OriginalContentLayoutComplete"))) { notification in
+                if let userInfo = notification.object as? [String: Any],
+                   let recordIdString = userInfo["recordId"] as? String {
+                    let originalContentId = "original-content-\(recordIdString)"
+
+                    // 布局完成后，立即滚动到原文框底部
+                    // 使用 anchor: .bottom 确保原文框底部与窗口底部齐平或略高
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        proxy.scrollTo(originalContentId, anchor: .bottom)
+                    }
+                }
+            }
+            // 监听原文展开状态变化，更新间距
+            .onReceive(NotificationCenter.default.publisher(for: Notification.Name("OriginalContentToggled"))) { notification in
+                if let userInfo = notification.object as? [String: Any],
+                   let recordId = userInfo["recordId"] as? UUID,
+                   let isExpanded = userInfo["isExpanded"] as? Bool {
+                    if isExpanded {
+                        originalContentExpandedIds.insert(recordId)
+                    } else {
+                        originalContentExpandedIds.remove(recordId)
+                    }
+                }
+            }
+            // 监听折叠原文后的滚动请求
+            .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ScrollToCard"))) { notification in
+                if let userInfo = notification.object as? [String: Any],
+                   let recordIdString = userInfo["recordId"] as? String {
+                    // 滚动到该卡片
+                    // UnitPoint y=0.4 会让卡片定位在容器中上部位置
+                    // 这样卡片顶部会离容器顶部有足够距离，不会被搜索栏遮挡
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        proxy.scrollTo(recordIdString, anchor: UnitPoint(x: 0.5, y: 0.4))
+                    }
+                }
+            }
+        }
             .onDrop(of: [.item, .fileURL, .text, .url], isTargeted: $isDroppingFiles) { providers in
                 // 展开模式特有：拦截内部拖拽（防止拖拽记录卡片时触发导入蒙层）
                 if store.isInternalDragging {
@@ -577,19 +617,25 @@ struct FloatingRootView: View {
     /// 列表内容视图
     @ViewBuilder
     private func listViewContent(items: [Record]) -> some View {
-        ForEach(items, id: \.id) { record in // 明确指定 id
+        ForEach(Array(items.enumerated()), id: \.element.id) { index, record in
             RecordCardView(
                 record: record,
                 expandedId: $expandedId,
                 searchTerm: $searchTerm,
                 store: store
             )
-            .equatable() // 使用 Equatable 减少重绘
+            .id(record.id.uuidString) // 使用 String 类型的 ID 以支持 ScrollViewReader 滚动（与通知中的 recordIdString 匹配）
+            .padding(.bottom, isOriginalContentExpanded(for: record) ? 130 : 0) // 展开原文时增加底部间距
             .transition(.asymmetric(
                 insertion: .opacity.combined(with: .move(edge: .top)),
                 removal: .opacity.combined(with: .scale(scale: 0.95))
             ))
         }
+    }
+
+    // 辅助函数：判断某个卡片是否展开了原文
+    private func isOriginalContentExpanded(for record: Record) -> Bool {
+        return originalContentExpandedIds.contains(record.id)
     }
 
     /// 为收藏列表提供动画效果的视图
@@ -613,7 +659,7 @@ struct FloatingRootView: View {
                     searchTerm: $searchTerm,
                     store: store
                 )
-                .equatable() // 使用 Equatable 减少重绘
+                .id(record.id.uuidString) // 使用 String 类型的 ID 以支持 ScrollViewReader 滚动（与通知中的 recordIdString 匹配）
                 .transition(.asymmetric(
                     insertion: .opacity.combined(with: .scale(scale: 0.8, anchor: .top)),
                     removal: .opacity.combined(with: .scale(scale: 0.8, anchor: .top))

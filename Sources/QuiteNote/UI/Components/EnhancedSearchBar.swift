@@ -87,24 +87,24 @@ struct EnhancedSearchBar: View {
         .onChange(of: searchTerm) { newValue in
             // 防抖处理，避免大量数据粘贴时卡死
             searchWorkItem?.cancel()
-            
-            // 立即更新UI状态
+
+            // 立即更新UI状态 - 不显示历史面板，直接搜索
             withAnimation(.spring) {
                 if !newValue.isEmpty {
-                    showHistory = true
+                    showHistory = false  // 改为 false，不显示历史面板
                     showAdvancedOptions = false
                 } else {
                     showHistory = false
                 }
             }
-            
+
             // 使用防抖更新实际搜索词
             let workItem = DispatchWorkItem {
                 DispatchQueue.main.async {
                     debouncedSearchTerm = newValue
                 }
             }
-            
+
             searchWorkItem = workItem
             DispatchQueue.main.asyncAfter(deadline: .now() + searchDebounceInterval, execute: workItem)
         }
@@ -130,8 +130,9 @@ struct EnhancedSearchBar: View {
                     performSearch()
                 }
                 .onChange(of: searchTerm) { newValue in
+                    // 手动输入时也不显示历史面板，直接搜索
                     if !newValue.isEmpty {
-                        showHistory = true
+                        showHistory = false
                         showAdvancedOptions = false
                     } else {
                         showHistory = false
