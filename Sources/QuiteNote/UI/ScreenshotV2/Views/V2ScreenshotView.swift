@@ -11,7 +11,8 @@ struct V2ScreenshotView: View {
     let snapshot: NSImage
     let screenIndex: Int
     let allWindows: [WindowInfo] // 接收真实的窗口列表
-    
+    let sessionID: UUID  // ✨ 唯一会话ID，防止旧监听器响应
+
     @State private var dragStartPoint: CGPoint?
     @State private var dragCurrentPoint: CGPoint?
     
@@ -53,7 +54,20 @@ struct V2ScreenshotView: View {
     
     /// 获取全局选区（如果选区在当前屏幕）
     private var localSelectedArea: CGRect? {
-        primaryScreenManager.selectionScreen == screen ? primaryScreenManager.selectedArea : nil
+        let isSameScreen = primaryScreenManager.selectionScreen == screen
+        let result = isSameScreen ? primaryScreenManager.selectedArea : nil
+
+        // 🔍 调试日志
+        if primaryScreenManager.selectedArea != nil {
+            print("🔍 [localSelectedArea] screen\(screenIndex)")
+            print("   selectionScreen: \(String(describing: primaryScreenManager.selectionScreen?.localizedName))")
+            print("   current screen: \(screen.localizedName)")
+            print("   isSameScreen: \(isSameScreen)")
+            print("   selectedArea: \(String(describing: primaryScreenManager.selectedArea))")
+            print("   result: \(String(describing: result))")
+        }
+
+        return result
     }
     
     /// 是否有任何屏幕存在选区
@@ -209,7 +223,14 @@ struct V2ScreenshotView: View {
     // 生成最终高清图片（合并底图和标注）
     private func generateFinalImage(rect: CGRect) -> NSImage? {
         guard rect.width > 0 && rect.height > 0 else { return nil }
-        
+
+        // 🔍 调试日志
+        print("🔍 [generateFinalImage] screen\(screenIndex)")
+        print("   rect (input): \(rect)")
+        print("   screen: \(screen.localizedName)")
+        print("   screen.frame: \(screen.frame)")
+        print("   snapshot.size: \(snapshot.size)")
+
         // 1. 获取底层的 CGImage 和 真实的缩放倍率
         // ⚠️ 不直接使用 screen.backingScaleFactor，因为系统设置可能导致差异
         guard let fullCGImage = snapshot.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
@@ -487,15 +508,29 @@ struct V2ScreenshotView: View {
                 }
             }
 
+            // ✨ 关键修复：使用 sessionID 防止旧监听器响应
+            // 捕获当前的 sessionID，闭包会使用这个值
+            let currentSessionID = sessionID
+
             // 监听保存通知 (Command+S)
-            NotificationCenter.default.addObserver(forName: NSNotification.Name("SaveScreenshot"), object: nil, queue: .main) { _ in
+            NotificationCenter.default.addObserver(forName: NSNotification.Name("SaveScreenshot"), object: nil, queue: .main) { [self] _ in
+                // ✅ 检查 sessionID 是否匹配，防止旧空间的监听器响应
+                guard V2ScreenshotController.currentSessionID == currentSessionID else {
+                    print("⚠️ [SaveScreenshot] Ignored - session mismatch (expected: \(currentSessionID))")
+                    return
+                }
                 if let selection = localSelectedArea {
                     saveToFlashNotes(rect: selection)
                 }
             }
-            
+
             // 监听复制通知 (Command+C)
-            NotificationCenter.default.addObserver(forName: NSNotification.Name("CopyScreenshot"), object: nil, queue: .main) { _ in
+            NotificationCenter.default.addObserver(forName: NSNotification.Name("CopyScreenshot"), object: nil, queue: .main) { [self] _ in
+                // ✅ 检查 sessionID 是否匹配，防止旧空间的监听器响应
+                guard V2ScreenshotController.currentSessionID == currentSessionID else {
+                    print("⚠️ [CopyScreenshot] Ignored - session mismatch (expected: \(currentSessionID))")
+                    return
+                }
                 if let selection = localSelectedArea {
                     saveToClipboard(rect: selection)
                 }

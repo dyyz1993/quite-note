@@ -17,13 +17,16 @@ class V2ScreenshotController {
     /// ✨ 新增：互斥锁，确保同一时间只有一个截图流程在运行
     private static var isShowing = false
 
+    /// ✨ 当前截图会话的唯一ID
+    internal static var currentSessionID: UUID?
+
     static func show() {
         // ✨ 互斥锁逻辑：如果已经在显示中，则直接返回，防止重复触发
         guard !isShowing else {
             v2Logger.info("Controller - Already showing, ignoring duplicate show() request")
             return
         }
-        
+
         // 先检查是否已经有 panel，如果有也说明在显示中
         if !debugPanels.isEmpty {
             v2Logger.info("Controller - Panels not empty, ignoring show() request")
@@ -31,7 +34,12 @@ class V2ScreenshotController {
         }
 
         isShowing = true
-        
+
+        // ✨ 生成新的会话ID
+        let sessionID = UUID()
+        currentSessionID = sessionID
+        v2Logger.info("Controller - Starting new screenshot session: \(sessionID)")
+
         // 清理可能残留的状态
         cleanup()
 
@@ -68,7 +76,7 @@ class V2ScreenshotController {
             v2Logger.info("Creating debug window for Screen \(index): \(screen.frame.debugDescription, privacy: .public)")
 
             let snapshot = V2ScreenshotController.captureScreen(screen)
-            let view = V2ScreenshotView(screen: screen, snapshot: snapshot, screenIndex: index, allWindows: allWindows)
+            let view = V2ScreenshotView(screen: screen, snapshot: snapshot, screenIndex: index, allWindows: allWindows, sessionID: sessionID)
 
             // ✅ 使用支持文本输入的 V2TextInputPanel
             let panel = V2TextInputPanel(
@@ -133,35 +141,52 @@ class V2ScreenshotController {
         cleanup()
         // 最后重置状态锁
         isShowing = false
+        // ✨ 清除会话ID
+        currentSessionID = nil
     }
 
     private static func setupKeyboardMonitor() {
         // 先重置状态
         V2PrimaryScreenStateManager.shared.reset()
-        
+
+        // ✨ 使用 Local Monitor（不需要辅助功能权限）
+        // 同时配合 Panel 的 resignsKey 处理，确保失去焦点后重新激活
         localMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             // 只有在显示截图界面时才拦截
             guard !debugPanels.isEmpty else { return event }
-            
+
             // 处理 ESC (53)
             if event.keyCode == 53 {
                 handleGlobalExitCommand()
-                return nil
+                return nil  // 阻止事件传递
             }
-            
+
             // 处理 Command+C/S
             let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
             if flags == .command {
                 if event.charactersIgnoringModifiers == "s" {
                     NotificationCenter.default.post(name: NSNotification.Name("SaveScreenshot"), object: nil)
-                    return nil
+                    return nil  // 阻止事件传递
                 } else if event.charactersIgnoringModifiers == "c" {
                     NotificationCenter.default.post(name: NSNotification.Name("CopyScreenshot"), object: nil)
-                    return nil
+                    return nil  // 阻止事件传递
                 }
             }
-            
+
             return event
+        }
+
+        // ✨ 新增：监听应用失去焦点事件，自动重新激活 Panel
+        NotificationCenter.default.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { _ in
+            guard !debugPanels.isEmpty else { return }
+            // 延迟一点重新激活，确保系统完成焦点切换
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                // 重新激活所有 Panel
+                for panel in debugPanels {
+                    panel.orderFrontRegardless()
+                    panel.becomeKey()
+                }
+            }
         }
     }
     
