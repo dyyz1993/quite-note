@@ -185,10 +185,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// 处理粘贴事件（无输入框聚焦时）
     private func handleGlobalPaste() {
-        // 检查当前焦点是否在文本输入框中
+        // 1. 检查当前焦点是否在文本输入框中
         if let focusedView = NSApp.keyWindow?.firstResponder,
            focusedView is NSTextView || focusedView is NSTextField {
             // 如果焦点在文本输入框中，不处理，让系统默认粘贴行为生效
+            return
+        }
+        
+        // 2. 只有当鼠标悬停在悬浮窗或浮球上时，才允许全局粘贴自动采集
+        // 这是为了防止用户在其他应用中正常粘贴时，也被 Quite Note 误抓取
+        guard let floatingPanel = floatingPanelController, floatingPanel.isMouseOverPanel() else {
             return
         }
         

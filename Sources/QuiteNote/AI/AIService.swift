@@ -162,6 +162,9 @@ final class AIService: AIServiceProtocol {
 
     /// 获取 OpenAI API 密钥（延迟加载，避免重复访问 Keychain）
     private func getOpenAIAPIKey() -> String? {
+        queueLock.lock()
+        defer { queueLock.unlock() }
+        
         if !hasCheckedAPIKey {
             cachedAPIKey = KeychainHelper.shared.read(service: "QuiteNote", account: "openai_api_key")
             hasCheckedAPIKey = true
@@ -189,7 +192,14 @@ final class AIService: AIServiceProtocol {
             return
         }
         
-        let url = URL(string: "\(openAIBaseURL)/chat/completions")!
+        guard let url = URL(string: "\(openAIBaseURL)/chat/completions") else {
+            print("[AI] 错误: 无效的 OpenAI Base URL: \(openAIBaseURL)")
+            let baseTitle = String(content.prefix(max(0, min(titleLimit, 15))))
+            let result = SummaryResult(title: baseTitle, summary: "", confidence: 0.0, tags: [], keywords: [])
+            completion(.success(result))
+            return
+        }
+        
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.addValue("application/json", forHTTPHeaderField: "Content-Type")

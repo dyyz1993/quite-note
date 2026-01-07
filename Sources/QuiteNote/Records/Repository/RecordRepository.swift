@@ -27,33 +27,83 @@ final class RecordRepository {
 
     /// 分页加载记录
     func fetchRecords(limit: Int = 50, offset: Int = 0) throws -> [Record] {
-        let cds = try stack.fetchRecords(limit: limit, offset: offset)
-        return cds.map { cdRecordToRecord($0) }
+        var records: [Record] = []
+        var fetchError: Error?
+
+        stack.context.performAndWait {
+            do {
+                let cds = try stack.fetchRecords(limit: limit, offset: offset)
+                records = cds.map { self.cdRecordToRecord($0) }
+            } catch {
+                fetchError = error
+            }
+        }
+
+        if let error = fetchError { throw error }
+        return records
     }
 
     /// 根据 ID 查找记录
     func find(id: UUID) throws -> Record? {
-        let req = NSFetchRequest<CDRecord>(entityName: "CDRecord")
-        req.predicate = NSPredicate(format: "id == %@", id as CVarArg)
-        req.fetchLimit = 1
+        var record: Record?
+        var fetchError: Error?
 
-        guard let cd = try stack.context.fetch(req).first else { return nil }
-        return cdRecordToRecord(cd)
+        stack.context.performAndWait {
+            do {
+                let req = NSFetchRequest<CDRecord>(entityName: "CDRecord")
+                req.predicate = NSPredicate(format: "id == %@", id as CVarArg)
+                req.fetchLimit = 1
+
+                if let cd = try stack.context.fetch(req).first {
+                    record = self.cdRecordToRecord(cd)
+                }
+            } catch {
+                fetchError = error
+            }
+        }
+
+        if let error = fetchError { throw error }
+        return record
     }
 
     /// 根据哈希查找记录
     func findByHash(_ hash: String) throws -> Record? {
-        let req = NSFetchRequest<CDRecord>(entityName: "CDRecord")
-        req.predicate = NSPredicate(format: "digest == %@", hash)
-        req.fetchLimit = 1
+        var record: Record?
+        var fetchError: Error?
 
-        guard let cd = try stack.context.fetch(req).first else { return nil }
-        return cdRecordToRecord(cd)
+        stack.context.performAndWait {
+            do {
+                let req = NSFetchRequest<CDRecord>(entityName: "CDRecord")
+                req.predicate = NSPredicate(format: "digest == %@", hash)
+                req.fetchLimit = 1
+
+                if let cd = try stack.context.fetch(req).first {
+                    record = self.cdRecordToRecord(cd)
+                }
+            } catch {
+                fetchError = error
+            }
+        }
+
+        if let error = fetchError { throw error }
+        return record
     }
 
     /// 获取记录总数
     func getCount() throws -> Int {
-        try stack.getRecordsCount()
+        var count = 0
+        var fetchError: Error?
+
+        stack.context.performAndWait {
+            do {
+                count = try stack.getRecordsCount()
+            } catch {
+                fetchError = error
+            }
+        }
+
+        if let error = fetchError { throw error }
+        return count
     }
 
     // MARK: - 保存操作
@@ -75,11 +125,19 @@ final class RecordRepository {
 
     /// 同步保存新记录（用于导入等需要立即确认的场景）
     func saveSync(_ record: Record) throws {
-        let context = stack.context
-        let cd = CDRecord(context: context)
-        mapRecordToCDRecord(record, into: cd)
-        try context.save()
-        Self.logger.info("新记录已同步保存到数据库: \(record.id)")
+        var saveError: Error?
+        stack.context.performAndWait {
+            let context = self.stack.context
+            let cd = CDRecord(context: context)
+            self.mapRecordToCDRecord(record, into: cd)
+            do {
+                try context.save()
+                Self.logger.info("新记录已同步保存到数据库: \(record.id)")
+            } catch {
+                saveError = error
+            }
+        }
+        if let error = saveError { throw error }
     }
 
     /// 更新记录时间戳
@@ -87,9 +145,14 @@ final class RecordRepository {
         stack.performBackgroundTask { context in
             let req = NSFetchRequest<CDRecord>(entityName: "CDRecord")
             req.predicate = NSPredicate(format: "id == %@", id as CVarArg)
-            guard let cd = try? context.fetch(req).first else { return }
-            cd.createdAt = date
-            try? context.save()
+            do {
+                if let cd = try context.fetch(req).first {
+                    cd.createdAt = date
+                    try context.save()
+                }
+            } catch {
+                Self.logger.error("更新时间戳失败: \(error.localizedDescription)")
+            }
         }
     }
 
@@ -98,24 +161,34 @@ final class RecordRepository {
         stack.performBackgroundTask { context in
             let req = NSFetchRequest<CDRecord>(entityName: "CDRecord")
             req.predicate = NSPredicate(format: "id == %@", id as CVarArg)
-            guard let cd = try? context.fetch(req).first else { return }
-            cd.sourceUrl = sourceUrl
-            try? context.save()
+            do {
+                if let cd = try context.fetch(req).first {
+                    cd.sourceUrl = sourceUrl
+                    try context.save()
+                }
+            } catch {
+                Self.logger.error("更新 sourceUrl 失败: \(error.localizedDescription)")
+            }
         }
     }
 
-    /// 更新记录的大小
+    /// 更新记录的文件大小
     func updateSize(id: UUID, size: Int64) throws {
         stack.performBackgroundTask { context in
             let req = NSFetchRequest<CDRecord>(entityName: "CDRecord")
             req.predicate = NSPredicate(format: "id == %@", id as CVarArg)
-            guard let cd = try? context.fetch(req).first else { return }
-            cd.size = size
-            try? context.save()
+            do {
+                if let cd = try context.fetch(req).first {
+                    cd.size = size
+                    try context.save()
+                }
+            } catch {
+                Self.logger.error("更新记录大小失败: \(error.localizedDescription)")
+            }
         }
     }
 
-    /// 更新记录的 AI 信息
+    /// 更新记录的 AI 处理结果
     func updateAI(
         id: UUID,
         title: String? = nil,
@@ -129,16 +202,20 @@ final class RecordRepository {
             guard let self = self else { return }
             let req = NSFetchRequest<CDRecord>(entityName: "CDRecord")
             req.predicate = NSPredicate(format: "id == %@", id as CVarArg)
-            guard let cd = try? context.fetch(req).first else { return }
+            do {
+                if let cd = try context.fetch(req).first {
+                    if let title = title { cd.title = title }
+                    if let summary = summary { cd.summary = summary }
+                    if let confidence = confidence { cd.summaryConfidence = confidence }
+                    if let aiStatus = aiStatus { cd.aiStatus = aiStatus }
+                    if let tags = tags { cd.tagsRaw = self.toJSONString(tags) }
+                    if let keywords = keywords { cd.keywordsRaw = self.toJSONString(keywords) }
 
-            if let title = title { cd.title = title }
-            if let summary = summary { cd.summary = summary }
-            if let confidence = confidence { cd.summaryConfidence = confidence }
-            if let aiStatus = aiStatus { cd.aiStatus = aiStatus }
-            if let tags = tags { cd.tagsRaw = self.toJSONString(tags) }
-            if let keywords = keywords { cd.keywordsRaw = self.toJSONString(keywords) }
-
-            try? context.save()
+                    try context.save()
+                }
+            } catch {
+                Self.logger.error("更新 AI 结果失败: \(error.localizedDescription)")
+            }
         }
     }
 
@@ -147,9 +224,14 @@ final class RecordRepository {
         stack.performBackgroundTask { context in
             let req = NSFetchRequest<CDRecord>(entityName: "CDRecord")
             req.predicate = NSPredicate(format: "id == %@", id as CVarArg)
-            guard let cd = try? context.fetch(req).first else { return }
-            cd.starred = !cd.starred
-            try? context.save()
+            do {
+                if let cd = try context.fetch(req).first {
+                    cd.starred = !cd.starred
+                    try context.save()
+                }
+            } catch {
+                Self.logger.error("切换收藏状态失败: \(error.localizedDescription)")
+            }
         }
     }
 
@@ -160,9 +242,14 @@ final class RecordRepository {
         stack.performBackgroundTask { context in
             let req = NSFetchRequest<CDRecord>(entityName: "CDRecord")
             req.predicate = NSPredicate(format: "id == %@", id as CVarArg)
-            guard let cd = try? context.fetch(req).first else { return }
-            context.delete(cd)
-            try? context.save()
+            do {
+                if let cd = try context.fetch(req).first {
+                    context.delete(cd)
+                    try context.save()
+                }
+            } catch {
+                Self.logger.error("删除记录失败: \(error.localizedDescription)")
+            }
         }
     }
 
@@ -171,8 +258,12 @@ final class RecordRepository {
         stack.performBackgroundTask { context in
             let req = NSFetchRequest<NSFetchRequestResult>(entityName: "CDRecord")
             let deleteReq = NSBatchDeleteRequest(fetchRequest: req)
-            _ = try? context.execute(deleteReq)
-            try? context.save()
+            do {
+                try context.execute(deleteReq)
+                try context.save()
+            } catch {
+                Self.logger.error("清空记录失败: \(error.localizedDescription)")
+            }
         }
     }
 
@@ -182,11 +273,14 @@ final class RecordRepository {
         stack.performBackgroundTask { context in
             let req = NSFetchRequest<CDRecord>(entityName: "CDRecord")
             req.predicate = NSPredicate(format: "id IN %@", ids)
-            if let objects = try? context.fetch(req) {
+            do {
+                let objects = try context.fetch(req)
                 for obj in objects {
                     obj.aiStatus = nil
                 }
-                try? context.save()
+                try context.save()
+            } catch {
+                Self.logger.error("清理 pending 状态失败: \(error.localizedDescription)")
             }
         }
     }
@@ -197,11 +291,11 @@ final class RecordRepository {
         // 检查并重置 pending 状态的记录
         let aiStatus = cd.aiStatus == "pending" ? nil : cd.aiStatus
         return Record(
-            id: cd.id,
+            id: cd.id ?? UUID(),
             title: cd.title,
-            content: cd.content,
-            createdAt: cd.createdAt,
-            hash: cd.digest,
+            content: cd.content ?? "",
+            createdAt: cd.createdAt ?? Date(),
+            hash: cd.digest ?? "",
             aiStatus: aiStatus,
             summary: cd.summary,
             summaryConfidence: cd.summaryConfidence,
@@ -219,13 +313,13 @@ final class RecordRepository {
 
     private func mapRecordToCDRecord(_ record: Record, into cd: CDRecord) {
         cd.id = record.id
-        cd.title = record.title
         cd.content = record.content
         cd.createdAt = record.createdAt
         cd.digest = record.hash
         cd.aiStatus = record.aiStatus
+        cd.title = record.title
         cd.summary = record.summary
-        cd.summaryConfidence = record.summaryConfidence ?? 0
+        cd.summaryConfidence = record.summaryConfidence ?? 0.0
         cd.starred = record.starred
         cd.copiedAt = record.copiedAt
         cd.tagsRaw = toJSONString(record.tags)

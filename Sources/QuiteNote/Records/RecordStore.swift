@@ -463,8 +463,23 @@ final class RecordStore: ObservableObject {
         print("[DEBUG] 记录已插入数据库，ID: \(id)")
 
         // 3. 更新内存列表并排序
-        DispatchQueue.main.async {
-            self.records.insert(record, at: 0)
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            
+            var recordWithStatus = record
+            
+            // 4. 触发 AI 总结 (如果启用)
+            self.syncToAICoordinator()
+            let shouldAI = self.aiCoordinator.enableAI && !skipAI && content.count >= self.aiCoordinator.summaryTrigger
+            
+            if shouldAI {
+                recordWithStatus.aiStatus = "pending"
+                Self.logger.info("开始调用AI总结，内容长度: \(content.count)")
+            } else {
+                Self.logger.info("AI功能未启用、显式跳过或内容长度不足，跳过AI总结")
+            }
+            
+            self.records.insert(recordWithStatus, at: 0)
             print("[DEBUG] 记录已插入内存数组，当前 records.count: \(self.records.count)")
             self.aiCoordinator.markTagsNeedUpdate()
             self.sortRecordsInPlace()
@@ -489,43 +504,32 @@ final class RecordStore: ObservableObject {
                     }
                 }
             }
-        }
+            
+            // 如果需要 AI，则在主线程获取标签后触发
+            if shouldAI {
+                let existingTags = self.aiCoordinator.getAllUniqueTags(from: self.records)
+                self.aiCoordinator.summarize(record: recordWithStatus, existingTags: existingTags) { [weak self] update in
+                    guard let self = self else { return }
 
-        // 4. 触发 AI 总结 (如果启用)
-        syncToAICoordinator()
-        Self.logger.info("AI调用条件检查: enableAI=\(self.aiCoordinator.enableAI), skipAI=\(skipAI), content.count=\(content.count), summaryTrigger=\(self.aiCoordinator.summaryTrigger)")
-        guard self.aiCoordinator.enableAI, !skipAI, content.count >= self.aiCoordinator.summaryTrigger else {
-            Self.logger.info("AI功能未启用、显式跳过或内容长度不足，跳过AI总结")
-            return
-        }
-
-        Self.logger.info("开始调用AI总结，内容长度: \(content.count)")
-        if let idx = records.firstIndex(where: { $0.id == id }) {
-            records[idx].aiStatus = "pending"
-        }
-
-        let existingTags = self.aiCoordinator.getAllUniqueTags(from: records)
-
-        self.aiCoordinator.summarize(record: record, existingTags: existingTags) { [weak self] update in
-            guard let self = self else { return }
-
-            switch update {
-            case .none:
-                break
-            case .failure:
-                self.updateRecordAI(id: id, title: nil, summary: nil, confidence: nil, aiStatus: "fail")
-            case .success(let title, let summary, let confidence, let tags, let keywords):
-                self.updateRecordAI(
-                    id: id,
-                    title: title,
-                    summary: summary,
-                    confidence: confidence,
-                    aiStatus: "success",
-                    tags: tags,
-                    keywords: keywords
-                )
-                self.notifier.markAISuccess()
-                self.lastAISuccessAt = Date()
+                    switch update {
+                    case .none:
+                        break
+                    case .failure:
+                        self.updateRecordAI(id: id, title: nil, summary: nil, confidence: nil, aiStatus: "fail")
+                    case .success(let title, let summary, let confidence, let tags, let keywords):
+                        self.updateRecordAI(
+                            id: id,
+                            title: title,
+                            summary: summary,
+                            confidence: confidence,
+                            aiStatus: "success",
+                            tags: tags,
+                            keywords: keywords
+                        )
+                        self.notifier.markAISuccess()
+                        self.lastAISuccessAt = Date()
+                    }
+                }
             }
         }
     }
@@ -730,32 +734,34 @@ final class RecordStore: ObservableObject {
             records: records,
             batchSize: batchSize
         ) { [weak self] index, id, record, update in
-            guard let self = self else { return }
+            DispatchQueue.main.async {
+                guard let self = self else { return }
 
-            // 更新 pending 状态
-            if case .none = update {
-                if let idx = self.records.firstIndex(where: { $0.id == id }) {
-                    self.records[idx].aiStatus = "pending"
-                }
-            } else {
-                // 处理结果
-                switch update {
-                case .none:
-                    break
-                case .failure:
-                    self.updateRecordAI(id: id, title: nil, summary: nil, confidence: nil, aiStatus: "fail")
-                case .success(let title, let summary, let confidence, let tags, let keywords):
-                    self.updateRecordAI(
-                        id: id,
-                        title: title,
-                        summary: summary,
-                        confidence: confidence,
-                        aiStatus: "success",
-                        tags: tags,
-                        keywords: keywords
-                    )
-                    self.notifier.markAISuccess()
-                    self.lastAISuccessAt = Date()
+                // 更新 pending 状态
+                if case .none = update {
+                    if let idx = self.records.firstIndex(where: { $0.id == id }) {
+                        self.records[idx].aiStatus = "pending"
+                    }
+                } else {
+                    // 处理结果
+                    switch update {
+                    case .none:
+                        break
+                    case .failure:
+                        self.updateRecordAI(id: id, title: nil, summary: nil, confidence: nil, aiStatus: "fail")
+                    case .success(let title, let summary, let confidence, let tags, let keywords):
+                        self.updateRecordAI(
+                            id: id,
+                            title: title,
+                            summary: summary,
+                            confidence: confidence,
+                            aiStatus: "success",
+                            tags: tags,
+                            keywords: keywords
+                        )
+                        self.notifier.markAISuccess()
+                        self.lastAISuccessAt = Date()
+                    }
                 }
             }
         } completion: {

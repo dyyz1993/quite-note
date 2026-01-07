@@ -68,6 +68,13 @@ final class FloatingPanelController {
     private var previousApp: NSRunningApplication? // 记录焦点夺取前的活跃应用
 
     var isVisible: Bool { panel.isVisible }
+    
+    /// 检查鼠标是否在面板或浮球上
+    func isMouseOverPanel() -> Bool {
+        guard panel.isVisible else { return false }
+        let mouseLocation = NSEvent.mouseLocation
+        return panel.frame.contains(mouseLocation)
+    }
 
     /// 析构函数，确保清理所有资源
     deinit {
