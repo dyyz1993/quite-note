@@ -61,35 +61,36 @@ class StickyNoteWindow: NSPanel, NSWindowDelegate {
 class StickyNoteHostingView<Content: View>: NSHostingView<Content> {
     private var trackingArea: NSTrackingArea?
     private var focusTimer: Timer?
+    private var blurWorkItem: DispatchWorkItem? // 新增：可取消的失焦任务
     private let noteId: UUID
-    
+
     init(rootView: Content, noteId: UUID) {
         self.noteId = noteId
         super.init(rootView: rootView)
     }
-    
+
     @MainActor required dynamic init(rootView: Content) {
         fatalError("init(rootView:) has not been implemented")
     }
-    
+
     @MainActor required dynamic init?(coder aDecoder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
-    
+
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
-        
+
         if let existingArea = trackingArea {
             removeTrackingArea(existingArea)
         }
-        
+
         // 关键修复：扩大追踪区域，包含窗口的所有边缘
         let options: NSTrackingArea.Options = [
             .mouseEnteredAndExited,
             .activeAlways,
             .inVisibleRect
         ]
-        
+
         let area = NSTrackingArea(
             rect: self.bounds,
             options: options,
@@ -99,8 +100,12 @@ class StickyNoteHostingView<Content: View>: NSHostingView<Content> {
         addTrackingArea(area)
         self.trackingArea = area
     }
-    
+
     override func mouseEntered(with event: NSEvent) {
+        // 取消之前的失焦任务
+        blurWorkItem?.cancel()
+        blurWorkItem = nil
+
         focusTimer?.invalidate()
         focusTimer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: false) { [weak self] _ in
             guard let self = self else { return }
@@ -109,37 +114,53 @@ class StickyNoteHostingView<Content: View>: NSHostingView<Content> {
             NotificationCenter.default.post(name: NSNotification.Name("StickyNoteFocus"), object: self.noteId)
         }
     }
-    
+
     override func mouseExited(with event: NSEvent) {
         focusTimer?.invalidate()
         focusTimer = nil
-        
-        // 延迟失焦，给用户一定的反应时间
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+
+        // 取消之前的失焦任务
+        blurWorkItem?.cancel()
+
+        // 创建新的失焦任务
+        let workItem = DispatchWorkItem { [weak self] in
             guard let self = self, let window = self.window else { return }
-            
+
+            // 检查窗口是否仍然存在且可见
+            guard window.isVisible else { return }
+
             // 获取当前鼠标位置（屏幕坐标）
             let mouseLocation = NSEvent.mouseLocation
-            
+
             // 检查鼠标是否在窗口范围内（增加更宽容的 20px 容错边距）
             let windowFrame = window.frame.insetBy(dx: -20, dy: -20)
             let isMouseStillInside = windowFrame.contains(mouseLocation)
-            
+
             if !isMouseStillInside {
                 // 如果正在编辑，除非鼠标离开更远（150px），否则不失焦
                 if let textView = window.firstResponder as? NSTextView, textView.isEditable {
                     let extendedFrame = window.frame.insetBy(dx: -150, dy: -150)
                     if extendedFrame.contains(mouseLocation) {
-                        return 
+                        return
                     }
                 }
-                
-                // 执行失焦
+
+                // 执行失焦 - 只有当窗口确实是 key 且鼠标离开了才尝试 resign
                 if window.isKeyWindow {
-                    // 只有当窗口确实是 Key 且鼠标离开了才尝试 resign
                     NotificationCenter.default.post(name: NSNotification.Name("StickyNoteBlur"), object: self.noteId)
                 }
             }
         }
+
+        blurWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: workItem)
+    }
+
+    deinit {
+        // 清理所有任务
+        focusTimer?.invalidate()
+        focusTimer = nil
+        blurWorkItem?.cancel()
+        blurWorkItem = nil
     }
 }

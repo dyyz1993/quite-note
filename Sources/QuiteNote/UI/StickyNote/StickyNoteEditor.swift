@@ -811,6 +811,46 @@ struct StickyNoteEditor: NSViewRepresentable {
 
 /// 自定义 NSTextView 以处理特殊的交互和显示
 class StickyNoteTextView: NSTextView {
+    /// 覆盖粘贴方法，粘贴时自动清除富文本格式，只保留纯文本
+    override func paste(_ sender: Any?) {
+        // 从剪贴板读取纯文本，避免粘贴带样式的富文本
+        guard let plainText = NSPasteboard.general.string(forType: .string) else {
+            super.paste(sender)
+            return
+        }
+
+        // 获取当前选区
+        let selectedRange = self.selectedRange()
+
+        // 创建纯文本的 NSAttributedString，应用默认样式
+        let baseFontSize: CGFloat = 12
+        let font = NSFont.systemFont(ofSize: baseFontSize)
+        let textColor = NSColor.white
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.lineSpacing = 4
+        paragraphStyle.minimumLineHeight = 18
+        paragraphStyle.maximumLineHeight = 18
+
+        let attributedString = NSMutableAttributedString(string: plainText)
+        attributedString.addAttributes([
+            .font: font,
+            .foregroundColor: textColor,
+            .paragraphStyle: paragraphStyle
+        ], range: NSRange(location: 0, length: attributedString.length))
+
+        // 插入纯文本
+        textStorage?.beginEditing()
+        textStorage?.replaceCharacters(in: selectedRange, with: attributedString)
+        textStorage?.endEditing()
+
+        // 设置新的光标位置
+        let newCursorLocation = selectedRange.location + attributedString.length
+        setSelectedRange(NSRange(location: newCursorLocation, length: 0))
+
+        // 通知代理内容已更改
+        delegate?.textDidChange?(Notification(name: NSText.didChangeNotification, object: self))
+    }
+
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
         

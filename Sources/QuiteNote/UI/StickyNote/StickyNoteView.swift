@@ -7,10 +7,10 @@ struct StickyNoteView: View {
     @State private var isHovered = false
     @FocusState private var isFocused: Bool
     @State private var showControlsOverride: Bool = false // 强制隐藏控制条
-    
+
     // 命令发布者，用于工具栏与编辑器的通信
     private let commandPublisher = PassthroughSubject<StickyNoteCommand, Never>()
-    
+
     var body: some View {
         ZStack(alignment: .bottom) {
             // 背景和主体
@@ -28,13 +28,13 @@ struct StickyNoteView: View {
                     .onHover { hovering in
                         if hovering { isHovered = true }
                     }
-                
+
                 // 内容区域 - 占据剩余所有空间
                 ZStack(alignment: .bottom) {
                     StickyNoteEditor(
                         text: Binding(
                             get: { note.currentContent },
-                            set: { val in 
+                            set: { val in
                                 note.currentContent = val
                                 StickyNoteManager.shared.updateNote(note)
                             }
@@ -52,7 +52,7 @@ struct StickyNoteView: View {
                     )
                     .padding(.bottom, 42) // 核心：始终保留底部预留空间，防止工具栏遮挡最后一行文字，同时保证不抖动
                     .focused($isFocused)
-                    
+
                     // 底部控制条 - 浮动在预留空间之上
                     if isFocused && !showControlsOverride {
                         StickyNoteToolbar(note: $note, isFocused: $isFocused, onCommand: { command in
@@ -69,44 +69,40 @@ struct StickyNoteView: View {
                 .background(Color.themeBackground.opacity(isFocused ? 0.98 : 0.9))
             }
             .clipShape(RoundedRectangle(cornerRadius: ThemeRadius.lg.rawValue))
+
+            // 边框 - 使用第一行颜色（如果不是白色）
             .overlay(
                 RoundedRectangle(cornerRadius: ThemeRadius.lg.rawValue)
-                    .stroke(isFocused ? Color.themeBlue500.opacity(0.5) : Color.themeBorder, lineWidth: 1)
+                    .stroke(borderColor, lineWidth: 1)
             )
-            // ... 保持原有通知处理不变 ...
-            .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("StickyNoteBlur"))) { notification in
-                    // 这里的通知由 StickyNoteWindow 发出，确保失焦时立即隐藏
-                    if let blurId = notification.object as? UUID, blurId == note.id {
-                        withAnimation(.themeDuration300) {
-                            showControlsOverride = true
-                            isFocused = false
+
+            // 失焦蒙层 - 显示项目名
+            if !isFocused {
+                let projectName = projectInfo.name
+                if !projectName.isEmpty {
+                    ZStack {
+                        // 半透明蒙层
+                        Color.themeBackground.opacity(0.7)
+                            .clipShape(RoundedRectangle(cornerRadius: ThemeRadius.lg.rawValue))
+
+                        // 项目名显示
+                        VStack(spacing: 4) {
+                            if let projectColor = projectInfo.color {
+                                // 使用第一行的颜色作为项目名颜色
+                                Text(projectName)
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundColor(projectColor)
+                            } else {
+                                Text(projectName)
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundColor(.themeTextPrimary)
+                            }
                         }
                     }
+                    .transition(.opacity)
                 }
-                .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification)) { notification in
-                    // 监听窗口失去 key 状态，确保失焦逻辑触发
-                    if let window = notification.object as? NSWindow, 
-                       (window as? StickyNoteWindow)?.contentView is NSHostingView<StickyNoteView> {
-                        withAnimation(.themeDuration300) {
-                            showControlsOverride = true
-                            isFocused = false
-                        }
-                    }
-                }
-                .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("StickyNoteFocus"))) { notification in
-                    // 这里的通知由 StickyNoteWindow 发出，确保获得焦点时直接可以输入
-                    if let focusId = notification.object as? UUID, focusId == note.id {
-                        showControlsOverride = false
-                        isFocused = true
-                    }
-                }
-                .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-                    // 应用重新激活时，如果窗口是 key，尝试聚焦编辑器
-                    if let window = NSApp.keyWindow, (window as? StickyNoteWindow)?.contentView is NSHostingView<StickyNoteView> {
-                        isFocused = true
-                    }
-                }
-            
+            }
+
             // 调整尺寸的三个点
             if isFocused && !showControlsOverride {
                 HStack {
@@ -134,8 +130,66 @@ struct StickyNoteView: View {
                 showControlsOverride = false
             }
         }
+        // 通知处理
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("StickyNoteBlur"))) { notification in
+            // 这里的通知由 StickyNoteWindow 发出，确保失焦时立即隐藏
+            // 增加状态检查：只有当前是聚焦状态才处理，避免重复触发
+            if let blurId = notification.object as? UUID, blurId == note.id, isFocused {
+                withAnimation(.themeDuration300) {
+                    showControlsOverride = true
+                    isFocused = false
+                }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification)) { notification in
+            // 监听窗口失去 key 状态，确保失焦逻辑触发
+            // 增加窗口类型检查和状态检查，防止多个窗口互相干扰
+            if let window = notification.object as? StickyNoteWindow,
+               window.contentView is NSHostingView<StickyNoteView>,
+               isFocused {
+                withAnimation(.themeDuration300) {
+                    showControlsOverride = true
+                    isFocused = false
+                }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("StickyNoteFocus"))) { notification in
+            // 这里的通知由 StickyNoteWindow 发出，确保获得焦点时直接可以输入
+            // 增加状态检查：只有当前不是聚焦状态才处理，避免重复触发
+            if let focusId = notification.object as? UUID, focusId == note.id, !isFocused {
+                showControlsOverride = false
+                isFocused = true
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            // 应用重新激活时，如果窗口是 key，尝试聚焦编辑器
+            if let window = NSApp.keyWindow, (window as? StickyNoteWindow)?.contentView is NSHostingView<StickyNoteView> {
+                isFocused = true
+            }
+        }
     }
-    
+
+    // MARK: - Computed Properties
+
+    private var projectInfo: (name: String, color: Color?) {
+        note.extractProjectInfo()
+    }
+
+    private var borderColor: Color {
+        let projectInfo = note.extractProjectInfo()
+        if let projectColor = projectInfo.color {
+            // 检查是否是白色/浅色（如果是白色则使用默认边框）
+            if let cgColor = projectColor.cgColor,
+               let components = cgColor.components,
+               components.count >= 3,
+               components[1] > 0.9 && components[0] > 0.9 {
+                return Color.themeBorder
+            }
+            return projectColor
+        }
+        return Color.themeBorder
+    }
+
     // MARK: - Helper Methods
 
     private func saveToRecords() {
@@ -151,7 +205,7 @@ struct StickyNoteToolbar: View {
     @Binding var note: StickyNoteModel
     @FocusState.Binding var isFocused: Bool
     var onCommand: (StickyNoteCommand) -> Void
-    
+
     var body: some View {
         HStack(spacing: 0) {
             // 1. 编辑工具组
@@ -159,14 +213,14 @@ struct StickyNoteToolbar: View {
                 StickyNoteToolbarButton(name: .square, tooltip: "待办列表", action: { onCommand(.toggleTodo) })
                 StickyNoteToolbarButton(name: .bold, tooltip: "加粗", action: { onCommand(.toggleBold) })
                 StickyNoteToolbarButton(name: .strikethrough, tooltip: "删除线", action: { onCommand(.toggleStrikethrough) })
-                
+
                 // 颜色选择器
                 HStack(spacing: 4) {
                     ColorDot(color: .themeYellow400, hex: "FACC15", onCommand: onCommand)
                     ColorDot(color: .themeBlue400, hex: "60A5FA", onCommand: onCommand)
                     ColorDot(color: .themeGreen400, hex: "4ADE80", onCommand: onCommand)
                     ColorDot(color: .themeRed400, hex: "F87171", onCommand: onCommand)
-                    
+
                     Button(action: { onCommand(.resetFormat) }) {
                         Image(systemName: "arrow.counterclockwise.circle")
                             .font(.system(size: 10))
@@ -178,9 +232,9 @@ struct StickyNoteToolbar: View {
                 .padding(.horizontal, 4)
                 .background(Color.themeHoverLight.cornerRadius(4))
             }
-            
+
             Spacer(minLength: 4)
-            
+
             // 2. 页面切换组
             HStack(spacing: 4) {
                 ForEach(0..<note.pages.count, id: \.self) { index in
@@ -198,17 +252,17 @@ struct StickyNoteToolbar: View {
                     .buttonStyle(.plain)
                 }
             }
-            
+
             Spacer(minLength: 4)
-            
+
             // 3. 操作组
             HStack(spacing: 8) {
-                StickyNoteToolbarButton(name: .save, tooltip: "存入并清空", action: { 
+                StickyNoteToolbarButton(name: .save, tooltip: "存入并清空", action: {
                     StickyNoteManager.shared.saveToRecords(note: note)
                     note.currentContent = ""
                     StickyNoteManager.shared.updateNote(note)
                 })
-                
+
                 StickyNoteToolbarButton(name: .trash, tooltip: "删除贴纸", color: .themeStatusError.opacity(0.9), action: {
                     StickyNoteManager.shared.deleteNote(note)
                 })
@@ -235,7 +289,7 @@ struct StickyNoteToolbarButton: View {
     let tooltip: String
     var color: Color = .themeTextSecondary
     let action: () -> Void
-    
+
     var body: some View {
         Button(action: action) {
             LucideView(name: name, size: 12, color: color)
@@ -252,7 +306,7 @@ struct ColorDot: View {
     let color: Color
     let hex: String
     var onCommand: (StickyNoteCommand) -> Void
-    
+
     var body: some View {
         Button(action: {
             onCommand(.applyColor(hex: hex))
@@ -270,10 +324,10 @@ struct ResizeHandle: View {
     enum Edge {
         case bottomLeading, bottom, bottomTrailing
     }
-    
+
     let edge: Edge
     @Binding var note: StickyNoteModel
-    
+
     var body: some View {
         Circle()
             .fill(Color.themeTextTertiary.opacity(0.5))
@@ -300,11 +354,11 @@ struct ResizeHandle: View {
                 }
             }
     }
-    
+
     private func updateFrame(with translation: CGSize) {
         // 查找当前窗口
         guard let window = NSApp.windows.first(where: { ($0 as? StickyNoteWindow)?.contentView is NSHostingView<StickyNoteView> }) else { return }
-        
+
         var newFrame = window.frame
         switch edge {
         case .bottomLeading:
@@ -320,7 +374,7 @@ struct ResizeHandle: View {
             newFrame.size.height += translation.height
             newFrame.origin.y -= translation.height
         }
-        
+
         // 限制最小尺寸
         if newFrame.size.width >= 150 && newFrame.size.height >= 100 {
             window.setFrame(newFrame, display: true)
