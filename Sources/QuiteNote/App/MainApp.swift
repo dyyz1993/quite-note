@@ -207,7 +207,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // 创建新记录
         let (sourceApp, sourceUrl) = ClipboardService.getSourceInfo()
         let hash = ClipboardService.sha1(text)
-        recordStore.addRecord(content: text, hash: hash, sourceApp: sourceApp, sourceUrl: sourceUrl)
+        // 判断是否为纯URL，如果是则设置为.url类型
+        let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let recordType: RecordType = ClipboardService.isPureURL(trimmedText) ? .url : .text
+        recordStore.addRecord(content: text, hash: hash, sourceApp: sourceApp, sourceUrl: sourceUrl, type: recordType)
         
         // 显示悬浮窗（如果当前未显示）
         DispatchQueue.main.async { [weak self] in

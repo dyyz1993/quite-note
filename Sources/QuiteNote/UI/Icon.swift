@@ -26,6 +26,7 @@ enum IconName: String {
     case maximize2 = "maximize-2"
     case database = "database"
     case link = "link"
+    case globe = "globe"
     case zap = "zap"
     case clock = "clock"
     case bluetooth = "bluetooth"

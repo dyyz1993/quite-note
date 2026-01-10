@@ -5,6 +5,7 @@ import SwiftUI
 /// 记录类型
 enum RecordType: String, Codable, CaseIterable {
     case text = "text"
+    case url = "url"
     case file = "file"
     case folder = "folder"
     case image = "image"
@@ -14,6 +15,7 @@ enum RecordType: String, Codable, CaseIterable {
     var localizedName: String {
         switch self {
         case .text: return "纯文本"
+        case .url: return "链接"
         case .file: return "文件"
         case .folder: return "文件夹"
         case .image: return "照片" // 修改为 "照片" 以保持一致
@@ -26,6 +28,7 @@ enum RecordType: String, Codable, CaseIterable {
     var icon: IconName {
         switch self {
         case .text: return .type
+        case .url: return .link
         case .file: return .fileText
         case .folder: return .folder
         case .image: return .image
@@ -38,6 +41,7 @@ enum RecordType: String, Codable, CaseIterable {
     var themeColor: Color {
         switch self {
         case .text: return .themeTextSecondary
+        case .url: return .themeBlue400
         case .file: return .themePurple400
         case .folder: return .themeYellow500
         case .image: return .themeGreen500

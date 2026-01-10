@@ -24,12 +24,16 @@ final class ClipboardService {
             store.postLightHint("剪贴板无有效文本")
             return
         }
-        
+
         let (sourceApp, sourceUrl) = Self.getSourceInfo()
-        
+
+        // 判断是否为纯URL，如果是则设置为.url类型
+        let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let recordType: RecordType = Self.isPureURL(trimmedText) ? .url : .text
+
         let hash = Self.sha1(text)
         lastHash = hash
-        store.addRecord(content: text, hash: hash, sourceApp: sourceApp, sourceUrl: sourceUrl)
+        store.addRecord(content: text, hash: hash, sourceApp: sourceApp, sourceUrl: sourceUrl, type: recordType)
     }
 
     /// 获取当前剪贴板内容的来源信息
@@ -57,6 +61,13 @@ final class ClipboardService {
         }
         
         return (appName, sourceUrl)
+    }
+
+    /// 判断是否为纯URL（用于识别URL类型记录）
+    static func isPureURL(_ text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        // 简单判断：以 http:// 或 https:// 开头
+        return trimmed.hasPrefix("http://") || trimmed.hasPrefix("https://")
     }
 
     /// 计算文本 SHA1 用于去重

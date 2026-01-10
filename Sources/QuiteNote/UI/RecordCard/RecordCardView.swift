@@ -133,12 +133,16 @@ struct RecordCardView: View, Equatable {
             // 资源记录：解析虚拟路径
             return record.sourceUrl.flatMap { FileCoordinator.shared.resolveVirtualPath($0) }
 
+        case .url:
+            // URL记录：直接返回URL字符串
+            return URL(string: record.content)
+
         case .text:
             // 文本记录：创建临时 .md 文件，使用唯一子目录以保持原名
             let tempBaseDir = FileManager.default.temporaryDirectory.appendingPathComponent("QuiteNote_Export")
             let uniqueDir = tempBaseDir.appendingPathComponent(UUID().uuidString)
             try? FileManager.default.createDirectory(at: uniqueDir, withIntermediateDirectories: true)
-            
+
             let filename = (record.title ?? "记录") + ".md"
             let fileURL = uniqueDir.appendingPathComponent(filename)
 
@@ -235,7 +239,22 @@ struct RecordCardView: View, Equatable {
                             }
                         }
 
-                        if let urlString = record.sourceUrl, let url = URL(string: urlString) {
+                        // URL类型：显示可点击链接（直接在浏览器打开）
+                        if record.type == .url, let url = URL(string: record.content) {
+                            Rectangle().fill(Color.themeGray700).frame(width: 1, height: 10)
+                            HStack(spacing: 4) {
+                                LucideView(name: .link, size: 10, color: .themeBlue400)
+                                Text(url.host ?? record.content)
+                                    .lineLimit(1)
+                                    .frame(maxWidth: 120, alignment: .leading)
+                                    .foregroundColor(.themeBlue400)
+                            }
+                            .onTapGesture {
+                                NSWorkspace.shared.open(url)
+                            }
+                            .pointingHandCursor()
+                            .help("在浏览器中打开: \(record.content)")
+                        } else if let urlString = record.sourceUrl, let url = URL(string: urlString) {
                             Rectangle().fill(Color.themeGray700).frame(width: 1, height: 10)
                             HStack(spacing: 4) {
                                 LucideView(name: .link, size: 10, color: .themeTextTertiary)

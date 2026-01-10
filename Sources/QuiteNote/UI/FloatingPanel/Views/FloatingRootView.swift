@@ -219,6 +219,9 @@ struct FloatingRootView: View {
                 SidebarFilterButton(type: .text, isSelected: store.filterType == .text) {
                     store.toggleFilterType(.text)
                 }
+                SidebarFilterButton(type: .url, isSelected: store.filterType == .url) {
+                    store.toggleFilterType(.url)
+                }
                 SidebarFilterButton(type: .image, isSelected: store.filterType == .image) {
                     store.toggleFilterType(.image)
                 }
