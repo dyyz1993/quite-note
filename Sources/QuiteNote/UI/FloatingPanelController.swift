@@ -130,7 +130,7 @@ final class FloatingPanelController {
                        backing: .buffered, defer: false)
 
         panel.isOpaque = false
-        panel.level = .floating
+        panel.level = .mainMenu + 2  // 高于便签窗口的 .mainMenu + 1
         // 恢复关键行为：允许在所有桌面显示，允许在全屏应用之上显示
         // 去掉了 .moveToActiveSpace 以防止初始化卡死
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
@@ -225,7 +225,7 @@ final class FloatingPanelController {
     /// 显示悬浮窗，不强制居中（用于静默采集等场景）
     func showWithoutCentering() {
         userHidden = false
-        panel.level = .floating
+        panel.level = .mainMenu + 2  // 高于便签窗口的 .mainMenu + 1
         panel.makeKeyAndOrderFront(nil)
         panel.orderFrontRegardless()
     }
@@ -240,8 +240,8 @@ final class FloatingPanelController {
 
         // 2. 重置透明度，防止动画状态残留
         panel.alphaValue = 1
-        // 确保层级为浮动层级（比普通窗口高）
-        panel.level = .floating
+        // 确保层级高于便签窗口
+        panel.level = .mainMenu + 2  // 高于便签窗口的 .mainMenu + 1
 
         // 3. 激活应用和窗口
         // 对于 Accessory app，顺序很重要：先激活 App，再 OrderFront
@@ -276,7 +276,7 @@ final class FloatingPanelController {
         // 1. 基础属性重置
         panel.alphaValue = 1
         panel.isOpaque = false
-        panel.level = .floating
+        panel.level = .mainMenu + 2  // 高于便签窗口的 .mainMenu + 1
 
         // 2. 设置窗口位置 - 如果不是强制居中且不在浮球状态，才恢复保存的位置
         if PreferencesManager.shared.rememberWindowPosition && !forceCenter && focusProvider.mode == .expanded {
