@@ -14,7 +14,7 @@ struct ShortcutRecorderView: View {
             HStack(spacing: 4) {
                 if isRecording {
                     Text("请按下快捷键...")
-                        .font(.themeCaption)
+                        .font(Font.system(size: 11))
                         .foregroundColor(.themeBlue400)
                 } else {
                     HStack(spacing: 4) {

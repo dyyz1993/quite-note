@@ -80,14 +80,15 @@ struct SettingsOverlayView: View {
     /// 标签页视图
     private var tabsView: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 10) {
-                TabButtonLucide(key: "ai", label: "AI 提炼设置", icon: .sparkles, current: $tab)
-                TabButtonLucide(key: "history", label: "记录设置", icon: .database, current: $tab)
-                TabButtonLucide(key: "bluetooth", label: "蓝牙设置", icon: .bluetooth, current: $tab)
-                TabButtonLucide(key: "window", label: "悬浮窗设置", icon: .layout, current: $tab)
-                TabButtonLucide(key: "screenshot", label: "截图设置", icon: .camera, current: $tab)
-                TabButtonLucide(key: "file", label: "文件与存储", icon: .folder, current: $tab)
-                TabButtonLucide(key: "memory", label: "系统监控", icon: .cpu, current: $tab)
+            HStack(spacing: 6) {
+                TabButtonLucide(key: "ai", label: "AI", icon: .sparkles, current: $tab)
+                TabButtonLucide(key: "history", label: "记录", icon: .database, current: $tab)
+                TabButtonLucide(key: "bluetooth", label: "蓝牙", icon: .bluetooth, current: $tab)
+                TabButtonLucide(key: "window", label: "悬浮窗", icon: .layout, current: $tab)
+                TabButtonLucide(key: "screenshot", label: "截图", icon: .camera, current: $tab)
+                TabButtonLucide(key: "file", label: "文件", icon: .folder, current: $tab)
+                TabButtonLucide(key: "memory", label: "监控", icon: .cpu, current: $tab)
+                TabButtonLucide(key: "symbols", label: "符号", icon: .square, current: $tab)
             }
             .padding(.horizontal, 24)
             .padding(.vertical, 14)
@@ -109,6 +110,7 @@ struct SettingsOverlayView: View {
                 case "screenshot": ScreenshotSettingsTab()
                 case "file": FileSettingsTab(store: store)
                 case "memory": MemorySettingsTab()
+                case "symbols": SymbolSettingsTab()
                 default: EmptyView()
                 }
             }
@@ -142,6 +144,17 @@ struct SettingsOverlayView: View {
                         .font(.themeCaptionSmall)
                         .foregroundColor(.themeTextTertiary)
                     Text("AI 提炼: \(store.enableAI ? "已开启" : "已关闭")")
+                        .font(.themeCaptionSmall)
+                        .foregroundColor(.themeTextTertiary)
+                } else if tab == "symbols" {
+                    Text("符号库: \(SymbolConfigManager.shared.configs.count) 个")
+                        .font(.themeCaptionSmall)
+                        .foregroundColor(.themeTextTertiary)
+                    Text("触发前缀: :/")
+                        .font(.themeCaptionSmall)
+                        .foregroundColor(.themeTextTertiary)
+                } else {
+                    Text(tab == "bluetooth" ? "蓝牙设备状态" : "设置已就绪")
                         .font(.themeCaptionSmall)
                         .foregroundColor(.themeTextTertiary)
                 }

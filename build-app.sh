@@ -198,6 +198,23 @@ else
     echo "警告：未找到 LucideIcons 资源，请检查构建配置。"
 fi
 
+# 复制 QuiteNote 资源文件（包括 default.yaml）
+QUITENOTE_BUNDLE_PATH=$(find .build -name "QuiteNote_QuiteNote.bundle" -type d -path "*/release/*" | head -n 1)
+
+if [ -n "$QUITENOTE_BUNDLE_PATH" ]; then
+    echo "在 $QUITENOTE_BUNDLE_PATH 找到 QuiteNote 资源，复制到 Resources 目录..."
+    # 创建 Symbols 子目录并复制 default.yaml
+    mkdir -p "$RESOURCES_DIR/Symbols"
+    if [ -f "$QUITENOTE_BUNDLE_PATH/default.yaml" ]; then
+        cp "$QUITENOTE_BUNDLE_PATH/default.yaml" "$RESOURCES_DIR/Symbols/"
+        echo "已复制 default.yaml 到 Resources/Symbols/"
+    else
+        echo "警告：未找到 default.yaml 文件"
+    fi
+else
+    echo "警告：未找到 QuiteNote 资源 bundle"
+fi
+
 # 创建 Info.plist
 echo "创建 Info.plist..."
 cat > "$CONTENTS/Info.plist" << EOF

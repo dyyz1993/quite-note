@@ -217,6 +217,9 @@ struct StickyNoteToolbar: View {
                 StickyNoteToolbarButton(name: .bold, tooltip: "加粗", action: { onCommand(.toggleBold) })
                 StickyNoteToolbarButton(name: .strikethrough, tooltip: "删除线", action: { onCommand(.toggleStrikethrough) })
 
+                // 符号按钮
+                SymbolToolbarButton()
+
                 // 颜色选择器
                 HStack(spacing: 4) {
                     ColorDot(color: .themeYellow400, hex: "FACC15", onCommand: onCommand)

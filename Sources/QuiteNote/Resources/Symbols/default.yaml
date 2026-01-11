@@ -1,0 +1,147 @@
+metadata:
+  name: "默认符号库"
+  icon: "🔣"
+  priority: 1
+  enabled: true
+
+global:
+  trigger_prefix: ":/"
+  auto_hide: true
+  auto_clean: true
+  panel_position: "cursor_bottom"
+  panel_width: "auto"
+
+symbol_menus:
+  - title: "核心高频"
+    sort: 1
+    icon: "⭐"
+    symbols:
+      - trigger: ["bug", "err", "错误"]
+        content: "🐛"
+        desc: "BUG/程序错误/异常"
+      - trigger: ["gj", "gaijin", "改进", "fix"]
+        content: "🔧"
+        desc: "改进/修复/逻辑调整"
+      - trigger: ["yh", "youhua", "优化", "opt"]
+        content: "⚡"
+        desc: "性能优化/效率提升"
+      - trigger: ["yq", "yuqi", "预期", "goal"]
+        content: "🎯"
+        desc: "预期目标/指标达成"
+      - trigger: ["ok", "完成", "通过", "yes"]
+        content: "✅"
+        desc: "完成/测试通过/验收"
+      - trigger: ["warn", "risk", "风险", "警告"]
+        content: "⚠️"
+        desc: "风险提示/边界条件"
+
+  - title: "开发技术"
+    sort: 2
+    icon: "👨‍💻"
+    symbols:
+      - trigger: ["dev", "开发", "code"]
+        content: "👨‍💻"
+        desc: "开发/编码/全栈实现"
+      - trigger: ["test", "测试"]
+        content: "🧪"
+        desc: "测试验证/单元测试"
+      - trigger: ["deploy", "上线"]
+        content: "🚀"
+        desc: "部署上线/发布"
+      - trigger: ["api", "接口"]
+        content: "🔌"
+        desc: "接口集成/第三方API"
+      - trigger: ["log", "日志"]
+        content: "📜"
+        desc: "日志记录/审计"
+      - trigger: ["arrow", "箭头", "→"]
+        content: "→"
+        desc: "流程推进/逻辑指向"
+
+  - title: "产品规划"
+    sort: 3
+    icon: "📋"
+    symbols:
+      - trigger: ["req", "需求"]
+        content: "📋"
+        desc: "需求清单/需求文档"
+      - trigger: ["proto", "原型"]
+        content: "📱"
+        desc: "产品原型/交互设计"
+      - trigger: ["data", "指标"]
+        content: "📊"
+        desc: "产品指标/数据报表"
+      - trigger: ["flow", "流程"]
+        content: "🔗"
+        desc: "业务流程/用户旅程"
+
+  - title: "设计规范"
+    sort: 4
+    icon: "🎨"
+    symbols:
+      - trigger: ["ui", "界面"]
+        content: "🎨"
+        desc: "UI设计/视觉设计"
+      - trigger: ["ux", "体验"]
+        content: "✨"
+        desc: "用户体验/交互设计"
+      - trigger: ["color", "颜色"]
+        content: "🌈"
+        desc: "配色方案/色彩设计"
+      - trigger: ["icon", "图标"]
+        content: "🖼️"
+        desc: "图标/插画素材"
+
+  - title: "运营增长"
+    sort: 5
+    icon: "📈"
+    symbols:
+      - trigger: ["growth", "增长"]
+        content: "📈"
+        desc: "用户增长/数据增长"
+      - trigger: ["user", "用户"]
+        content: "👥"
+        desc: "用户群体/用户画像"
+      - trigger: ["active", "活跃"]
+        content: "🔥"
+        desc: "活跃用户/活跃度"
+      - trigger: ["retain", "留存"]
+        content: "💎"
+        desc: "用户留存/留存率"
+
+  - title: "通用工具"
+    sort: 6
+    icon: "🛠️"
+    symbols:
+      - trigger: ["link", "链接"]
+        content: "🔗"
+        desc: "超链接/跳转链接"
+      - trigger: ["file", "文件"]
+        content: "📎"
+        desc: "附件/文件引用"
+      - trigger: ["time", "时间"]
+        content: "⏰"
+        desc: "时间点/截止日期"
+      - trigger: ["note", "备注"]
+        content: "📝"
+        desc: "备注/注释说明"
+
+  - title: "颜色标记"
+    sort: 7
+    icon: "🏷️"
+    symbols:
+      - trigger: ["red", "红"]
+        content: "🔴"
+        desc: "红色标记/紧急"
+      - trigger: ["yellow", "黄"]
+        content: "🟡"
+        desc: "黄色标记/警告"
+      - trigger: ["green", "绿"]
+        content: "🟢"
+        desc: "绿色标记/通过"
+      - trigger: ["blue", "蓝"]
+        content: "🔵"
+        desc: "蓝色标记/信息"
+      - trigger: ["purple", "紫"]
+        content: "🟣"
+        desc: "紫色标记/重要"

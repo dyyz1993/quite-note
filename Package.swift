@@ -23,7 +23,8 @@ let package = Package(
             resources: [
                 .process("UI/Screenshot/COORDINATE_SYSTEM.md"),
                 .process("UI/Screenshot/THREE_PHASE_ARCHITECTURE.md"),
-                .process("Info-debug.plist")
+                .process("Info-debug.plist"),
+                .process("Resources/Symbols/default.yaml")
             ]
         )
     ]

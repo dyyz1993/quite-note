@@ -14,10 +14,11 @@ import SwiftUI
 
 extension Font {
     // Font Sizes (from note.jsx)
-    static let themeH1 = Font.system(size: 16, weight: .semibold)     // text-base font-semibold
-    static let themeH2 = Font.system(size: 14, weight: .semibold)     // text-sm font-semibold
-    static let themeBody = Font.system(size: 14)                      // text-sm (default)
-    static let themeCaption = Font.system(size: 12)                   // text-xs
+    static let themeH1 = Font.system(size: 18, weight: .bold)         // text-lg font-bold
+    static let themeH2 = Font.system(size: 16, weight: .semibold)     // text-base font-semibold
+    static let themeH3 = Font.system(size: 14, weight: .medium)       // text-sm font-medium
+    static let themeBody = Font.system(size: 13)                      // text-sm (default)
+    static let themeCaption = Font.system(size: 11)                   // text-xs
     static let themeCaptionSmall = Font.system(size: 10)              // text-[10px]
     static let themeCaptionTiny = Font.system(size: 8)                // text-[8px]
 

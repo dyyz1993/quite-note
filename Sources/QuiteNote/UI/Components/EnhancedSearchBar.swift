@@ -123,7 +123,7 @@ struct EnhancedSearchBar: View {
             
             TextField("搜索标题或内容...", text: $searchTerm)
                 .textFieldStyle(.plain)
-                .font(.themeBody)
+                .font(Font.system(size: 13))
                 .foregroundColor(.themeTextPrimary)
                 .focused($isSearchFieldFocused)
                 .onSubmit {
@@ -194,7 +194,7 @@ struct EnhancedSearchBar: View {
                             HStack {
                                 LucideView(name: .trash2, size: 12, color: .themeRed500)
                                 Text("清空搜索历史")
-                                    .font(.themeCaption)
+                                    .font(Font.system(size: 12))
                                     .foregroundColor(.themeRed500)
                                 Spacer()
                             }
@@ -218,7 +218,7 @@ struct EnhancedSearchBar: View {
                 HStack {
                     LucideView(name: .filter, size: 12, color: .themeTextSecondary)
                     Text("搜索范围")
-                        .font(.themeCaption)
+                        .font(Font.system(size: 12))
                         .foregroundColor(.themeTextSecondary)
                 }
                 
@@ -238,7 +238,7 @@ struct EnhancedSearchBar: View {
                 HStack {
                     LucideView(name: .settings2, size: 12, color: .themeTextSecondary)
                     Text("搜索配置")
-                        .font(.themeCaption)
+                        .font(Font.system(size: 11))
                         .foregroundColor(.themeTextSecondary)
                 }
                 
@@ -307,7 +307,7 @@ struct EnhancedSearchBar: View {
                 LucideView(name: icon, size: 14, color: isOn ? .themeBlue500 : .themeTextSecondary)
                 
                 Text(title)
-                    .font(.themeBody)
+                    .font(Font.system(size: 13))
                     .foregroundColor(isOn ? .themeTextPrimary : .themeTextSecondary)
                 
                 Spacer()
@@ -342,7 +342,7 @@ struct EnhancedSearchBar: View {
         HStack {
             LucideView(name: .clock, size: 12, color: .themeTextSecondary)
             Text(historyItem)
-                .font(.themeBody)
+                .font(Font.system(size: 13))
                 .foregroundColor(.themeTextPrimary)
                 .lineLimit(1)
             Spacer()

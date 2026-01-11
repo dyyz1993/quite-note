@@ -30,11 +30,18 @@ class KeyboardInterceptView: NSView {
             // 监听本地键盘事件（不要求成为第一响应者）
             localMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
                 if event.keyCode == 53 { // ESC key code
+                    // ⭐ 关键修复：检查符号联想面板是否正在显示
+                    // 如果符号面板可见，不拦截 ESC，让符号面板处理
+                    if SymbolSuggestionPanelBridge.isPanelVisible {
+                        print("[DEBUG AppKit] Symbol panel is visible, not intercepting ESC")
+                        return event
+                    }
+
                     // 如果截图界面正在显示，不要拦截 ESC，让截图控制器处理
                     if !V2ScreenshotController.debugPanels.isEmpty {
                         return event
                     }
-                    
+
                     print("[DEBUG AppKit] ESC key detected via local monitor")
                     NotificationCenter.default.post(name: .escKeyPressed, object: nil)
                     return nil // 消费事件，不让其他控件处理
@@ -818,6 +825,13 @@ struct KeyboardHandlerModifier: ViewModifier {
         if #available(macOS 14.0, *) {
             content
                 .onKeyPress(.escape) {
+                    // ⭐ 关键修复：检查符号联想面板是否正在显示
+                    // 如果符号面板可见，不处理 ESC，让符号面板处理
+                    if SymbolSuggestionPanelBridge.isPanelVisible {
+                        print("[DEBUG] Symbol panel is visible, not handling ESC")
+                        return .ignored
+                    }
+
                     // ESC键缩小到浮球或取消展开
                     print("[DEBUG] ESC pressed: expandedId=\(expandedId?.uuidString ?? "nil"), showSettings=\(showSettings)")
                     if expandedId != nil {
