@@ -86,6 +86,7 @@ struct FloatingBallView: View {
         }
         .onHover { h in
             hovering = h
+            print("[DEBUG FloatingBallView] onHover - hovering: \(h), ballPosition: \(focus.ballPosition)")
             if h {
                 // 跳动动画：向上移动然后轻微回弹
                 withAnimation(.interpolatingSpring(stiffness: 300, damping: 15).repeatForever(autoreverses: true)) {

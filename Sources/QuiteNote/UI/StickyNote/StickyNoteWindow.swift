@@ -102,6 +102,9 @@ class StickyNoteHostingView<Content: View>: NSHostingView<Content> {
     }
 
     override func mouseEntered(with event: NSEvent) {
+        // 添加调试日志
+        print("[DEBUG StickyNoteWindow] mouseEntered - noteId: \(noteId), window: \(window?.title ?? "nil"), frame: \(window?.frame ?? .zero)")
+
         // 取消之前的失焦任务
         blurWorkItem?.cancel()
         blurWorkItem = nil
@@ -109,6 +112,7 @@ class StickyNoteHostingView<Content: View>: NSHostingView<Content> {
         focusTimer?.invalidate()
         focusTimer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: false) { [weak self] _ in
             guard let self = self else { return }
+            print("[DEBUG StickyNoteWindow] Sending StickyNoteFocus - noteId: \(self.noteId)")
             self.window?.makeKeyAndOrderFront(nil)
             // 通知视图强制获取焦点，实现直接输入
             NotificationCenter.default.post(name: NSNotification.Name("StickyNoteFocus"), object: self.noteId)

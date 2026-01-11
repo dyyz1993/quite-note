@@ -156,9 +156,12 @@ struct StickyNoteView: View {
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("StickyNoteFocus"))) { notification in
             // 这里的通知由 StickyNoteWindow 发出，确保获得焦点时直接可以输入
             // 增加状态检查：只有当前不是聚焦状态才处理，避免重复触发
-            if let focusId = notification.object as? UUID, focusId == note.id, !isFocused {
-                showControlsOverride = false
-                isFocused = true
+            if let focusId = notification.object as? UUID {
+                print("[DEBUG StickyNoteView] Received StickyNoteFocus - noteId: \(note.id), focusId: \(focusId), match: \(focusId == note.id), current isFocused: \(isFocused)")
+                if focusId == note.id, !isFocused {
+                    showControlsOverride = false
+                    isFocused = true
+                }
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
