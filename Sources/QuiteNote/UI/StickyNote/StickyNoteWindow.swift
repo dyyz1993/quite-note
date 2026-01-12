@@ -55,6 +55,28 @@ class StickyNoteWindow: NSPanel, NSWindowDelegate {
         note.frame = self.frame
         StickyNoteManager.shared.updateNote(note)
     }
+
+    /// 更新同步状态（当便签保存到记录后调用）
+    func updateSyncStatus(recordId: UUID) {
+        note.syncRecordId = recordId
+        StickyNoteManager.shared.updateNote(note)
+
+        // 通知视图刷新
+        NotificationCenter.default.post(name: NSNotification.Name("StickyNoteSyncStatusChanged"), object: noteId)
+    }
+
+    /// 从便签模型更新窗口（用于从记录重新打开时更新内容和位置）
+    func updateFromNote(_ updatedNote: StickyNoteModel) {
+        self.note = updatedNote
+
+        // 更新窗口位置和大小
+        if self.frame != updatedNote.frame {
+            self.setFrame(updatedNote.frame, display: true)
+        }
+
+        // 通知视图刷新内容
+        NotificationCenter.default.post(name: NSNotification.Name("StickyNoteContentUpdated"), object: noteId)
+    }
 }
 
 /// 自定义 HostingView 以处理鼠标进入/离开事件

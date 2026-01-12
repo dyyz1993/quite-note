@@ -140,6 +140,35 @@ final class RecordRepository {
         if let error = saveError { throw error }
     }
 
+    /// 同步更新现有记录（用于便签更新等场景）
+    func updateSync(_ record: Record) throws {
+        var updateError: Error?
+        stack.context.performAndWait {
+            let context = self.stack.context
+            let req = NSFetchRequest<CDRecord>(entityName: "CDRecord")
+            req.predicate = NSPredicate(format: "id == %@", record.id as CVarArg)
+            req.fetchLimit = 1
+
+            do {
+                if let cd = try context.fetch(req).first {
+                    // 找到现有记录，更新它
+                    self.mapRecordToCDRecord(record, into: cd)
+                    try context.save()
+                    Self.logger.info("记录已同步更新到数据库: \(record.id)")
+                } else {
+                    // 未找到记录，创建新记录
+                    let cd = CDRecord(context: context)
+                    self.mapRecordToCDRecord(record, into: cd)
+                    try context.save()
+                    Self.logger.info("记录不存在，已创建新记录: \(record.id)")
+                }
+            } catch {
+                updateError = error
+            }
+        }
+        if let error = updateError { throw error }
+    }
+
     /// 更新记录时间戳
     func updateTimestamp(id: UUID, to date: Date) throws {
         stack.performBackgroundTask { context in
@@ -237,20 +266,35 @@ final class RecordRepository {
 
     // MARK: - 删除操作
 
-    /// 删除指定记录
+    /// 删除指定记录（同步执行，确保删除完成）
     func delete(id: UUID) {
-        stack.performBackgroundTask { context in
+        print("[DEBUG RecordRepository.delete()] 开始删除记录, ID: \(id)")
+        Self.logger.info("RecordRepository.delete() 开始删除, ID: \(id)")
+
+        stack.context.performAndWait {
             let req = NSFetchRequest<CDRecord>(entityName: "CDRecord")
             req.predicate = NSPredicate(format: "id == %@", id as CVarArg)
             do {
-                if let cd = try context.fetch(req).first {
-                    context.delete(cd)
-                    try context.save()
+                let results = try stack.context.fetch(req)
+                print("[DEBUG RecordRepository.delete()] 查询结果: 找到 \(results.count) 条记录")
+
+                if let cd = results.first {
+                    print("[DEBUG RecordRepository.delete()] 准备删除 CDRecord")
+                    stack.context.delete(cd)
+                    print("[DEBUG RecordRepository.delete()] 已调用 delete(), 准备 save()")
+                    try stack.context.save()
+                    print("[DEBUG RecordRepository.delete()] save() 成功")
+                    Self.logger.info("记录已删除: \(id)")
+                } else {
+                    print("[DEBUG RecordRepository.delete()] 未找到要删除的记录")
+                    Self.logger.warning("未找到要删除的记录: \(id)")
                 }
             } catch {
+                print("[DEBUG RecordRepository.delete()] 删除失败: \(error.localizedDescription)")
                 Self.logger.error("删除记录失败: \(error.localizedDescription)")
             }
         }
+        print("[DEBUG RecordRepository.delete()] performAndWait 完成")
     }
 
     /// 清空所有记录
@@ -290,6 +334,19 @@ final class RecordRepository {
     private func cdRecordToRecord(_ cd: CDRecord) -> Record {
         // 检查并重置 pending 状态的记录
         let aiStatus = cd.aiStatus == "pending" ? nil : cd.aiStatus
+
+        // 解码 noteFrame - 使用 NSValue 包装
+        var noteFrame: NSRect? = nil
+        if let data = cd.noteFrameData {
+            do {
+                if let nsValue = try NSKeyedUnarchiver.unarchivedObject(ofClass: NSValue.self, from: data) {
+                    noteFrame = nsValue.rectValue
+                }
+            } catch {
+                Self.logger.error("解码 noteFrame 失败: \(error.localizedDescription)")
+            }
+        }
+
         return Record(
             id: cd.id ?? UUID(),
             title: cd.title,
@@ -307,7 +364,8 @@ final class RecordRepository {
             sourceUrl: cd.sourceUrl,
             type: RecordType(rawValue: cd.type ?? "text") ?? .text,
             skipAI: cd.skipAI,
-            size: cd.size
+            size: cd.size,
+            noteFrame: noteFrame
         )
     }
 
@@ -329,5 +387,11 @@ final class RecordRepository {
         cd.type = record.type.rawValue
         cd.skipAI = record.skipAI
         cd.size = record.size
+
+        // 编码 noteFrame - 使用 NSValue 包装
+        if let frame = record.noteFrame {
+            let nsValue = NSValue(rect: frame)
+            cd.noteFrameData = try? NSKeyedArchiver.archivedData(withRootObject: nsValue, requiringSecureCoding: true)
+        }
     }
 }

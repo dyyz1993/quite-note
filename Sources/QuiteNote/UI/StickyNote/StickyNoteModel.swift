@@ -15,6 +15,7 @@ struct StickyNoteModel: Codable, Identifiable {
     var currentPageIndex: Int = 0
     var frame: NSRect = NSRect(x: 100, y: 100, width: 300, height: 200)
     var opacity: Double = 0.95 // 默认透明度
+    var syncRecordId: UUID? = nil  // 关联的记录 ID（用于双向同步）
 
     var currentContent: String {
         get {
@@ -69,5 +70,89 @@ struct StickyNoteModel: Codable, Identifiable {
         let projectName = String(cleanedLine.prefix(10))
 
         return (projectName, firstColor)
+    }
+
+    /// 从第一页第一行提取便签标题（用于保存到记录）
+    func extractNoteTitle() -> String {
+        guard !pages.isEmpty else { return "便签" }
+        let lines = pages[0].content.components(separatedBy: .newlines)
+
+        // 跳过空行和页面分隔符，找到真正的第一行内容
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            // 检查是否是页面分隔符
+            let separatorPattern = "^-------- Page \\d+ --------$"
+            if let regex = try? NSRegularExpression(pattern: separatorPattern),
+               regex.firstMatch(in: trimmed, options: [], range: NSRange(location: 0, length: trimmed.utf16.count)) != nil {
+                continue // 跳过分隔符
+            }
+            // 跳过空行
+            if trimmed.isEmpty {
+                continue
+            }
+            // 找到真正的第一行内容
+            return cleanTitle(trimmed)
+        }
+
+        return "便签"
+    }
+
+    private func cleanTitle(_ line: String) -> String {
+        var cleaned = line
+
+        // 移除页面分隔符 -------- Page X --------
+        cleaned = cleaned.replacingOccurrences(
+            of: "^-------- Page \\d+ --------\\s*",
+            with: "",
+            options: .regularExpression
+        )
+
+        // 移除所有颜色标记 [c:hex]text[/c] 和 [/c]
+        cleaned = cleaned.replacingOccurrences(
+            of: "\\[c:[^\\]]+\\]",
+            with: "",
+            options: .regularExpression
+        )
+        cleaned = cleaned.replacingOccurrences(
+            of: "\\[/c\\]",
+            with: "",
+            options: .regularExpression
+        )
+
+        // 移除 Markdown 加粗 **text**
+        cleaned = cleaned.replacingOccurrences(
+            of: "\\*\\*(.*?)\\*\\*",
+            with: "$1",
+            options: .regularExpression
+        )
+
+        // 移除 Markdown 删除线 ~~text~~
+        cleaned = cleaned.replacingOccurrences(
+            of: "~~(.*?)~~",
+            with: "$1",
+            options: .regularExpression
+        )
+
+        // 移除下划线标记 <u>text</u>
+        cleaned = cleaned.replacingOccurrences(
+            of: "<u>(.*?)</u>",
+            with: "$1",
+            options: .regularExpression
+        )
+
+        // 移除待办标记 ☐, ☑, - [ ], - [x]
+        cleaned = cleaned.replacingOccurrences(
+            of: "^\\s*[-\\*]?\\s*\\[\\s*[xX]?\\]\\s*",
+            with: "",
+            options: .regularExpression
+        )
+        cleaned = cleaned.replacingOccurrences(
+            of: "^[☐☑]\\s*",
+            with: "",
+            options: .regularExpression
+        )
+
+        let result = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
+        return result.isEmpty ? "便签" : String(result.prefix(50))
     }
 }

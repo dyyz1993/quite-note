@@ -11,7 +11,8 @@ enum RecordType: String, Codable, CaseIterable {
     case image = "image"
     case video = "video"
     case screenshot = "screenshot"
-    
+    case note = "note"  // 便签类型
+
     var localizedName: String {
         switch self {
         case .text: return "纯文本"
@@ -21,6 +22,7 @@ enum RecordType: String, Codable, CaseIterable {
         case .image: return "照片" // 修改为 "照片" 以保持一致
         case .video: return "视频"
         case .screenshot: return "截图"
+        case .note: return "便签"
         }
     }
 
@@ -34,6 +36,7 @@ enum RecordType: String, Codable, CaseIterable {
         case .image: return .image
         case .video: return .video
         case .screenshot: return .camera
+        case .note: return .clipboard
         }
     }
 
@@ -47,6 +50,7 @@ enum RecordType: String, Codable, CaseIterable {
         case .image: return .themeGreen500
         case .video: return .themeRed500
         case .screenshot: return .themeBlue400
+        case .note: return .themeOrange400
         }
     }
 }
@@ -71,6 +75,7 @@ struct Record: Identifiable, Equatable {
     var skipAI: Bool = false
     var fileCount: Int? = nil  // 文件夹包含的文件数量
     var size: Int64 = 0       // 文件大小 (bytes)
+    var noteFrame: NSRect? = nil  // 便签窗口位置
 
     static func == (lhs: Record, rhs: Record) -> Bool {
         lhs.id == rhs.id &&
@@ -90,6 +95,7 @@ struct Record: Identifiable, Equatable {
         lhs.type == rhs.type &&
         lhs.skipAI == rhs.skipAI &&
         lhs.fileCount == rhs.fileCount &&
-        lhs.size == rhs.size
+        lhs.size == rhs.size &&
+        lhs.noteFrame == rhs.noteFrame
     }
 }

@@ -6,10 +6,10 @@ set -e
 echo "开始构建 Quite Note 应用..."
 
 # 配置变量
-APP_NAME="Quite Note Dev"
-BUNDLE_ID="com.quitenote.app.dev"
-# APP_NAME="Quite Note"
-# BUNDLE_ID="com.quitenote.app"
+# APP_NAME="Quite Note Dev"
+# BUNDLE_ID="com.quitenote.app.dev"
+APP_NAME="Quite Note"
+BUNDLE_ID="com.quitenote.app"
 EXECUTABLE_NAME="QuiteNote"
 VERSION="1.0.0"
 

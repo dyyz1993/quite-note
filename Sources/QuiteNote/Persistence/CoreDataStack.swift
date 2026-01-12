@@ -102,7 +102,12 @@ final class CoreDataStack {
         sizeAttr.isOptional = false
         sizeAttr.defaultValue = 0
 
-        entity.properties = [idAttr, titleAttr, contentAttr, createdAtAttr, digestAttr, aiStatusAttr, summaryAttr, summaryConfAttr, starredAttr, copiedAtAttr, tagsAttr, keywordsAttr, sourceAppAttr, sourceUrlAttr, typeAttr, skipAIAttr, sizeAttr]
+        let noteFrameDataAttr = NSAttributeDescription()
+        noteFrameDataAttr.name = "noteFrameData"
+        noteFrameDataAttr.attributeType = .binaryDataAttributeType
+        noteFrameDataAttr.isOptional = true
+
+        entity.properties = [idAttr, titleAttr, contentAttr, createdAtAttr, digestAttr, aiStatusAttr, summaryAttr, summaryConfAttr, starredAttr, copiedAtAttr, tagsAttr, keywordsAttr, sourceAppAttr, sourceUrlAttr, typeAttr, skipAIAttr, sizeAttr, noteFrameDataAttr]
         model.entities = [entity]
 
         container = NSPersistentContainer(name: "QuiteNote", managedObjectModel: model)

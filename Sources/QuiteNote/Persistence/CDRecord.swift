@@ -20,4 +20,5 @@ final class CDRecord: NSManagedObject {
     @NSManaged var type: String?
     @NSManaged var skipAI: Bool
     @NSManaged var size: Int64
+    @NSManaged var noteFrameData: Data?  // 便签窗口位置（编码后的 NSRect）
 }

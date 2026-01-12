@@ -57,6 +57,12 @@ extension Color {
     static let themeYellow400 = Color(red: 250/255, green: 204/255, blue: 21/255) // #FACC15 (yellow-400)
     static let themeYellow300 = Color(red: 253/255, green: 230/255, blue: 138/255) // #FDE68A (yellow-300)
 
+    // Orange Scale (便签专用)
+    static let themeOrange600 = Color(red: 234/255, green: 88/255, blue: 12/255)   // #EA580C (orange-600)
+    static let themeOrange500 = Color(red: 249/255, green: 115/255, blue: 22/255)  // #F97316 (orange-500)
+    static let themeOrange400 = Color(red: 251/255, green: 146/255, blue: 60/255)  // #FB923C (orange-400)
+    static let themeOrange300 = Color(red: 253/255, green: 186/255, blue: 116/255) // #FDBA74 (orange-300)
+
     // Transparent variants (Tailwind bg-white/5, border-white/10, etc.)
     static let themeWhite5  = Color.white.opacity(0.02)   // bg-white/5
     static let themeWhite10 = Color.white.opacity(0.04)   // bg-white/10
@@ -154,6 +160,15 @@ extension Color {
 
 // MARK: - AppKit Extension
 extension NSColor {
+    // ⭐ 添加主题颜色支持，用于 NSTextView 等 AppKit 组件
+    static var themeGray800: NSColor {
+        return NSColor(red: 31/255, green: 41/255, blue: 55/255, alpha: 1.0)
+    }
+
+    static var themeTextSecondary: NSColor {
+        return NSColor(red: 209/255, green: 213/255, blue: 221/255, alpha: 1.0)
+    }
+
     /// 从十六进制字符串创建 NSColor
     convenience init?(hex: String) {
         var hexSanitized = hex.trimmingCharacters(in: .whitespacesAndNewlines)

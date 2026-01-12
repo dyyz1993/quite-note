@@ -343,6 +343,21 @@ struct RecordCardView: View, Equatable {
                 .help(isSynced ? "已同步到本地" : "同步文件夹到本地")
             }
 
+            // 便签打开按钮
+            if record.type == .note {
+                Button(action: {
+                    openStickyNote()
+                }) {
+                    LucideView(name: .arrowUpRight, size: 14, color: .themeOrange500)
+                        .frame(width: 24, height: 24)
+                        .background(Color.themeOrange500.opacity(0.1))
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .pointingHandCursor()
+                .help("在便签中打开")
+            }
+
             IconButton(icon: record.starred ? .star : .starOff, color: record.starred ? .themeYellow500 : .themeTextSecondary) {
                 store.toggleStar(record)
             }
@@ -442,7 +457,7 @@ struct RecordCardView: View, Equatable {
             }
         }
         .padding(12)
-        .padding(.bottom, 20) // 固定底部 padding，防止 shadow 与下一个卡片重叠
+        .padding(.bottom, record.type == .note ? 0 : 20) // note 类型不需要额外底部 padding
         .padding(.top, 0)
         .contentShape(Rectangle()) // 确保整个区域（包括 padding）都能捕获点击，防止穿透
         .animation(.easeOut(duration: 0.2), value: showContent) // 局部动画，只针对内容显示
@@ -619,6 +634,8 @@ struct RecordCardView: View, Equatable {
 
     private var originalContentBody: some View {
         let isImage = record.type == .image || record.type == .screenshot
+        // 对于 note 类型，只显示第一页内容
+        let displayContent = record.type == .note ? extractFirstPageContent(record.content) : record.content
 
         return ZStack(alignment: .topLeading) {
             // 原文内容
@@ -654,14 +671,14 @@ struct RecordCardView: View, Equatable {
                 }
 
                 SelectableTextView(
-                    text: record.content,
+                    text: displayContent,
                     fontSize: 11,
                     isMonospaced: true,
                     textColor: NSColor(red: 209/255, green: 213/255, blue: 221/255, alpha: 1.0), // themeGray300
                     inset: CGSize(width: 8, height: 8), // 稍微减小内边距，给内容更多空间
                     showScrollbar: true // 原文长，需要滚动条
                 )
-                .frame(minHeight: 350, maxHeight: 650) // 增加最小高度到 350pt，确保内容显示更充分
+                .frame(minHeight: record.type == .note ? 120 : 350, maxHeight: 650) // note 类型使用更小的最小高度
                 .background(Color.themeBackground) // 使用更深的背景色，使 ASCII 艺术更清晰
                 .cornerRadius(4)
                 .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.themeBorder, lineWidth: 1).allowsHitTesting(false))
@@ -759,9 +776,16 @@ struct RecordCardView: View, Equatable {
     }
 
     private func onAppearAction() {
-        // 如果有总结，默认折叠原文
+        // 根据记录类型和总结状态设置原文显示
         if record.summary != nil {
+            // 有总结：默认折叠原文
             showOriginalContent = false
+        } else if record.type == .note {
+            // note 类型没有总结：始终显示原文
+            showOriginalContent = true
+        } else {
+            // 其他类型没有总结：显示原文
+            showOriginalContent = true
         }
 
         // 延迟加载内容，提升展开性能
@@ -870,6 +894,14 @@ private extension RecordCardView {
         deleteCountdown = 0
     }
 
+    /// 打开便签
+    private func openStickyNote() {
+        QuiteNoteNotification.post(.openStickyNoteFromRecord, userInfo: [
+            "record": record
+        ])
+        HapticFeedbackManager.shared.lightImpact()
+    }
+
     // 缓存计算结果，避免重复计算
     var displayTitle: String {
         // 使用更高效的条件判断顺序
@@ -903,6 +935,33 @@ private extension RecordCardView {
                 return record.content.count > 30 ? String(record.content.prefix(30)) + "..." : record.content
             }
         }
+    }
+
+    /// 从多页内容中提取第一页
+    /// 用于 note 类型卡片显示，避免显示所有页面导致卡片过高
+    /// 支持向后兼容：自动检测并转换旧格式
+    private func extractFirstPageContent(_ content: String) -> String {
+        var processedContent = content
+        let newSeparator = "\n---NOTE_PAGE_BREAK---\n"
+
+        // 检测并转换旧格式 -------- Page X --------
+        if content.contains("-------- Page ") {
+            let oldPattern = "(?:\\n|^)\\s*-------- Page \\d+ --------\\s*(?:\\n|$)"
+            if let regex = try? NSRegularExpression(pattern: oldPattern) {
+                processedContent = regex.stringByReplacingMatches(
+                    in: content,
+                    options: [],
+                    range: NSRange(location: 0, length: content.utf16.count),
+                    withTemplate: newSeparator
+                )
+            }
+        }
+
+        // 提取第一页
+        if let firstPage = processedContent.components(separatedBy: newSeparator).first {
+            return firstPage.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return content
     }
 
     /// 格式化日期显示

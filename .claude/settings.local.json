@@ -104,7 +104,21 @@
       "Bash(else echo \"日志文件不存在\")",
       "Bash(then tail -50 /tmp/quitenote-symbol-debug.log)",
       "Bash(then tail -80 /tmp/quitenote-symbol-debug.log)",
-      "Skill(debug-quitenote)"
+      "Skill(debug-quitenote)",
+      "Bash(./check-status.sh:*)",
+      "Bash(./monitor-delete-logs.sh:*)",
+      "Bash(./monitor-db.sh:*)",
+      "Bash(./monitor-debug-db.sh:*)",
+      "Bash(defaults delete:*)",
+      "Bash(/Users/xuyingzhou/Project/study-mac-app/quite-note/monitor-logs.sh)",
+      "Bash(/usr/bin/log show --predicate 'process == \"\"\"\"Quite Note Dev\"\"\"\"' --last 5m)",
+      "Bash(/Users/xuyingzhou/Project/study-mac-app/quite-note/monitor-logs-simple.sh:*)",
+      "Bash(lsof:*)",
+      "Bash(timeout:*)",
+      "Bash(/usr/bin/log show:*)",
+      "Bash(USER_LIB=\"$HOME/Library/Application Support/QuiteNote/Symbols\" if [ -f \"$USER_LIB/default.yaml\" ])",
+      "Bash(then echo \"=== User copy exists ===\" cat \"$USER_LIB/default.yaml\")",
+      "Bash(USER_LIB=\"$HOME/Library/Application Support/QuiteNote/Symbols\" grep -A 3 \"^  - title:\" \"$USER_LIB/default.yaml\")"
     ],
     "deny": [],
     "ask": []

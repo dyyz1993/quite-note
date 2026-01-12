@@ -39,6 +39,14 @@ enum QuiteNoteNotification {
     /// 展开/折叠记录卡片
     case expandRecord
 
+    // MARK: - 便签相关
+
+    /// 便签保存完成（用于通知 StickyNoteManager 标记已同步）
+    case stickyNoteSaveCompleted
+
+    /// 从记录打开便签
+    case openStickyNoteFromRecord
+
     // MARK: - 浮动面板相关
 
     /// 从球模式恢复到面板
@@ -86,6 +94,10 @@ enum QuiteNoteNotification {
             return Notification.Name("qn.record.deleted")
         case .expandRecord:
             return Notification.Name("qn.record.expand")
+        case .stickyNoteSaveCompleted:
+            return Notification.Name("qn.stickynote.save.completed")
+        case .openStickyNoteFromRecord:
+            return Notification.Name("qn.stickynote.open.from.record")
         case .restoreFromBall:
             return Notification.Name("qn.panel.restoreFromBall")
         case .updateBallPosition:

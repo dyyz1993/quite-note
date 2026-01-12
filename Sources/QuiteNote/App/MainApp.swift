@@ -34,7 +34,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         // 初始化贴纸管理器
         _ = StickyNoteManager.shared
-        
+
+        // ⭐ 预加载符号配置，避免首次点击延迟
+        print("[DEBUG] 预加载符号配置...")
+        _ = SymbolConfigManager.shared
+
         let bundlePath = Bundle.main.bundlePath
         let bundleID = Bundle.main.bundleIdentifier ?? "unknown"
         print("[DEBUG] 应用启动中...")
@@ -45,6 +49,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let store = RecordStore()
         let bluetooth = BluetoothManager()
+
+        // 清理僵尸便签（关联到已删除记录的便签）
+        StickyNoteManager.shared.cleanupZombieNotes { recordId in
+            // 检查记录是否还存在
+            return store.records.contains(where: { $0.id == recordId })
+        }
 
         clipboard = ClipboardService(store: store)
         self.recordStore = store

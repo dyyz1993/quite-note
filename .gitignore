@@ -7,6 +7,5 @@ Quite Note.app/
 *.dmg
 venv/
 .trae/
-.claude/
 Quite Note Dev.app/
 icons.xcassets/

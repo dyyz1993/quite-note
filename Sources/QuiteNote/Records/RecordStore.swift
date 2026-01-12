@@ -383,7 +383,8 @@ final class RecordStore: ObservableObject {
         type: RecordType = .text,
         skipAI: Bool = false,
         fileName: String? = nil,
-        fileCount: Int? = nil
+        fileCount: Int? = nil,
+        noteFrame: NSRect? = nil
     ) {
         print("[DEBUG] RecordStore.addRecord 被调用，内容长度: \(content.count), hash: \(hash), type: \(type)")
         // 1. 检查是否已存在相同哈希的记录
@@ -399,7 +400,7 @@ final class RecordStore: ObservableObject {
         let id = UUID()
         var autoTags = ContentClassifier.classify(content)
         var keywords: [String] = []
-        
+
         // 文件夹特殊处理：打上 folder 标签，加入关键词
         if type == .folder {
             if !autoTags.contains("folder") {
@@ -409,7 +410,7 @@ final class RecordStore: ObservableObject {
                 keywords.append(name)
             }
         }
-        
+
         // 计算文件大小
         var calculatedSize: Int64 = 0
         if type != .text {
@@ -420,7 +421,7 @@ final class RecordStore: ObservableObject {
                 } else {
                     fileURL = FileCoordinator.shared.resolveVirtualPath(path)
                 }
-                
+
                 if let url = fileURL {
                     do {
                         let attrs = try FileManager.default.attributesOfItem(atPath: url.path)
@@ -434,7 +435,7 @@ final class RecordStore: ObservableObject {
             // 文本记录的大小即为其字符串长度（估算）
             calculatedSize = Int64(content.utf8.count)
         }
-        
+
         let record = Record(
             id: id,
             title: fileName,
@@ -453,7 +454,8 @@ final class RecordStore: ObservableObject {
             type: type,
             skipAI: skipAI,
             fileCount: fileCount,
-            size: calculatedSize
+            size: calculatedSize,
+            noteFrame: noteFrame
         )
 
         do { try repository.save(record) }
@@ -534,6 +536,56 @@ final class RecordStore: ObservableObject {
         }
     }
 
+    /// 添加现有记录（用于便签保存等场景）
+    func addExistingRecord(_ record: Record) {
+        // 检查是否已存在相同哈希的记录
+        if records.contains(where: { $0.hash == record.hash }) {
+            updateTimestampForHash(record.hash)
+            notifier.postToast("记录已存在", type: "info")
+            return
+        }
+
+        // 保存到数据库
+        do { try repository.save(record) }
+        catch {
+            Self.logger.error("保存记录失败: \(error.localizedDescription)")
+            notifier.postToast("保存失败", type: "error")
+            return
+        }
+
+        // 更新 UI
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.records.insert(record, at: 0)
+            self.sortRecordsInPlace()
+            self.notifier.postToast("已添加记录", type: "success")
+
+            // 触发 AI 总结（如果需要）
+            if self.aiCoordinator.enableAI && !record.skipAI && record.content.count >= self.aiCoordinator.summaryTrigger {
+                let existingTags = self.aiCoordinator.getAllUniqueTags(from: self.records)
+                self.aiCoordinator.summarize(record: record, existingTags: existingTags) { [weak self] update in
+                    guard let self = self else { return }
+                    switch update {
+                    case .none:
+                        break
+                    case .failure:
+                        self.updateRecordAI(id: record.id, title: nil, summary: nil, confidence: nil, aiStatus: "fail")
+                    case .success(let title, let summary, let confidence, let tags, let keywords):
+                        self.updateRecordAI(
+                            id: record.id,
+                            title: title,
+                            summary: summary,
+                            confidence: confidence,
+                            aiStatus: "success",
+                            tags: tags,
+                            keywords: keywords
+                        )
+                    }
+                }
+            }
+        }
+    }
+
     /// 切换类型筛选
     func toggleFilterType(_ type: RecordType) {
         if filterType == type {
@@ -584,6 +636,9 @@ final class RecordStore: ObservableObject {
 
     /// 删除指定记录
     func delete(_ record: Record) {
+        print("[DEBUG RecordStore.delete()] 开始删除记录, ID: \(record.id), Type: \(record.type)")
+        Self.logger.info("开始删除记录, ID: \(record.id), Type: \(record.type.rawValue)")
+
         // 1. 如果是文件/图片/截图，尝试将关联的物理文件移动到废纸篓
         if record.type != .text {
             // 优先从 sourceUrl 获取物理路径
@@ -596,7 +651,7 @@ final class RecordStore: ObservableObject {
                     fileURL = FileCoordinator.shared.resolveVirtualPath(path)
                 }
             }
-            
+
             if let url = fileURL {
                 // 安全检查：只有在附件目录下的文件才真正处理
                 let attachmentsPath = currentAttachmentsDirectory.path
@@ -617,7 +672,20 @@ final class RecordStore: ObservableObject {
         // 2. 从内存和数据库删除
         records.removeAll { $0.id == record.id }
         aiCoordinator.markTagsNeedUpdate()
+        print("[DEBUG RecordStore.delete()] 调用 repository.delete()")
         repository.delete(id: record.id)
+        print("[DEBUG RecordStore.delete()] repository.delete() 返回")
+
+        // 3. 通知 StickyNoteManager 清理关联的便签
+        if record.type == .note {
+            print("[DEBUG RecordStore.delete()] 发送 RecordDeleted 通知, ID: \(record.id)")
+            NotificationCenter.default.post(
+                name: NSNotification.Name("RecordDeleted"),
+                object: record.id
+            )
+            Self.logger.info("已发送记录删除通知，记录ID: \(record.id)")
+        }
+        print("[DEBUG RecordStore.delete()] 删除流程完成")
     }
 
     /// 清空所有记录
@@ -1233,6 +1301,83 @@ final class RecordStore: ObservableObject {
                 return r1.createdAt > r2.createdAt
             }
         }
+    }
+
+    // MARK: - 便签内容更新
+
+    /// 更新便签记录的内容、标题和位置（同步执行，确保更新完成）
+    /// - Returns: 是否成功更新（false 表示记录不存在）
+    @discardableResult
+    func updateContent(
+        id: UUID,
+        content: String,
+        title: String?,
+        noteFrame: NSRect?
+    ) -> Bool {
+        var success = false
+        var recordExists = false
+
+        // 先检查记录是否存在
+        if let index = records.firstIndex(where: { $0.id == id }) {
+            recordExists = true
+            let oldRecord = records[index]
+
+            // 创建新的 Record 对象
+            let updatedRecord = Record(
+                id: oldRecord.id,
+                title: title,
+                content: content,
+                createdAt: oldRecord.createdAt,
+                hash: oldRecord.hash,
+                aiStatus: oldRecord.aiStatus,
+                summary: oldRecord.summary,
+                summaryConfidence: oldRecord.summaryConfidence,
+                starred: oldRecord.starred,
+                copiedAt: oldRecord.copiedAt,
+                tags: oldRecord.tags,
+                keywords: oldRecord.keywords,
+                sourceApp: oldRecord.sourceApp,
+                sourceUrl: oldRecord.sourceUrl,
+                type: oldRecord.type,
+                skipAI: oldRecord.skipAI,
+                fileCount: oldRecord.fileCount,
+                size: oldRecord.size,
+                noteFrame: noteFrame ?? oldRecord.noteFrame
+            )
+
+            // 更新内存
+            records[index] = updatedRecord
+
+            // 同步保存到数据库（使用 updateSync 更新现有记录）
+            do {
+                try repository.updateSync(updatedRecord)
+                Self.logger.info("便签记录已更新: \(id)")
+
+                // 在主线程发送通知和提示
+                DispatchQueue.main.async {
+                    self.notifier.postToast("记录已更新", type: "success")
+                    // 发送记录更新通知，让UI刷新
+                    self.objectWillChange.send()
+                }
+                success = true
+            } catch {
+                Self.logger.error("更新便签记录失败: \(error.localizedDescription)")
+                DispatchQueue.main.async {
+                    self.notifier.postToast("更新失败: \(error.localizedDescription)", type: "error")
+                }
+            }
+        }
+
+        if !recordExists {
+            // 记录不存在，发送通知告知便签清除 syncRecordId
+            Self.logger.warning("尝试更新不存在的记录: \(id)")
+            NotificationCenter.default.post(
+                name: NSNotification.Name("StickyNoteUpdateFailed"),
+                object: id
+            )
+        }
+
+        return success
     }
 
     // MARK: - AI 更新

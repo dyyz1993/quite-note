@@ -97,27 +97,32 @@ struct StickyNoteEditor: NSViewRepresentable {
     
     func updateNSView(_ nsView: NSScrollView, context: Context) {
         guard let textView = nsView.documentView as? StickyNoteTextView else { return }
-        
+
         // 只有当外部 text 真正变化且不是由内部触发时才同步
         if !context.coordinator.isUpdatingFromTextView {
             // 获取当前文本的 Markdown，并进行简单的内容比较（忽略格式差异导致的微小变化）
             let currentMarkdown = context.coordinator.attributedToMarkdown(textView.attributedString())
-            
+
+            print("[DEBUG] updateNSView - currentMarkdown: \(currentMarkdown.prefix(50)), text: \(text.prefix(50))")
+
             // 如果内容确实不一致，才进行全量更新
             if currentMarkdown != text {
+                print("[DEBUG] updateNSView - Content changed, updating...")
                 let selectedRange = textView.selectedRange()
                 let attributedString = context.coordinator.markdownToAttributed(text)
-                
+
                 textView.textStorage?.beginEditing()
                 textView.textStorage?.setAttributedString(attributedString)
                 textView.textStorage?.endEditing()
-                
+
                 // 尽可能保持光标位置
                 let newRange = NSRange(location: min(selectedRange.location, (textView.string as NSString).length), length: 0)
                 textView.setSelectedRange(newRange)
+            } else {
+                print("[DEBUG] updateNSView - Content same, skipping update")
             }
         }
-        
+
         // 焦点同步
         if isFocused && textView.window?.firstResponder != textView {
             DispatchQueue.main.async {
@@ -809,6 +814,7 @@ struct StickyNoteEditor: NSViewRepresentable {
         // MARK: - Markdown Conversion
         
         func markdownToAttributed(_ markdown: String) -> NSAttributedString {
+               print("[DEBUG] markdownToAttributed called, input: \(markdown.prefix(100))")
                let attributedString = NSMutableAttributedString(string: markdown)
                let fullRange = NSRange(location: 0, length: (markdown as NSString).length)
                
@@ -857,6 +863,7 @@ struct StickyNoteEditor: NSViewRepresentable {
             let boldPattern = "\\*\\*(.*?)\\*\\*"
             if let boldRegex = try? NSRegularExpression(pattern: boldPattern, options: []) {
                 let boldMatches = boldRegex.matches(in: attributedString.string, options: [], range: NSRange(location: 0, length: attributedString.length))
+                print("[DEBUG] Found \(boldMatches.count) bold matches")
                 for match in boldMatches.reversed() {
                     let contentRange = match.range(at: 1)
                     if let font = attributedString.attribute(.font, at: contentRange.location, effectiveRange: nil) as? NSFont {
@@ -888,24 +895,50 @@ struct StickyNoteEditor: NSViewRepresentable {
                 }
             }
             
-            // 4. 处理颜色 [c:hex]text[/c]
+            // 4. 处理下划线 <u>text</u>
+            let underlinePattern = "<u>(.*?)</u>"
+            if let underlineRegex = try? NSRegularExpression(pattern: underlinePattern, options: []) {
+                let underlineMatches = underlineRegex.matches(in: attributedString.string, options: [], range: NSRange(location: 0, length: attributedString.length))
+                for match in underlineMatches.reversed() {
+                    let contentRange = match.range(at: 1)
+                    attributedString.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: contentRange)
+                    // 移除标记符
+                    attributedString.deleteCharacters(in: NSRange(location: match.range.location + match.range.length - 4, length: 4))
+                    attributedString.deleteCharacters(in: NSRange(location: match.range.location, length: 3))
+                    // 添加自定义属性
+                    let newRange = NSRange(location: match.range.location, length: contentRange.length)
+                    attributedString.addAttribute(NSAttributedString.Key("isUnderline"), value: true, range: newRange)
+                }
+            }
+
+            // 5. 处理颜色 [c:hex]text[/c]
             let colorPattern = "\\[c:(#?[0-9a-fA-F]{3,8})\\](.*?)\\[/c\\]"
             if let colorRegex = try? NSRegularExpression(pattern: colorPattern, options: []) {
                 let colorMatches = colorRegex.matches(in: attributedString.string, options: [], range: NSRange(location: 0, length: attributedString.length))
                 for match in colorMatches.reversed() {
                     let hex = (attributedString.string as NSString).substring(with: match.range(at: 1))
                     let contentRange = match.range(at: 2)
-                    if let color = NSColor(hex: hex) {
+                    // 移除 # 前缀
+                    let sanitizedHex = hex.replacingOccurrences(of: "#", with: "")
+                    if let color = NSColor(hex: sanitizedHex) {
                         attributedString.addAttribute(.foregroundColor, value: color, range: contentRange)
                         // 移除标记符：先移除后面的 [/c]
                         attributedString.deleteCharacters(in: NSRange(location: match.range.location + match.range.length - 4, length: 4))
                         // 再移除前面的 [c:hex]
                         let prefixLength = 3 + hex.count + 1 // [c: + hex + ]
                         attributedString.deleteCharacters(in: NSRange(location: match.range.location, length: prefixLength))
-                        
+
                         // 重新获取当前 range 并添加自定义属性
                         let finalRange = NSRange(location: match.range.location, length: contentRange.length)
-                        attributedString.addAttribute(NSAttributedString.Key("customColor"), value: hex, range: finalRange)
+                        attributedString.addAttribute(NSAttributedString.Key("customColor"), value: sanitizedHex, range: finalRange)
+                    } else {
+                        // 如果颜色解析失败，移除标记符，保留内容
+                        print("[DEBUG] Failed to parse color: \(hex)")
+                        // 移除标记符：先移除后面的 [/c]
+                        attributedString.deleteCharacters(in: NSRange(location: match.range.location + match.range.length - 4, length: 4))
+                        // 再移除前面的 [c:hex]
+                        let prefixLength = 3 + hex.count + 1
+                        attributedString.deleteCharacters(in: NSRange(location: match.range.location, length: prefixLength))
                     }
                 }
             }
@@ -914,6 +947,7 @@ struct StickyNoteEditor: NSViewRepresentable {
         }
         
         func attributedToMarkdown(_ attributedString: NSAttributedString) -> String {
+            print("[DEBUG] attributedToMarkdown called")
             let result = NSMutableAttributedString(attributedString: attributedString)
             
             // 按照从后往前的顺序处理，避免索引偏移
@@ -942,6 +976,15 @@ struct StickyNoteEditor: NSViewRepresentable {
                     continue
                 }
                 
+                // 处理下划线 <u>text</u>
+                if let _ = result.attribute(NSAttributedString.Key("isUnderline"), at: i, effectiveRange: &range) {
+                    result.insert(NSAttributedString(string: "</u>"), at: range.location + range.length)
+                    result.insert(NSAttributedString(string: "<u>"), at: range.location)
+                    result.removeAttribute(NSAttributedString.Key("isUnderline"), range: range)
+                    i = range.location - 1
+                    continue
+                }
+
                 // 处理加粗 **text**
                 if let _ = result.attribute(NSAttributedString.Key("isBold"), at: i, effectiveRange: &range) {
                     result.insert(NSAttributedString(string: "**"), at: range.location + range.length)
@@ -975,18 +1018,23 @@ struct StickyNoteEditor: NSViewRepresentable {
                 
                 i -= 1
             }
-            
-            return result.string
+
+            let markdown = result.string
+            print("[DEBUG] attributedToMarkdown output: \(markdown.prefix(100))")
+            return markdown
         }
     }
 }
 
 /// 自定义 NSTextView 以处理特殊的交互和显示
 class StickyNoteTextView: NSTextView {
-    /// 覆盖粘贴方法，粘贴时自动清除富文本格式，只保留纯文本
+    /// 覆盖粘贴方法，保留颜色格式，但清除其他富文本格式
     override func paste(_ sender: Any?) {
-        // 从剪贴板读取纯文本，避免粘贴带样式的富文本
-        guard let plainText = NSPasteboard.general.string(forType: .string) else {
+        // 从剪贴板读取数据
+        let pasteboard = NSPasteboard.general
+
+        // 优先读取纯文本
+        guard let plainText = pasteboard.string(forType: .string) else {
             super.paste(sender)
             return
         }
@@ -994,7 +1042,7 @@ class StickyNoteTextView: NSTextView {
         // 获取当前选区
         let selectedRange = self.selectedRange()
 
-        // 创建纯文本的 NSAttributedString，应用默认样式
+        // 转换纯文本为带样式的 NSAttributedString，处理颜色标记
         let baseFontSize: CGFloat = 12
         let font = NSFont.systemFont(ofSize: baseFontSize)
         let textColor = NSColor.white
@@ -1003,14 +1051,18 @@ class StickyNoteTextView: NSTextView {
         paragraphStyle.minimumLineHeight = 18
         paragraphStyle.maximumLineHeight = 18
 
-        let attributedString = NSMutableAttributedString(string: plainText)
-        attributedString.addAttributes([
+        // 创建基础样式
+        let baseAttributes: [NSAttributedString.Key: Any] = [
             .font: font,
-            .foregroundColor: textColor,
             .paragraphStyle: paragraphStyle
-        ], range: NSRange(location: 0, length: attributedString.length))
+        ]
 
-        // 插入纯文本
+        // 使用 markdownToAttributed 来处理粘贴的文本
+        // 这样可以保留颜色、加粗、删除线等格式
+        let coordinator = delegate as? StickyNoteEditor.Coordinator
+        let attributedString = coordinator?.markdownToAttributed(plainText) ?? NSMutableAttributedString(string: plainText, attributes: baseAttributes)
+
+        // 插入处理后的文本
         textStorage?.beginEditing()
         textStorage?.replaceCharacters(in: selectedRange, with: attributedString)
         textStorage?.endEditing()

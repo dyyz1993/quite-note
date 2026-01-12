@@ -131,21 +131,53 @@ struct FloatingRootView: View {
             print("[DEBUG] FloatingRootView received StickyNoteSaveToRecord notification")
             if let userInfo = notification.userInfo,
                let content = userInfo["content"] as? String {
+
+                // 检查内容是否为空
+                guard !content.isEmpty else {
+                    print("[DEBUG] Content is empty, skipping save to record")
+                    return
+                }
+
                 let typeStr = userInfo["type"] as? String ?? "text"
                 let source = userInfo["source"] as? String ?? "Sticky Note"
+                let title = userInfo["title"] as? String
+                let noteFrame = userInfo["noteFrame"] as? NSRect
+                let noteId = userInfo["noteId"] as? UUID
                 let hash = ClipboardService.sha1(content + UUID().uuidString)
-                
-                print("[DEBUG] Saving sticky note to store: \(content.prefix(20))...")
+
+                print("[DEBUG] Saving sticky note to store, title: \(title ?? "nil"), frame: \(noteFrame)")
+
+                // 保存记录（注意：需要先获取当前记录数来找到新添加的记录）
+                let beforeCount = store.records.count
                 store.addRecord(
                     content: content,
                     hash: hash,
                     sourceApp: source,
-                    type: typeStr == "text" ? .text : .file
+                    type: typeStr == "note" ? .note : (typeStr == "text" ? .text : .file),
+                    fileName: title,
+                    noteFrame: noteFrame
                 )
-                
+
                 // 确保 UI 切换到主列表并显示新纪录
                 store.filterType = nil // 显示全部
-                print("[DEBUG] Store records count after add: \(store.records.count)")
+
+                // 修复：使用 DispatchQueue.main.async 确保在下一个 runloop 发送通知
+                // 这样可以确保 store.records 已经更新
+                DispatchQueue.main.async {
+                    if let noteId = noteId, store.records.count > beforeCount {
+                        let newRecord = store.records[0] // 新记录会插入到第一个位置
+                        print("[DEBUG] Sent stickyNoteSaveCompleted notification, recordId: \(newRecord.id)")
+                        // 直接发送通知而不是使用 QuiteNoteNotification.post
+                        NotificationCenter.default.post(
+                            name: NSNotification.Name("qn.stickynote.save.completed"),
+                            object: nil,
+                            userInfo: [
+                                "noteId": noteId,
+                                "recordId": newRecord.id
+                            ]
+                        )
+                    }
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -167,6 +199,21 @@ struct FloatingRootView: View {
             if let recordId = notification.object as? UUID {
                 expandedId = recordId
                 showSettings = false // 确保不在设置界面
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("StickyNoteUpdateRecord"))) { notification in
+            // 响应更新便签记录的通知
+            if let userInfo = notification.userInfo,
+               let recordId = userInfo["recordId"] as? UUID,
+               let content = userInfo["content"] as? String,
+               let title = userInfo["title"] as? String {
+                // 使用 RecordStore 的 updateContent 方法更新记录
+                store.updateContent(
+                    id: recordId,
+                    content: content,
+                    title: title,
+                    noteFrame: userInfo["noteFrame"] as? NSRect
+                )
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .escKeyPressed)) { _ in
@@ -240,6 +287,9 @@ struct FloatingRootView: View {
                 }
                 SidebarFilterButton(type: .folder, isSelected: store.filterType == .folder) {
                     store.toggleFilterType(.folder)
+                }
+                SidebarFilterButton(type: .note, isSelected: store.filterType == .note) {
+                    store.toggleFilterType(.note)
                 }
 
                 Spacer()
@@ -373,7 +423,7 @@ struct FloatingRootView: View {
         ZStack {
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(spacing: 12, pinnedViews: [.sectionHeaders]) { // 恢复 LazyVStack，保持性能
+                    LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) { // spacing 设为 0，通过 padding 控制间距
                     if searchTerm.isEmpty {
                         if store.records.isEmpty {
                             emptyStateView
@@ -635,6 +685,7 @@ struct FloatingRootView: View {
                 store: store
             )
             .id(record.id.uuidString) // 使用 String 类型的 ID 以支持 ScrollViewReader 滚动（与通知中的 recordIdString 匹配）
+            .padding(.top, 12) // 统一使用 12px 间距
             .padding(.bottom, isOriginalContentExpanded(for: record) ? 130 : 0) // 展开原文时增加底部间距
             .transition(.asymmetric(
                 insertion: .opacity.combined(with: .move(edge: .top)),
@@ -644,8 +695,9 @@ struct FloatingRootView: View {
     }
 
     // 辅助函数：判断某个卡片是否展开了原文
+    // note 类型总是返回 false，避免额外的底部 padding
     private func isOriginalContentExpanded(for record: Record) -> Bool {
-        return originalContentExpandedIds.contains(record.id)
+        return record.type != .note && originalContentExpandedIds.contains(record.id)
     }
 
     /// 为收藏列表提供动画效果的视图
@@ -660,7 +712,7 @@ struct FloatingRootView: View {
         let displayCount = min(starred.count, 50)
         let displayRecords = Array(starred.prefix(displayCount))
 
-        VStack(spacing: 12) {
+        VStack(spacing: 0) {
             // 显示前50条记录
             ForEach(displayRecords) { record in
                 RecordCardView(
@@ -670,6 +722,7 @@ struct FloatingRootView: View {
                     store: store
                 )
                 .id(record.id.uuidString) // 使用 String 类型的 ID 以支持 ScrollViewReader 滚动（与通知中的 recordIdString 匹配）
+                .padding(.top, 12) // 统一使用 12px 间距
                 .transition(.asymmetric(
                     insertion: .opacity.combined(with: .scale(scale: 0.8, anchor: .top)),
                     removal: .opacity.combined(with: .scale(scale: 0.8, anchor: .top))

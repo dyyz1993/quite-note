@@ -170,6 +170,22 @@ struct StickyNoteView: View {
                 isFocused = true
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("StickyNoteSyncStatusChanged"))) { notification in
+            // 监听同步状态变化，只更新 syncRecordId 属性，避免替换整个 note 导致内容丢失
+            if let syncId = notification.object as? UUID, syncId == note.id,
+               let recordId = notification.userInfo?["recordId"] as? UUID {
+                note.syncRecordId = recordId  // 只更新 syncRecordId，不替换整个 note
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("StickyNoteContentUpdated"))) { notification in
+            // 监听内容更新，从记录重新打开时使用
+            if let updatedId = notification.object as? UUID, updatedId == note.id {
+                // 从 StickyNoteManager 获取最新的便签数据
+                if let updatedNote = StickyNoteManager.shared.notes.first(where: { $0.id == note.id }) {
+                    note = updatedNote
+                }
+            }
+        }
     }
 
     // MARK: - Computed Properties
@@ -197,8 +213,7 @@ struct StickyNoteView: View {
 
     private func saveToRecords() {
         StickyNoteManager.shared.saveToRecords(note: note)
-        // 存入后清空当前页内容
-        note.currentContent = ""
+        // 不再清空内容，保持便签内容
         StickyNoteManager.shared.updateNote(note)
     }
 }
@@ -263,14 +278,54 @@ struct StickyNoteToolbar: View {
 
             // 3. 操作组
             HStack(spacing: 8) {
-                StickyNoteToolbarButton(name: .save, tooltip: "存入并清空", action: {
-                    StickyNoteManager.shared.saveToRecords(note: note)
-                    note.currentContent = ""
-                    StickyNoteManager.shared.updateNote(note)
-                })
+                // 同步按钮：根据是否已同步显示不同状态
+                if note.syncRecordId != nil {
+                    // 已同步：显示绿色同步按钮，点击更新记录
+                    StickyNoteToolbarButton(name: .refreshCw, tooltip: "更新记录", color: .themeGreen500, action: {
+                        // 从 StickyNoteManager 获取最新的便签数据（包含最新输入内容）
+                        if let latestNote = StickyNoteManager.shared.notes.first(where: { $0.id == note.id }) {
+                            StickyNoteManager.shared.saveToRecords(note: latestNote)
+                        }
+                    })
+                } else {
+                    // 未同步：显示白色同步按钮，点击保存到记录
+                    StickyNoteToolbarButton(name: .refreshCw, tooltip: "保存到记录", color: .themeTextSecondary, action: {
+                        // 从 StickyNoteManager 获取最新的便签数据（包含最新输入内容）
+                        if let latestNote = StickyNoteManager.shared.notes.first(where: { $0.id == note.id }) {
+                            StickyNoteManager.shared.saveToRecords(note: latestNote)
+                        }
+                    })
+                }
 
-                StickyNoteToolbarButton(name: .trash, tooltip: "删除贴纸", color: .themeStatusError.opacity(0.9), action: {
-                    StickyNoteManager.shared.deleteNote(note)
+                // 关闭按钮（关闭前如果已同步则更新记录）
+                StickyNoteToolbarButton(name: .x, tooltip: "关闭贴纸", color: .themeTextSecondary, action: {
+                    // 如果已同步，关闭前更新记录内容
+                    if let recordId = note.syncRecordId,
+                       // 从 StickyNoteManager 获取最新的便签数据（包含最新的位置）
+                       let latestNote = StickyNoteManager.shared.notes.first(where: { $0.id == note.id }) {
+                        let content = StickyNoteManager.shared.formatPagesForSaving(latestNote.pages)
+                        let title = latestNote.extractNoteTitle()
+
+                        NotificationCenter.default.post(
+                            name: NSNotification.Name("StickyNoteUpdateRecord"),
+                            object: nil,
+                            userInfo: [
+                                "recordId": recordId,
+                                "content": content,
+                                "noteFrame": latestNote.frame,  // 使用最新的 frame
+                                "title": title,
+                                "noteId": latestNote.id
+                            ]
+                        )
+
+                        // 延迟关闭，确保更新操作完成（避免竞态条件）
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                            StickyNoteManager.shared.removeNote(id: note.id)
+                        }
+                    } else {
+                        // 未同步，立即关闭
+                        StickyNoteManager.shared.removeNote(id: note.id)
+                    }
                 })
             }
         }
