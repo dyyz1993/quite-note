@@ -6,10 +6,10 @@ set -e
 echo "开始构建 Quite Note 应用..."
 
 # 配置变量
-# APP_NAME="Quite Note Dev"
-# BUNDLE_ID="com.quitenote.app.dev"
-APP_NAME="Quite Note"
-BUNDLE_ID="com.quitenote.app"
+APP_NAME="Quite Note Dev"
+BUNDLE_ID="com.quitenote.app.dev"
+# APP_NAME="Quite Note"
+# BUNDLE_ID="com.quitenote.app"
 EXECUTABLE_NAME="QuiteNote"
 VERSION="1.0.0"
 
@@ -198,21 +198,38 @@ else
     echo "警告：未找到 LucideIcons 资源，请检查构建配置。"
 fi
 
-# 复制 QuiteNote 资源文件（包括 default.yaml）
+# 复制 QuiteNote 资源文件（包括 YAML 配置文件）
 QUITENOTE_BUNDLE_PATH=$(find .build -name "QuiteNote_QuiteNote.bundle" -type d -path "*/release/*" | head -n 1)
 
 if [ -n "$QUITENOTE_BUNDLE_PATH" ]; then
     echo "在 $QUITENOTE_BUNDLE_PATH 找到 QuiteNote 资源，复制到 Resources 目录..."
-    # 创建 Symbols 子目录并复制 default.yaml
-    mkdir -p "$RESOURCES_DIR/Symbols"
-    if [ -f "$QUITENOTE_BUNDLE_PATH/default.yaml" ]; then
-        cp "$QUITENOTE_BUNDLE_PATH/default.yaml" "$RESOURCES_DIR/Symbols/"
-        echo "已复制 default.yaml 到 Resources/Symbols/"
+    # 复制 Resources/Symbols 目录下的所有 YAML 文件
+    if [ -d "Resources/Symbols" ]; then
+        mkdir -p "$RESOURCES_DIR/Symbols"
+        cp -R Resources/Symbols/*.yaml "$RESOURCES_DIR/Symbols/" 2>/dev/null || true
+        echo "已复制 Symbols YAML 文件到 Resources/Symbols/"
     else
-        echo "警告：未找到 default.yaml 文件"
+        # 如果没有 Resources/Symbols，尝试从 bundle 复制 default.yaml
+        mkdir -p "$RESOURCES_DIR/Symbols"
+        if [ -f "$QUITENOTE_BUNDLE_PATH/default.yaml" ]; then
+            cp "$QUITENOTE_BUNDLE_PATH/default.yaml" "$RESOURCES_DIR/Symbols/"
+            echo "已复制 default.yaml 到 Resources/Symbols/"
+        else
+            echo "警告：未找到 Symbols 配置文件"
+        fi
     fi
 else
     echo "警告：未找到 QuiteNote 资源 bundle"
+fi
+
+# 复制 Editor 资源文件（包括 yaml-editor.html）
+if [ -d "Resources/Editor" ]; then
+    echo "复制 Editor 资源到 Resources 目录..."
+    mkdir -p "$RESOURCES_DIR/Editor"
+    cp -R Resources/Editor/* "$RESOURCES_DIR/Editor/"
+    echo "已复制 Editor 资源到 Resources/Editor/"
+else
+    echo "警告：未找到 Editor 资源目录"
 fi
 
 # 创建 Info.plist

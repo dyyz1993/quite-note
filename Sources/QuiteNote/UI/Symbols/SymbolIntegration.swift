@@ -218,22 +218,28 @@ extension StickyNoteEditor.Coordinator {
             }
             .store(in: &cancellables)
 
-        // 监听工具栏按钮点击 - 打开符号浏览器
-        NotificationCenter.default.publisher(for: .showSymbolBrowser)
-            .sink { [weak self, weak textView] _ in
-                guard let self = self, let textView = textView else { return }
-                print("[SymbolIntegration] 打开符号浏览器")
-                SymbolBrowserBridge.shared.show(from: textView)
-            }
-            .store(in: &cancellables)
-
         // 监听符号浏览器选择 - 插入符号
         NotificationCenter.default.publisher(for: .insertSymbolFromBrowser)
             .sink { [weak self, weak textView] notification in
                 guard let self = self, let textView = textView else { return }
                 if let userInfo = notification.userInfo {
-                    // 检查是否是 floating 或 inline 模式
-                    if let mode = userInfo["mode"] as? String,
+                    // ⭐ 检查是否有目标 textView 指定
+                    if let targetAddress = userInfo["targetTextView"] as? UnsafeMutableRawPointer {
+                        // 获取当前 textView 的地址
+                        let currentAddress = Unmanaged.passUnretained(textView).toOpaque()
+                        // 只有匹配时才插入
+                        if targetAddress == currentAddress {
+                            if let mode = userInfo["mode"] as? String,
+                               let symbol = userInfo["symbol"] as? SymbolItem {
+                                print("[SymbolIntegration] \(mode)模式插入符号到当前textView: \(symbol.content)")
+                                self.insertSymbolDirectly(textView: textView, symbol: symbol)
+                            }
+                        } else {
+                            print("[SymbolIntegration] 跳过插入 - 不匹配的textView")
+                        }
+                    }
+                    // 回退：没有指定目标 textView，所有窗口都响应（旧模式）
+                    else if let mode = userInfo["mode"] as? String,
                        let symbol = userInfo["symbol"] as? SymbolItem {
                         print("[SymbolIntegration] \(mode)模式插入符号: \(symbol.content)")
                         self.insertSymbolDirectly(textView: textView, symbol: symbol)
@@ -832,7 +838,12 @@ extension StickyNoteEditor.Coordinator {
         // 直接在光标位置插入符号内容
         let nsString = text as NSString
         let newText = nsString.replacingCharacters(in: NSRange(location: cursorPosition, length: 0), with: symbol.content)
-        let newCursorPos = cursorPosition + symbol.content.count
+
+        // ⭐ 关键修复：使用 NSString.length (UTF-16) 而不是 String.count (UTF-8/UTF-16 视图不同)
+        // NSTextView 使用 UTF-16 坐标系，所以必须使用 NSString.length
+        let symbolUTF16Length = (symbol.content as NSString).length
+        let newCursorPos = cursorPosition + symbolUTF16Length
+        let newTextUTF16Length = (newText as NSString).length
 
         // 更新文本视图
         isUpdatingFromTextView = true
@@ -840,8 +851,8 @@ extension StickyNoteEditor.Coordinator {
         let attrString = markdownToAttributed(newText)
         textView.textStorage?.setAttributedString(attrString)
 
-        // 设置光标位置
-        let newRange = NSRange(location: min(newCursorPos, newText.count), length: 0)
+        // 设置光标位置 - 使用 UTF-16 长度
+        let newRange = NSRange(location: min(newCursorPos, newTextUTF16Length), length: 0)
         textView.setSelectedRange(newRange)
 
         isUpdatingFromTextView = false
@@ -1055,120 +1066,10 @@ class SymbolSuggestionPanelBridge {
     }
 }
 
-// MARK: - Symbol Browser Bridge
-
-/// 符号浏览面板桥接（用于从工具栏打开）
-class SymbolBrowserBridge: ObservableObject {
-    @Published var isPresented = false
-
-    static let shared = SymbolBrowserBridge()
-
-    private var browserPanel: NSPanel?
-    private var hostingView: NSHostingView<SymbolBrowserPanelWrapper>?
-
-    private var targetTextView: NSTextView?
-
-    func show(from textView: NSTextView) {
-        self.targetTextView = textView
-
-        if browserPanel == nil {
-            // 创建新面板
-            let panel = NSPanel(
-                contentRect: NSRect(origin: .zero, size: NSSize(width: 400, height: 360)),
-                styleMask: [.titled, .closable, .resizable],
-                backing: .buffered,
-                defer: false
-            )
-
-            panel.title = "符号库"
-            panel.level = .normal // 使用普通级别，避免失焦问题
-            panel.isMovableByWindowBackground = true
-            panel.hidesOnDeactivate = false // 失去焦点时不隐藏
-
-            let wrapper = SymbolBrowserPanelWrapper(
-                isPresented: Binding(
-                    get: { self.isPresented },
-                    set: { self.isPresented = $0 }
-                ),
-                onSymbolSelected: { [weak self] symbol in
-                    self?.insertSymbolFromBrowser(symbol)
-                }
-            )
-
-            let hostingView = NSHostingView(rootView: wrapper)
-            hostingView.autoresizingMask = [.minXMargin, .maxXMargin, .minYMargin, .maxYMargin]
-            panel.contentView = hostingView
-
-            // 居中显示
-            if let screen = NSScreen.main {
-                let frame = panel.frame
-                let screenFrame = screen.visibleFrame
-                panel.setFrame(
-                    NSRect(
-                        origin: CGPoint(
-                            x: screenFrame.midX - frame.width / 2,
-                            y: screenFrame.midY - frame.height / 2
-                        ),
-                        size: frame.size
-                    ),
-                    display: true
-                )
-            }
-
-            self.hostingView = hostingView
-            self.browserPanel = panel
-        }
-
-        browserPanel?.makeKeyAndOrderFront(nil)
-        isPresented = true
-    }
-
-    func hide() {
-        browserPanel?.close()
-        browserPanel = nil
-        hostingView = nil
-        isPresented = false
-    }
-
-    private func insertSymbolFromBrowser(_ symbol: SymbolItem) {
-        guard let textView = targetTextView else { return }
-
-        let text = textView.string
-        let cursorPosition = textView.selectedRange().location
-
-        // 直接插入符号内容
-        let newText = (text as NSString).replacingCharacters(in: NSRange(location: cursorPosition, length: 0), with: symbol.content)
-
-        // 通知外部更新
-        NotificationCenter.default.post(
-            name: .insertSymbolFromBrowser,
-            object: nil,
-            userInfo: ["newText": newText, "newCursorPos": cursorPosition + symbol.content.count]
-        )
-
-        hide()
-    }
-}
-
-// MARK: - Symbol Browser Panel Wrapper
-
-struct SymbolBrowserPanelWrapper: View {
-    @Binding var isPresented: Bool
-    let onSymbolSelected: (SymbolItem) -> Void
-
-    var body: some View {
-        SymbolBrowserPanel(
-            isPresented: $isPresented,
-            onSymbolSelected: onSymbolSelected
-        )
-    }
-}
-
 // MARK: - Notifications
 
 extension Notification.Name {
     static let insertSymbolFromBrowser = Notification.Name("insertSymbolFromBrowser")
-    static let showSymbolBrowser = Notification.Name("showSymbolBrowser")
 }
 
 // MARK: - Integration with StickyNoteEditor

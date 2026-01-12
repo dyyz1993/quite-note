@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YAML Editor</title>
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #1f2937;
+        }
+        #container {
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+<body>
+    <div id="container"></div>
+    <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.min.js"></script>
+    <script>
+        require.config({
+            paths: {
+                'vs': 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs'
+            }
+        });
+
+        require(['vs/editor/editor.main'], function () {
+            // 获取初始内容
+            const initialContent = window.initialYaml || '';
+
+            const editor = monaco.editor.create(document.getElementById('container'), {
+                value: initialContent,
+                language: 'yaml',
+                theme: 'vs-dark',
+                automaticLayout: true,
+                minimap: {
+                    enabled: false
+                },
+                fontSize: 12,
+                lineHeight: 18,
+                padding: {
+                    top: 12,
+                    bottom: 12
+                },
+                scrollBeyondLastLine: false,
+                wordWrap: 'on',
+                tabSize: 2,
+                renderWhitespace: 'selection',
+                cursorStyle: 'line',
+                scrollbar: {
+                    vertical: 'visible',
+                    horizontal: 'visible',
+                    useShadows: true,
+                    verticalScrollbarSize: 10,
+                    horizontalScrollbarSize: 10
+                },
+                overviewRulerLanes: 0,
+                hideCursorInOverviewRuler: true,
+                overviewRulerBorder: false,
+                // YAML 特定配置
+                brackets: [
+                    ['{', '}'],
+                    ['[', ']'],
+                    ['(', ')']
+                ],
+                colorDecorators: true,
+                folding: true,
+                lineNumbers: 'on',
+                glyphMargin: false,
+                lineDecorationsWidth: 0
+            });
+
+            // 监听内容变化
+            editor.onDidChangeModelContent(function () {
+                const content = editor.getValue();
+                if (window.webkit && window.webkit.messageHandlers) {
+                    window.webkit.messageHandlers.yamlDidChange.postMessage(content);
+                } else if (window.bridge) {
+                    window.bridge.set_yaml(content);
+                }
+            });
+
+            // 暴露设置内容的方法
+            window.setYamlContent = function (content) {
+                editor.setValue(content);
+            };
+
+            // 暴露获取内容的方法
+            window.getYamlContent = function () {
+                return editor.getValue();
+            };
+
+            // 暴露聚焦方法
+            window.focusEditor = function () {
+                editor.focus();
+            };
+
+            // 初始化时通知加载完成
+            if (window.webkit && window.webkit.messageHandlers) {
+                window.webkit.messageHandlers.editorReady.postMessage(true);
+            }
+        });
+    </script>
+</body>
+</html>

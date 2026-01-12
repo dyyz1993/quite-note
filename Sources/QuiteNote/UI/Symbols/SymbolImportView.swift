@@ -6,15 +6,22 @@ struct SymbolImportView: View {
     @Binding var isPresented: Bool
     @StateObject private var configManager = SymbolConfigManager.shared
 
-    @State private var selectedSource: ImportSource = .file
+    @State private var selectedSource: ImportSource = .template
+    @State private var selectedTemplate: TemplateType = .chinese
     @State private var yamlText: String = ""
     @State private var validationResult: ValidationResult?
     @State private var isProcessing = false
 
     enum ImportSource {
+        case template
         case file
         case clipboard
         case url
+    }
+
+    enum TemplateType {
+        case chinese
+        case english
     }
 
     struct ValidationResult {
@@ -62,9 +69,10 @@ struct SymbolImportView: View {
             footerView
         }
         .background(Color.themeBackground)
-        .frame(width: 500, height: 450)
+        .frame(width: 500, height: 500)
         .onAppear {
-            loadFromClipboard()
+            // 默认加载中文模板
+            loadTemplate(.chinese)
         }
     }
 
@@ -91,9 +99,9 @@ struct SymbolImportView: View {
                 .foregroundColor(Color.themeTextPrimary)
 
             HStack(spacing: 8) {
+                sourceOption(title: "预设模板", shortcut: "⌘T", source: .template)
                 sourceOption(title: "从文件导入", shortcut: "⌘F", source: .file)
-                sourceOption(title: "从剪贴板导入", shortcut: "⌘V", source: .clipboard)
-                sourceOption(title: "从 URL 导入", shortcut: "⌘U", source: .url)
+                sourceOption(title: "从剪贴板", shortcut: "⌘V", source: .clipboard)
             }
         }
     }
@@ -130,13 +138,15 @@ struct SymbolImportView: View {
     private var yamlContentSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("YAML 内容")
+                Text(selectedSource == .template ? "选择模板" : "YAML 内容")
                     .font(.themeBody)
                     .foregroundColor(Color.themeTextPrimary)
 
                 Spacer()
 
                 switch selectedSource {
+                case .template:
+                    EmptyView()
                 case .file:
                     Button(action: { importFromFile() }) {
                         Label("选择文件", systemImage: "doc")
@@ -156,31 +166,109 @@ struct SymbolImportView: View {
                 }
             }
 
-            TextEditor(text: $yamlText)
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundColor(Color.themeTextSecondary)
-                .padding(12)
-                .background(Color.themeGray800)
-                .cornerRadius(8)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(Color.themeBorder, lineWidth: 1)
-                )
-                .frame(minHeight: 150)
+            if selectedSource == .template {
+                // 模板选择
+                VStack(spacing: 12) {
+                    templateCard(
+                        title: "中文符号库",
+                        icon: "🔣",
+                        description: "中文触发词，适合中文笔记",
+                        tags: ["bug", "fix", "优化", "测试"],
+                        type: .chinese
+                    )
+                    templateCard(
+                        title: "English Symbols",
+                        icon: "🌐",
+                        description: "English triggers for dev workflow",
+                        tags: ["todo", "bug", "feat", "done"],
+                        type: .english
+                    )
+                }
+            } else {
+                TextEditor(text: $yamlText)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundColor(Color.themeTextSecondary)
+                    .padding(12)
+                    .background(Color.themeGray800)
+                    .cornerRadius(8)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color.themeBorder, lineWidth: 1)
+                    )
+                    .frame(minHeight: 150)
 
-            // 快捷键提示
-            if selectedSource == .url {
-                HStack {
-                    Image(systemName: "info.circle")
-                        .font(.system(size: 11))
-                        .foregroundColor(Color.themeTextTertiary)
-                    Text("输入 YAML 文件的 URL 地址")
-                        .font(.themeCaptionSmall)
-                        .foregroundColor(Color.themeTextTertiary)
-                    Spacer()
+                // 快捷键提示
+                if selectedSource == .url {
+                    HStack {
+                        Image(systemName: "info.circle")
+                            .font(.system(size: 11))
+                            .foregroundColor(Color.themeTextTertiary)
+                        Text("输入 YAML 文件的 URL 地址")
+                            .font(.themeCaptionSmall)
+                            .foregroundColor(Color.themeTextTertiary)
+                        Spacer()
+                    }
                 }
             }
         }
+    }
+
+    // MARK: - Template Card
+
+    private func templateCard(title: String, icon: String, description: String, tags: [String], type: TemplateType) -> some View {
+        Button(action: {
+            selectedTemplate = type
+            loadTemplate(type)
+        }) {
+            HStack(spacing: 12) {
+                // 图标
+                Text(icon)
+                    .font(.system(size: 32))
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
+                        Text(title)
+                            .font(.themeBody)
+                            .foregroundColor(Color.themeTextPrimary)
+                            .fontWeight(.medium)
+
+                        if selectedTemplate == type {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 14))
+                                .foregroundColor(Color.themeBlue500)
+                        }
+                    }
+
+                    Text(description)
+                        .font(.themeCaption)
+                        .foregroundColor(Color.themeTextTertiary)
+
+                    HStack(spacing: 4) {
+                        ForEach(tags, id: \.self) { tag in
+                            Text(tag)
+                                .font(.themeCaptionSmall)
+                                .foregroundColor(Color.themeTextSecondary)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color.themeHoverLight)
+                                .cornerRadius(4)
+                        }
+                    }
+                }
+
+                Spacer()
+            }
+            .padding(12)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(selectedTemplate == type ? Color.themeBlue500.opacity(0.1) : Color.themeHoverLight)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(selectedTemplate == type ? Color.themeBlue500 : Color.themeBorder, lineWidth: 1)
+            )
+        }
+        .buttonStyle(PlainButtonStyle())
     }
 
     // MARK: - Validation Result Section
@@ -271,20 +359,14 @@ struct SymbolImportView: View {
 
             Spacer()
 
-            Button(action: { validateYaml() }) {
-                Text("验证")
-                    .font(.themeBody)
-                    .foregroundColor(Color.themeTextSecondary)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .background(Color.themeHoverLight)
-                    .cornerRadius(8)
-            }
-            .buttonStyle(PlainButtonStyle())
-            .disabled(yamlText.isEmpty || isProcessing)
-
-            Button(action: { importConfig() }) {
-                Text("验证并导入")
+            // 如果是模板模式，直接显示"添加"按钮
+            if selectedSource == .template {
+                Button(action: { importTemplate() }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.system(size: 14))
+                        Text("添加符号库")
+                    }
                     .font(.themeBody)
                     .foregroundColor(.white)
                     .padding(.horizontal, 16)
@@ -292,14 +374,74 @@ struct SymbolImportView: View {
                     .background(Color.themeBlue600)
                     .cornerRadius(8)
                     .shadow(color: Color.themeShadowBlue, radius: 4, x: 0, y: 2)
+                }
+                .buttonStyle(PlainButtonStyle())
+                .disabled(isProcessing)
+            } else {
+                Button(action: { validateYaml() }) {
+                    Text("验证")
+                        .font(.themeBody)
+                        .foregroundColor(Color.themeTextSecondary)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(Color.themeHoverLight)
+                        .cornerRadius(8)
+                }
+                .buttonStyle(PlainButtonStyle())
+                .disabled(yamlText.isEmpty || isProcessing)
+
+                Button(action: { importConfig() }) {
+                    Text("验证并导入")
+                        .font(.themeBody)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(Color.themeBlue600)
+                        .cornerRadius(8)
+                        .shadow(color: Color.themeShadowBlue, radius: 4, x: 0, y: 2)
+                }
+                .buttonStyle(PlainButtonStyle())
+                .disabled(validationResult?.isValid != true || isProcessing)
             }
-            .buttonStyle(PlainButtonStyle())
-            .disabled(validationResult?.isValid != true || isProcessing)
         }
         .padding(20)
     }
 
     // MARK: - Actions
+
+    private func loadTemplate(_ type: TemplateType) {
+        let config: SymbolConfig
+        switch type {
+        case .chinese:
+            config = SymbolConfig.defaultConfig
+        case .english:
+            config = SymbolConfig.englishConfig
+        }
+        yamlText = config.toYaml()
+
+        // 自动验证
+        validateYaml()
+    }
+
+    private func importTemplate() {
+        isProcessing = true
+        defer { isProcessing = false }
+
+        let config: SymbolConfig
+        switch selectedTemplate {
+        case .chinese:
+            config = SymbolConfig.defaultConfig
+        case .english:
+            config = SymbolConfig.englishConfig
+        }
+
+        do {
+            try configManager.saveConfig(config)
+            isPresented = false
+        } catch {
+            print("[SymbolImportView] 导入模板失败: \(error)")
+        }
+    }
 
     private func importFromFile() {
         let panel = NSOpenPanel()

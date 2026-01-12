@@ -1,0 +1,244 @@
+metadata:
+  name: "表情符号库"
+  icon: "😊"
+  priority: 3
+  enabled: true
+
+global:
+  trigger_prefix: ":e"
+  auto_hide: true
+  auto_clean: true
+  panel_position: "cursor_bottom"
+  panel_width: "auto"
+
+symbol_menus:
+  - title: "笑脸表情"
+    sort: 1
+    icon: "😊"
+    symbols:
+      - trigger: ["smile", "微笑"]
+        content: "😊"
+        desc: "微笑"
+      - trigger: ["laugh", "大笑"]
+        content: "😄"
+        desc: "大笑"
+      - trigger: ["happy", "开心"]
+        content: "😁"
+        desc: "开心"
+      - trigger: ["wink", "眨眼"]
+        content: "😉"
+        desc: "眨眼"
+      - trigger: ["love", "爱心"]
+        content: "😍"
+        desc: "爱心眼"
+      - trigger: ["kiss", "飞吻"]
+        content: "😘"
+        desc: "飞吻"
+      - trigger: ["hug", "拥抱"]
+        content: "🤗"
+        desc: "拥抱"
+      - trigger: ["star", "星星眼"]
+        content: "🤩"
+        desc: "星星眼"
+
+  - title: "情绪表达"
+    sort: 2
+    icon: "😢"
+    symbols:
+      - trigger: ["sad", "伤心"]
+        content: "😢"
+        desc: "伤心"
+      - trigger: ["cry", "哭泣"]
+        content: "😭"
+        desc: "哭泣"
+      - trigger: ["angry", "生气"]
+        content: "😠"
+        desc: "生气"
+      - trigger: ["mad", "发怒"]
+        content: "😡"
+        desc: "发怒"
+      - trigger: ["cool", "酷"]
+        content: "😎"
+        desc: "酷"
+      - trigger: ["think", "思考"]
+        content: "🤔"
+        desc: "思考"
+      - trigger: ["surprise", "惊讶"]
+        content: "😲"
+        desc: "惊讶"
+      - trigger: ["confuse", "困惑"]
+        content: "😕"
+        desc: "困惑"
+      - trigger: ["sleep", "睡觉"]
+        content: "😴"
+        desc: "睡觉"
+      - trigger: ["mask", "口罩"]
+        content: "😷"
+        desc: "戴口罩"
+
+  - title: "手势动作"
+    sort: 3
+    icon: "👋"
+    symbols:
+      - trigger: ["ok", "好的"]
+        content: "👌"
+        desc: "OK手势"
+      - trigger: ["thumb", "赞"]
+        content: "👍"
+        desc: "赞"
+      - trigger: ["down", "踩"]
+        content: "👎"
+        desc: "踩"
+      - trigger: ["clap", "鼓掌"]
+        content: "👏"
+        desc: "鼓掌"
+      - trigger: ["wave", "挥手"]
+        content: "👋"
+        desc: "挥手"
+      - trigger: ["raise", "举手"]
+        content: "🙋"
+        desc: "举手"
+      - trigger: ["point", "指"]
+        content: "👉"
+        desc: "指向"
+      - trigger: ["peace", "胜利"]
+        content: "✌️"
+        desc: "胜利手势"
+      - trigger: ["rock", "摇滚"]
+        content: "🤟"
+        desc: "爱你手势"
+      - trigger: ["pray", "祈祷"]
+        content: "🙏"
+        desc: "祈祷"
+      - trigger: ["muscle", "肌肉"]
+        content: "💪"
+        desc: "展示肌肉"
+
+  - title: "庆祝活动"
+    sort: 4
+    icon: "🎉"
+    symbols:
+      - trigger: ["party", "派对"]
+        content: "🎉"
+        desc: "派对庆祝"
+      - trigger: ["gift", "礼物"]
+        content: "🎁"
+        desc: "礼物"
+      - trigger: ["cake", "蛋糕"]
+        content: "🎂"
+        desc: "生日蛋糕"
+      - trigger: ["balloon", "气球"]
+        content: "🎈"
+        desc: "气球"
+      - trigger: ["champagne", "香槟"]
+        content: "🍾"
+        desc: "香槟"
+      - trigger: ["firework", "烟花"]
+        content: "🎆"
+        desc: "烟花"
+      - trigger: ["sparkle", "闪光"]
+        content: "✨"
+        desc: "闪光"
+      - trigger: ["confetti", "彩带"]
+        content: "🎊"
+        desc: "彩带"
+      - trigger: ["medal", "奖牌"]
+        content: "🏅"
+        desc: "奖牌"
+      - trigger: ["trophy", "奖杯"]
+        content: "🏆"
+        desc: "奖杯"
+
+  - title: "爱心喜爱"
+    sort: 5
+    icon: "❤️"
+    symbols:
+      - trigger: ["heart", "爱心"]
+        content: "❤️"
+        desc: "红心"
+      - trigger: ["love", "深爱"]
+        content: "💕"
+        desc: "双心"
+      - trigger: ["sparkle", "闪亮爱心"]
+        content: "💖"
+        desc: "闪亮爱心"
+      - trigger: ["revolve", "旋转爱心"]
+        content: "💞"
+        desc: "旋转爱心"
+      - trigger: ["heartbeat", "心跳"]
+        content: "💓"
+        desc: "心跳"
+      - trigger: ["blue", "蓝心"]
+        content: "💙"
+        desc: "蓝心"
+      - trigger: ["green", "绿心"]
+        content: "💚"
+        desc: "绿心"
+      - trigger: ["purple", "紫心"]
+        content: "💜"
+        desc: "紫心"
+      - trigger: ["yellow", "黄心"]
+        content: "💛"
+        desc: "黄心"
+      - trigger: ["black", "黑心"]
+        content: "🖤"
+        desc: "黑心"
+      - trigger: ["white", "白心"]
+        content: "🤍"
+        desc: "白心"
+      - trigger: ["brown", "棕心"]
+        content: "🤎"
+        desc: "棕心"
+      - trigger: ["broken", "心碎"]
+        content: "💔"
+        desc: "心碎"
+      - trigger: ["cupid", "丘比特"]
+        content: "💘"
+        desc: "丘比特之箭"
+      - trigger: ["gift", "礼物盒爱心"]
+        content: "💝"
+        desc: "礼物盒爱心"
+
+  - title: "动物世界"
+    sort: 6
+    icon: "🐶"
+    symbols:
+      - trigger: ["dog", "狗"]
+        content: "🐶"
+        desc: "狗"
+      - trigger: ["cat", "猫"]
+        content: "🐱"
+        desc: "猫"
+      - trigger: ["mouse", "老鼠"]
+        content: "🐭"
+        desc: "老鼠"
+      - trigger: ["hamster", "仓鼠"]
+        content: "🐹"
+        desc: "仓鼠"
+      - trigger: ["rabbit", "兔子"]
+        content: "🐰"
+        desc: "兔子"
+      - trigger: ["fox", "狐狸"]
+        content: "🦊"
+        desc: "狐狸"
+      - trigger: ["bear", "熊"]
+        content: "🐻"
+        desc: "熊"
+      - trigger: ["panda", "熊猫"]
+        content: "🐼"
+        desc: "熊猫"
+      - trigger: ["pig", "猪"]
+        content: "🐷"
+        desc: "猪"
+      - trigger: ["frog", "青蛙"]
+        content: "🐸"
+        desc: "青蛙"
+      - trigger: ["monkey", "猴子"]
+        content: "🐵"
+        desc: "猴子"
+      - trigger: ["chicken", "鸡"]
+        content: "🐔"
+        desc: "鸡"
+      - trigger: ["penguin", "企鹅"]
+        content: "🐧"
+        desc: "企鹅"

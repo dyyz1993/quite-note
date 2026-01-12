@@ -1,4 +1,5 @@
 import Foundation
+import Yams
 
 // MARK: - Symbol Configuration Data Models
 
@@ -202,33 +203,41 @@ extension SymbolConfig {
 
     /// 从 YAML 数据解析配置
     static func from(yamlData: Data) throws -> SymbolConfig {
-        // 简单的 YAML 解析实现
-        // 注意：完整实现需要使用 Yams 库或自定义解析器
-        // 这里提供一个基于字典的解析方式
+        guard let yamlString = String(data: yamlData, encoding: .utf8) else {
+            print("[SymbolConfig.from] ❌ 无法将数据转换为 UTF-8 字符串")
+            throw SymbolConfigError.invalidEncoding
+        }
 
-        guard let yaml = try? PropertyListSerialization.propertyList(
-            from: yamlData,
-            options: [],
-            format: nil
-        ) as? [String: Any] else {
+        print("[SymbolConfig.from] 开始解析 YAML，长度: \(yamlString.count)")
+
+        // 使用 Yams 库解析 YAML
+        guard let yamlDict = try Yams.load(yaml: yamlString) as? [String: Any] else {
+            print("[SymbolConfig.from] ❌ Yams 解析失败")
             throw SymbolConfigError.invalidFormat
         }
 
-        return try parse(from: yaml)
+        print("[SymbolConfig.from] ✅ Yams 解析成功，keys: \(yamlDict.keys)")
+
+        return try parse(from: yamlDict)
     }
 
     /// 解析配置字典
-    private static func parse(from dict: [String: Any]) throws -> SymbolConfig {
+    internal static func parse(from dict: [String: Any]) throws -> SymbolConfig {
+        print("[SymbolConfig.parse] Starting to parse config dict")
+
         guard let metadataDict = dict["metadata"] as? [String: Any] else {
+            print("[SymbolConfig.parse] ❌ Missing metadata")
             throw SymbolConfigError.missingMetadata
         }
 
+        print("[SymbolConfig.parse] ✅ Found metadata")
         let metadata = SymbolMetadata(
             name: (metadataDict["name"] as? String) ?? "未命名配置",
             icon: (metadataDict["icon"] as? String) ?? "🔣",
             priority: (metadataDict["priority"] as? Int) ?? 1,
             enabled: (metadataDict["enabled"] as? Bool) ?? true
         )
+        print("[SymbolConfig.parse] Metadata: \(metadata.name), enabled: \(metadata.enabled)")
 
         var globalConfig = SymbolGlobalConfig.default
         if let globalDict = dict["global"] as? [String: Any] {
@@ -240,26 +249,48 @@ extension SymbolConfig {
                 panelWidth: (globalDict["panel_width"] as? String) ?? "auto"
             )
         }
+        print("[SymbolConfig.parse] ✅ Global config parsed")
 
         guard let menusArray = dict["symbol_menus"] as? [[String: Any]] else {
+            print("[SymbolConfig.parse] ❌ Missing or invalid symbol_menus")
+            print("[SymbolConfig.parse]   symbol_menus type: \(type(of: dict["symbol_menus"] ?? "nil"))")
             throw SymbolConfigError.missingMenus
         }
 
+        print("[SymbolConfig.parse] ✅ Found \(menusArray.count) menus")
+
         let menus = try menusArray.map { menuDict -> SymbolMenu in
             guard let title = menuDict["title"] as? String else {
+                print("[SymbolConfig.parse] ❌ Menu missing title")
                 throw SymbolConfigError.invalidMenuFormat
             }
 
             let sort = (menuDict["sort"] as? Int) ?? 0
             let icon = menuDict["icon"] as? String
 
+            print("[SymbolConfig.parse]   Parsing menu: \(title), icon: \(icon ?? "nil")")
+
             guard let symbolsArray = menuDict["symbols"] as? [[String: Any]] else {
+                print("[SymbolConfig.parse] ❌ Menu \(title) missing symbols array")
                 throw SymbolConfigError.invalidMenuFormat
             }
 
+            print("[SymbolConfig.parse]     Found \(symbolsArray.count) symbols")
+
             let symbols = try symbolsArray.map { symbolDict -> SymbolItem in
-                guard let triggers = symbolDict["trigger"] as? [String],
-                      let content = symbolDict["content"] as? String,
+                print("[SymbolConfig.parse]       Symbol trigger type: \(type(of: symbolDict["trigger"] ?? "nil"))")
+
+                // Try to cast trigger to [String]
+                guard let triggers = symbolDict["trigger"] as? [String] else {
+                    // If that fails, try to handle Yams specific types
+                    if let anySequence = symbolDict["trigger"] {
+                        print("[SymbolConfig.parse]       Trigger is not [String], trying to convert...")
+                        print("[SymbolConfig.parse]       Actual type: \(type(of: anySequence))")
+                    }
+                    throw SymbolConfigError.invalidSymbolFormat
+                }
+
+                guard let content = symbolDict["content"] as? String,
                       let desc = symbolDict["desc"] as? String else {
                     throw SymbolConfigError.invalidSymbolFormat
                 }
@@ -269,6 +300,7 @@ extension SymbolConfig {
             return SymbolMenu(title: title, sort: sort, icon: icon, symbols: symbols)
         }
 
+        print("[SymbolConfig.parse] ✅ Successfully parsed \(menus.count) menus")
         return SymbolConfig(metadata: metadata, global: globalConfig, menus: menus)
     }
 
@@ -313,6 +345,52 @@ extension SymbolConfig {
 
         return lines.joined(separator: "\n")
     }
+
+    /// 转换为字典格式（用于 plist 保存）
+    func toDict() -> [String: Any] {
+        let metadataDict: [String: Any] = [
+            "name": metadata.name,
+            "icon": metadata.icon,
+            "priority": metadata.priority,
+            "enabled": metadata.enabled
+        ]
+
+        let globalDict: [String: Any] = [
+            "trigger_prefix": global.triggerPrefix,
+            "auto_hide": global.autoHide,
+            "auto_clean": global.autoClean,
+            "panel_position": global.panelPosition,
+            "panel_width": global.panelWidth
+        ]
+
+        let menusArray = menus.sorted(by: { $0.sort < $1.sort }).map { menu -> [String: Any] in
+            var dict: [String: Any] = [
+                "title": menu.title,
+                "sort": menu.sort
+            ]
+
+            if let icon = menu.icon {
+                dict["icon"] = icon
+            }
+
+            let symbolsArray = menu.symbols.map { symbol -> [String: Any] in
+                return [
+                    "trigger": symbol.triggers,
+                    "content": symbol.content,
+                    "desc": symbol.desc
+                ]
+            }
+
+            dict["symbols"] = symbolsArray
+            return dict
+        }
+
+        return [
+            "metadata": metadataDict,
+            "global": globalDict,
+            "symbol_menus": menusArray
+        ]
+    }
 }
 
 // MARK: - Errors
@@ -346,7 +424,7 @@ enum SymbolConfigError: LocalizedError {
 // MARK: - Default Configurations
 
 extension SymbolConfig {
-    /// 默认配置示例
+    /// 默认配置示例（中文触发词）
     static let defaultConfig = SymbolConfig(
         metadata: SymbolMetadata(
             name: "默认符号库",
@@ -391,6 +469,96 @@ extension SymbolConfig {
                     SymbolItem(triggers: ["proto", "原型"], content: "📱", desc: "产品原型/交互设计"),
                     SymbolItem(triggers: ["data", "指标"], content: "📊", desc: "产品指标/数据报表"),
                     SymbolItem(triggers: ["flow", "流程"], content: "🔗", desc: "业务流程/用户旅程")
+                ]
+            )
+        ]
+    )
+
+    /// 英文触发词配置示例
+    static let englishConfig = SymbolConfig(
+        metadata: SymbolMetadata(
+            name: "English Symbols",
+            icon: "🌐",
+            priority: 2,
+            enabled: true
+        ),
+        global: .default,
+        menus: [
+            SymbolMenu(
+                title: "Status",
+                sort: 1,
+                icon: "📌",
+                symbols: [
+                    SymbolItem(triggers: ["todo", "task"], content: "📝", desc: "To-do / Task"),
+                    SymbolItem(triggers: ["done", "complete"], content: "✅", desc: "Done / Complete"),
+                    SymbolItem(triggers: ["wip", "progress"], content: "🔄", desc: "Work in Progress"),
+                    SymbolItem(triggers: ["block", "blocked"], content: "🚫", desc: "Blocked"),
+                    SymbolItem(triggers: ["review", "pr"], content: "👀", desc: "Need Review"),
+                    SymbolItem(triggers: ["approved"], content: "👍", desc: "Approved"),
+                    SymbolItem(triggers: ["rejected"], content: "❌", desc: "Rejected"),
+                    SymbolItem(triggers: ["skipped"], content: "⏭️", desc: "Skipped")
+                ]
+            ),
+            SymbolMenu(
+                title: "Priority",
+                sort: 2,
+                icon: "🚨",
+                symbols: [
+                    SymbolItem(triggers: ["critical", "urgent"], content: "🔴", desc: "Critical"),
+                    SymbolItem(triggers: ["high", "important"], content: "🟠", desc: "High Priority"),
+                    SymbolItem(triggers: ["medium", "normal"], content: "🟡", desc: "Medium Priority"),
+                    SymbolItem(triggers: ["low"], content: "🟢", desc: "Low Priority"),
+                    SymbolItem(triggers: ["info"], content: "🔵", desc: "Information")
+                ]
+            ),
+            SymbolMenu(
+                title: "Development",
+                sort: 3,
+                icon: "💻",
+                symbols: [
+                    SymbolItem(triggers: ["bug", "issue"], content: "🐛", desc: "Bug Report"),
+                    SymbolItem(triggers: ["fix", "patch"], content: "🔧", desc: "Fix / Patch"),
+                    SymbolItem(triggers: ["feat", "feature"], content: "✨", desc: "New Feature"),
+                    SymbolItem(triggers: ["refactor"], content: "♻️", desc: "Refactor"),
+                    SymbolItem(triggers: ["perf", "performance"], content: "⚡", desc: "Performance"),
+                    SymbolItem(triggers: ["test"], content: "🧪", desc: "Tests"),
+                    SymbolItem(triggers: ["docs", "doc"], content: "📚", desc: "Documentation"),
+                    SymbolItem(triggers: ["style"], content: "💄", desc: "Style / UI"),
+                    SymbolItem(triggers: ["chore"], content: "🔨", desc: "Chore"),
+                    SymbolItem(triggers: ["ci", "build"], content: "🤖", desc: "CI / Build"),
+                    SymbolItem(triggers: ["deploy", "release"], content: "🚀", desc: "Deploy / Release")
+                ]
+            ),
+            SymbolMenu(
+                title: "Communication",
+                sort: 4,
+                icon: "💬",
+                symbols: [
+                    SymbolItem(triggers: ["question", "help", "q"], content: "❓", desc: "Question"),
+                    SymbolItem(triggers: ["idea", "suggest"], content: "💡", desc: "Idea / Suggestion"),
+                    SymbolItem(triggers: ["thought", "thinking"], content: "🤔", desc: "Thinking / Consider"),
+                    SymbolItem(triggers: ["note", "memo"], content: "📝", desc: "Note"),
+                    SymbolItem(triggers: ["warning", "warn"], content: "⚠️", desc: "Warning"),
+                    SymbolItem(triggers: ["error"], content: "❌", desc: "Error"),
+                    SymbolItem(triggers: ["success"], content: "✅", desc: "Success"),
+                    SymbolItem(triggers: ["tip", "hint"], content: "💡", desc: "Tip / Hint"),
+                    SymbolItem(triggers: ["example"], content: "💬", desc: "Example"),
+                    SymbolItem(triggers: ["quote"], content: "💭", desc: "Quote")
+                ]
+            ),
+            SymbolMenu(
+                title: "Arrows",
+                sort: 5,
+                icon: "➡️",
+                symbols: [
+                    SymbolItem(triggers: ["right", "->"], content: "→", desc: "Right Arrow"),
+                    SymbolItem(triggers: ["left", "<-"], content: "←", desc: "Left Arrow"),
+                    SymbolItem(triggers: ["up", "^"], content: "↑", desc: "Up Arrow"),
+                    SymbolItem(triggers: ["down", "v"], content: "↓", desc: "Down Arrow"),
+                    SymbolItem(triggers: ["double-right", "=>"], content: "⇒", desc: "Double Right"),
+                    SymbolItem(triggers: ["double-left", "<="], content: "⇐", desc: "Double Left"),
+                    SymbolItem(triggers: ["return"], content: "↩️", desc: "Return"),
+                    SymbolItem(triggers: ["enter"], content: "⤵️", desc: "Enter")
                 ]
             )
         ]

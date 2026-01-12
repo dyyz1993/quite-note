@@ -1,0 +1,164 @@
+metadata:
+  name: "English Symbols"
+  icon: "🌐"
+  priority: 2
+  enabled: true
+
+global:
+  trigger_prefix: ":/"
+  auto_hide: true
+  auto_clean: true
+  panel_position: "cursor_bottom"
+  panel_width: "auto"
+
+symbol_menus:
+  - title: "Status"
+    sort: 1
+    icon: "📌"
+    symbols:
+      - trigger: ["todo", "task"]
+        content: "📝"
+        desc: "To-do / Task"
+      - trigger: ["done", "complete"]
+        content: "✅"
+        desc: "Done / Complete"
+      - trigger: ["wip", "progress"]
+        content: "🔄"
+        desc: "Work in Progress"
+      - trigger: ["block", "blocked"]
+        content: "🚫"
+        desc: "Blocked"
+      - trigger: ["review", "pr"]
+        content: "👀"
+        desc: "Need Review"
+      - trigger: ["approved"]
+        content: "👍"
+        desc: "Approved"
+      - trigger: ["rejected"]
+        content: "❌"
+        desc: "Rejected"
+      - trigger: ["skipped"]
+        content: "⏭️"
+        desc: "Skipped"
+
+  - title: "Priority"
+    sort: 2
+    icon: "🚨"
+    symbols:
+      - trigger: ["critical", "urgent"]
+        content: "🔴"
+        desc: "Critical"
+      - trigger: ["high", "important"]
+        content: "🟠"
+        desc: "High Priority"
+      - trigger: ["medium", "normal"]
+        content: "🟡"
+        desc: "Medium Priority"
+      - trigger: ["low"]
+        content: "🟢"
+        desc: "Low Priority"
+      - trigger: ["info"]
+        content: "🔵"
+        desc: "Information"
+
+  - title: "Development"
+    sort: 3
+    icon: "💻"
+    symbols:
+      - trigger: ["bug", "issue"]
+        content: "🐛"
+        desc: "Bug Report"
+      - trigger: ["fix", "patch"]
+        content: "🔧"
+        desc: "Fix / Patch"
+      - trigger: ["feat", "feature"]
+        content: "✨"
+        desc: "New Feature"
+      - trigger: ["refactor"]
+        content: "♻️"
+        desc: "Refactor"
+      - trigger: ["perf", "performance"]
+        content: "⚡"
+        desc: "Performance"
+      - trigger: ["test"]
+        content: "🧪"
+        desc: "Tests"
+      - trigger: ["docs", "doc"]
+        content: "📚"
+        desc: "Documentation"
+      - trigger: ["style"]
+        content: "💄"
+        desc: "Style / UI"
+      - trigger: ["chore"]
+        content: "🔨"
+        desc: "Chore"
+      - trigger: ["ci", "build"]
+        content: "🤖"
+        desc: "CI / Build"
+      - trigger: ["deploy", "release"]
+        content: "🚀"
+        desc: "Deploy / Release"
+
+  - title: "Communication"
+    sort: 4
+    icon: "💬"
+    symbols:
+      - trigger: ["question", "help", "q"]
+        content: "❓"
+        desc: "Question"
+      - trigger: ["idea", "suggest"]
+        content: "💡"
+        desc: "Idea / Suggestion"
+      - trigger: ["thought", "thinking"]
+        content: "🤔"
+        desc: "Thinking / Consider"
+      - trigger: ["note", "memo"]
+        content: "📝"
+        desc: "Note"
+      - trigger: ["warning", "warn"]
+        content: "⚠️"
+        desc: "Warning"
+      - trigger: ["error"]
+        content: "❌"
+        desc: "Error"
+      - trigger: ["success"]
+        content: "✅"
+        desc: "Success"
+      - trigger: ["tip", "hint"]
+        content: "💡"
+        desc: "Tip / Hint"
+      - trigger: ["example"]
+        content: "💬"
+        desc: "Example"
+      - trigger: ["quote"]
+        content: "💭"
+        desc: "Quote"
+
+  - title: "Arrows"
+    sort: 5
+    icon: "➡️"
+    symbols:
+      - trigger: ["right", "->"]
+        content: "→"
+        desc: "Right Arrow"
+      - trigger: ["left", "<-"]
+        content: "←"
+        desc: "Left Arrow"
+      - trigger: ["up", "^"]
+        content: "↑"
+        desc: "Up Arrow"
+      - trigger: ["down", "v"]
+        content: "↓"
+        desc: "Down Arrow"
+      - trigger: ["double-right", "=>"]
+        content: "⇒"
+        desc: "Double Right"
+      - trigger: ["double-left", "<="]
+        content: "⇐"
+        desc: "Double Left"
+      - trigger: ["return"]
+        content: "↩️"
+        desc: "Return"
+      - trigger: ["enter"]
+        content: "⤵️"
+        desc: "Enter"

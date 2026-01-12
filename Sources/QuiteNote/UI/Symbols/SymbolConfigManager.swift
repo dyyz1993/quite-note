@@ -1,11 +1,16 @@
 import Foundation
 import Combine
+import os.log
+import Yams
 
 // MARK: - Symbol Configuration Manager
 
 /// 符号配置管理器 - 单例
 class SymbolConfigManager: ObservableObject {
     static let shared = SymbolConfigManager()
+
+    // os_log logger
+    private let logger = OSLog(subsystem: "com.quitenote.symbol", category: "ConfigManager")
 
     // MARK: - Published Properties
 
@@ -52,9 +57,18 @@ class SymbolConfigManager: ObservableObject {
                 includingPropertiesForKeys: nil
             )
 
+            // 加载所有 YAML 文件（同时支持 .yaml 和 .yml）
             let yamlFiles = files.filter { $0.pathExtension == "yaml" || $0.pathExtension == "yml" }
 
             for file in yamlFiles {
+                if let config = try? loadConfig(from: file) {
+                    loadedConfigs.append(config)
+                }
+            }
+
+            // 兼容旧的 plist 格式
+            let plistFiles = files.filter { $0.pathExtension == "plist" }
+            for file in plistFiles {
                 if let config = try? loadConfig(from: file) {
                     loadedConfigs.append(config)
                 }
@@ -63,17 +77,15 @@ class SymbolConfigManager: ObservableObject {
             print("[SymbolConfigManager] 无法读取配置目录: \(error)")
         }
 
-        // 如果没有任何配置，从 bundle 加载默认配置
+        // 补充缺失的默认配置文件
+        copyMissingDefaultConfigs()
+
+        // 如果用户目录为空，重新加载
         if loadedConfigs.isEmpty {
-            print("[SymbolConfigManager] 配置目录为空，从 bundle 加载默认配置")
-            if let bundleConfig = loadDefaultConfigFromBundle() {
-                loadedConfigs = [bundleConfig]
-                saveDefaultConfig()
-            } else {
-                print("[SymbolConfigManager] ⚠️ 无法从 bundle 加载配置，使用硬编码默认配置")
-                loadedConfigs = [SymbolConfig.defaultConfig]
-                saveDefaultConfig()
-            }
+            print("[SymbolConfigManager] 配置目录为空，从 bundle 复制默认配置")
+            copyMissingDefaultConfigs()
+            // 重新加载
+            return loadConfigs()
         }
 
         // 按优先级排序
@@ -90,22 +102,41 @@ class SymbolConfigManager: ObservableObject {
 
     /// 从 bundle 加载默认配置
     private func loadDefaultConfigFromBundle() -> SymbolConfig? {
-        guard let bundleURL = Bundle.main.url(forResource: "default", withExtension: "yaml", subdirectory: "Symbols") else {
-            print("[SymbolConfigManager] ⚠️ bundle 中未找到 default.yaml")
-            return nil
+        if let bundleURL = Bundle.main.url(forResource: "default", withExtension: "yaml", subdirectory: "Symbols") {
+            print("[SymbolConfigManager] 从 bundle 加载配置: \(bundleURL.path)")
+            return try? loadConfig(from: bundleURL)
         }
 
-        print("[SymbolConfigManager] 从 bundle 加载配置: \(bundleURL.path)")
-        return try? loadConfig(from: bundleURL)
+        print("[SymbolConfigManager] ⚠️ bundle 中未找到 default.yaml")
+        return nil
     }
 
     /// 从文件加载配置
     func loadConfig(from url: URL) throws -> SymbolConfig {
         let data = try Data(contentsOf: url)
 
-        // 简单的 YAML 解析（使用正则表达式）
+        // 使用 Yams 解析 YAML
         let yamlString = String(data: data, encoding: .utf8) ?? ""
-        return try parseYAML(yamlString)
+        print("[SymbolConfigManager] Loading YAML from: \(url.path)")
+
+        guard let yamlDict = try Yams.load(yaml: yamlString) as? [String: Any] else {
+            print("[SymbolConfigManager] ❌ Failed to parse YAML with Yams")
+            throw SymbolConfigError.invalidFormat
+        }
+
+        print("[SymbolConfigManager] ✅ YAML parsed successfully with Yams")
+        print("[SymbolConfigManager] Keys: \(yamlDict.keys)")
+
+        return try SymbolConfig.parse(from: yamlDict)
+    }
+
+    /// 从 plist 数据加载配置
+    private func loadPlist(data: Data) throws -> SymbolConfig {
+        guard let plist = try PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any] else {
+            throw SymbolConfigError.invalidFormat
+        }
+
+        return try SymbolConfig.parse(from: plist)
     }
 
     /// 保存配置
@@ -144,8 +175,13 @@ class SymbolConfigManager: ObservableObject {
     }
 
     /// 导入配置
-    func importConfig(fromYAML yaml: String) throws -> SymbolConfig {
-        let config = try parseYAML(yaml)
+    func importConfig(fromYAML yamlString: String) throws -> SymbolConfig {
+        // 使用 Yams 库解析 YAML 字符串
+        guard let yamlDict = try Yams.load(yaml: yamlString) as? [String: Any] else {
+            throw SymbolConfigError.invalidFormat
+        }
+
+        let config = try SymbolConfig.parse(from: yamlDict)
 
         // 检查是否有同名配置
         let existingNames = configs.map { $0.metadata.name }
@@ -193,7 +229,15 @@ class SymbolConfigManager: ObservableObject {
 
     /// 获取所有启用的配置
     var enabledConfigs: [SymbolConfig] {
-        configs.filter { $0.metadata.enabled }
+        let enabled = configs.filter { $0.metadata.enabled }
+        os_log("[SymbolConfigManager] enabledConfigs: %d 个配置", type: .info, enabled.count)
+        for config in enabled {
+            os_log("[SymbolConfigManager]   - %@: %d 个菜单", type: .info, config.metadata.name, config.menus.count)
+            for menu in config.menus {
+                os_log("[SymbolConfigManager]     - %@ (icon: %@): %d 个符号", type: .info, menu.title, menu.icon ?? "nil", menu.symbols.count)
+            }
+        }
+        return enabled
     }
 
     /// 获取合并后的触发词映射
@@ -212,145 +256,50 @@ class SymbolConfigManager: ObservableObject {
 
     // MARK: - Private Methods
 
-    /// 保存默认配置到文件
-    private func saveDefaultConfig() {
-        let defaultConfig = SymbolConfig.defaultConfig
-        let fileURL = symbolsDirectory.appendingPathComponent("default.yaml")
+    /// 从 bundle 复制缺失的默认配置文件到用户目录
+    private func copyMissingDefaultConfigs() {
+        // 需要复制的配置文件列表
+        let configFiles = ["default", "english", "emoji"]
 
-        let yamlString = defaultConfig.toYaml()
-        try? yamlString.write(to: fileURL, atomically: true, encoding: .utf8)
+        for configName in configFiles {
+            let destinationURL = symbolsDirectory.appendingPathComponent("\(configName).yaml")
+
+            // 如果目标文件不存在，才从 bundle 复制
+            if !fileManager.fileExists(atPath: destinationURL.path) {
+                if let bundleURL = Bundle.main.url(forResource: configName, withExtension: "yaml", subdirectory: "Symbols") {
+                    do {
+                        try fileManager.copyItem(at: bundleURL, to: destinationURL)
+                        print("[SymbolConfigManager] ✅ 复制 \(configName).yaml 到用户目录")
+                    } catch {
+                        print("[SymbolConfigManager] ❌ 复制 \(configName).yaml 失败: \(error)")
+                    }
+                } else {
+                    print("[SymbolConfigManager] ⚠️ bundle 中未找到 \(configName).yaml")
+                }
+            }
+        }
     }
 
-    /// 解析 YAML 字符串
-    private func parseYAML(_ yaml: String) throws -> SymbolConfig {
-        let lines = yaml.components(separatedBy: .newlines)
+    /// 保存默认配置到文件（同时保存中文和英文配置）
+    private func saveDefaultConfig() {
+        // 保存中文默认配置
+        let defaultConfig = SymbolConfig.defaultConfig
+        let plistURL = symbolsDirectory.appendingPathComponent("default.plist")
 
-        var metadataDict: [String: Any] = [:]
-        var globalDict: [String: Any] = [:]
-        var menusArray: [[String: Any]] = []
-        var currentMenu: [String: Any] = [:]
-        var currentSymbols: [[String: Any]] = []
-        var inSymbolsSection = false
-
-        for line in lines {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-
-            // 跳过注释和空行
-            if trimmed.isEmpty || trimmed.hasPrefix("#") {
-                continue
-            }
-
-            // 解析 metadata
-            if trimmed.hasPrefix("metadata:") {
-                continue
-            } else if trimmed.hasPrefix("global:") {
-                continue
-            } else if trimmed.hasPrefix("symbol_menus:") {
-                continue
-            }
-
-            // 解析 metadata 字段
-            if trimmed.contains("name:") {
-                metadataDict["name"] = extractValue(from: trimmed)
-            } else if trimmed.contains("icon:") {
-                metadataDict["icon"] = extractValue(from: trimmed)
-            } else if trimmed.contains("priority:") {
-                metadataDict["priority"] = Int(extractValue(from: trimmed)) ?? 1
-            } else if trimmed.contains("enabled:") {
-                metadataDict["enabled"] = Bool(extractValue(from: trimmed)) ?? true
-            }
-            // 解析 global 字段
-            else if trimmed.contains("trigger_prefix:") {
-                globalDict["trigger_prefix"] = extractValue(from: trimmed)
-            } else if trimmed.contains("auto_hide:") {
-                globalDict["auto_hide"] = Bool(extractValue(from: trimmed)) ?? true
-            } else if trimmed.contains("auto_clean:") {
-                globalDict["auto_clean"] = Bool(extractValue(from: trimmed)) ?? true
-            } else if trimmed.contains("panel_position:") {
-                globalDict["panel_position"] = extractValue(from: trimmed)
-            } else if trimmed.contains("panel_width:") {
-                globalDict["panel_width"] = extractValue(from: trimmed)
-            }
-            // 解析菜单
-            else if trimmed.hasPrefix("- title:") {
-                // 开始新的菜单
-                if !currentMenu.isEmpty && !currentSymbols.isEmpty {
-                    currentMenu["symbols"] = currentSymbols
-                    menusArray.append(currentMenu)
-                    currentSymbols = []
-                }
-                currentMenu = ["title": extractValue(from: trimmed)]
-                inSymbolsSection = false
-            } else if trimmed.contains("sort:") {
-                currentMenu["sort"] = Int(extractValue(from: trimmed)) ?? 0
-            } else if trimmed.contains("icon:") && !trimmed.contains("symbol_") {
-                currentMenu["icon"] = extractValue(from: trimmed)
-            } else if trimmed.hasPrefix("symbols:") {
-                inSymbolsSection = true
-            } else if trimmed.hasPrefix("- trigger:") && inSymbolsSection {
-                // 开始新的符号
-                let triggerString = extractValue(from: trimmed)
-                let triggers = parseArrayValue(triggerString)
-
-                currentSymbols.append([
-                    "trigger": triggers,
-                    "content": "",
-                    "desc": ""
-                ])
-            } else if trimmed.contains("content:") && inSymbolsSection && !currentSymbols.isEmpty {
-                currentSymbols[currentSymbols.count - 1]["content"] = extractValue(from: trimmed)
-            } else if trimmed.contains("desc:") && inSymbolsSection && !currentSymbols.isEmpty {
-                currentSymbols[currentSymbols.count - 1]["desc"] = extractValue(from: trimmed)
-            }
+        // 使用 PropertyListSerialization 保存 plist
+        if let plistData = try? PropertyListSerialization.data(fromPropertyList: defaultConfig.toDict(), format: .xml, options: 0) {
+            try? plistData.write(to: plistURL)
         }
 
-        // 添加最后一个菜单
-        if !currentMenu.isEmpty && !currentSymbols.isEmpty {
-            currentMenu["symbols"] = currentSymbols
-            menusArray.append(currentMenu)
+        // 保存英文配置
+        let englishConfig = SymbolConfig.englishConfig
+        let englishURL = symbolsDirectory.appendingPathComponent("english.plist")
+
+        if let englishData = try? PropertyListSerialization.data(fromPropertyList: englishConfig.toDict(), format: .xml, options: 0) {
+            try? englishData.write(to: englishURL)
         }
 
-        // 构建配置
-        let metadata = SymbolMetadata(
-            name: (metadataDict["name"] as? String) ?? "未命名配置",
-            icon: (metadataDict["icon"] as? String) ?? "🔣",
-            priority: (metadataDict["priority"] as? Int) ?? 1,
-            enabled: (metadataDict["enabled"] as? Bool) ?? true
-        )
-
-        let global = SymbolGlobalConfig(
-            triggerPrefix: (globalDict["trigger_prefix"] as? String) ?? ":/",
-            autoHide: (globalDict["auto_hide"] as? Bool) ?? true,
-            autoClean: (globalDict["auto_clean"] as? Bool) ?? true,
-            panelPosition: (globalDict["panel_position"] as? String) ?? "cursor_bottom",
-            panelWidth: (globalDict["panel_width"] as? String) ?? "auto"
-        )
-
-        let menus = try menusArray.map { menuDict -> SymbolMenu in
-            guard let title = menuDict["title"] as? String else {
-                throw SymbolConfigError.invalidMenuFormat
-            }
-
-            let sort = (menuDict["sort"] as? Int) ?? 0
-            let icon = menuDict["icon"] as? String
-
-            guard let symbolsArray = menuDict["symbols"] as? [[String: Any]] else {
-                throw SymbolConfigError.invalidMenuFormat
-            }
-
-            let symbols = symbolsArray.compactMap { symbolDict -> SymbolItem? in
-                guard let triggers = symbolDict["trigger"] as? [String],
-                      let content = symbolDict["content"] as? String,
-                      let desc = symbolDict["desc"] as? String else {
-                    return nil
-                }
-                return SymbolItem(triggers: triggers, content: content, desc: desc)
-            }
-
-            return SymbolMenu(title: title, sort: sort, icon: icon, symbols: symbols)
-        }
-
-        return SymbolConfig(metadata: metadata, global: global, menus: menus)
+        print("[SymbolConfigManager] ✅ Saved default configs (Chinese + English)")
     }
 
     /// 从行中提取值
