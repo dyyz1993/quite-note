@@ -120,7 +120,7 @@ struct FloatingRootView: View {
                             .stroke(Color.themeBorder, lineWidth: 1)
                     )
                     .shadow(color: Color.themeShadowHeavy, radius: 10, x: 0, y: 4)
-                    .position(x: store.previewLocation.x + store.previewOffset.width, 
+                    .position(x: store.previewLocation.x + store.previewOffset.width,
                               y: store.previewLocation.y + store.previewOffset.height)
                     .zIndex(2000) // 绝对最高层级
                     .transition(.opacity.combined(with: .scale(scale: 0.95)))
@@ -474,13 +474,15 @@ struct FloatingRootView: View {
             // 监听原文框布局完成，然后精确滚动
             .onReceive(NotificationCenter.default.publisher(for: Notification.Name("OriginalContentLayoutComplete"))) { notification in
                 if let userInfo = notification.object as? [String: Any],
-                   let recordIdString = userInfo["recordId"] as? String {
-                    let originalContentId = "original-content-\(recordIdString)"
-
-                    // 布局完成后，立即滚动到原文框底部
-                    // 使用 anchor: .bottom 确保原文框底部与窗口底部齐平或略高
-                    withAnimation(.easeInOut(duration: 0.3)) {
-                        proxy.scrollTo(originalContentId, anchor: .bottom)
+                   let recordIdString = userInfo["recordId"] as? String,
+                   let recordId = UUID(uuidString: recordIdString),
+                   let record = store.records.first(where: { $0.id == recordId }) {
+                    // P1.2: 只对非图片类型执行滚动
+                    if record.type != .screenshot && record.type != .image {
+                        let originalContentId = "original-content-\(recordIdString)"
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            proxy.scrollTo(originalContentId, anchor: .bottom)
+                        }
                     }
                 }
             }
@@ -695,9 +697,11 @@ struct FloatingRootView: View {
     }
 
     // 辅助函数：判断某个卡片是否展开了原文
-    // note 类型总是返回 false，避免额外的底部 padding
+    // ⭐ 关键修复：不仅要检查原文是否展开，还要检查卡片本身是否展开
+    // 这样可以避免卡片折叠时底部 padding 残留
     private func isOriginalContentExpanded(for record: Record) -> Bool {
-        return record.type != .note && originalContentExpandedIds.contains(record.id)
+        guard record.type != .note else { return false }
+        return expandedId == record.id && originalContentExpandedIds.contains(record.id)
     }
 
     /// 为收藏列表提供动画效果的视图

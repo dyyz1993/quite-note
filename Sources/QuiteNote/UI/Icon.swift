@@ -102,6 +102,17 @@ struct LucideView: View {
     /// 用于线程同步的锁
     private static let lock = NSLock()
 
+    // P2.2: 缓存清除方法
+    static func clearCache() {
+        Self.lock.lock()
+        defer { Self.lock.unlock() }
+
+        iconCache.removeAllObjects()
+        foundBundles.removeAll()
+        hasScannedBundles = false
+        print("[Icon] Cache cleared - bundles: \(foundBundles.count), scanned: \(hasScannedBundles)")
+    }
+
     var body: some View {
         Group {
             if let img = getCachedImage(for: name.rawValue) {

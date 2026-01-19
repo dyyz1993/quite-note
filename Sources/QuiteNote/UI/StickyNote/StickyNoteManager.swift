@@ -87,10 +87,20 @@ final class StickyNoteManager: ObservableObject {
         GlobalHotkeyManager.shared.register(
             key: "n",
             modifiers: [.command, .shift],
-            id: 5001 
+            id: 5001
         ) { [weak self] in
             print("[DEBUG] Global Hotkey Triggered: Command + Shift + N")
             self?.createNewNote()
+        }
+        // P2.3: 添加切换 Space 固定的快捷键 (⌘⌥P)
+        // 切换便签是否在所有 Desktop Space 显示
+        GlobalHotkeyManager.shared.register(
+            key: "p",
+            modifiers: [.command, .option],
+            id: 5002
+        ) { [weak self] in
+            print("[DEBUG] Toggle Space pin hotkey triggered: Command + Option + P")
+            self?.toggleSpacePinning()
         }
         print("[DEBUG] StickyNoteManager shortcut registration sent to GlobalHotkeyManager")
     }
@@ -429,5 +439,33 @@ final class StickyNoteManager: ObservableObject {
             notes[index] = existing
             saveNotes()
         }
+    }
+
+    // P2.3: 切换便签的 Space 固定状态
+    func toggleSpacePinning() {
+        // 获取当前 key window（应该是当前正在编辑的便签窗口）
+        guard let currentWindow = NSApp.keyWindow as? StickyNoteWindow,
+              let index = notes.firstIndex(where: { $0.id == currentWindow.id }) else {
+            print("[DEBUG] No sticky note window is currently focused")
+            return
+        }
+
+        // 切换固定状态
+        let note = notes[index]
+        let newState = !note.pinnedToAllSpaces
+        notes[index].pinnedToAllSpaces = newState
+        saveNotes()
+
+        // 更新窗口的 collectionBehavior
+        currentWindow.updateFromNote(notes[index])
+
+        // 显示提示
+        let message = newState ? "已固定到所有 Space" : "仅在当前 Space 显示"
+        NotificationCenter.default.post(
+            name: Notification.Name("ShowLightHint"),
+            object: message
+        )
+
+        print("[DEBUG] Toggled Space pinning for note \(note.id): \(newState)")
     }
 }

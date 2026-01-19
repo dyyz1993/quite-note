@@ -136,8 +136,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NotificationCenter.default.addObserver(self, selector: #selector(onToggleHistory(_:)), name: QuiteNoteNotification.bluetoothToggleHistory.name, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(onBluetoothScreenshot), name: QuiteNoteNotification.bluetoothCaptureScreenshot.name, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(onScreenshotTriggered), name: NSNotification.Name("qn.screenshot.trigger"), object: nil)
+        // P2.2: 监听图标缓存清除请求
+        NotificationCenter.default.addObserver(self, selector: #selector(onClearIconCache), name: NSNotification.Name("ClearIconCache"), object: nil)
 
         shortcuts = KeyboardShortcutManager()
+        shortcuts?.recordStore = store
         shortcuts?.onTogglePanel = { [weak self] in self?.toggleFloating() }
         shortcuts?.onToggleAI = { store.enableAI.toggle(); store.savePreferences(); store.postToast(store.enableAI ? "AI 已开启" : "AI 已关闭", type: "info") }
         shortcuts?.onForceCenter = { [weak self] in 
@@ -263,5 +266,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         print("[DEBUG] 快捷键/菜单栏触发截图")
         // 使用统一截图入口
         ScreenshotService.shared.startScreenshot()
+    }
+
+    // P2.2: 清除图标缓存
+    @objc private func onClearIconCache() {
+        print("[DEBUG] 清除图标缓存")
+        LucideView.clearCache()
+        recordStore?.postToast("图标缓存已清除", type: "success")
     }
 }

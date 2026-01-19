@@ -12,6 +12,9 @@ final class KeyboardShortcutManager {
     private var lastScreenshotTriggerTime: Date?
     private let screenshotDebounceInterval: TimeInterval = 0.3  // 300ms防抖间隔
 
+    // RecordStore 引用，用于撤销/重做功能
+    weak var recordStore: RecordStore?
+
     // 回调函数
     var onTogglePanel: (() -> Void)?
     var onToggleAI: (() -> Void)?
@@ -202,13 +205,43 @@ final class KeyboardShortcutManager {
                     return true
                 }
             }
-            
+
+            // P4.1: Cmd+Z 撤销
+            if flags == .command && char == "z" {
+                // 检查是否有文本编辑器聚焦
+                if let focusedView = NSApp.keyWindow?.firstResponder,
+                   let textView = focusedView as? NSTextView, textView.isEditable {
+                    return false // 让文本编辑器处理撤销
+                }
+                // 应用级别撤销
+                if let store = self.recordStore, HistoryManager.shared.canUndo {
+                    HistoryManager.shared.undo(recordStore: store)
+                    store.postToast("已撤销", type: "info")
+                    return true
+                }
+            }
+
+            // P4.1: Cmd+Shift+Z 重做
+            if flags == [.command, .shift] && char == "z" {
+                // 检查是否有文本编辑器聚焦
+                if let focusedView = NSApp.keyWindow?.firstResponder,
+                   let textView = focusedView as? NSTextView, textView.isEditable {
+                    return false // 让文本编辑器处理重做
+                }
+                // 应用级别重做
+                if let store = self.recordStore, HistoryManager.shared.canRedo {
+                    HistoryManager.shared.redo(recordStore: store)
+                    store.postToast("已重做", type: "info")
+                    return true
+                }
+            }
+
             // Cmd+, 打开设置
             if flags == .command && char == "," {
                 self.onOpenSettings?()
                 return true
             }
-            
+
             // Cmd+Q 退出应用
             if flags == .command && char == "q" {
                 self.onQuit?()

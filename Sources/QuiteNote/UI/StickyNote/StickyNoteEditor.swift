@@ -287,7 +287,7 @@ struct StickyNoteEditor: NSViewRepresentable {
             }
         }
 
-        private func showSymbolSuggestionPanel(for textView: NSTextView, triggerText: String, suggestions: [SymbolItem]) {
+        private func showSymbolSuggestionPanel(for textView: NSTextView, triggerText: String, suggestions: [MatchedSymbolItem]) {
             let logPath = "/tmp/quitenote-symbol-debug.log"
             let timestamp = Date()
             let logMsg = "[StickyNoteEditor.Coordinator] [\(timestamp)] 显示符号建议面板: trigger='\(triggerText)', suggestions=\(suggestions.count)\n"

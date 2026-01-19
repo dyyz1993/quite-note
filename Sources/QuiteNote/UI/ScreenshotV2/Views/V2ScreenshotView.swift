@@ -38,7 +38,7 @@ struct V2ScreenshotView: View {
     @State private var currentLayerLevel: Int = 0
     @State private var mouseLocation: CGPoint = .zero
     @State private var hasMouseMoved: Bool = false // 记录鼠标是否移动过
-    
+
     /// 订阅主屏幕状态变化
     @StateObject private var primaryScreenManager = V2PrimaryScreenStateManager.shared
 
@@ -349,15 +349,15 @@ struct V2ScreenshotView: View {
     // 保存到闪记
     private func saveToFlashNotes(rect: CGRect) {
         addLog("Saving selection to flash notes...")
-        
+
         guard let finalImage = generateFinalImage(rect: rect) else { return }
 
         // ⚠️ 关键：调用 ScreenshotService 保存到闪记
         // 注意：ScreenshotService 需要访问 RecordStore
         ScreenshotService.shared.saveScreenshotToFlashNotes(image: finalImage)
-        
+
         addLog("Saved to flash notes! Closing...")
-        
+
         // 关闭所有调试窗口
         V2ScreenshotController.close()
     }
@@ -445,7 +445,7 @@ struct V2ScreenshotView: View {
                         .zIndex(2000)
                         .animation(.easeOut(duration: ThemeDuration._300.rawValue), value: message)
                 }
-                
+
                 // 新增：长图采集过程中的悬浮停止按钮
                 // 此时按钮已经在独立的 V2LongScreenshotControlPanel 中显示
                 // 这里只需保留空逻辑或移除旧的内置 Toolbar

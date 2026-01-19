@@ -354,6 +354,10 @@ final class FloatingPanelController {
 
     /// 隐藏悬浮窗，带缩放+淡出动效
     func hide() {
+        // P2.4: 添加日志追踪
+        print("[FloatingPanel] hide() called - stack trace:")
+        Thread.callStackSymbols.forEach { print("  \($0)") }
+
         // 标记为用户主动隐藏
         userHidden = true
         hideInternal(withAnimation: animationsEnabled)
@@ -361,10 +365,13 @@ final class FloatingPanelController {
 
     /// 立即隐藏悬浮窗，无动画（用于截图等场景）
     func hideImmediately() {
+        print("[FloatingPanel] hideImmediately() called - stack trace:")
+        Thread.callStackSymbols.forEach { print("  \($0)") }
         hideInternal(withAnimation: false)
     }
 
     private func hideInternal(withAnimation: Bool) {
+        print("[FloatingPanel] hideInternal(withAnimation: \(withAnimation))")
         hoverActive = false
         revertTimer?.invalidate(); revertTimer = nil
         launchEnsurer?.invalidate(); launchEnsurer = nil
@@ -375,11 +382,13 @@ final class FloatingPanelController {
                 ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.4, 0.0, 0.6, 1.0)
                 panel.animator().alphaValue = 0
             } completionHandler: { [weak panel] in
+                print("[FloatingPanel] hideInternal - orderOut completed")
                 panel?.orderOut(nil)
                 panel?.alphaValue = 1
                 NSApp.setActivationPolicy(.accessory)
             }
         } else {
+            print("[FloatingPanel] hideInternal - immediate orderOut")
             panel.orderOut(nil)
             NSApp.setActivationPolicy(.accessory)
         }
@@ -537,9 +546,13 @@ final class FloatingPanelController {
 
     /// 最小化到浮球
     func minimizeToBall() {
-        print("[DEBUG] minimizeToBall called, mode: \(focusProvider.mode)")
+        // P2.4: 添加详细的堆栈追踪日志
+        print("[FloatingPanel] minimizeToBall() called - stack trace:")
+        Thread.callStackSymbols.forEach { print("  \($0)") }
+        print("[FloatingPanel] minimizeToBall - mode: \(focusProvider.mode), frame: \(panel.frame)")
+
         guard focusProvider.mode == .expanded else {
-            print("[DEBUG] minimizeToBall guard failed, not in expanded mode")
+            print("[FloatingPanel] minimizeToBall guard failed, not in expanded mode")
             return
         }
 

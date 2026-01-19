@@ -153,6 +153,24 @@ struct SettingsOverlayView: View {
                     Text("触发前缀: :/")
                         .font(.themeCaptionSmall)
                         .foregroundColor(.themeTextTertiary)
+                    // P2.2: 清除图标缓存按钮
+                    Button(action: {
+                        NotificationCenter.default.post(name: NSNotification.Name("ClearIconCache"), object: nil)
+                    }) {
+                        HStack(spacing: 4) {
+                            LucideView(name: .refreshCw, size: 10, color: .themeBlue400)
+                            Text("重载图标")
+                        }
+                        .font(.themeCaptionSmall)
+                        .foregroundColor(.themeBlue400)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.themeBlue500.opacity(0.1))
+                        .cornerRadius(4)
+                    }
+                    .buttonStyle(.plain)
+                    .pointingHandCursor()
+                    .help("清除图标缓存并重新加载")
                 } else {
                     Text(tab == "bluetooth" ? "蓝牙设备状态" : "设置已就绪")
                         .font(.themeCaptionSmall)

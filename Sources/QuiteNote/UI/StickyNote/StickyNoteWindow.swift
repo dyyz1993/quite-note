@@ -7,7 +7,10 @@ class StickyNoteWindow: NSPanel, NSWindowDelegate {
     private var focusTimer: Timer?
     private var noteId: UUID
     private var note: StickyNoteModel
-    
+
+    /// 公开的 noteId getter，供 StickyNoteManager 使用
+    var id: UUID { noteId }
+
     init(note: StickyNoteModel) {
         self.noteId = note.id
         self.note = note
@@ -17,18 +20,23 @@ class StickyNoteWindow: NSPanel, NSWindowDelegate {
             backing: .buffered,
             defer: false
         )
-        
+
         self.delegate = self
         self.isFloatingPanel = true
         self.level = .mainMenu + 1
-        self.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        // P2.3: 根据 pinnedToAllSpaces 设置 collectionBehavior
+        // - pinnedToAllSpaces = true: 在所有 Space 显示（添加 .canJoinAllSpaces）
+        // - pinnedToAllSpaces = false: 只在当前 Space 显示（移除 .canJoinAllSpaces）
+        self.collectionBehavior = note.pinnedToAllSpaces
+            ? [.fullScreenAuxiliary, .canJoinAllSpaces]
+            : [.fullScreenAuxiliary]
         self.titleVisibility = .hidden
         self.titlebarAppearsTransparent = true
-        self.isMovableByWindowBackground = true 
+        self.isMovableByWindowBackground = true
         self.backgroundColor = .clear
         self.hasShadow = true
         self.isOpaque = false
-        
+
         // 设置 SwiftUI 视图
         let rootView = StickyNoteView(note: note)
         let hostingView = StickyNoteHostingView(rootView: rootView, noteId: note.id)
@@ -74,8 +82,23 @@ class StickyNoteWindow: NSPanel, NSWindowDelegate {
             self.setFrame(updatedNote.frame, display: true)
         }
 
+        // P2.3: 更新 collectionBehavior（当 pinnedToAllSpaces 改变时）
+        updateCollectionBehavior()
+
         // 通知视图刷新内容
         NotificationCenter.default.post(name: NSNotification.Name("StickyNoteContentUpdated"), object: noteId)
+    }
+
+    /// P2.3: 根据 note.pinnedToAllSpaces 更新 collectionBehavior
+    private func updateCollectionBehavior() {
+        let newBehavior: NSWindow.CollectionBehavior = note.pinnedToAllSpaces
+            ? [.fullScreenAuxiliary, .canJoinAllSpaces]
+            : [.fullScreenAuxiliary]
+
+        if self.collectionBehavior != newBehavior {
+            self.collectionBehavior = newBehavior
+            print("[DEBUG StickyNoteWindow] Updated collectionBehavior: \(note.pinnedToAllSpaces ? "all spaces" : "current space only")")
+        }
     }
 }
 

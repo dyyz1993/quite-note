@@ -16,18 +16,30 @@ struct StickyNoteView: View {
             // 背景和主体
             VStack(spacing: 0) {
                 // 顶部拖拽手柄 - 固定高度，不随状态改变
-                Rectangle()
-                    .fill(Color.themeBackground)
-                    .frame(height: 14)
-                    .overlay(
-                        Capsule()
-                            .fill(Color.themeTextTertiary.opacity(0.3))
-                            .frame(width: 24, height: 3)
-                    )
-                    .contentShape(Rectangle())
-                    .onHover { hovering in
-                        if hovering { isHovered = true }
+                ZStack(alignment: .topTrailing) {
+                    Rectangle()
+                        .fill(Color.themeBackground)
+                        .frame(height: 14)
+                        .overlay(
+                            Capsule()
+                                .fill(Color.themeTextTertiary.opacity(0.3))
+                                .frame(width: 24, height: 3)
+                        )
+                        .contentShape(Rectangle())
+                        .onHover { hovering in
+                            if hovering { isHovered = true }
+                        }
+
+                    // 右上角 Space 固定状态指示器
+                    if note.pinnedToAllSpaces {
+                        Image(systemName: "pin.fill")
+                            .font(.system(size: 8))
+                            .foregroundColor(.themeGreen500)
+                            .padding(.trailing, 6)
+                            .padding(.top, 4)
+                            .help("固定到所有 Space (⌘⌥P 切换)")
                     }
+                }
 
                 // 内容区域 - 占据剩余所有空间
                 ZStack(alignment: .bottom) {
@@ -260,6 +272,7 @@ struct StickyNoteToolbar: View {
             HStack(spacing: 4) {
                 ForEach(0..<note.pages.count, id: \.self) { index in
                     Button(action: {
+                        print("[DEBUG] 页面按钮点击: index=\(index), 页面数=\(note.pages.count)")
                         note.currentPageIndex = index
                         StickyNoteManager.shared.updateNote(note)
                     }) {
@@ -272,6 +285,9 @@ struct StickyNoteToolbar: View {
                     }
                     .buttonStyle(.plain)
                 }
+            }
+            .onAppear {
+                print("[DEBUG] StickyNoteToolbar 页面数量: \(note.pages.count)")
             }
 
             Spacer(minLength: 4)
@@ -299,6 +315,10 @@ struct StickyNoteToolbar: View {
 
                 // 关闭按钮（关闭前如果已同步则更新记录）
                 StickyNoteToolbarButton(name: .x, tooltip: "关闭贴纸", color: .themeTextSecondary, action: {
+                    // 关闭时清除 Space 固定状态，确保下次打开时不固定
+                    note.pinnedToAllSpaces = false
+                    StickyNoteManager.shared.updateNote(note)
+
                     // 如果已同步，关闭前更新记录内容
                     if let recordId = note.syncRecordId,
                        // 从 StickyNoteManager 获取最新的便签数据（包含最新的位置）

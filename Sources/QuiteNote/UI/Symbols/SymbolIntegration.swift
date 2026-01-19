@@ -69,7 +69,7 @@ extension StickyNoteEditor.Coordinator {
     // MARK: - Public Methods for Coordinator to Call
 
     /// Public method that can be called from Coordinator's showSymbolSuggestionPanel
-    func showSymbolSuggestionPanelExtension(at cursorInfo: CursorLocationInfo?, triggerText: String, suggestions: [SymbolItem], parentWindow: NSWindow?) {
+    func showSymbolSuggestionPanelExtension(at cursorInfo: CursorLocationInfo?, triggerText: String, suggestions: [MatchedSymbolItem], parentWindow: NSWindow?) {
         let logPath = "/tmp/quitenote-symbol-debug.log"
         let timestamp = Date()
         let logMsg = "[SymbolIntegration] [\(timestamp)] showSymbolSuggestionPanelExtension called: cursorInfo=\(cursorInfo?.debugDescription ?? "nil"), trigger='\(triggerText)', suggestions=\(suggestions.count)\n"
@@ -95,13 +95,13 @@ extension StickyNoteEditor.Coordinator {
     }
 
     /// Store trigger info temporarily
-    private func updateSymbolTriggerInfo(triggerText: String, suggestions: [SymbolItem]) {
+    private func updateSymbolTriggerInfo(triggerText: String, suggestions: [MatchedSymbolItem]) {
         // The extension uses its own state management via associated objects
         // This is just a placeholder if we need to pass additional info
     }
 
     // The actual implementation (renamed from private methods to allow calling)
-    private func performShowSymbolSuggestionPanel(at cursorInfo: CursorLocationInfo, triggerText: String, suggestions: [SymbolItem], parentWindow: NSWindow?) {
+    private func performShowSymbolSuggestionPanel(at cursorInfo: CursorLocationInfo, triggerText: String, suggestions: [MatchedSymbolItem], parentWindow: NSWindow?) {
         // This is the original showSymbolSuggestionPanel implementation
         // We'll call the original method by its original name
         self.internalShowSymbolSuggestionPanel(at: cursorInfo, triggerText: triggerText, suggestions: suggestions, parentWindow: parentWindow)
@@ -293,7 +293,7 @@ extension StickyNoteEditor.Coordinator {
         internalShowSymbolSuggestionPanel(at: cursorInfo, triggerText: triggerText, suggestions: symbolDetector.suggestions, parentWindow: textView.window)
     }
 
-    private func internalShowSymbolSuggestionPanel(at cursorInfo: CursorLocationInfo, triggerText: String, suggestions: [SymbolItem], parentWindow: NSWindow?) {
+    private func internalShowSymbolSuggestionPanel(at cursorInfo: CursorLocationInfo, triggerText: String, suggestions: [MatchedSymbolItem], parentWindow: NSWindow?) {
         let logPath = "/tmp/quitenote-symbol-debug.log"
         let timestamp = Date()
         let logMsg = "[SymbolIntegration] [\(timestamp)] internalShowSymbolSuggestionPanel: cursorPosition=\(cursorInfo.cursorPosition), lineRect=\(cursorInfo.lineRect), trigger='\(triggerText)', suggestions=\(suggestions.count)\n"
@@ -557,7 +557,7 @@ extension StickyNoteEditor.Coordinator {
     }
 
     /// 计算面板高度
-    private func calculatePanelHeight(for suggestions: [SymbolItem]) -> CGFloat {
+    private func calculatePanelHeight(for suggestions: [MatchedSymbolItem]) -> CGFloat {
         let rowHeight: CGFloat = 44
         let maxHeight: CGFloat = 300
         let minHeight: CGFloat = 60
@@ -661,7 +661,10 @@ extension StickyNoteEditor.Coordinator {
     /// 处理键盘事件的统一方法
     private func handleKeyboardEvent(_ event: NSEvent) -> Bool {
         let keyCode = event.keyCode
-        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        // ⭐ 只检查真正的修饰键：Cmd、Ctrl、Option、Shift
+        // 忽略 .numericPad 和 .function，因为这些不是用户按下的修饰键
+        let actualModifiers: NSEvent.ModifierFlags = [.command, .control, .option, .shift]
+        let modifiers = event.modifierFlags.intersection(actualModifiers)
 
         print("[SymbolIntegration] 🔔 handleKeyboardEvent: keyCode=\(keyCode), modifiers=\(modifiers), panelWindow=\(symbolPanelWindow != nil)")
         appendLog("[SymbolIntegration] 🔔 handleKeyboardEvent: keyCode=\(keyCode), modifiers=\(modifiers), panelWindow=\(symbolPanelWindow != nil)\n", toPath: "/tmp/quitenote-symbol-debug.log")
@@ -755,13 +758,14 @@ extension StickyNoteEditor.Coordinator {
         print("[SymbolIntegration] selectedIndex 已更新为: \(symbolSelectionState.selectedIndex)")
     }
 
-    private func insertSelectedSymbol(_ symbol: SymbolItem) {
+    private func insertSelectedSymbol(_ item: MatchedSymbolItem) {
         guard let currentTextView = symbolTextView else { return }
 
         let text = currentTextView.string
         let cursorPosition = currentTextView.selectedRange().location
         let logPath = "/tmp/quitenote-symbol-debug.log"
 
+        let symbol = item.symbol
         appendLog("[SymbolIntegration] insertSelectedSymbol - symbol.content=\(symbol.content), cursorPosition=\(cursorPosition)\n", toPath: logPath)
 
         // 获取替换后的文本和新光标位置
@@ -872,10 +876,10 @@ extension StickyNoteEditor.Coordinator {
 /// 符号联想面板包装器（用于 NSHostingView）
 struct SymbolSuggestionPanelWrapper: View {
     let triggerText: String
-    let suggestions: [SymbolItem]
+    let suggestions: [MatchedSymbolItem]
     // ⭐ 关键修复：使用 @ObservedObject 让 SwiftUI 观察 SymbolSelectionState 的变化
     @ObservedObject var selectionState: SymbolSelectionState
-    let onSelect: (SymbolItem) -> Void
+    let onSelect: (MatchedSymbolItem) -> Void
 
     var body: some View {
         SymbolSuggestionPanel(

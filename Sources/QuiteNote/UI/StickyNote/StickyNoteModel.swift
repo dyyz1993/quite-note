@@ -16,6 +16,7 @@ struct StickyNoteModel: Codable, Identifiable {
     var frame: NSRect = NSRect(x: 100, y: 100, width: 300, height: 200)
     var opacity: Double = 0.95 // 默认透明度
     var syncRecordId: UUID? = nil  // 关联的记录 ID（用于双向同步）
+    var pinnedToAllSpaces: Bool = false  // 是否在所有 Space 显示（四指滑动切换的虚拟桌面）
 
     var currentContent: String {
         get {

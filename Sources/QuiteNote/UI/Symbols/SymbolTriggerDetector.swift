@@ -1,10 +1,21 @@
 import Foundation
 import Combine
 
+/// 匹配的符号项 - 包含符号和匹配到的触发词
+struct MatchedSymbolItem: Identifiable, Equatable {
+    let id = UUID()
+    let symbol: SymbolItem
+    let matchedTrigger: String
+
+    var content: String { symbol.content }
+    var desc: String { symbol.desc }
+    var triggers: [String] { symbol.triggers }
+}
+
 /// 符号触发检测器 - 监听文本输入，检测触发词
 class SymbolTriggerDetector: ObservableObject {
     @Published var detectedTrigger: String?
-    @Published var suggestions: [SymbolItem] = []
+    @Published var suggestions: [MatchedSymbolItem] = []
     @Published var triggerPosition: NSRange?
 
     private let configManager = SymbolConfigManager.shared
@@ -103,27 +114,29 @@ class SymbolTriggerDetector: ObservableObject {
         log("[SymbolTriggerDetector] 触发词: '\(triggerText)' (NSString长度: \(triggerTextLength))")
 
         // 新交互逻辑：输入:/显示所有符号，输入更多字符进行过滤
-        let matches: [SymbolItem]
+        let matchedItems: [MatchedSymbolItem]
         if triggerText.isEmpty {
             // 输入:/显示所有符号，按使用频率排序
-            matches = Array(getAllSymbolsSorted().prefix(5)) // 限制显示5个
-            log("[SymbolTriggerDetector] ✅ 显示所有符号: \(matches.count) 个")
+            let symbols = Array(getAllSymbolsSorted().prefix(5))
+            matchedItems = symbols.map { MatchedSymbolItem(symbol: $0, matchedTrigger: "") }
+            log("[SymbolTriggerDetector] ✅ 显示所有符号: \(matchedItems.count) 个")
         } else {
             // 输入具体字符进行过滤
-            matches = findMatches(for: triggerText)
-            log("[SymbolTriggerDetector] 过滤结果: \(matches.count) 个")
+            let matches = findMatches(for: triggerText)
+            matchedItems = matches.map { MatchedSymbolItem(symbol: $0.0, matchedTrigger: $0.1) }
+            log("[SymbolTriggerDetector] 过滤结果: \(matchedItems.count) 个")
         }
 
-        if !matches.isEmpty {
+        if !matchedItems.isEmpty {
             detectedTrigger = triggerText
-            suggestions = matches
+            suggestions = matchedItems
 
             // 获取触发词位置（使用 NSString 坐标系）
             let location = actualPrefixLocation
             let length = cursorPosition - actualPrefixLocation
             triggerPosition = NSRange(location: location, length: length)
 
-            log("[SymbolTriggerDetector] ✅ 检测成功！触发词: '\(triggerText)', 建议: \(matches.count) 个")
+            log("[SymbolTriggerDetector] ✅ 检测成功！触发词: '\(triggerText)', 建议: \(matchedItems.count) 个")
             log("[SymbolTriggerDetector] 触发词位置: location=\(location), length=\(length)")
         } else {
             log("[SymbolTriggerDetector] 没有匹配结果，清除检测")
@@ -133,45 +146,64 @@ class SymbolTriggerDetector: ObservableObject {
     }
 
     /// 查找匹配的符号
-    private func findMatches(for trigger: String) -> [SymbolItem] {
+    private func findMatches(for trigger: String) -> [(SymbolItem, String)] {
         let normalizedTrigger = trigger.lowercased().trimmingCharacters(in: .whitespaces)
         log("[SymbolTriggerDetector] 查找匹配，规范化触发词: '\(normalizedTrigger)'")
 
-        var matches: Set<SymbolItem> = []
+        var scoredMatches: [(SymbolItem, String, SearchScore)] = []
 
         let enabledCount = configManager.enabledConfigs.count
         log("[SymbolTriggerDetector] 已启用的配置数量: \(enabledCount)")
 
         for config in configManager.enabledConfigs {
             log("[SymbolTriggerDetector] 检查配置: \(config.metadata.name), 触发词映射数: \(config.triggerMap.count)")
-            for (key, symbol) in config.triggerMap {
-                // 前缀匹配
-                if key.lowercased().hasPrefix(normalizedTrigger) {
-                    log("[SymbolTriggerDetector] 匹配: '\(key)' -> '\(symbol.content)'")
-                    matches.insert(symbol)
+            for (triggerKey, symbol) in config.triggerMap {
+                // ⭐ 关键修复：检查符号的每个 trigger，找出最匹配的那个
+                var bestScore: SearchScore? = nil
+                var bestMatchedTrigger: String? = nil
+
+                for symbolTrigger in symbol.triggers {
+                    if let score = FuzzySearch.matchTrigger(triggers: [symbolTrigger], query: normalizedTrigger) {
+                        log("[SymbolTriggerDetector] 模糊匹配检查: '\(symbolTrigger)' -> '\(symbol.content)' (level=\(score.level), chars=\(score.matchedCharCount))")
+                        // 保留评分最高的（分数越低越好）
+                        if bestScore == nil || score < bestScore! {
+                            bestScore = score
+                            bestMatchedTrigger = symbolTrigger
+                        }
+                    }
+                }
+
+                if let matchedTrigger = bestMatchedTrigger, let score = bestScore {
+                    log("[SymbolTriggerDetector] ✅ 最佳匹配: '\(matchedTrigger)' -> '\(symbol.content)' (level=\(score.level), chars=\(score.matchedCharCount))")
+                    scoredMatches.append((symbol, matchedTrigger, score))
                 }
             }
         }
 
-        log("[SymbolTriggerDetector] 匹配结果: \(matches.count) 个符号")
+        log("[SymbolTriggerDetector] 匹配结果: \(scoredMatches.count) 个")
 
-        // 按匹配度和排序优先级排序
-        let sorted = Array(matches)
-            .sorted { a, b in
-                // 优先显示完全匹配
-                let aExact = a.triggers.contains { $0.lowercased() == normalizedTrigger }
-                let bExact = b.triggers.contains { $0.lowercased() == normalizedTrigger }
-
-                if aExact && !bExact { return true }
-                if !aExact && bExact { return false }
-
-                // 其次按触发词长度
-                let aShortest = a.triggers.map { $0.count }.min() ?? Int.max
-                let bShortest = b.triggers.map { $0.count }.min() ?? Int.max
-
-                return aShortest < bShortest
+        // 去重：每个符号只保留评分最高的一个 trigger
+        var bestMatchForSymbol: [SymbolItem: (String, SearchScore)] = [:]
+        for (symbol, matchedTrigger, score) in scoredMatches {
+            if let existing = bestMatchForSymbol[symbol] {
+                if score < existing.1 {
+                    bestMatchForSymbol[symbol] = (matchedTrigger, score)
+                }
+            } else {
+                bestMatchForSymbol[symbol] = (matchedTrigger, score)
             }
-        return Array(sorted.prefix(5)) // 最多显示5个结果
+        }
+
+        // 转换为数组并按搜索评分排序
+        let results = bestMatchForSymbol.map { (symbol, triggerInfo) -> (SymbolItem, String, SearchScore) in
+            (symbol, triggerInfo.0, triggerInfo.1)
+        }
+
+        // 按模糊搜索评分排序（越低越好）
+        let sorted = results.sorted { $0.2 < $1.2 }
+
+        // 只返回 (SymbolItem, String)，其中 String 是匹配到的 trigger
+        return Array(sorted.prefix(5).map { ($0.0, $0.1) })
     }
 
     /// 清除检测结果

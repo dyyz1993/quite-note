@@ -324,7 +324,19 @@ struct RecordCardView: View, Equatable {
         .onTapGesture {
             // 还原：点击卡片任何非功能区仅用于展开/折叠
             withAnimation(.easeInOut(duration: 0.25)) {
-                expandedId = isExpanded ? nil : record.id
+                if isExpanded {
+                    // P1.1: 卡片折叠时，同时清除原文展开状态
+                    expandedId = nil
+                    if showOriginalContent {
+                        showOriginalContent = false
+                        NotificationCenter.default.post(
+                            name: Notification.Name("OriginalContentToggled"),
+                            object: ["recordId": record.id, "isExpanded": false]
+                        )
+                    }
+                } else {
+                    expandedId = record.id
+                }
             }
         }
     }
@@ -433,6 +445,14 @@ struct RecordCardView: View, Equatable {
             withAnimation(.easeInOut(duration: 0.2)) {
                 if isExpanded {
                     expandedId = nil
+                    // P1.1: 卡片折叠时，同时清除原文展开状态
+                    if showOriginalContent {
+                        showOriginalContent = false
+                        NotificationCenter.default.post(
+                            name: Notification.Name("OriginalContentToggled"),
+                            object: ["recordId": record.id, "isExpanded": false]
+                        )
+                    }
                 } else {
                     expandedId = record.id
                 }
@@ -474,10 +494,33 @@ struct RecordCardView: View, Equatable {
                 summaryBody
                 keywordsView
 
-                // 当有总结且原文折叠时，显示"显示原文"按钮
+                // 当有总结且原文折叠时，显示"显示原文"和"复制原文"按钮
                 if record.summary != nil && !showOriginalContent {
-                    HStack {
+                    HStack(spacing: 8) {
                         Spacer()
+                        // 复制原文按钮
+                        Button(action: {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(record.content, forType: .string)
+                            HapticFeedbackManager.shared.lightImpact()
+                            store.postLightHint("已复制原文")
+                        }) {
+                            HStack(spacing: 4) {
+                                LucideView(name: .copy, size: 10, color: .themeTextSecondary)
+                                Text("复制原文")
+                            }
+                            .font(.system(size: 10))
+                            .foregroundColor(.themeTextSecondary)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.themeHoverLight)
+                            .cornerRadius(4)
+                        }
+                        .buttonStyle(.plain)
+                        .pointingHandCursor()
+                        .help("快速复制原文内容")
+
+                        // 显示原文按钮
                         Button(action: {
                             withAnimation(.easeInOut(duration: 0.2)) {
                                 showOriginalContent = true
@@ -501,6 +544,7 @@ struct RecordCardView: View, Equatable {
                         }
                         .buttonStyle(.plain)
                         .pointingHandCursor()
+                        .help("展开查看完整原文")
                     }
                 }
             }
@@ -678,7 +722,7 @@ struct RecordCardView: View, Equatable {
                     inset: CGSize(width: 8, height: 8), // 稍微减小内边距，给内容更多空间
                     showScrollbar: true // 原文长，需要滚动条
                 )
-                .frame(minHeight: record.type == .note ? 120 : 350, maxHeight: 650) // note 类型使用更小的最小高度
+                .frame(minHeight: record.type == .note ? 80 : (record.type == .screenshot || record.type == .image) ? 120 : 200, maxHeight: record.type == .note ? 120 : (record.type == .screenshot || record.type == .image) ? 250 : 400) // P1.2: 缩小图片类型原文框高度
                 .background(Color.themeBackground) // 使用更深的背景色，使 ASCII 艺术更清晰
                 .cornerRadius(4)
                 .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.themeBorder, lineWidth: 1).allowsHitTesting(false))

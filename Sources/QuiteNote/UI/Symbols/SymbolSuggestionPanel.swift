@@ -4,13 +4,13 @@ import AppKit
 /// 符号联想面板 - 输入触发词时自动弹出
 struct SymbolSuggestionPanel: View {
     let triggerText: String
-    let suggestions: [SymbolItem]
+    let suggestions: [MatchedSymbolItem]
     @Binding var selectedIndex: Int
-    let onSelect: (SymbolItem) -> Void
+    let onSelect: (MatchedSymbolItem) -> Void
 
     @FocusState private var isFocused: Bool
 
-    init(triggerText: String, suggestions: [SymbolItem], selectedIndex: Binding<Int>, onSelect: @escaping (SymbolItem) -> Void) {
+    init(triggerText: String, suggestions: [MatchedSymbolItem], selectedIndex: Binding<Int>, onSelect: @escaping (MatchedSymbolItem) -> Void) {
         self.triggerText = triggerText
         self.suggestions = suggestions
         self._selectedIndex = selectedIndex
@@ -21,14 +21,14 @@ struct SymbolSuggestionPanel: View {
         VStack(spacing: 0) {
             if !suggestions.isEmpty {
                 VStack(spacing: 0) {
-                    ForEach(Array(suggestions.enumerated()), id: \.offset) { index, symbol in
+                    ForEach(Array(suggestions.enumerated()), id: \.offset) { index, item in
                         Button(action: {
                             // ⭐ 调试日志：验证点击事件是否触发
-                            print("[SymbolSuggestionPanel] ✅ Button clicked: \(symbol.content) - \(symbol.desc)")
-                            onSelect(symbol)
+                            print("[SymbolSuggestionPanel] ✅ Button clicked: \(item.content) - \(item.desc)")
+                            onSelect(item)
                         }) {
                             SuggestionRow(
-                                symbol: symbol,
+                                item: item,
                                 triggerText: triggerText,
                                 isSelected: index == selectedIndex
                             )
@@ -107,14 +107,14 @@ struct SymbolSuggestionPanel: View {
 // MARK: - Suggestion Row
 
 struct SuggestionRow: View {
-    let symbol: SymbolItem
+    let item: MatchedSymbolItem
     let triggerText: String
     let isSelected: Bool
 
     var body: some View {
         HStack(spacing: 10) {
             // 符号内容
-            Text(symbol.content)
+            Text(item.content)
                 .font(.system(size: 16))
                 .frame(width: 28, alignment: .center)
 
@@ -124,8 +124,8 @@ struct SuggestionRow: View {
                     .font(.themeCaption)
                     .foregroundColor(isSelected ? Color.themeTextPrimary : Color.themeTextSecondary)
 
-                if let matchedTrigger = matchedTrigger {
-                    Text("触发词: \(matchedTrigger)")
+                if !item.matchedTrigger.isEmpty {
+                    Text("触发词: \(item.matchedTrigger)")
                         .font(.themeCaptionSmall)
                         .foregroundColor(Color.themeTextTertiary)
                 }
@@ -143,16 +143,16 @@ struct SuggestionRow: View {
     }
 
     private var highlightedDesc: AttributedString {
-        var desc = AttributedString(symbol.desc)
+        var desc = AttributedString(item.desc)
 
-        if let range = desc.range(of: symbol.desc, options: .caseInsensitive) {
-            if let matchRange = symbol.desc.range(
+        if let range = desc.range(of: item.desc, options: .caseInsensitive) {
+            if let matchRange = item.desc.range(
                 of: triggerText,
                 options: .caseInsensitive,
                 range: nil,
                 locale: nil
             ) {
-                let nsRange = NSRange(matchRange, in: symbol.desc)
+                let nsRange = NSRange(matchRange, in: item.desc)
                 if let attributedRange = Range(nsRange, in: desc) {
                     desc[attributedRange].foregroundColor = Color.themeBlue500
                     desc[attributedRange].font = Font.system(size: 11, weight: .semibold)
@@ -162,20 +162,16 @@ struct SuggestionRow: View {
 
         return desc
     }
-
-    private var matchedTrigger: String? {
-        symbol.triggers.first { $0.lowercased().contains(triggerText.lowercased()) }
-    }
 }
 
 // MARK: - Preview
 
 #Preview("有结果") {
     SymbolSuggestionPanel(
-        triggerText: "bug",
+        triggerText: "sd",
         suggestions: [
-            SymbolItem(triggers: ["bug", "err"], content: "🐛", desc: "BUG/程序错误"),
-            SymbolItem(triggers: ["build"], content: "🔨", desc: "构建/编译")
+            MatchedSymbolItem(symbol: SymbolItem(triggers: ["sad", "伤心"], content: "😢", desc: "伤心"), matchedTrigger: "sad"),
+            MatchedSymbolItem(symbol: SymbolItem(triggers: ["cry", "哭泣"], content: "😭", desc: "哭泣"), matchedTrigger: "cry")
         ],
         selectedIndex: .constant(0),
         onSelect: { _ in }

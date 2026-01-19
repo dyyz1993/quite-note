@@ -6,6 +6,10 @@ struct V2AnnotationToolbar: View {
 
     private let colors: [Color] = [.red, .yellow, .green, .blue, .white, .black]
     @State private var expandedGroup: AnnotationToolGroup? = nil
+    // P2.1: 自定义 tooltip 状态
+    @State private var tooltipText: String = ""
+    @State private var tooltipPosition: CGPoint = .zero
+    @State private var showTooltip: Bool = false
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -22,6 +26,29 @@ struct V2AnnotationToolbar: View {
             // 2. 主工具栏
             mainToolbarContent
         }
+        // P2.1: 自定义 tooltip 覆盖层
+        .overlay(
+            Group {
+                if showTooltip {
+                    Text(tooltipText)
+                        .font(.system(size: 11))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.black.opacity(0.8))
+                        .foregroundColor(.white)
+                        .cornerRadius(4)
+                        .position(x: tooltipPosition.x, y: tooltipPosition.y - 35)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                        .onAppear {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                                withAnimation {
+                                    showTooltip = false
+                                }
+                            }
+                        }
+                }
+            }
+        )
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: expandedGroup)
         .frame(maxWidth: 650) // 恢复宽度，新交互更省空间
     }
@@ -46,16 +73,70 @@ struct V2AnnotationToolbar: View {
             Divider().frame(height: 24).background(Color.white.opacity(0.2))
             actionButtonsGroup
             Divider().frame(width: 1, height: 24).background(Color.white.opacity(0.2))
-            
-            // 保存按钮 (Command+S)
-            actionButton(icon: .save, action: {
+
+            // P3.3: 保存按钮 (Command+S) - 使用 SF Symbols
+            Button(action: {
                 NotificationCenter.default.post(name: NSNotification.Name("SaveScreenshot"), object: nil)
-            }, tooltip: "保存到闪记 (Command+S)", primary: true)
-            
-            // 复制按钮 (Command+C)
-            actionButton(icon: .copy, action: {
+            }) {
+                ZStack {
+                    Circle()
+                        .fill(LinearGradient(
+                            colors: [Color.blue.opacity(0.8), Color.blue],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ))
+                        .frame(width: 34, height: 34)
+
+                    Image(systemName: "arrow.down.doc")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.white)
+                }
+            }
+            .buttonStyle(.plain)
+            .onHover { hovering in
+                if hovering {
+                    tooltipText = "保存到闪记 (Command+S)"
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        showTooltip = true
+                    }
+                } else {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        showTooltip = false
+                    }
+                }
+            }
+
+            // P3.3: 复制按钮 (Command+C) - 使用 SF Symbols
+            Button(action: {
                 NotificationCenter.default.post(name: NSNotification.Name("CopyScreenshot"), object: nil)
-            }, tooltip: "复制到剪贴板 (Command+C)", primary: true)
+            }) {
+                ZStack {
+                    Circle()
+                        .fill(LinearGradient(
+                            colors: [Color.green.opacity(0.8), Color.green],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ))
+                        .frame(width: 34, height: 34)
+
+                    Image(systemName: "doc.on.doc")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.white)
+                }
+            }
+            .buttonStyle(.plain)
+            .onHover { hovering in
+                if hovering {
+                    tooltipText = "复制到剪贴板 (Command+C)"
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        showTooltip = true
+                    }
+                } else {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        showTooltip = false
+                    }
+                }
+            }
         }
         .padding(8)
         .background(
@@ -220,15 +301,32 @@ struct V2AnnotationToolbar: View {
         .buttonStyle(.plain)
     }
 
-    /// 操作按钮
+    /// P2.1: 操作按钮 - 使用自定义 tooltip
     private func actionButton(icon: IconName, action: @escaping () -> Void, tooltip: String, primary: Bool = false) -> some View {
-        Button(action: action) {
-            LucideView(name: icon, size: 18, color: .white)
-                .frame(width: 34, height: 34)
-                .background(primary ? Color.blue : Color.white.opacity(0.1))
-                .cornerRadius(8)
+        GeometryReader { geometry in
+            Button(action: action) {
+                LucideView(name: icon, size: 18, color: .white)
+                    .frame(width: 34, height: 34)
+                    .background(primary ? Color.blue : Color.white.opacity(0.1))
+                    .cornerRadius(8)
+            }
+            .buttonStyle(.plain)
+            .onHover { hovering in
+                if hovering {
+                    // 获取按钮在全局坐标系中的中心位置
+                    let bounds = geometry.frame(in: .global)
+                    tooltipPosition = CGPoint(x: bounds.midX, y: bounds.minY)
+                    tooltipText = tooltip
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        showTooltip = true
+                    }
+                } else {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        showTooltip = false
+                    }
+                }
+            }
         }
-        .buttonStyle(.plain)
-        .help(tooltip)
+        .frame(width: 34, height: 34)
     }
 }

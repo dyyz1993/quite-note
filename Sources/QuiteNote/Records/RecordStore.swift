@@ -276,6 +276,20 @@ final class RecordStore: ObservableObject {
             }
             
             let hash = ClipboardService.sha1(content)
+
+            // P4.2: 检查是否已存在相同路径的记录，直接更新
+            if let existingRecord = records.first(where: { $0.sourceUrl == sourceUrlStr }) {
+                print("[DEBUG] 文件路径已存在: \(sourceUrlStr), 更新现有记录")
+                updateContent(
+                    id: existingRecord.id,
+                    content: content,
+                    title: nil,
+                    noteFrame: nil
+                )
+                postToast("已更新现有文件", type: "info")
+                continue
+            }
+
             addRecord(
                 content: content,
                 hash: hash,
@@ -635,9 +649,15 @@ final class RecordStore: ObservableObject {
     }
 
     /// 删除指定记录
-    func delete(_ record: Record) {
+    /// - Parameter skipHistory: 是否跳过历史记录（用于撤销/重做时避免循环）
+    func delete(_ record: Record, skipHistory: Bool = false) {
         print("[DEBUG RecordStore.delete()] 开始删除记录, ID: \(record.id), Type: \(record.type)")
         Self.logger.info("开始删除记录, ID: \(record.id), Type: \(record.type.rawValue)")
+
+        // P4.1: 记录到历史栈（除非 skipHistory 为 true）
+        if !skipHistory {
+            HistoryManager.shared.push(.delete(record: record))
+        }
 
         // 1. 如果是文件/图片/截图，尝试将关联的物理文件移动到废纸篓
         if record.type != .text {
@@ -931,8 +951,13 @@ final class RecordStore: ObservableObject {
     }
 
     /// 切换收藏状态
-    func toggleStar(_ record: Record) {
+    func toggleStar(_ record: Record, skipHistory: Bool = false) {
         if let idx = records.firstIndex(where: { $0.id == record.id }) {
+            // P4.1: 记录历史（除非 skipHistory 为 true）
+            if !skipHistory {
+                HistoryManager.shared.push(.toggleStar(recordId: record.id, oldState: record.starred))
+            }
+
             // 先在主线程更新 UI 状态，确保即时响应
             withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                 records[idx].starred.toggle()
@@ -1306,13 +1331,16 @@ final class RecordStore: ObservableObject {
     // MARK: - 便签内容更新
 
     /// 更新便签记录的内容、标题和位置（同步执行，确保更新完成）
+    /// - Parameters:
+    ///   - skipHistory: 是否跳过历史记录（用于撤销/重做时避免循环）
     /// - Returns: 是否成功更新（false 表示记录不存在）
     @discardableResult
     func updateContent(
         id: UUID,
         content: String,
         title: String?,
-        noteFrame: NSRect?
+        noteFrame: NSRect?,
+        skipHistory: Bool = false
     ) -> Bool {
         var success = false
         var recordExists = false
@@ -1321,6 +1349,11 @@ final class RecordStore: ObservableObject {
         if let index = records.firstIndex(where: { $0.id == id }) {
             recordExists = true
             let oldRecord = records[index]
+
+            // P4.1: 如果内容改变，记录到历史栈（除非 skipHistory 为 true）
+            if !skipHistory && oldRecord.content != content {
+                HistoryManager.shared.push(.edit(recordId: id, oldContent: oldRecord.content, newContent: content))
+            }
 
             // 创建新的 Record 对象
             let updatedRecord = Record(
