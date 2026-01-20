@@ -3,6 +3,9 @@ import SwiftUI
 
 /// 贴纸窗口 - 全屏浮动、无边框、最高层级
 class StickyNoteWindow: NSPanel, NSWindowDelegate {
+    // 窗口唯一标识符（用于符号浏览器等跨窗口通信）
+    let uuid = UUID()
+
     private var trackingArea: NSTrackingArea?
     private var focusTimer: Timer?
     private var noteId: UUID

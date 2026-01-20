@@ -46,6 +46,7 @@ class SymbolConfigManager: ObservableObject {
 
     /// 加载所有配置
     func loadConfigs() {
+        print("[SymbolConfigManager] ========== 开始加载配置 ==========")
         isLoading = true
         defer { isLoading = false }
 
@@ -61,16 +62,26 @@ class SymbolConfigManager: ObservableObject {
             let yamlFiles = files.filter { $0.pathExtension == "yaml" || $0.pathExtension == "yml" }
 
             for file in yamlFiles {
-                if let config = try? loadConfig(from: file) {
+                do {
+                    let config = try loadConfig(from: file)
                     loadedConfigs.append(config)
+                    print("[SymbolConfigManager] ✅ 成功加载 YAML: \(file.lastPathComponent)")
+                } catch {
+                    print("[SymbolConfigManager] ❌ 加载 YAML 失败: \(file.path)")
+                    print("[SymbolConfigManager]    错误: \(error)")
                 }
             }
 
             // 兼容旧的 plist 格式
             let plistFiles = files.filter { $0.pathExtension == "plist" }
             for file in plistFiles {
-                if let config = try? loadConfig(from: file) {
+                do {
+                    let config = try loadConfig(from: file)
                     loadedConfigs.append(config)
+                    print("[SymbolConfigManager] ✅ 成功加载 Plist: \(file.lastPathComponent)")
+                } catch {
+                    print("[SymbolConfigManager] ❌ 加载 Plist 失败: \(file.path)")
+                    print("[SymbolConfigManager]    错误: \(error)")
                 }
             }
         } catch {
@@ -95,6 +106,7 @@ class SymbolConfigManager: ObservableObject {
         self.errorMessage = nil
 
         print("[SymbolConfigManager] ✅ 加载完成: \(loadedConfigs.count) 个配置")
+        print("[SymbolConfigManager] ========== 配置加载完成 ==========\n")
         for config in loadedConfigs {
             print("[SymbolConfigManager]   - \(config.metadata.name): \(config.menus.count) 个分类, \(config.menus.map { $0.symbols.count }.reduce(0, +)) 个符号")
         }

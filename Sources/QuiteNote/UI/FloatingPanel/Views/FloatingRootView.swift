@@ -33,7 +33,13 @@ class KeyboardInterceptView: NSView {
                     // ⭐ 关键修复：检查符号联想面板是否正在显示
                     // 如果符号面板可见，不拦截 ESC，让符号面板处理
                     if SymbolSuggestionPanelBridge.isPanelVisible {
-                        print("[DEBUG AppKit] Symbol panel is visible, not intercepting ESC")
+                        print("[DEBUG AppKit] SymbolSuggestionPanel is visible, not intercepting ESC")
+                        return event
+                    }
+
+                    // ⭐ 检查符号浏览器面板是否正在显示
+                    if SymbolBrowserPanelManager.isPanelVisible {
+                        print("[DEBUG AppKit] SymbolBrowserPanel is visible, not intercepting ESC")
                         return event
                     }
 

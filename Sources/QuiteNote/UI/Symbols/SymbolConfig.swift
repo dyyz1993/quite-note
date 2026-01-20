@@ -268,7 +268,7 @@ extension SymbolConfig {
             let sort = (menuDict["sort"] as? Int) ?? 0
             let icon = menuDict["icon"] as? String
 
-            print("[SymbolConfig.parse]   Parsing menu: \(title), icon: \(icon ?? "nil")")
+            print("[SymbolConfig.parse]   Parsing menu: \(title), icon: \(icon ?? "nil"), sort: \(sort)")
 
             guard let symbolsArray = menuDict["symbols"] as? [[String: Any]] else {
                 print("[SymbolConfig.parse] ❌ Menu \(title) missing symbols array")
@@ -301,6 +301,12 @@ extension SymbolConfig {
         }
 
         print("[SymbolConfig.parse] ✅ Successfully parsed \(menus.count) menus")
+
+        // 详细输出每个菜单的信息
+        for (index, menu) in menus.enumerated() {
+            print("[SymbolConfig.parse]   Menu[\(index)]: \(menu.title) | icon: \(menu.icon ?? "nil") | \(menu.symbols.count) symbols")
+        }
+
         return SymbolConfig(metadata: metadata, global: globalConfig, menus: menus)
     }
 

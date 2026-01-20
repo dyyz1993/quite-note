@@ -147,12 +147,19 @@ struct StickyNoteEditor: NSViewRepresentable {
         // Symbol detection state
         private var symbolDetector: SymbolTriggerDetector?
         private var symbolSelectionState: SymbolSelectionState?
+        // Duplicate prevention: track last processed symbol with timestamp
+        private var lastProcessedSymbol: (symbol: String, timestamp: Date)?
 
         init(_ parent: StickyNoteEditor) {
             self.parent = parent
             super.init()
             // Initialize symbol detection state
             self.symbolSelectionState = SymbolSelectionState()
+        }
+
+        deinit {
+            print("[StickyNoteEditor.Coordinator] 🗑️ Coordinator 被销毁，清理所有订阅")
+            cancellables.removeAll()
         }
 
         func setupCommandSubscription(for textView: NSTextView) {
@@ -167,6 +174,9 @@ struct StickyNoteEditor: NSViewRepresentable {
 
         // Direct symbol detection setup (moved from extension)
         func setupSymbolDetectionDirectly(for textView: NSTextView) {
+            // ⭐ 关键修复：清空旧的订阅，防止重复订阅
+            cancellables.removeAll()
+
             let timestamp = Date()
             let logMessage = "[StickyNoteEditor.Coordinator] [\(timestamp)] ========== 设置符号检测（直接方法）==========\n"
             print(logMessage)
@@ -221,6 +231,53 @@ struct StickyNoteEditor: NSViewRepresentable {
                     }
 
                     self.handleSymbolDetection(textView: textView)
+                }
+                .store(in: &cancellables)
+
+            // Monitor InsertSymbolFromBrowser notification (from SymbolBrowserPanelManager)
+            NotificationCenter.default.publisher(for: NSNotification.Name("InsertSymbolFromBrowser"))
+                .sink { [weak self, weak textView] notification in
+                    print("[StickyNoteEditor.Coordinator] 🔔 收到 InsertSymbolFromBrowser 通知")
+
+                    guard let self = self, let textView = textView else {
+                        print("[StickyNoteEditor.Coordinator] ⚠️ self 或 textView 为 nil")
+                        return
+                    }
+
+                    guard let symbolContent = notification.userInfo?["symbol"] as? String else {
+                        print("[StickyNoteEditor.Coordinator] ⚠️ InsertSymbolFromBrowser 通知缺少 symbol 内容")
+                        return
+                    }
+
+                    // 检查通知的目标窗口 UUID 是否匹配当前窗口
+                    guard let targetUUIDString = notification.userInfo?["windowUUID"] as? String else {
+                        print("[StickyNoteEditor.Coordinator] ⚠️ InsertSymbolFromBrowser 通知缺少 windowUUID")
+                        print("[StickyNoteEditor.Coordinator] userInfo: \(notification.userInfo ?? [:])")
+                        return
+                    }
+
+                    // 获取当前窗口的 UUID
+                    guard let currentWindow = textView.window as? StickyNoteWindow else {
+                        print("[StickyNoteEditor.Coordinator] ⚠️ 当前窗口不是 StickyNoteWindow 类型")
+                        print("[StickyNoteEditor.Coordinator] textView.window 类型: \(type(of: textView.window))")
+                        return
+                    }
+
+                    let currentUUIDString = currentWindow.uuid.uuidString
+
+                    print("[StickyNoteEditor.Coordinator] 🔍 UUID 比较:")
+                    print("  - 目标 UUID: \(targetUUIDString)")
+                    print("  - 当前 UUID: \(currentUUIDString)")
+                    print("  - 匹配: \(currentUUIDString == targetUUIDString)")
+
+                    // 比较 UUID
+                    if currentUUIDString != targetUUIDString {
+                        print("[StickyNoteEditor.Coordinator] ⏭️ 跳过，通知不是针对当前窗口的")
+                        return
+                    }
+
+                    print("[StickyNoteEditor.Coordinator] ✅ 收到 InsertSymbolFromBrowser 通知（针对当前窗口）: \(symbolContent)")
+                    self.insertSymbolIntoTextView(symbolContent, into: textView)
                 }
                 .store(in: &cancellables)
 
@@ -509,15 +566,15 @@ struct StickyNoteEditor: NSViewRepresentable {
             guard let textView = self.textView else { return }
             let range = textView.selectedRange()
             let storage = textView.textStorage
-            
+
             textView.breakUndoCoalescing()
             storage?.beginEditing()
-            
+
             let keys: [NSAttributedString.Key] = [
                 .foregroundColor,
                 NSAttributedString.Key("customColor")
             ]
-            
+
             if range.length > 0 {
                 // 1. 针对选中区域重置颜色
                 for key in keys {
@@ -525,16 +582,66 @@ struct StickyNoteEditor: NSViewRepresentable {
                 }
                 storage?.addAttribute(.foregroundColor, value: NSColor.white, range: range)
             }
-            
+
             // 2. 无论是否有选中，都重置 typingAttributes，确保后续输入为白色
             var attrs = textView.typingAttributes
             attrs.removeValue(forKey: .foregroundColor)
             attrs.removeValue(forKey: NSAttributedString.Key("customColor"))
             attrs[.foregroundColor] = NSColor.white
             textView.typingAttributes = attrs
-            
+
             storage?.endEditing()
             textView.didChangeText()
+        }
+
+        /// 插入符号到文本视图（来自符号浏览器面板）
+        private func insertSymbolIntoTextView(_ symbolContent: String, into textView: NSTextView) {
+            // ⭐ 防止重复插入（在短时间内多次插入相同符号）
+            let now = Date()
+            if let last = lastProcessedSymbol,
+               last.symbol == symbolContent,
+               now.timeIntervalSince(last.timestamp) < 0.5 {
+                print("[StickyNoteEditor.Coordinator] ⚠️ 跳过重复插入: \(symbolContent)")
+                return
+            }
+            lastProcessedSymbol = (symbolContent, now)
+
+            let text = textView.string
+            let cursorPosition = textView.selectedRange().location
+
+            print("[StickyNoteEditor.Coordinator] insertSymbolIntoTextView: symbolContent=\(symbolContent), cursorPosition=\(cursorPosition)")
+
+            // 直接在光标位置插入符号内容
+            let nsString = text as NSString
+            let newText = nsString.replacingCharacters(in: NSRange(location: cursorPosition, length: 0), with: symbolContent)
+
+            // 使用 NSString.length (UTF-16) 而不是 String.count (UTF-8/UTF-16 视图不同)
+            // NSTextView 使用 UTF-16 坐标系，所以必须使用 NSString.length
+            let symbolUTF16Length = (symbolContent as NSString).length
+            let newCursorPos = cursorPosition + symbolUTF16Length
+            let newTextUTF16Length = (newText as NSString).length
+
+            // 更新文本视图
+            isUpdatingFromTextView = true
+
+            let attrString = markdownToAttributed(newText)
+            textView.textStorage?.setAttributedString(attrString)
+
+            // 设置光标位置 - 使用 UTF-16 长度
+            let newRange = NSRange(location: min(newCursorPos, newTextUTF16Length), length: 0)
+            textView.setSelectedRange(newRange)
+
+            isUpdatingFromTextView = false
+
+            // 通知外部更新
+            let finalText = attributedToMarkdown(textView.attributedString())
+            if parent.text != finalText {
+                parent.text = finalText
+            }
+
+            textView.didChangeText()
+
+            print("[StickyNoteEditor.Coordinator] 符号插入完成: newCursorPos=\(newRange.location)")
         }
 
         private func toggleTodoAtCurrentLine() {
