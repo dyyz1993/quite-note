@@ -272,3 +272,17 @@ jobs:
         echo "1. 访问 Actions 页面" >> $GITHUB_STEP_SUMMARY
         echo "2. 点击此工作流的构建任务" >> $GITHUB_STEP_SUMMARY
         echo "3. 在 'Artifacts' 部分下载构建产物" >> $GITHUB_STEP_SUMMARY
+  feishu-notify:
+    name: Feishu Notification
+    if: always()
+    needs: [build-macos]
+    uses: dyyz1993/ci-tools/.github/workflows/feishu-notify.yml@main
+    with:
+      jobs: '{"build-macos":"${{ needs.build-macos.result }}"}'
+      sha: ${{ github.sha }}
+      ref: ${{ github.ref_name }}
+      actor: ${{ github.actor }}
+      repo: ${{ github.repository }}
+      run-id: ${{ github.run_id }}
+    secrets:
+      FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
