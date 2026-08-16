@@ -1,13 +1,24 @@
 import SwiftUI
 import AppKit
 
-/// 支持 ESC 直接关闭的识别窗口面板
+/// 支持 ESC 直接关闭、Enter 默认复制的识别窗口面板
 final class V2OCRESCClosablePanel: NSPanel {
     override var canBecomeKey: Bool { true }
 
     /// ESC 直接关闭窗口（识别结果可编辑场景下，用户直觉是"看完了就关"）
     override func cancelOperation(_ sender: Any?) {
         V2OCRResultPanelController.shared.close()
+    }
+
+    /// Enter/小键盘 Enter 默认触发"复制全部"。
+    /// 注意：文本框正在编辑时 Enter 被输入框消化为换行，不会走到这里——
+    /// 即"看结果状态回车=复制，编辑状态回车=换行"，符合直觉
+    override func keyDown(with event: NSEvent) {
+        if event.keyCode == 36 || event.keyCode == 76 {
+            V2OCRResultPanelController.shared.copyAction?()
+            return
+        }
+        super.keyDown(with: event)
     }
 }
 
@@ -19,6 +30,9 @@ final class V2OCRESCClosablePanel: NSPanel {
 final class V2OCRResultPanelController {
     static let shared = V2OCRResultPanelController()
     private var panel: NSPanel?
+
+    /// Enter 键触发的复制动作（由当前展示的视图注册，窗口关闭时清除）
+    var copyAction: (() -> Void)?
 
     func show(image: NSImage) {
         if panel == nil {
@@ -144,7 +158,7 @@ struct V2OCRResultView: View {
                 Spacer()
 
                 Button(action: copyAll) {
-                    Text(copied ? "已复制 ✅" : "复制全部")
+                    Text(copied ? "已复制 ✅" : "复制全部 ⏎")
                         .font(.themeBody)
                         .frame(minWidth: 84)
                 }
@@ -176,8 +190,13 @@ struct V2OCRResultView: View {
         .frame(width: 780, height: 480)
         .background(Color.themePanel)
         .onAppear {
+            // 注册 Enter 复制动作（编辑文本时 Enter 是换行，不会触发这里）
+            V2OCRResultPanelController.shared.copyAction = { copyAll() }
             DiagnosticCenter.info("OCR", "开始识别，图片 \(Int(image.size.width))x\(Int(image.size.height))")
             recognize()
+        }
+        .onDisappear {
+            V2OCRResultPanelController.shared.copyAction = nil
         }
     }
 
