@@ -10,7 +10,8 @@ final class PermissionGuideController {
 
     func show() {
         if let existing = panel {
-            existing.orderFrontRegardless()
+            NSApp.activate(ignoringOtherApps: true)
+            existing.makeKeyAndOrderFront(nil)
             return
         }
 
@@ -31,10 +32,16 @@ final class PermissionGuideController {
         p.isFloatingPanel = true
         p.hidesOnDeactivate = false
         p.isReleasedWhenClosed = false
+        // 关键修复：跟随所有空间显示——用户在别的桌面/全屏应用里触发截图时，
+        // 面板也能出现在当前空间，而不是弹在别的 Space 里看不见
+        p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         p.center()
-        p.orderFrontRegardless()
-        NSApp.activate(ignoringOtherApps: true)
         panel = p
+
+        // 先激活应用再显示，确保面板浮到最前
+        NSApp.activate(ignoringOtherApps: true)
+        p.makeKeyAndOrderFront(nil)
+        DiagnosticCenter.info("Permission", "权限引导窗已展示")
     }
 
     func close() {

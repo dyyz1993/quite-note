@@ -175,8 +175,10 @@ final class ScreenshotService {
         print("[DEBUG ScreenshotService] 启动 V2 截图流程")
 
         // 无屏幕录制权限时：显示权限引导悬浮窗（可拖拽图标到系统设置列表），
-        // 不再进入"灰屏降级"模式——那只会截到灰色画面，体验更差
-        guard checkAndRequestPermission() else {
+        // 不再进入"灰屏降级"模式——那只会截到灰色画面，体验更差。
+        // 注意：这里只用 preflight 检查，不调 CGRequestScreenCaptureAccess 的系统弹窗，
+        // 避免系统弹窗和自定义引导窗同时出现互相抢戏
+        guard checkScreenCapturePermission() else {
             print("[WARN ScreenshotService] ⚠️ 没有屏幕录制权限，显示权限引导窗口")
             DiagnosticCenter.warning("Screenshot", "触发截图但无屏幕录制权限，已弹出权限引导窗")
             PermissionGuideController.shared.show()
