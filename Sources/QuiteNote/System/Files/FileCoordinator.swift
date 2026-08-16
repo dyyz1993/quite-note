@@ -23,7 +23,14 @@ final class FileCoordinator {
     
     private init() {
         let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        rootURL = appSupport.appendingPathComponent("com.quitenote.app", isDirectory: true)
+        // 数据隔离红线：测试进程可用 QN_TEST_STORAGE_ROOT 重定向全部存储到临时目录；
+        // 开发变体（com.quitenote.app.dev）按 Bundle ID 使用独立目录，与生产数据互不干扰
+        if let testRoot = ProcessInfo.processInfo.environment["QN_TEST_STORAGE_ROOT"] {
+            rootURL = URL(fileURLWithPath: testRoot, isDirectory: true)
+        } else {
+            let dirName = Bundle.main.bundleIdentifier ?? "com.quitenote.app"
+            rootURL = appSupport.appendingPathComponent(dirName, isDirectory: true)
+        }
         setupDirectoryStructure()
     }
     

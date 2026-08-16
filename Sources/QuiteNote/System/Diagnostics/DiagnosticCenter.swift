@@ -53,10 +53,17 @@ final class DiagnosticCenter {
     init(logDirectory: URL? = nil) {
         if let dir = logDirectory {
             self.logDirectory = dir
+        } else if let testRoot = ProcessInfo.processInfo.environment["QN_TEST_STORAGE_ROOT"] {
+            // 数据隔离红线：测试进程的日志也进隔离目录，不污染生产日志
+            self.logDirectory = URL(fileURLWithPath: testRoot, isDirectory: true)
+                .appendingPathComponent("Logs", isDirectory: true)
         } else {
             let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
                 ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support", isDirectory: true)
-            self.logDirectory = appSupport.appendingPathComponent("com.quitenote.app/Logs", isDirectory: true)
+            // 按 Bundle ID 分目录：开发变体（com.quitenote.app.dev）日志与生产分开
+            let dirName = Bundle.main.bundleIdentifier ?? "com.quitenote.app"
+            self.logDirectory = appSupport.appendingPathComponent(dirName, isDirectory: true)
+                .appendingPathComponent("Logs", isDirectory: true)
         }
     }
 

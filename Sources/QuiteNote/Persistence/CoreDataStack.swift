@@ -124,8 +124,17 @@ final class CoreDataStack {
         let dbName = isDebug ? "QuiteNote-Debug.sqlite" : "QuiteNote.sqlite"
         let directoryName = isDebug ? "QuiteNote-Debug" : "QuiteNote"
 
-        let url = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-            .appendingPathComponent(directoryName).appendingPathComponent(dbName)
+        // 数据隔离红线：测试进程通过 QN_TEST_STORAGE_ROOT 把数据库重定向到临时目录，
+        // 绝不读写真实数据库（生产库 QuiteNote.sqlite / 开发库 QuiteNote-Debug.sqlite 都不碰）
+        let databaseURL: URL
+        if let testRoot = ProcessInfo.processInfo.environment["QN_TEST_STORAGE_ROOT"] {
+            databaseURL = URL(fileURLWithPath: testRoot, isDirectory: true)
+                .appendingPathComponent(dbName)
+        } else {
+            databaseURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+                .appendingPathComponent(directoryName).appendingPathComponent(dbName)
+        }
+        let url = databaseURL
 
         #if DEBUG
         print("[CoreDataStack] 使用数据库路径: \(url.path)")
