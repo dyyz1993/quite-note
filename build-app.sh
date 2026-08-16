@@ -5,12 +5,11 @@ set -e
 
 echo "开始构建 Quite Note 应用..."
 
-# 配置变量
-# APP_NAME="Quite Note Dev"
-# BUNDLE_ID="com.quitenote.app.dev"
+# 配置变量（默认正式变体；加 --dev 参数切换为开发变体，可与正式版共存互不干扰）
 APP_NAME="Quite Note"
 BUNDLE_ID="com.quitenote.app"
 EXECUTABLE_NAME="QuiteNote"
+BINARY_NAME="QuiteNote"        # swift build 的产物名（两个变体共用同一个二进制）
 VERSION="1.0.0"
 
 # ====================================================================
@@ -69,8 +68,9 @@ macOS (11.0+) 对「屏幕录制」和「辅助功能」有极严的安全限制
 
 ⚡ 使用方法：
    1. 正常构建：./build-app.sh (会自动运行检查)
-   2. 检查权限状态：./build-app.sh --check-permissions
-   3. 帮助说明：./build-app.sh --help
+   2. 开发变体：./build-app.sh --dev (构建 Quite Note Dev，可与正式版共存)
+   3. 检查权限状态：./build-app.sh --check-permissions
+   4. 帮助说明：./build-app.sh --help
 
 � 手动确认路径：
    系统设置 → 隐私与安全性 → 屏幕录制
@@ -79,26 +79,34 @@ macOS (11.0+) 对「屏幕录制」和「辅助功能」有极严的安全限制
 EOF
 }
 
-# 处理命令行参数
+# 处理命令行参数（支持组合，如 ./build-app.sh --dev --no-launch）
 SKIP_BUILD=false
-case "${1:-}" in
-    --check-permissions)
-        checkPermissions "$BUNDLE_ID"
-        exit 0
-        ;;
-    --help|-h)
-        showUsage
-        exit 0
-        ;;
-    --no-build)
-        SKIP_BUILD=true
-        echo "跳过编译，只更新应用包..."
-        ;;
-    --no-launch)
-        NO_LAUNCH=true
-        echo "发布模式：构建完成后不重启应用..."
-        ;;
-esac
+for arg in "$@"; do
+    case "$arg" in
+        --check-permissions)
+            checkPermissions "$BUNDLE_ID"
+            exit 0
+            ;;
+        --help|-h)
+            showUsage
+            exit 0
+            ;;
+        --no-build)
+            SKIP_BUILD=true
+            echo "跳过编译，只更新应用包..."
+            ;;
+        --no-launch)
+            NO_LAUNCH=true
+            echo "构建完成后不重启应用..."
+            ;;
+        --dev)
+            APP_NAME="Quite Note Dev"
+            BUNDLE_ID="com.quitenote.app.dev"
+            EXECUTABLE_NAME="QuiteNoteDev"
+            echo "开发变体: $APP_NAME ($BUNDLE_ID)"
+            ;;
+    esac
+done
 
 # 构建 release 版本
 if [ "$SKIP_BUILD" = false ]; then
@@ -132,13 +140,13 @@ fi
 echo "复制二进制文件..."
 BINARY_CHANGED=false
 
-if [ -f ".build/apple/Products/Release/$EXECUTABLE_NAME" ]; then
-    SOURCE_BIN=".build/apple/Products/Release/$EXECUTABLE_NAME"
-elif [ -f ".build/release/$EXECUTABLE_NAME" ]; then
-    SOURCE_BIN=".build/release/$EXECUTABLE_NAME"
+if [ -f ".build/apple/Products/Release/$BINARY_NAME" ]; then
+    SOURCE_BIN=".build/apple/Products/Release/$BINARY_NAME"
+elif [ -f ".build/release/$BINARY_NAME" ]; then
+    SOURCE_BIN=".build/release/$BINARY_NAME"
 else
     # 尝试在所有可能的路径中查找最新的二进制文件
-    SOURCE_BIN=$(find .build -name "$EXECUTABLE_NAME" -type f -path "*/release/*" | head -n 1)
+    SOURCE_BIN=$(find .build -name "$BINARY_NAME" -type f -path "*/release/*" | head -n 1)
     if [ -z "$SOURCE_BIN" ]; then
         echo "错误：找不到编译好的二进制文件 $EXECUTABLE_NAME"
         exit 1
@@ -153,14 +161,14 @@ if [ -f "$MACOS_DIR/$EXECUTABLE_NAME" ]; then
 
     if [ "$SOURCE_HASH" != "$TARGET_HASH" ]; then
         echo "二进制文件已变化（MD5: $SOURCE_HASH），需要更新"
-        cp "$SOURCE_BIN" "$MACOS_DIR/"
+        cp "$SOURCE_BIN" "$MACOS_DIR/$EXECUTABLE_NAME"
         BINARY_CHANGED=true
     else
         echo "二进制文件未变化（MD5: $SOURCE_HASH），跳过复制"
     fi
 else
     echo "首次复制二进制文件"
-    cp "$SOURCE_BIN" "$MACOS_DIR/"
+    cp "$SOURCE_BIN" "$MACOS_DIR/$EXECUTABLE_NAME"
     BINARY_CHANGED=true
 fi
 
