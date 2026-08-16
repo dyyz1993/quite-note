@@ -1,36 +1,39 @@
 import SwiftUI
 import AppKit
 
-/// OCR 结果面板控制器：在截图遮罩之上展示可编辑的识别文本
+/// OCR 专属结果窗口：左边框选图片、右边识别结果
+///
+/// 交互定位：用户点 OCR 意味着目的是取文字而非截图——触发即退出截图会话，
+/// 直接进入这个独立工作台（图片预览 + 可编辑结果 + 底部操作栏）
 @MainActor
 final class V2OCRResultPanelController {
     static let shared = V2OCRResultPanelController()
     private var panel: NSPanel?
 
-    func show(text: String) {
+    func show(image: NSImage) {
         if panel == nil {
             let p = NSPanel(
-                contentRect: NSRect(x: 0, y: 0, width: 480, height: 380),
-                styleMask: [.titled, .closable],
+                contentRect: NSRect(x: 0, y: 0, width: 780, height: 480),
+                styleMask: [.titled, .closable, .miniaturizable],
                 backing: .buffered,
                 defer: false
             )
-            p.title = "文字识别结果"
-            p.level = .screenSaver + 2  // 在截图遮罩之上
+            p.title = "文字识别"
+            p.level = .floating
             p.isFloatingPanel = true
             p.hidesOnDeactivate = false
             p.isReleasedWhenClosed = false
             panel = p
         }
 
-        let view = V2OCRResultView(text: text) {
+        let view = V2OCRResultView(image: image) {
             V2OCRResultPanelController.shared.close()
         }
         panel?.contentView = NSHostingView(rootView: view)
         panel?.center()
-        panel?.orderFrontRegardless()
         NSApp.activate(ignoringOtherApps: true)
-        DiagnosticCenter.info("OCR", "结果面板已展示")
+        panel?.makeKeyAndOrderFront(nil)
+        DiagnosticCenter.info("OCR", "识别窗口已打开")
     }
 
     func close() {
@@ -38,69 +41,174 @@ final class V2OCRResultPanelController {
     }
 }
 
-/// OCR 结果视图：可编辑文本 + 复制全部
+/// OCR 结果视图：左图右文 + 加载/空态 + 底部操作栏
 struct V2OCRResultView: View {
-    @State private var text: String
-    @State private var copied = false
+    let image: NSImage
     var onClose: () -> Void
 
-    init(text: String, onClose: @escaping () -> Void) {
-        _text = State(initialValue: text)
-        self.onClose = onClose
-    }
+    @State private var recognizedText: String = ""
+    @State private var isRecognizing = true
+    @State private var failed = false
+    @State private var copied = false
+    @State private var savedFeedback: String?
 
     var body: some View {
-        VStack(spacing: 12) {
-            HStack(spacing: 8) {
-                Image(systemName: "doc.text.viewfinder")
-                    .font(.system(size: 16))
-                    .foregroundColor(.themeBlue400)
-                Text("文字识别结果")
-                    .font(.themeH2)
-                    .foregroundColor(.themeTextPrimary)
-                Spacer()
-                Text("\(text.count) 字符")
-                    .font(.themeCaption)
-                    .foregroundColor(.themeTextTertiary)
+        VStack(spacing: 0) {
+            // 主体：左（截图预览） | 右（识别结果）
+            HStack(spacing: 0) {
+                // 左侧：框选图片预览
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .padding(12)
+                    .background(Color.themeInput)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color.themeBorderSubtle)
+                            .padding(6)
+                    )
+
+                Divider().background(Color.themeBorderSubtle)
+
+                // 右侧：识别结果（加载态 / 空态 / 结果态）
+                ZStack {
+                    if isRecognizing {
+                        VStack(spacing: 14) {
+                            ProgressView()
+                                .controlSize(.large)
+                            Text("正在识别…")
+                                .font(.themeBody)
+                                .foregroundColor(.themeTextSecondary)
+                            Text("本地 Vision 引擎，无需联网")
+                                .font(.themeCaption)
+                                .foregroundColor(.themeTextTertiary)
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else if failed || recognizedText.isEmpty {
+                        VStack(spacing: 14) {
+                            Image(systemName: "text.magnifyingglass")
+                                .font(.system(size: 32))
+                                .foregroundColor(.themeTextTertiary)
+                            Text("未识别到文字")
+                                .font(.themeBody)
+                                .foregroundColor(.themeTextSecondary)
+                            Button(action: recognize) {
+                                Label("重新识别", systemImage: "arrow.clockwise")
+                                    .font(.themeCaption)
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else {
+                        VStack(spacing: 0) {
+                            TextEditor(text: $recognizedText)
+                                .font(.system(size: 13))
+                                .foregroundColor(.themeTextPrimary)
+                                .scrollContentBackground(.hidden)
+                                .padding(10)
+                            HStack {
+                                Spacer()
+                                Text("\(recognizedText.count) 字符")
+                                    .font(.themeCaption)
+                                    .foregroundColor(.themeTextTertiary)
+                                    .padding(.trailing, 12)
+                            }
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
 
-            TextEditor(text: $text)
-                .font(.system(size: 13))
-                .foregroundColor(.themeTextPrimary)
-                .scrollContentBackground(.hidden)
-                .background(Color.themeInput)
-                .cornerRadius(8)
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.themeBorderSubtle))
+            Divider().background(Color.themeBorderSubtle)
 
-            HStack(spacing: 12) {
-                Button {
-                    let pasteboard = NSPasteboard.general
-                    pasteboard.clearContents()
-                    pasteboard.setString(text, forType: .string)
-                    copied = true
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { copied = false }
-                } label: {
-                    Text(copied ? "已复制 ✅" : "复制全部")
-                        .font(.themeBody)
-                        .frame(minWidth: 90)
-                        .padding(.vertical, 6)
+            // 底部操作栏
+            HStack(spacing: 10) {
+                if let savedFeedback {
+                    Text(savedFeedback)
+                        .font(.themeCaption)
+                        .foregroundColor(.themeStatusSuccess)
+                        .lineLimit(1)
                 }
-                .buttonStyle(.borderedProminent)
 
                 Spacer()
 
-                Button {
-                    onClose()
-                } label: {
+                Button(action: copyAll) {
+                    Text(copied ? "已复制 ✅" : "复制全部")
+                        .font(.themeBody)
+                        .frame(minWidth: 84)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(isRecognizing || recognizedText.isEmpty)
+
+                Button(action: saveImage) {
+                    Label("保存图片", systemImage: "arrow.down.doc")
+                        .font(.themeBody)
+                }
+                .buttonStyle(.bordered)
+
+                Button(action: recognize) {
+                    Label("重新识别", systemImage: "arrow.clockwise")
+                        .font(.themeBody)
+                }
+                .buttonStyle(.bordered)
+                .disabled(isRecognizing)
+
+                Button(action: onClose) {
                     Text("关闭")
                         .font(.themeBody)
-                        .padding(.vertical, 6)
                 }
                 .buttonStyle(.bordered)
             }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
         }
-        .padding(16)
-        .frame(width: 480, height: 380)
+        .frame(width: 780, height: 480)
         .background(Color.themePanel)
+        .onAppear {
+            DiagnosticCenter.info("OCR", "开始识别，图片 \(Int(image.size.width))x\(Int(image.size.height))")
+            recognize()
+        }
+    }
+
+    private func recognize() {
+        isRecognizing = true
+        failed = false
+        recognizedText = ""
+        copied = false
+        savedFeedback = nil
+
+        V2OCRService.shared.recognizeText(in: image) { text in
+            isRecognizing = false
+            if let text, !text.isEmpty {
+                recognizedText = text
+                DiagnosticCenter.info("OCR", "识别完成，\(text.count) 字符")
+            } else {
+                failed = true
+                DiagnosticCenter.warning("OCR", "未识别到文字")
+            }
+        }
+    }
+
+    private func copyAll() {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(recognizedText, forType: .string)
+        copied = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { copied = false }
+    }
+
+    private func saveImage() {
+        if let path = ScreenshotService.shared.exportImageFile(image) {
+            if PreferencesManager.shared.screenshotCopyPathAfterSave {
+                let pasteboard = NSPasteboard.general
+                pasteboard.clearContents()
+                pasteboard.setString(path, forType: .string)
+            }
+            savedFeedback = "已保存 ✅ \( ((path as NSString).lastPathComponent) )"
+            DiagnosticCenter.info("OCR", "图片已保存: \(path)")
+        } else {
+            savedFeedback = "保存失败"
+        }
     }
 }

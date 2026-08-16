@@ -349,22 +349,14 @@ struct V2ScreenshotView: View {
         V2ScreenshotController.close()
     }
 
-    // OCR 文字识别（不关闭截图会话，识别完可继续标注）
+    // OCR 文字识别：用户的目的是取文字而非截图——
+    // 直接触发即退出截图会话，进入专属识别窗口（左图右文 + 底部操作栏）
     private func runOCR(rect: CGRect) {
         guard let finalImage = generateFinalImage(rect: rect) else { return }
 
-        primaryScreenManager.postToast("文字识别中…", type: "info")
-        DiagnosticCenter.info("OCR", "开始识别，选区 \(Int(rect.width))x\(Int(rect.height))")
-
-        V2OCRService.shared.recognizeText(in: finalImage) { text in
-            guard let text, !text.isEmpty else {
-                V2PrimaryScreenStateManager.shared.postToast("未识别到文字", type: "error")
-                DiagnosticCenter.warning("OCR", "未识别到文字")
-                return
-            }
-            DiagnosticCenter.info("OCR", "识别完成，\(text.count) 字符")
-            V2OCRResultPanelController.shared.show(text: text)
-        }
+        DiagnosticCenter.info("OCR", "OCR 模式：退出截图会话，进入识别窗口，选区 \(Int(rect.width))x\(Int(rect.height))")
+        V2ScreenshotController.close()
+        V2OCRResultPanelController.shared.show(image: finalImage)
     }
 
     // 保存到闪记（同时导出文件到默认目录并复制路径）
