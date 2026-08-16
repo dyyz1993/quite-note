@@ -292,13 +292,16 @@ if [ "$BINARY_CHANGED" = true ]; then
     echo "二进制文件已变化，正在重新签名..."
 
     if command -v codesign >/dev/null 2>&1; then
-        # 优先用 Apple Development 证书签名：签名身份锚定在 Team ID + Bundle ID 上，
-        # 重新编译后系统权限（屏幕录制/辅助功能）不会失效。
+        # 优先用 Developer ID Application 证书签名（与发布流水线同一身份）：
+        # 签名身份统一后，开发构建 ↔ 发布构建来回切换不会导致系统权限失效。
         # ad-hoc 签名身份每次编译都变，会导致权限被系统重置、每次都要重新授权。
-        DEV_IDENTITY=$(security find-identity -v -p codesigning | awk -F'"' '/Apple Development/{print $2; exit}')
-        if [ -n "$DEV_IDENTITY" ]; then
-            codesign --force --deep --sign "$DEV_IDENTITY" "$APP_PATH" --identifier "$BUNDLE_ID"
-            echo "代码签名完成 (Apple Development 证书，权限可跨编译保留)"
+        SIGN_IDENTITY=$(security find-identity -v -p codesigning | awk -F'"' '/Developer ID Application/{print $2; exit}')
+        if [ -z "$SIGN_IDENTITY" ]; then
+            SIGN_IDENTITY=$(security find-identity -v -p codesigning | awk -F'"' '/Apple Development/{print $2; exit}')
+        fi
+        if [ -n "$SIGN_IDENTITY" ]; then
+            codesign --force --deep --sign "$SIGN_IDENTITY" "$APP_PATH" --identifier "$BUNDLE_ID"
+            echo "代码签名完成 ($SIGN_IDENTITY，权限可跨编译保留)"
         else
             codesign --force --deep --sign - "$APP_PATH" --identifier "$BUNDLE_ID"
             echo "代码签名完成 (ad-hoc，注意: 每次编译后系统权限会失效)"
