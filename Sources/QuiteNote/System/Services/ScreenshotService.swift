@@ -241,10 +241,10 @@ final class ScreenshotService {
         do {
             try FileManager.default.createDirectory(at: dirURL, withIntermediateDirectories: true)
 
-            // 文件名与 macOS 原生截图风格一致：截图 2026-08-16 18.30.05.png
+            // 文件名：应用前缀 + 紧凑时间戳（无空格无中文，排序/命令行引用友好）
             let formatter = DateFormatter()
-            formatter.dateFormat = "yyyy-MM-dd HH.mm.ss"
-            let baseName = "截图 \(formatter.string(from: Date()))"
+            formatter.dateFormat = "yyyyMMdd_HHmmss"
+            let baseName = "QuiteNote_\(formatter.string(from: Date()))"
 
             var fileURL = dirURL.appendingPathComponent("\(baseName).png")
             var counter = 2

@@ -50,7 +50,7 @@ final class ScreenshotExportTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: path), "导出文件必须真实落盘")
 
         let fileName = (path as NSString).lastPathComponent
-        XCTAssertTrue(fileName.hasPrefix("截图 "), "文件名应以「截图 」开头，实际: \(fileName)")
+        XCTAssertTrue(fileName.hasPrefix("QuiteNote_"), "文件名应以 QuiteNote_ 开头，实际: \(fileName)")
         XCTAssertTrue(fileName.hasSuffix(".png"), "文件名应为 .png，实际: \(fileName)")
         XCTAssertTrue(path.hasPrefix(tempDir), "文件必须落在配置的保存目录内")
     }
