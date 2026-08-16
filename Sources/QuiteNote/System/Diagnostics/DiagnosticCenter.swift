@@ -227,8 +227,17 @@ final class DiagnosticCenter {
     }
 
     /// 写崩溃记录（未捕获异常与信号共用）
+    /// 防覆盖：未捕获异常处理器先执行（信息最全），信号处理器后执行会覆盖同名文件——
+    /// 用此标记保证只写一次（实测 2026-08-17 的布局崩溃因此丢失了异常原因）
+    fileprivate static var crashRecordWritten = false
+
     fileprivate static func writeCrashRecord(reason: String, stack: String) {
-        guard !crashDirectoryPath.isEmpty else { return }
+        guard !crashRecordWritten else { return }
+        crashRecordWritten = true
+        guard !crashDirectoryPath.isEmpty else {
+            crashRecordWritten = false  // 目录未就绪时允许 start() 后再写
+            return
+        }
         let path = crashDirectoryPath + "/crash-\(Int(Date().timeIntervalSince1970)).log"
         let content = """
         ===== 崩溃捕获 =====
