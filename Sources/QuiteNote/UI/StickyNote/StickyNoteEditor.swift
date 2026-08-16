@@ -811,9 +811,9 @@ struct StickyNoteEditor: NSViewRepresentable {
                 ], range: NSRange(location: 0, length: 1))
                 
                 if isChecked {
-                    attrIcon.addAttribute(.foregroundColor, value: NSColor(red: 74/255, green: 222/255, blue: 128/255, alpha: 0.9), range: NSRange(location: 0, length: 1))
+                    attrIcon.addAttribute(.foregroundColor, value: NSColor.themeGreen400.withAlphaComponent(0.9), range: NSRange(location: 0, length: 1))
                 } else {
-                    let secondaryColor = NSColor(red: 156/255, green: 163/255, blue: 175/255, alpha: 1.0)
+                    let secondaryColor = NSColor.themeGray400
                     attrIcon.addAttribute(.foregroundColor, value: secondaryColor, range: NSRange(location: 0, length: 1))
                 }
                 
@@ -957,7 +957,7 @@ struct StickyNoteEditor: NSViewRepresentable {
                    let iconFont = NSFont.systemFont(ofSize: baseFontSize + 2)
                    attrIcon.addAttribute(.font, value: iconFont, range: NSRange(location: 0, length: 1))
                    // 已完成为绿色，未完成为次要文字颜色 (themeGray400)
-                   let secondaryColor = NSColor(red: 156/255, green: 163/255, blue: 175/255, alpha: 1.0)
+                   let secondaryColor = NSColor.themeGray400
                    attrIcon.addAttribute(.foregroundColor, value: isChecked ? NSColor.systemGreen : secondaryColor, range: NSRange(location: 0, length: 1))
                    attrIcon.addAttribute(NSAttributedString.Key("isTodoIcon"), value: isChecked, range: NSRange(location: 0, length: 1))
                    // 也要给图标加上段落样式，防止行高变化
@@ -1218,7 +1218,7 @@ class StickyNoteTextView: NSTextView {
                             let baseFontSize: CGFloat = 12
                             let iconFont = NSFont.systemFont(ofSize: baseFontSize + 2)
                             attrIcon.addAttribute(.font, value: iconFont, range: NSRange(location: 0, length: 1))
-                            let secondaryColor = NSColor(red: 156/255, green: 163/255, blue: 175/255, alpha: 1.0)
+                            let secondaryColor = NSColor.themeGray400
                             attrIcon.addAttribute(.foregroundColor, value: newChecked ? NSColor.systemGreen : secondaryColor, range: NSRange(location: 0, length: 1))
                             attrIcon.addAttribute(NSAttributedString.Key("isTodoIcon"), value: newChecked, range: NSRange(location: 0, length: 1))
                             

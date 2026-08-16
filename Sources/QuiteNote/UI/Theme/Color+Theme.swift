@@ -160,13 +160,40 @@ extension Color {
 
 // MARK: - AppKit Extension
 extension NSColor {
-    // ⭐ 添加主题颜色支持，用于 NSTextView 等 AppKit 组件
     static var themeGray800: NSColor {
         return NSColor(red: 31/255, green: 41/255, blue: 55/255, alpha: 1.0)
     }
 
+    static var themeGray400: NSColor {
+        return NSColor(red: 156/255, green: 163/255, blue: 175/255, alpha: 1.0)
+    }
+
+    static var themeGray300: NSColor {
+        return NSColor(red: 209/255, green: 213/255, blue: 221/255, alpha: 1.0)
+    }
+
     static var themeTextSecondary: NSColor {
         return NSColor(red: 209/255, green: 213/255, blue: 221/255, alpha: 1.0)
+    }
+
+    static var themePurple400: NSColor {
+        return NSColor(red: 192/255, green: 132/255, blue: 252/255, alpha: 1.0)
+    }
+
+    static var themeGreen400: NSColor {
+        return NSColor(red: 74/255, green: 222/255, blue: 128/255, alpha: 1.0)
+    }
+
+    static var themeGreen600: NSColor {
+        return NSColor(red: 22/255, green: 163/255, blue: 74/255, alpha: 1.0)
+    }
+
+    static var themeBlue500: NSColor {
+        return NSColor(red: 59/255, green: 130/255, blue: 246/255, alpha: 1.0)
+    }
+
+    static var themeBackground: NSColor {
+        return NSColor(red: 17/255, green: 24/255, blue: 39/255, alpha: 1.0)
     }
 
     /// 从十六进制字符串创建 NSColor

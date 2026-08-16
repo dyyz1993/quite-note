@@ -615,7 +615,7 @@ struct RecordCardView: View, Equatable {
             text: record.summary ?? "提炼失败",
             fontSize: 12,
             isMonospaced: false,
-             textColor: NSColor(red: 192/255, green: 132/255, blue: 252/255, alpha: 0.8), // themePurple400 opacity 0.8
+             textColor: NSColor.themePurple400.withAlphaComponent(0.8),
              inset: CGSize(width: 10, height: 10),
              showScrollbar: false // 总结区域不显示滚动条
           )
@@ -718,9 +718,9 @@ struct RecordCardView: View, Equatable {
                     text: displayContent,
                     fontSize: 11,
                     isMonospaced: true,
-                    textColor: NSColor(red: 209/255, green: 213/255, blue: 221/255, alpha: 1.0), // themeGray300
-                    inset: CGSize(width: 8, height: 8), // 稍微减小内边距，给内容更多空间
-                    showScrollbar: true // 原文长，需要滚动条
+                    textColor: NSColor.themeGray300,
+                    inset: CGSize(width: 8, height: 8),
+                    showScrollbar: true
                 )
                 .frame(minHeight: record.type == .note ? 80 : (record.type == .screenshot || record.type == .image) ? 120 : 200, maxHeight: record.type == .note ? 120 : (record.type == .screenshot || record.type == .image) ? 250 : 400) // P1.2: 缩小图片类型原文框高度
                 .background(Color.themeBackground) // 使用更深的背景色，使 ASCII 艺术更清晰

@@ -286,4 +286,8 @@ final class StatusBarController {
         alert.addButton(withTitle: "确定")
         alert.runModal()
     }
+
+    deinit {
+        cancellables.removeAll()
+    }
 }

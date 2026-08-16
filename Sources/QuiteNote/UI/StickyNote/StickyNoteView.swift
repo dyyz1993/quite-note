@@ -354,7 +354,7 @@ struct StickyNoteToolbar: View {
         .background(
             RoundedRectangle(cornerRadius: 10)
                 .fill(Color.themeCard.opacity(0.98))
-                .shadow(color: Color.black.opacity(0.4), radius: 8, x: 0, y: 4)
+                .shadow(color: Color.themeShadowMedium, radius: 8, x: 0, y: 4)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 10)

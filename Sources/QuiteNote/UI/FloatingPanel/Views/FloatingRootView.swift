@@ -823,11 +823,11 @@ struct FloatingRootView: View {
             Spacer()
             Text("AI: \(store.enableAI ? "ON (阈值 > \(store.summaryTrigger) 字符)" : "OFF")")
         }
-        .font(.system(size: 10)) // text-[10px]
-        .foregroundColor(.themeTextSecondary) // 使用主题文件中的文本颜色
+        .font(.system(size: 10))
+        .foregroundColor(.themeTextSecondary)
         .padding(.horizontal, 16)
-        .frame(height: 32) // h-8
-        .background(Color.black.opacity(0.2)) // bg-black/20
+        .frame(height: 32)
+        .background(Color.themePanel)
         .overlay(Rectangle().frame(height: 1).foregroundColor(Color.themeBorder).allowsHitTesting(false), alignment: .top)
     }
 }

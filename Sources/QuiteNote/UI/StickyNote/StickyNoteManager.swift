@@ -468,4 +468,8 @@ final class StickyNoteManager: ObservableObject {
 
         print("[DEBUG] Toggled Space pinning for note \(note.id): \(newState)")
     }
+
+    deinit {
+        cancellables.removeAll()
+    }
 }
