@@ -37,6 +37,13 @@ final class DraggableAppIconNSView: NSImageView, NSDraggingSource {
 
         // NSURL 作为 pasteboard writer = 与 Finder 拖拽文件完全一致的数据格式
         let draggingItem = NSDraggingItem(pasteboardWriter: url as NSURL)
+        // ⚠️ 关键：必须设置拖拽跟随图标和 frame，否则 beginDraggingSession 会抛
+        // NSInvalidArgumentException（崩溃栈定位过：-[NSDraggingItem setDraggingFrame:]）
+        let icon = image ?? NSWorkspace.shared.icon(forFile: url.path)
+        draggingItem.draggingFrame = NSRect(x: 0, y: 0, width: 48, height: 48)
+        draggingItem.imageComponentsProvider = {
+            [NSDraggingImageComponent(key: .icon, contents: icon)]
+        }
         beginDraggingSession(with: [draggingItem], event: start, source: self)
         dragStartEvent = nil
     }
