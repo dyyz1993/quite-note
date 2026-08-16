@@ -75,7 +75,7 @@ final class PermissionGuideController {
         }
 
         let p = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 460, height: 500),
+            contentRect: NSRect(x: 0, y: 0, width: 460, height: 560),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -103,58 +103,68 @@ final class PermissionGuideController {
     }
 }
 
-/// 权限引导视图：可拖拽应用图标到系统设置列表 + 一键跳转
+/// 权限引导视图：双权限统一引导（先辅助功能，后屏幕录制）+ 可拖拽应用图标
 struct PermissionGuideView: View {
     var onRetry: () -> Void
 
     @State private var screenGranted = ScreenshotService.shared.checkScreenCapturePermission()
-    @State private var showError = false
+    @State private var accessibilityGranted = ScreenshotService.shared.checkAccessibilityPermission()
     private let timer = Timer.publish(every: 1.5, on: .main, in: .common).autoconnect()
 
+    private var allGranted: Bool { screenGranted && accessibilityGranted }
+
     var body: some View {
-        VStack(spacing: 18) {
+        VStack(spacing: 14) {
             // 标题区
-            VStack(spacing: 10) {
+            VStack(spacing: 8) {
                 Image(systemName: "shield.lefthalf.filled")
-                    .font(.system(size: 40))
+                    .font(.system(size: 34))
                     .foregroundColor(.themeBlue600)
 
-                Text("需要「屏幕录制」权限")
+                Text("完成两项权限授权")
                     .font(.themeH2)
                     .foregroundColor(.themeTextPrimary)
 
-                Text("截图功能需要此权限才能捕获屏幕内容，开启后不会再重复询问。")
+                Text("建议按 ① → ② 顺序授权；都开启后此窗口不再出现")
                     .font(.themeCaption)
                     .foregroundColor(.themeTextTertiary)
-                    .multilineTextAlignment(.center)
             }
             .padding(.top, 8)
 
-            // 步骤引导
-            VStack(alignment: .leading, spacing: 12) {
-                stepRow(number: 1, text: "点击下方「打开系统设置」按钮")
-                stepRow(number: 2, text: "把下面的应用图标按住拖进列表，或点列表下方的 ➕ 添加")
-                stepRow(number: 3, text: "打开列表中「Quite Note」的开关，然后回到这里")
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 24)
+            // ① 辅助功能（先授权：立即生效，无需重启）
+            permissionRow(
+                order: "①",
+                title: "辅助功能",
+                subtitle: "全局快捷键需要 · 授权立即生效，无需重启",
+                granted: accessibilityGranted,
+                settingsURL: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
+            )
 
-            // 可拖拽的应用图标（原生拖拽会话，与 Finder 同机制）
+            // ② 屏幕录制（最后授权：系统会要求退出重开，放最后避免打断）
+            permissionRow(
+                order: "②",
+                title: "屏幕录制",
+                subtitle: "截图功能需要 · 授权后系统会要求「退出并重新打开」，请点同意",
+                granted: screenGranted,
+                settingsURL: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
+            )
+
+            // 可拖拽的应用图标（两个授权列表通用）
             HStack(spacing: 14) {
                 DraggableAppIconView(appURL: Bundle.main.bundleURL)
-                    .frame(width: 52, height: 52)
+                    .frame(width: 44, height: 44)
 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("⬆︎ 按住图标拖到设置列表")
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("⬆︎ 按住图标，拖进对应权限的列表")
                         .font(.themeBody)
                         .foregroundColor(.themeTextPrimary)
-                    Text("松手后点击开关开启权限")
+                    Text("两项各拖一次即可（或点列表 ➕ 从应用程序里选）")
                         .font(.themeCaption)
                         .foregroundColor(.themeTextTertiary)
                 }
                 Spacer()
             }
-            .padding(16)
+            .padding(12)
             .background(Color.themeCard)
             .cornerRadius(12)
             .overlay(
@@ -173,75 +183,72 @@ struct PermissionGuideView: View {
             .buttonStyle(.link)
             .padding(.horizontal, 24)
 
-            if showError {
-                Text("还没有检测到权限，请确认开关已经打开")
-                    .font(.themeCaption)
-                    .foregroundColor(.themeStatusError)
-            }
-
-            Text("如果系统提示「退出并重新打开」，请点击同意，否则截图可能仍是灰屏。")
-                .font(.themeCaption)
-                .foregroundColor(.themeTextTertiary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 24)
-
             Spacer(minLength: 0)
 
-            // 按钮区
-            HStack(spacing: 12) {
-                Button {
-                    if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
-                        NSWorkspace.shared.open(url)
-                    }
-                } label: {
-                    Label("打开系统设置", systemImage: "gearshape")
-                        .font(.themeBody)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
+            // 主按钮：状态自动刷新，全通过后可完成
+            Button {
+                if allGranted {
+                    onRetry()
                 }
-                .buttonStyle(.borderedProminent)
-
-                Button {
-                    if ScreenshotService.shared.checkScreenCapturePermission() {
-                        onRetry()
-                    } else {
-                        screenGranted = false
-                        showError = true
-                    }
-                } label: {
-                    Text(screenGranted ? "✅ 开始截图" : "已开启，重新截图")
-                        .font(.themeBody)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                }
-                .buttonStyle(.bordered)
+            } label: {
+                Text(allGranted ? "✅ 已全部授权，开始使用" : "去授权后回到这里，状态每 1.5 秒自动刷新…")
+                    .font(.themeBody)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
             }
+            .buttonStyle(.borderedProminent)
+            .disabled(!allGranted)
             .padding(.horizontal, 24)
             .padding(.bottom, 20)
         }
-        .frame(width: 460, height: 500)
+        .frame(width: 460, height: 560)
         .background(Color.themePanel)
         .onReceive(timer) { _ in
-            let granted = ScreenshotService.shared.checkScreenCapturePermission()
-            if granted != screenGranted {
-                screenGranted = granted
-                if granted { showError = false }
-            }
+            let screen = ScreenshotService.shared.checkScreenCapturePermission()
+            let accessibility = ScreenshotService.shared.checkAccessibilityPermission()
+            if screen != screenGranted { screenGranted = screen }
+            if accessibility != accessibilityGranted { accessibilityGranted = accessibility }
         }
     }
 
-    private func stepRow(number: Int, text: String) -> some View {
-        HStack(alignment: .top, spacing: 10) {
-            Text("\(number)")
-                .font(.system(size: 12, weight: .bold))
-                .foregroundColor(.white)
-                .frame(width: 20, height: 20)
-                .background(Circle().fill(Color.themeBlue600))
+    private func permissionRow(order: String, title: String, subtitle: String, granted: Bool, settingsURL: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: granted ? "checkmark.circle.fill" : "circle.dashed")
+                .font(.system(size: 22))
+                .foregroundColor(granted ? .themeStatusSuccess : .themeTextTertiary)
 
-            Text(text)
-                .font(.themeBody)
-                .foregroundColor(.themeTextSecondary)
-                .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("\(order) \(title)")
+                    .font(.themeBody)
+                    .foregroundColor(.themeTextPrimary)
+                Text(subtitle)
+                    .font(.themeCaption)
+                    .foregroundColor(.themeTextTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer()
+
+            if !granted {
+                Button {
+                    if let url = URL(string: settingsURL) {
+                        NSWorkspace.shared.open(url)
+                    }
+                } label: {
+                    Text("去授权")
+                        .font(.themeCaption)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color.themeBlue600)
+                        .foregroundColor(.white)
+                        .cornerRadius(8)
+                }
+                .buttonStyle(.plain)
+            }
         }
+        .padding(12)
+        .background(Color.themeCard)
+        .cornerRadius(10)
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.themeBorderSubtle))
+        .padding(.horizontal, 24)
     }
 }

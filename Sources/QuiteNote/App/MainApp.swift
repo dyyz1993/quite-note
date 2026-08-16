@@ -35,11 +35,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // 诊断中心最先启动：检测上次异常退出 + 崩溃捕获 + 卡死看门狗 + 文件日志
         DiagnosticCenter.shared.start()
 
-        // 缺屏幕录制权限时自动弹出权限引导窗（主动可见，不再等用户触发截图才发现）
-        if !ScreenshotService.shared.checkScreenCapturePermission() {
+        // 任一权限缺失时自动弹出引导窗（主动可见，不再等用户触发才发现）；
+        // 引导顺序：先辅助功能（免重启），后屏幕录制（系统会要求退出重开）
+        let screenOK = ScreenshotService.shared.checkScreenCapturePermission()
+        let accessibilityOK = ScreenshotService.shared.checkAccessibilityPermission()
+        if !screenOK || !accessibilityOK {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                 PermissionGuideController.shared.show()
-                DiagnosticCenter.info("Permission", "启动时检测到无屏幕录制权限，自动弹出引导窗")
+                DiagnosticCenter.info("Permission", "启动时检测到权限缺失（辅助功能:\(accessibilityOK ? "✓" : "✗") 录屏:\(screenOK ? "✓" : "✗")），自动弹出引导窗")
             }
         }
 
