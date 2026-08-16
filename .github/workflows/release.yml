@@ -121,3 +121,18 @@ jobs:
         if: always()
         run: |
           security delete-keychain "$RUNNER_TEMP/app-signing.keychain-db" || true
+
+  feishu-notify:
+    name: Feishu Notification
+    if: always()
+    needs: [release]
+    uses: dyyz1993/ci-tools/.github/workflows/feishu-notify.yml@main
+    with:
+      jobs: '{"release":"${{ needs.release.result }}"}'
+      sha: ${{ github.sha }}
+      ref: ${{ github.ref_name }}
+      actor: ${{ github.actor }}
+      repo: ${{ github.repository }}
+      run-id: ${{ github.run_id }}
+    secrets:
+      FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
