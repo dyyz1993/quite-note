@@ -42,7 +42,10 @@ final class DraggableAppIconNSView: NSImageView, NSDraggingSource {
         let icon = image ?? NSWorkspace.shared.icon(forFile: url.path)
         draggingItem.draggingFrame = NSRect(x: 0, y: 0, width: 48, height: 48)
         draggingItem.imageComponentsProvider = {
-            [NSDraggingImageComponent(key: .icon, contents: icon)]
+            let component = NSDraggingImageComponent()
+            component.key = .icon
+            component.contents = icon
+            return [component]
         }
         beginDraggingSession(with: [draggingItem], event: start, source: self)
         dragStartEvent = nil
