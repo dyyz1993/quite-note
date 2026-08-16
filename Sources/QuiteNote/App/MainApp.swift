@@ -35,6 +35,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // 诊断中心最先启动：检测上次异常退出 + 崩溃捕获 + 卡死看门狗 + 文件日志
         DiagnosticCenter.shared.start()
 
+        // 缺屏幕录制权限时自动弹出权限引导窗（主动可见，不再等用户触发截图才发现）
+        if !ScreenshotService.shared.checkScreenCapturePermission() {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                PermissionGuideController.shared.show()
+                DiagnosticCenter.info("Permission", "启动时检测到无屏幕录制权限，自动弹出引导窗")
+            }
+        }
+
         // 初始化贴纸管理器
         _ = StickyNoteManager.shared
 
