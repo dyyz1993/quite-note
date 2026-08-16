@@ -94,6 +94,10 @@ case "${1:-}" in
         SKIP_BUILD=true
         echo "跳过编译，只更新应用包..."
         ;;
+    --no-launch)
+        NO_LAUNCH=true
+        echo "发布模式：构建完成后不重启应用..."
+        ;;
 esac
 
 # 构建 release 版本
@@ -288,8 +292,17 @@ if [ "$BINARY_CHANGED" = true ]; then
     echo "二进制文件已变化，正在重新签名..."
 
     if command -v codesign >/dev/null 2>&1; then
-        codesign --deep --sign - "$APP_PATH" --identifier "$BUNDLE_ID"
-        echo "代码签名完成 (Bundle ID: $BUNDLE_ID)"
+        # 优先用 Apple Development 证书签名：签名身份锚定在 Team ID + Bundle ID 上，
+        # 重新编译后系统权限（屏幕录制/辅助功能）不会失效。
+        # ad-hoc 签名身份每次编译都变，会导致权限被系统重置、每次都要重新授权。
+        DEV_IDENTITY=$(security find-identity -v -p codesigning | awk -F'"' '/Apple Development/{print $2; exit}')
+        if [ -n "$DEV_IDENTITY" ]; then
+            codesign --force --deep --sign "$DEV_IDENTITY" "$APP_PATH" --identifier "$BUNDLE_ID"
+            echo "代码签名完成 (Apple Development 证书，权限可跨编译保留)"
+        else
+            codesign --force --deep --sign - "$APP_PATH" --identifier "$BUNDLE_ID"
+            echo "代码签名完成 (ad-hoc，注意: 每次编译后系统权限会失效)"
+        fi
     else
         echo "警告：未找到 codesign 工具，跳过代码签名"
     fi
@@ -306,15 +319,19 @@ echo "open \"$APP_PATH\""
 
 echo ""
 
-# 自动重启应用
-echo "正在重启应用..."
-# 杀死可能正在运行的旧版本（匹配可执行文件名）
-pkill -x "$EXECUTABLE_NAME" || true
-# 等待一秒确保进程已释放资源
-sleep 1
-# 打开新构建的应用
-open "$APP_PATH"
+# 自动重启应用（发布模式 --no-launch 下跳过）
+if [ "${NO_LAUNCH:-false}" = false ]; then
+    echo "正在重启应用..."
+    # 杀死可能正在运行的旧版本（匹配可执行文件名）
+    pkill -x "$EXECUTABLE_NAME" || true
+    # 等待一秒确保进程已释放资源
+    sleep 1
+    # 打开新构建的应用
+    open "$APP_PATH"
 
-echo "应用已重启并启动。"
+    echo "应用已重启并启动。"
+else
+    echo "已跳过应用重启（--no-launch）。"
+fi
 
 exit 0
