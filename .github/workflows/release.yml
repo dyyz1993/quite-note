@@ -33,6 +33,9 @@ env:
   ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
   NOTARY_PROFILE: quitenote-notary
 
+permissions:
+  contents: write   # 允许 GITHUB_TOKEN 创建 Release
+
 jobs:
   release:
     runs-on: macos-15
