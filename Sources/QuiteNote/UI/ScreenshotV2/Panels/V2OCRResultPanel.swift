@@ -1,6 +1,54 @@
 import SwiftUI
 import AppKit
 
+/// OCR AI 整理模式（系统提示词内置，用户无需配置）
+enum OCRPolishMode: String, CaseIterable {
+    case tidy = "整理排版"
+    case keyPoints = "提炼要点"
+    case markdown = "转 Markdown"
+    case translate = "翻译成中文"
+
+    var systemPrompt: String {
+        switch self {
+        case .tidy:
+            return """
+            你是 OCR 文本整理助手。输入是从截图中识别出的原始文字，可能存在识别错误、断行混乱、标点不规范等问题。请：
+            1. 修正明显的识别错别字（结合上下文判断，不确定的保持原样）
+            2. 恢复正确的段落结构（OCR 的换行是视觉断行，不代表逻辑分段）
+            3. 规范标点（中文语境用全角、英文语境用半角）
+            4. 删除明显的版面噪音（页码、水印、界面按钮文字）
+            5. 严格保真：不增删实质内容，不总结，不改写语气
+            只输出整理后的文本，不要任何解释和前后缀。
+            """
+        case .keyPoints:
+            return """
+            你是 OCR 文本整理助手。请先修正输入文字中的识别错误并理顺语句，然后提炼为要点列表：
+            - 每个要点一行，以 "• " 开头，信息完整、表述明确
+            - 保留关键数字、日期、专有名词，不遗漏实质信息
+            - 按原文逻辑顺序排列，不添加原文没有的推断
+            只输出要点列表本身。
+            """
+        case .markdown:
+            return """
+            你是 OCR 文本结构化助手。请把输入的识别文字整理为 Markdown：
+            1. 先修正识别错误、恢复段落
+            2. 识别出的标题用 #/##，并列内容用列表，数据对比用表格，代码用代码块
+            3. 删除页码、水印等版面噪音
+            4. 不增删实质内容
+            只输出 Markdown 本身，不要外层代码块包裹。
+            """
+        case .translate:
+            return """
+            你是 OCR 文本翻译助手。请先把输入文字当作 OCR 原文做纠错整理（保留原语言），再翻译成简体中文：
+            1. 修正识别错误和断行
+            2. 翻译自然流畅、术语准确；专有名词保留原文并在括号内注明
+            3. 只输出整理后的中文文本，不要任何解释
+            如果输入已是中文，则只做纠错整理。
+            """
+        }
+    }
+}
+
 /// 支持 ESC 直接关闭、Enter 默认复制的识别窗口面板
 final class V2OCRESCClosablePanel: NSPanel {
     override var canBecomeKey: Bool { true }
@@ -75,6 +123,12 @@ struct V2OCRResultView: View {
     @State private var failed = false
     @State private var copied = false
     @State private var savedFeedback: String?
+
+    // AI 整理状态
+    @State private var aiProcessing = false
+    @State private var aiError: String?
+    @State private var originalText: String = ""   // AI 整理前的识别原文（恢复用）
+    @State private var canRestore = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -154,8 +208,43 @@ struct V2OCRResultView: View {
                         .foregroundColor(.themeStatusSuccess)
                         .lineLimit(1)
                 }
+                if let aiError {
+                    Text(aiError)
+                        .font(.themeCaption)
+                        .foregroundColor(.themeStatusError)
+                        .lineLimit(1)
+                }
 
                 Spacer()
+
+                if aiProcessing {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+
+                if canRestore {
+                    Button(action: restoreOriginal) {
+                        Label("恢复原文", systemImage: "arrow.uturn.backward")
+                            .font(.themeCaption)
+                    }
+                    .buttonStyle(.bordered)
+                    .help("撤销 AI 整理，恢复识别原文")
+                }
+
+                // AI 整理：四模式（提示词内置）
+                Menu {
+                    ForEach(OCRPolishMode.allCases, id: \.self) { mode in
+                        Button(mode.rawValue) { aiPolish(mode) }
+                    }
+                } label: {
+                    Label(aiProcessing ? "AI 处理中…" : "AI 整理", systemImage: "wand.and.stars")
+                        .font(.themeBody)
+                }
+                .menuStyle(.button)
+                .buttonStyle(.bordered)
+                .fixedSize()
+                .disabled(isRecognizing || recognizedText.isEmpty || aiProcessing)
+                .help("用大模型整理识别文本（需在 设置 → AI 配置密钥）")
 
                 Button(action: copyAll) {
                     Text(copied ? "已复制 ✅" : "复制全部 ⏎")
@@ -225,6 +314,48 @@ struct V2OCRResultView: View {
         pasteboard.setString(recognizedText, forType: .string)
         copied = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { copied = false }
+    }
+
+    // MARK: - AI 整理
+
+    private func aiPolish(_ mode: OCRPolishMode) {
+        let text = recognizedText
+        guard !text.isEmpty else { return }
+
+        let service = AIService()
+        guard service.hasAPIKey() else {
+            aiError = "未配置 AI 密钥：设置 → AI 中填写后即可使用"
+            return
+        }
+
+        aiProcessing = true
+        aiError = nil
+        DiagnosticCenter.info("OCR", "AI 整理（\(mode.rawValue)）开始，\(text.count) 字符")
+
+        service.rewrite(
+            system: mode.systemPrompt,
+            user: "【原文开始】\n\(text)\n【原文结束】"
+        ) { result in
+            aiProcessing = false
+            switch result {
+            case .success(let polished):
+                if originalText.isEmpty { originalText = text }  // 只记录第一次，保留最原始识别结果
+                recognizedText = polished
+                canRestore = true
+                DiagnosticCenter.info("OCR", "AI 整理完成，结果 \(polished.count) 字符")
+            case .failure(let error):
+                aiError = error.localizedDescription
+                DiagnosticCenter.error("OCR", "AI 整理失败: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    private func restoreOriginal() {
+        guard !originalText.isEmpty else { return }
+        recognizedText = originalText
+        originalText = ""
+        canRestore = false
+        DiagnosticCenter.info("OCR", "已恢复识别原文")
     }
 
     private func saveImage() {

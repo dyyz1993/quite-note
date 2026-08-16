@@ -164,13 +164,85 @@ final class AIService: AIServiceProtocol {
     private func getOpenAIAPIKey() -> String? {
         queueLock.lock()
         defer { queueLock.unlock() }
-        
+
         if !hasCheckedAPIKey {
             cachedAPIKey = KeychainHelper.shared.read(service: "QuiteNote", account: "openai_api_key")
             hasCheckedAPIKey = true
             print("[AI] API密钥获取结果: \(cachedAPIKey != nil ? "成功" : "失败")")
         }
         return cachedAPIKey
+    }
+
+    // MARK: - 纯文本改写（OCR AI 整理等场景）
+
+    /// 是否已配置 AI 密钥（UI 按钮可用性/引导判断用）
+    func hasAPIKey() -> Bool {
+        getOpenAIAPIKey() != nil
+    }
+
+    /// 纯文本改写：复用现有密钥/模型/BaseURL 配置，不要求 JSON 响应
+    /// 与 summarize 的区别：输入输出都是自然语言文本，适合 OCR 整理等场景
+    func rewrite(system: String, user: String, completion: @escaping (Result<String, Error>) -> Void) {
+        var hasCompleted = false
+        let safeCompletion: (Result<String, Error>) -> Void = { result in
+            if !hasCompleted { hasCompleted = true; completion(result) }
+        }
+
+        guard let apiKey = getOpenAIAPIKey() else {
+            safeCompletion(.failure(AIRewriteError.notConfigured)); return
+        }
+        guard let url = URL(string: "\(openAIBaseURL)/chat/completions") else {
+            safeCompletion(.failure(AIRewriteError.badURL)); return
+        }
+
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.addValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+
+        let body: [String: Any] = [
+            "model": openAIModel,
+            "messages": [
+                ["role": "system", "content": system],
+                ["role": "user", "content": user]
+            ],
+            "temperature": 0.2,
+            "max_tokens": 8000
+        ]
+        req.httpBody = try? JSONSerialization.data(withJSONObject: body)
+
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = timeout
+        config.timeoutIntervalForResource = timeout
+        config.requestCachePolicy = .reloadIgnoringLocalCacheData
+
+        URLSession(configuration: config).dataTask(with: req) { data, response, error in
+            if let error {
+                safeCompletion(.failure(error)); return
+            }
+            if let http = response as? HTTPURLResponse, http.statusCode != 200 {
+                safeCompletion(.failure(AIRewriteError.http(http.statusCode))); return
+            }
+            guard let data,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let choices = json["choices"] as? [[String: Any]],
+                  let message = choices.first?["message"] as? [String: Any],
+                  var content = message["content"] as? String else {
+                safeCompletion(.failure(AIRewriteError.emptyResponse)); return
+            }
+            content = content.trimmingCharacters(in: .whitespacesAndNewlines)
+            // 剥掉模型可能自行包裹的 markdown 代码块
+            if content.hasPrefix("```") {
+                content = content
+                    .replacingOccurrences(of: "```text\n", with: "")
+                    .replacingOccurrences(of: "```markdown\n", with: "")
+                    .replacingOccurrences(of: "```", with: "")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            DispatchQueue.main.async {
+                safeCompletion(.success(content))
+            }
+        }.resume()
     }
 
     /// 使用 OpenAI Chat Completions 生成固定 JSON 输出
@@ -389,5 +461,21 @@ final class AIService: AIServiceProtocol {
         }
 
         task.resume()
+    }
+}
+/// 纯文本改写（OCR AI 整理）的错误类型
+enum AIRewriteError: LocalizedError {
+    case notConfigured
+    case badURL
+    case http(Int)
+    case emptyResponse
+
+    var errorDescription: String? {
+        switch self {
+        case .notConfigured: return "未配置 AI 密钥（设置 → AI 中填写后即可使用）"
+        case .badURL: return "无效的 AI Base URL"
+        case .http(let code): return "AI 请求失败（HTTP \(code)）"
+        case .emptyResponse: return "AI 返回内容为空"
+        }
     }
 }
