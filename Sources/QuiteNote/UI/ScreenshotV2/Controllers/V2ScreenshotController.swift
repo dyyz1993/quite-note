@@ -180,6 +180,9 @@ class V2ScreenshotController {
                 } else if event.charactersIgnoringModifiers == "c" {
                     NotificationCenter.default.post(name: NSNotification.Name("CopyScreenshot"), object: nil)
                     return nil  // 阻止事件传递
+                } else if event.charactersIgnoringModifiers == "o" {
+                    NotificationCenter.default.post(name: NSNotification.Name("OCRScreenshot"), object: nil)
+                    return nil  // 阻止事件传递
                 }
             }
 

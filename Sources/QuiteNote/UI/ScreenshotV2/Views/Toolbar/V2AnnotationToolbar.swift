@@ -74,6 +74,38 @@ struct V2AnnotationToolbar: View {
             actionButtonsGroup
             Divider().frame(width: 1, height: 24).background(Color.white.opacity(0.2))
 
+            // OCR 文字识别按钮：对选区最终图跑本地 Vision 识别
+            Button(action: {
+                NotificationCenter.default.post(name: NSNotification.Name("OCRScreenshot"), object: nil)
+            }) {
+                ZStack {
+                    Circle()
+                        .fill(LinearGradient(
+                            colors: [Color.indigo.opacity(0.8), Color.indigo],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ))
+                        .frame(width: 34, height: 34)
+
+                    Image(systemName: "doc.text.viewfinder")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.white)
+                }
+            }
+            .buttonStyle(.plain)
+            .onHover { hovering in
+                if hovering {
+                    tooltipText = "文字识别 (⌘O)"
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        showTooltip = true
+                    }
+                } else {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        showTooltip = false
+                    }
+                }
+            }
+
             // P3.3: 保存按钮 (Command+S) - 使用 SF Symbols
             Button(action: {
                 NotificationCenter.default.post(name: NSNotification.Name("SaveScreenshot"), object: nil)
