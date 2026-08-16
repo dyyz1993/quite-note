@@ -1,0 +1,123 @@
+# 签名 + 公证 + 发 Release（secrets 驱动，云端 macOS runner）
+#
+# 触发方式：
+#   - 推送版本标签：git tag v1.3.0 && git push origin v1.3.0
+#   - 或手动触发（Actions 页面 Run workflow，填版本号）
+#
+# 需要先在仓库 Settings → Secrets and variables → Actions 配置以下 secrets
+# （一次性，详见 AGENTS.md「云端 CI 签名方案」）：
+#   MAC_CERTIFICATE_P12_BASE64   Developer ID Application 证书（含私钥）的 .p12，base64 编码
+#   MAC_CERTIFICATE_PASSWORD     导出 .p12 时设置的密码
+#   KEYCHAIN_PASSWORD            CI 临时钥匙串密码（随机字符串即可）
+#   ASC_API_KEY_P8_BASE64        App Store Connect API Key（.p8），base64 编码
+#   ASC_KEY_ID                   API Key ID
+#   ASC_ISSUER_ID                Issuer ID
+
+name: Release (Signed + Notarized)
+
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '版本号（不带 v，例如 1.3.0）'
+        required: true
+
+env:
+  MAC_CERTIFICATE_P12_BASE64: ${{ secrets.MAC_CERTIFICATE_P12_BASE64 }}
+  MAC_CERTIFICATE_PASSWORD: ${{ secrets.MAC_CERTIFICATE_PASSWORD }}
+  KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+  ASC_API_KEY_P8_BASE64: ${{ secrets.ASC_API_KEY_P8_BASE64 }}
+  ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+  ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+  NOTARY_PROFILE: quitenote-notary
+
+jobs:
+  release:
+    runs-on: macos-15
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 解析版本号
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
+          else
+            echo "VERSION=${{ inputs.version }}" >> $GITHUB_ENV
+          fi
+          echo "发布版本: $VERSION"
+
+      - name: 前置检查（签名材料是否已配置）
+        run: |
+          MISSING=0
+          [ -z "$MAC_CERTIFICATE_P12_BASE64" ] && echo "❌ 缺少 secret: MAC_CERTIFICATE_P12_BASE64" && MISSING=1
+          [ -z "$MAC_CERTIFICATE_PASSWORD" ]   && echo "❌ 缺少 secret: MAC_CERTIFICATE_PASSWORD"   && MISSING=1
+          [ -z "$KEYCHAIN_PASSWORD" ]          && echo "❌ 缺少 secret: KEYCHAIN_PASSWORD"          && MISSING=1
+          [ -z "$ASC_API_KEY_P8_BASE64" ]      && echo "❌ 缺少 secret: ASC_API_KEY_P8_BASE64"      && MISSING=1
+          [ -z "$ASC_KEY_ID" ]                 && echo "❌ 缺少 secret: ASC_KEY_ID"                 && MISSING=1
+          [ -z "$ASC_ISSUER_ID" ]              && echo "❌ 缺少 secret: ASC_ISSUER_ID"              && MISSING=1
+          if [ "$MISSING" -eq 1 ]; then
+            echo ""
+            echo "👉 请按仓库 AGENTS.md「云端 CI 签名方案」配置 secrets 后重试（证书与 API Key 需先在 Apple 后台创建）"
+            exit 1
+          fi
+          echo "✅ 签名材料齐全"
+
+      - name: 导入签名证书到临时钥匙串（job 结束销毁，不落盘）
+        run: |
+          CERTIFICATE_PATH=$RUNNER_TEMP/build_certificate.p12
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+
+          echo -n "$MAC_CERTIFICATE_P12_BASE64" | base64 --decode -o "$CERTIFICATE_PATH"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERTIFICATE_PATH" -P "$MAC_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH"
+
+          rm -f "$CERTIFICATE_PATH"
+          echo "✅ 证书已导入临时钥匙串"
+
+      - name: 配置公证凭据（App Store Connect API Key）
+        run: |
+          KEY_PATH=$RUNNER_TEMP/AuthKey.p8
+          echo -n "$ASC_API_KEY_P8_BASE64" | base64 --decode -o "$KEY_PATH"
+          xcrun notarytool store-credentials "$NOTARY_PROFILE" \
+            --key "$KEY_PATH" \
+            --key-id "$ASC_KEY_ID" \
+            --issuer "$ASC_ISSUER_ID"
+          rm -f "$KEY_PATH"
+          xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" | head -3
+          echo "✅ 公证凭据就绪"
+
+      - name: 运行全部单元测试
+        run: swift test
+
+      - name: 构建签名公证 DMG（build-release.sh 全链路）
+        run: ./build-release.sh "$VERSION"
+
+      - name: 上传 DMG 产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: QuiteNote-${{ env.VERSION }}-signed
+          path: QuiteNote-*.dmg
+          retention-days: 30
+
+      - name: 创建 GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: QuiteNote-*.dmg
+          generate_release_notes: true
+          name: Quite Note ${{ github.ref_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 清理临时钥匙串
+        if: always()
+        run: |
+          security delete-keychain "$RUNNER_TEMP/app-signing.keychain-db" || true
