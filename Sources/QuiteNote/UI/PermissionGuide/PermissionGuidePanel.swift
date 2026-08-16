@@ -277,3 +277,180 @@ struct PendingPulse: ViewModifier {
             }
     }
 }
+
+// MARK: - 迷你拖拽引导横条（贴合系统设置窗口底部的轻量引导）
+
+/// 迷你横条控制器：一条贴在系统设置窗口底部的小横条，
+/// 虚线框 + 呼吸图标提示"从这里拖进上方授权列表"，跟随设置窗口移动
+@MainActor
+final class MiniPermissionBarController {
+    static let shared = MiniPermissionBarController()
+    private var panel: NSPanel?
+    private var followTimer: Timer?
+    private var missCount = 0
+
+    private let barSize = NSSize(width: 320, height: 64)
+
+    func show() {
+        if panel == nil {
+            let p = NSPanel(
+                contentRect: NSRect(origin: .zero, size: barSize),
+                styleMask: [.borderless, .nonactivatingPanel],
+                backing: .buffered,
+                defer: false
+            )
+            p.level = .statusBar          // 压在系统设置之上
+            p.isOpaque = false
+            p.backgroundColor = .clear
+            p.hasShadow = true
+            p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+            p.isReleasedWhenClosed = false
+            p.contentView = NSHostingView(rootView: MiniPermissionBarView {
+                MiniPermissionBarController.shared.hide()
+            })
+            panel = p
+        }
+
+        // 初始位置：设置窗口找不到时先放主屏底部中央
+        if !reposition() {
+            let screen = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1200, height: 800)
+            panel?.setFrameOrigin(NSPoint(x: screen.midX - barSize.width / 2, y: screen.minY + 20))
+        }
+        panel?.orderFrontRegardless()
+        missCount = 0
+        startFollowing()
+        DiagnosticCenter.info("Permission", "迷你拖拽引导条已展示")
+    }
+
+    func hide() {
+        panel?.orderOut(nil)
+        followTimer?.invalidate()
+        followTimer = nil
+    }
+
+    private func startFollowing() {
+        followTimer?.invalidate()
+        followTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+            DispatchQueue.main.async {
+                MiniPermissionBarController.shared.followTick()
+            }
+        }
+    }
+
+    private func followTick() {
+        // 设置窗口消失后宽限 8 秒（等待打开/切换页面），仍找不到才收起横条
+        if reposition() {
+            missCount = 0
+        } else {
+            missCount += 1
+            if missCount > 8 {
+                hide()
+            }
+        }
+    }
+
+    /// 贴合系统设置窗口底部；找到窗口返回 true
+    @discardableResult
+    private func reposition() -> Bool {
+        guard let panel, let settingsFrame = Self.findSettingsWindowFrame() else { return false }
+
+        var x = settingsFrame.midX - barSize.width / 2
+        var y = settingsFrame.minY - barSize.height - 10
+        if y < 40 {
+            // 窗口贴屏幕底时，横条改贴窗口内侧底部
+            y = settingsFrame.minY + 12
+        }
+        // 限制在所在屏幕的可视范围内
+        if let screen = NSScreen.screens.first(where: { $0.frame.contains(NSPoint(x: settingsFrame.midX, y: settingsFrame.midY)) }) {
+            x = max(screen.visibleFrame.minX, min(screen.visibleFrame.maxX - barSize.width, x))
+            y = max(screen.visibleFrame.minY, y)
+        }
+        panel.setFrameOrigin(NSPoint(x: x, y: y))
+        return true
+    }
+
+    /// 查找系统设置主窗口（CG 全局坐标 → AppKit 坐标转换）
+    /// 注意：无屏幕录制权限时读不到窗口属主名，返回 nil（调用方有兜底定位）
+    nonisolated private static func findSettingsWindowFrame() -> NSRect? {
+        let options: CGWindowListOption = [.optionOnScreenOnly]
+        guard let list = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] else { return nil }
+        let appNames = ["System Settings", "系统设置", "System Preferences", "系统偏好设置"]
+
+        for info in list {
+            guard let owner = info[kCGWindowOwnerName as String] as? String,
+                  appNames.contains(owner) else { continue }
+            if let bounds = info[kCGWindowBounds as String] as? [String: Any],
+               let x = bounds["X"] as? Double, let y = bounds["Y"] as? Double,
+               let w = bounds["Width"] as? Double, let h = bounds["Height"] as? Double,
+               w > 300, h > 300 {
+                let mainHeight = NSScreen.screens.first?.frame.height ?? 0
+                // CG 坐标原点在主屏左上，AppKit 在主屏左下
+                return NSRect(x: x, y: mainHeight - y - h, width: w, height: h)
+            }
+        }
+        return nil
+    }
+}
+
+/// 迷你横条视图：虚线框呼吸拖拽图标 + 双权限状态点 + 关闭按钮
+struct MiniPermissionBarView: View {
+    var onClose: () -> Void
+
+    @State private var a11yGranted = ScreenshotService.shared.checkAccessibilityPermission()
+    @State private var screenGranted = ScreenshotService.shared.checkScreenCapturePermission()
+    private let timer = Timer.publish(every: 1.5, on: .main, in: .common).autoconnect()
+
+    var body: some View {
+        HStack(spacing: 12) {
+            // 虚线框 + 呼吸效果的拖拽图标
+            DraggableAppIconView(appURL: Bundle.main.bundleURL)
+                .frame(width: 44, height: 44)
+                .background(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(Color.themeBlue600, style: StrokeStyle(lineWidth: 1.5, dash: [5, 3]))
+                )
+                .modifier(PendingPulse())
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("按住拖进上方的授权列表")
+                    .font(.themeBody)
+                    .foregroundColor(.white)
+                HStack(spacing: 10) {
+                    statusDot(label: "辅助功能", granted: a11yGranted)
+                    statusDot(label: "屏幕录制", granted: screenGranted)
+                }
+            }
+            Spacer(minLength: 0)
+
+            Button(action: onClose) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 16))
+                    .foregroundColor(.white.opacity(0.6))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 14)
+        .frame(width: 320, height: 64)
+        .background(Capsule().fill(Color.black.opacity(0.82)))
+        .overlay(Capsule().stroke(Color.themeBlue600.opacity(0.6)))
+        .onReceive(timer) { _ in
+            a11yGranted = ScreenshotService.shared.checkAccessibilityPermission()
+            screenGranted = ScreenshotService.shared.checkScreenCapturePermission()
+            // 双权限齐了自动收起
+            if a11yGranted && screenGranted {
+                onClose()
+            }
+        }
+    }
+
+    private func statusDot(label: String, granted: Bool) -> some View {
+        HStack(spacing: 3) {
+            Circle()
+                .fill(granted ? Color.green : Color.gray)
+                .frame(width: 6, height: 6)
+            Text(label)
+                .font(.system(size: 10))
+                .foregroundColor(.white.opacity(0.85))
+        }
+    }
+}
