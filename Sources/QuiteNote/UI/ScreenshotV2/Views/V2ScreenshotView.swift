@@ -39,6 +39,9 @@ struct V2ScreenshotView: View {
     @State private var mouseLocation: CGPoint = .zero
     @State private var hasMouseMoved: Bool = false // 记录鼠标是否移动过
 
+    /// 通知监听器 token（onDisappear 时移除，防止闭包持有整屏截图大图导致内存泄漏）
+    @State private var notificationObservers: [NSObjectProtocol] = []
+
     /// 订阅主屏幕状态变化
     @StateObject private var primaryScreenManager = V2PrimaryScreenStateManager.shared
 
@@ -346,17 +349,16 @@ struct V2ScreenshotView: View {
         V2ScreenshotController.close()
     }
 
-    // 保存到闪记
+    // 保存到闪记（同时导出文件到默认目录并复制路径）
     private func saveToFlashNotes(rect: CGRect) {
         addLog("Saving selection to flash notes...")
 
         guard let finalImage = generateFinalImage(rect: rect) else { return }
 
-        // ⚠️ 关键：调用 ScreenshotService 保存到闪记
-        // 注意：ScreenshotService 需要访问 RecordStore
-        ScreenshotService.shared.saveScreenshotToFlashNotes(image: finalImage)
+        // 保存链路：导出 PNG 到默认目录 → 复制绝对路径到剪贴板 → 存入闪记
+        ScreenshotService.shared.saveScreenshotWithFile(image: finalImage)
 
-        addLog("Saved to flash notes! Closing...")
+        addLog("Saved! Closing...")
 
         // 关闭所有调试窗口
         V2ScreenshotController.close()
@@ -511,11 +513,12 @@ struct V2ScreenshotView: View {
             // ✨ 关键修复：使用 sessionID 防止旧监听器响应
             // 捕获当前的 sessionID，闭包会使用这个值
             let currentSessionID = sessionID
+            let controllerSessionID = V2ScreenshotController.currentSessionID
 
             // 监听保存通知 (Command+S)
-            NotificationCenter.default.addObserver(forName: NSNotification.Name("SaveScreenshot"), object: nil, queue: .main) { [self] _ in
+            let saveToken = NotificationCenter.default.addObserver(forName: NSNotification.Name("SaveScreenshot"), object: nil, queue: .main) { [self] _ in
                 // ✅ 检查 sessionID 是否匹配，防止旧空间的监听器响应
-                guard V2ScreenshotController.currentSessionID == currentSessionID else {
+                guard controllerSessionID == currentSessionID else {
                     print("⚠️ [SaveScreenshot] Ignored - session mismatch (expected: \(currentSessionID))")
                     return
                 }
@@ -525,9 +528,9 @@ struct V2ScreenshotView: View {
             }
 
             // 监听复制通知 (Command+C)
-            NotificationCenter.default.addObserver(forName: NSNotification.Name("CopyScreenshot"), object: nil, queue: .main) { [self] _ in
+            let copyToken = NotificationCenter.default.addObserver(forName: NSNotification.Name("CopyScreenshot"), object: nil, queue: .main) { [self] _ in
                 // ✅ 检查 sessionID 是否匹配，防止旧空间的监听器响应
-                guard V2ScreenshotController.currentSessionID == currentSessionID else {
+                guard controllerSessionID == currentSessionID else {
                     print("⚠️ [CopyScreenshot] Ignored - session mismatch (expected: \(currentSessionID))")
                     return
                 }
@@ -535,6 +538,15 @@ struct V2ScreenshotView: View {
                     saveToClipboard(rect: selection)
                 }
             }
+
+            notificationObservers = [saveToken, copyToken]
+        }
+        .onDisappear {
+            // 移除通知监听器：不移除的话闭包会一直持有视图（含整屏截图 NSImage），每次截图都泄漏一份
+            for token in notificationObservers {
+                NotificationCenter.default.removeObserver(token)
+            }
+            notificationObservers = []
         }
         .onChange(of: isReleased) { released in
             // 当屏幕被释放时，允许鼠标穿透，这样用户就能感觉到"释放"了

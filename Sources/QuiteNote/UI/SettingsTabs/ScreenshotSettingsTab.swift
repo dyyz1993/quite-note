@@ -68,6 +68,26 @@ struct ScreenshotSettingsTab: View {
         screenCaptureGranted = ScreenshotService.shared.checkScreenCapturePermission()
         accessibilityGranted = ScreenshotService.shared.checkAccessibilityPermission(prompt: false)
     }
+
+    // MARK: - 保存目录
+
+    private var saveDirectoryDescription: String {
+        let raw = prefs.screenshotSaveDirectory
+        if raw.isEmpty { return "桌面（默认）" }
+        // 用 ~ 缩写 home 目录，显示更友好
+        return raw.replacingOccurrences(of: NSHomeDirectory(), with: "~")
+    }
+
+    private func chooseSaveDirectory() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.message = "选择截图的默认保存目录"
+        if panel.runModal() == .OK, let url = panel.url {
+            prefs.setScreenshotSaveDirectory(url.path)
+        }
+    }
     
     // MARK: - Shortcut Section
     
@@ -248,8 +268,66 @@ struct ScreenshotSettingsTab: View {
                     set: { prefs.setScreenshotSaveToClipboard($0) }
                 ))
             }
-            
+
             Divider().background(Color.themeBorderSubtle)
+
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("保存目录")
+                        .font(.themeBody)
+                        .foregroundColor(.themeTextSecondary)
+                    Text(saveDirectoryDescription)
+                        .font(.themeCaption)
+                        .foregroundColor(.themeTextTertiary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                Spacer()
+
+                HStack(spacing: 8) {
+                    Button(action: chooseSaveDirectory) {
+                        Text("选择…")
+                            .font(.themeCaption)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(Color.themeBlue600)
+                            .foregroundColor(.white)
+                            .cornerRadius(8)
+                    }
+                    .buttonStyle(.plain)
+
+                    if !prefs.screenshotSaveDirectory.isEmpty {
+                        Button(action: { prefs.setScreenshotSaveDirectory("") }) {
+                            Text("恢复默认")
+                                .font(.themeCaption)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .background(Color.themeHoverMedium)
+                                .foregroundColor(.themeTextSecondary)
+                                .cornerRadius(8)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+
+            Divider().background(Color.themeBorderSubtle)
+
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("保存后复制文件路径")
+                        .font(.themeBody)
+                        .foregroundColor(.themeTextSecondary)
+                    Text("保存成功后，自动把文件的绝对路径复制到剪贴板")
+                        .font(.themeCaption)
+                        .foregroundColor(.themeTextTertiary)
+                }
+                Spacer()
+                CustomToggle(isOn: Binding(
+                    get: { prefs.screenshotCopyPathAfterSave },
+                    set: { prefs.setScreenshotCopyPathAfterSave($0) }
+                ))
+            }
             
             HStack {
                 VStack(alignment: .leading, spacing: 4) {

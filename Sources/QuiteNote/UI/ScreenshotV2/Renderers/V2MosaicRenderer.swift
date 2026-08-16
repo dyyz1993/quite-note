@@ -22,25 +22,47 @@ struct MosaicRenderer: ElementRenderer {
         return tool == .mosaic
     }
 
+    /// 计算马赛克采样区域在 CGImage 像素坐标系中的裁剪矩形
+    /// - Parameters:
+    ///   - rect: 画布坐标系（SwiftUI，左上角原点）中的马赛克区域
+    ///   - canvasSize: 画布逻辑尺寸
+    ///   - scaleX/scaleY: 画布逻辑坐标 → 像素坐标的缩放倍率（Retina 为 2）
+    /// - Returns: 供 CGImage.cropping(to:) 使用的像素矩形
+    ///
+    /// ✅ 修复（TDD 验证）：CGImage.cropping 的坐标系原点在左上角（与
+    /// generateFinalImage 的裁剪逻辑一致），Y 轴不做翻转；旧实现按
+    /// (canvasHeight - maxY) 翻转导致马赛克从垂直镜像位置取色。
+    static func pixelCropRect(for rect: CGRect, canvasSize: CGSize, scaleX: CGFloat, scaleY: CGFloat) -> CGRect {
+        return CGRect(
+            x: rect.origin.x * scaleX,
+            y: rect.origin.y * scaleY,
+            width: rect.width * scaleX,
+            height: rect.height * scaleY
+        )
+    }
+
     private func drawMosaic(in rect: CGRect, in context: inout GraphicsContext, size: CGSize, image: NSImage, intensity: CGFloat = 20) {
         let gridSize = max(5, intensity) // 确保格子至少有 5px
         
         context.drawLayer { layer in
             layer.clip(to: Path(rect))
-            
-            // 1. 获取 CGImage 并处理坐标系
-            // 💡 关键：处理 Retina 屏幕缩放
+
             let imageSize = image.size
-            let scaleX = imageSize.width > 0 ? CGFloat(image.representations.first?.pixelsWide ?? Int(imageSize.width)) / imageSize.width : 1.0
-            let scaleY = imageSize.height > 0 ? CGFloat(image.representations.first?.pixelsHigh ?? Int(imageSize.height)) / imageSize.height : 1.0
-            
+
             if let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) {
-                // 计算在 CGImage 像素坐标系中的裁剪区域 (macOS CGImage 是左下角原点)
-                let pixelRect = CGRect(
-                    x: rect.origin.x * scaleX,
-                    y: (size.height - rect.maxY) * scaleY,
-                    width: rect.width * scaleX,
-                    height: rect.height * scaleY
+                // ✅ 修复（端到端像素测试验证）：缩放倍率必须按 cgImage(forProposedRect:)
+                // 实际返回的 CGImage 像素尺寸计算。旧实现读 representations.first?.pixelsWide，
+                // 但 NSCGImageSnapshotRep 在 Retina 环境下会报告 2 倍尺寸（与实际返回的
+                // CGImage 不一致），导致裁剪矩形超出图像边界被 cropping 钳制为整图，
+                // 马赛克采样到的是整屏缩略图而非选区内容。
+                let scaleX = imageSize.width > 0 ? CGFloat(cgImage.width) / imageSize.width : 1.0
+                let scaleY = imageSize.height > 0 ? CGFloat(cgImage.height) / imageSize.height : 1.0
+
+                let pixelRect = Self.pixelCropRect(
+                    for: rect,
+                    canvasSize: size,
+                    scaleX: scaleX,
+                    scaleY: scaleY
                 )
                 
                 if let croppedCGImage = cgImage.cropping(to: pixelRect) {
@@ -82,15 +104,18 @@ struct MosaicRenderer: ElementRenderer {
                                     
                                     // 💡 计算格子矩形：允许最后一个格子超出 rect，但因为有 layer.clip(to: Path(rect))，
                                     // 所以超出的部分会被自动裁剪掉，从而实现“半个格子”的效果
+                                    // ✅ 修复：lowResCGImage 的数据 row 0 对应采样区域的顶部（makeImage 后为 top-down 行序），
+                                    // 格子应按 row 顺序自上而下排布；旧实现用 (lowResHeight - 1 - row) 反排，
+                                    // 与旧裁剪翻转叠加后整幅马赛克呈垂直镜像
                                     let blockRect = CGRect(
                                         x: rect.minX + CGFloat(col) * gridSize,
-                                        y: rect.minY + CGFloat(lowResHeight - 1 - row) * gridSize,
+                                        y: rect.minY + CGFloat(row) * gridSize,
                                         width: gridSize,
                                         height: gridSize
                                     )
                                     
                                     layer.fill(Path(blockRect), with: .color(Color(red: r, green: g, blue: b).opacity(a)))
-                                    layer.stroke(Path(blockRect), with: .color(.black.opacity(0.1)), lineWidth: 0.3)
+                                    layer.stroke(Path(blockRect), with: .color(Color.themeShadowLight), lineWidth: 0.3)
                                 }
                             }
                         }

@@ -34,7 +34,7 @@ struct V2AnnotationToolbar: View {
                         .font(.system(size: 11))
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
-                        .background(Color.black.opacity(0.8))
+                        .background(Color.themeShadowHeavy)
                         .foregroundColor(.white)
                         .cornerRadius(4)
                         .position(x: tooltipPosition.x, y: tooltipPosition.y - 35)
@@ -95,7 +95,7 @@ struct V2AnnotationToolbar: View {
             .buttonStyle(.plain)
             .onHover { hovering in
                 if hovering {
-                    tooltipText = "保存到闪记 (Command+S)"
+                    tooltipText = "保存文件并复制路径 (⌘S)"
                     withAnimation(.easeInOut(duration: 0.15)) {
                         showTooltip = true
                     }
@@ -141,20 +141,20 @@ struct V2AnnotationToolbar: View {
         .padding(8)
         .background(
             RoundedRectangle(cornerRadius: 12)
-                .fill(Color.black.opacity(0.7))
+                .fill(Color.themeShadowHeavy.opacity(0.7))
         )
     }
 
     private var sizeSelectionGroup: some View {
         Group {
-            Divider().frame(height: 24).background(Color.white.opacity(0.2))
+            Divider().frame(height: 24).background(Color.themeBorderSubtle)
             V2SizeDragControl(stateManager: stateManager)
         }
     }
 
     private var magnifierScaleGroup: some View {
         Group {
-            Divider().frame(height: 24).background(Color.white.opacity(0.2))
+            Divider().frame(height: 24).background(Color.themeBorderSubtle)
             V2MagnifierScaleControl(stateManager: stateManager)
         }
     }
@@ -188,7 +188,7 @@ struct V2AnnotationToolbar: View {
                 }
             }
             .padding(6)
-            .background(Color.black.opacity(0.4))
+            .background(Color.themeShadowMedium)
             .cornerRadius(8)
         }
     }
@@ -237,10 +237,10 @@ struct V2AnnotationToolbar: View {
                     LucideView(
                         name: IconName(rawValue: tool.rawValue) ?? .penTool,
                         size: 16,
-                        color: stateManager.selectedTool == tool ? .white : .white.opacity(0.6)
+                        color: stateManager.selectedTool == tool ? .white : Color.white.opacity(0.6)
                     )
                     .frame(width: 30, height: 30)
-                    .background(stateManager.selectedTool == tool ? Color.blue.opacity(0.6) : Color.white.opacity(0.1))
+                    .background(stateManager.selectedTool == tool ? Color.themeBlue500.opacity(0.6) : Color.white.opacity(0.1))
                     .cornerRadius(6)
                 }
                 .buttonStyle(.plain)
@@ -250,7 +250,7 @@ struct V2AnnotationToolbar: View {
         .background(
             RoundedRectangle(cornerRadius: 10)
                 .fill(Color.themeBackground.opacity(0.95))
-                .shadow(color: .black.opacity(0.2), radius: 5, x: 0, y: 3)
+                .shadow(color: Color.themeShadowMedium, radius: 5, x: 0, y: 3)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 10)
@@ -307,7 +307,7 @@ struct V2AnnotationToolbar: View {
             Button(action: action) {
                 LucideView(name: icon, size: 18, color: .white)
                     .frame(width: 34, height: 34)
-                    .background(primary ? Color.blue : Color.white.opacity(0.1))
+                    .background(primary ? Color.themeBlue500 : Color.white.opacity(0.1))
                     .cornerRadius(8)
             }
             .buttonStyle(.plain)

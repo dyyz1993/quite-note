@@ -13,6 +13,8 @@ class V2ScreenshotController {
     static var longScreenshotControlPanel: LongScreenshotControlPanel?
     static var longScreenshotPreviewPanel: LongScreenshotPreviewPanel?
     private static var localMonitor: Any?
+    /// 失焦自动拉回监听器（cleanup 时必须移除，否则闭包持有旧面板数组，截图结束后失焦会把已关闭的"幽灵"面板拉回前台）
+    private static var resignActiveObserver: NSObjectProtocol?
 
     /// ✨ 新增：互斥锁，确保同一时间只有一个截图流程在运行
     private static var isShowing = false
@@ -39,6 +41,7 @@ class V2ScreenshotController {
         let sessionID = UUID()
         currentSessionID = sessionID
         v2Logger.info("Controller - Starting new screenshot session: \(sessionID)")
+        DiagnosticCenter.info("Screenshot", "截图会话开始 \(sessionID.uuidString.prefix(8))，屏幕数 \(NSScreen.screens.count)")
 
         // 清理可能残留的状态
         cleanup()
@@ -120,6 +123,12 @@ class V2ScreenshotController {
             localMonitor = nil
         }
 
+        // 移除失焦监听器（关键：不移除会在截图结束后触发"幽灵面板"重新弹出）
+        if let observer = resignActiveObserver {
+            NotificationCenter.default.removeObserver(observer)
+            resignActiveObserver = nil
+        }
+
         for panel in debugPanels {
             panel.close()
         }
@@ -137,6 +146,7 @@ class V2ScreenshotController {
     }
 
     static func close() {
+        DiagnosticCenter.info("Screenshot", "截图会话结束（元素 \(V2PrimaryScreenStateManager.shared.elements.count) 个）")
         // 先执行清理
         cleanup()
         // 最后重置状态锁
@@ -177,10 +187,13 @@ class V2ScreenshotController {
         }
 
         // ✨ 新增：监听应用失去焦点事件，自动重新激活 Panel
-        NotificationCenter.default.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { _ in
+        // ⚠️ 修复：用实时的 debugPanels 判断（不能用闭包捕获的旧数组），
+        // 并在 cleanup 时移除监听，否则截图结束后的任何一次失焦都会把已关闭的面板重新拉出来
+        resignActiveObserver = NotificationCenter.default.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { _ in
             guard !debugPanels.isEmpty else { return }
             // 延迟一点重新激活，确保系统完成焦点切换
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                guard !debugPanels.isEmpty else { return }
                 // 重新激活所有 Panel
                 for panel in debugPanels {
                     panel.orderFrontRegardless()

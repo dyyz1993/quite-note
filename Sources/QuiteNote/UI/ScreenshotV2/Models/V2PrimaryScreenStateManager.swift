@@ -231,6 +231,11 @@ class V2PrimaryScreenStateManager: ObservableObject {
         magnifierScale = 2.0  // ✅ 新增：重置倍率
         selectedElementId = nil
         lastEscKeyPressTime = nil
+
+        // ✅ 修复（TDD 验证）：Toast 也要重置，否则上一次会话的提示
+        // （如"再按一次退出"）会残留到下一次截图界面
+        toastMessage = nil
+        toastType = "info"
     }
 
     /// 更新主屏幕
@@ -323,13 +328,17 @@ class V2PrimaryScreenStateManager: ObservableObject {
     func updateElementSize(_ id: UUID, level: CGFloat) {
         guard let index = elements.firstIndex(where: { $0.id == id }) else { return }
         let tool = elements[index].tool
-        
+
+        // ✅ 修复（TDD 验证）：档位收敛到 1...3，旧实现越界（如 level 0/4）
+        // 会直接数组下标越界，导致进程崩溃/挂死
+        let clampedLevel = min(3, max(1, Int(level.rounded())))
+
         if tool == .text || tool == .mosaic || tool == .magnifier {
             let sizes: [CGFloat] = [16, 24, 36]
-            elements[index].fontSize = sizes[Int(level - 1)]
+            elements[index].fontSize = sizes[clampedLevel - 1]
         } else {
             let widths: [CGFloat] = [2, 5, 10]
-            elements[index].lineWidth = widths[Int(level - 1)]
+            elements[index].lineWidth = widths[clampedLevel - 1]
         }
         objectWillChange.send()
     }
@@ -350,8 +359,12 @@ class V2PrimaryScreenStateManager: ObservableObject {
 
     /// 撤销最后一个元素
     func undoLastElement() {
-        if !elements.isEmpty {
-            elements.removeLast()
+        guard !elements.isEmpty else { return }
+        let removed = elements.removeLast()
+        // ✅ 修复（TDD 验证）：如果被撤销的元素正处于选中态，必须同步清空，
+        // 否则 selectedElementId 悬空指向已删除元素，颜色/尺寸同步会静默失效
+        if selectedElementId == removed.id {
+            selectedElementId = nil
         }
     }
 

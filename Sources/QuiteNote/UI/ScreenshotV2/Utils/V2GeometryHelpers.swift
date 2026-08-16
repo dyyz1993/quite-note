@@ -32,18 +32,53 @@ extension V2ScreenshotView {
 
     /// 计算文本元素的边界框
     private func boundingRectForText(_ element: DrawingElement) -> CGRect {
+        Self.textBoundingRect(for: element)
+    }
+
+    /// 文本元素边界框（静态实现，便于单元测试）
+    /// ✅ 修复（TDD 验证）：宽度按字符类型分别估算——全角字符（中日韩）约 1.0 倍字号，
+    /// 半角字符约 0.6 倍字号；旧实现统一按 0.6 估算，中文标注的点击热区偏窄约 40%
+    static func textBoundingRect(for element: DrawingElement) -> CGRect {
         guard let start = element.points.first else { return .zero }
-        
-        // ✨ 精确计算文本边界
+
         let lines = element.text.components(separatedBy: .newlines)
         let lineHeight = element.fontSize * 1.3
-        
-        // 估算每行宽度 (SwiftUI Text 默认系统字体中，平均宽度约为字号的 0.6)
-        let maxChars = lines.map { $0.count }.max() ?? 0
-        let estimatedWidth = CGFloat(max(1, maxChars)) * element.fontSize * 0.6 + 16 // 16 是 padding.horizontal
+
+        // 取最宽行的估算宽度（空文本也保留水平 padding 的最小宽度）
+        let widestLine = lines.map { estimatedLineWidth($0, fontSize: element.fontSize) }.max() ?? 0
+        let estimatedWidth = widestLine + 16 // 16 是 padding.horizontal
         let totalHeight = CGFloat(max(1, lines.count)) * lineHeight + 12 // 12 是 padding.vertical
-        
+
         return CGRect(x: start.x, y: start.y, width: estimatedWidth, height: totalHeight)
+    }
+
+    /// 估算一行文本的渲染宽度
+    static func estimatedLineWidth(_ line: String, fontSize: CGFloat) -> CGFloat {
+        var units: CGFloat = 0
+        for scalar in line.unicodeScalars {
+            units += isFullWidthScalar(scalar) ? 1.0 : 0.6
+        }
+        return units * fontSize
+    }
+
+    /// 判断 Unicode 标量是否为全角字符（CJK 表意文字、假名、韩文、全角形式等）
+    static func isFullWidthScalar(_ scalar: Unicode.Scalar) -> Bool {
+        switch scalar.value {
+        case 0x1100...0x115F,  // 谚文字母 (Hangul Jamo)
+             0x2E80...0x303E,  // CJK 部首、康熙部首
+             0x3041...0x33FF,  // 平假名、片假名、注音、CJK 兼容
+             0x3400...0x4DBF,  // CJK 扩展 A
+             0x4E00...0x9FFF,  // CJK 统一表意文字（简繁中文）
+             0xA000...0xA4CF,  // 彝文
+             0xAC00...0xD7A3,  // 韩文音节
+             0xF900...0xFAFF,  // CJK 兼容表意
+             0xFE30...0xFE4F,  // CJK 兼容形式
+             0xFF00...0xFF60,  // 全角 ASCII、全角标点
+             0xFFE0...0xFFE6:  // 全角符号
+            return true
+        default:
+            return false
+        }
     }
 
     /// 计算放大镜元素的边界框

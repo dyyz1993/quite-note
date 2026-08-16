@@ -110,6 +110,20 @@ final class PreferencesManager: ObservableObject {
     }
     func setScreenshotSaveToClipboard(_ v: Bool) { d.set(v, forKey: "screenshotSaveToClipboard") }
 
+    // 截图文件保存目录（空字符串 = 使用桌面）
+    var screenshotSaveDirectory: String { d.string(forKey: "screenshotSaveDirectory") ?? "" }
+    func setScreenshotSaveDirectory(_ v: String) {
+        objectWillChange.send()
+        d.set(v, forKey: "screenshotSaveDirectory")
+    }
+
+    // 保存截图文件后自动复制绝对路径到剪贴板
+    var screenshotCopyPathAfterSave: Bool { d.object(forKey: "screenshotCopyPathAfterSave") == nil ? true : d.bool(forKey: "screenshotCopyPathAfterSave") }
+    func setScreenshotCopyPathAfterSave(_ v: Bool) {
+        objectWillChange.send()
+        d.set(v, forKey: "screenshotCopyPathAfterSave")
+    }
+
     func setOpenAIBaseURL(_ v: String) { d.set(v, forKey: "openAIBaseURL") }
     func setOpenAIModel(_ v: String) { d.set(v, forKey: "openAIModel") }
     func setAISystemPrompt(_ v: String) { 

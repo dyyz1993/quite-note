@@ -20,7 +20,7 @@ let package = Package(
             name: "QuiteNote",
             dependencies: [
                 .product(name: "LucideIcons", package: "lucide-icons-swift"),
-                .product(name: "Yams", package: "Yams")
+                .product(name: "Yams", package: "yams")
             ],
             path: "Sources/QuiteNote",
             resources: [
@@ -29,6 +29,11 @@ let package = Package(
                 .process("Info-debug.plist"),
                 .process("Resources/Symbols/default.yaml")
             ]
+        ),
+        .testTarget(
+            name: "QuiteNoteTests",
+            dependencies: ["QuiteNote"],
+            path: "Tests/QuiteNoteTests"
         )
     ]
 )

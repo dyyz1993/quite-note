@@ -174,13 +174,13 @@ final class ScreenshotService {
     func startV2Screenshot() {
         print("[DEBUG ScreenshotService] 启动 V2 截图流程")
 
-        // ⚠️ 修复：即使权限被拒绝也继续，降级到基本截图
-        let hasPermission = checkAndRequestPermission()
-
-        if !hasPermission {
-            print("[WARN ScreenshotService] ⚠️ 没有屏幕录制权限，窗口识别功能不可用")
-            print("[WARN ScreenshotService] 提示：请在「系统设置 > 隐私与安全性 > 屏幕录制」中授权")
-            // ⚠️ 继续执行，而不是 return
+        // 无屏幕录制权限时：显示权限引导悬浮窗（可拖拽图标到系统设置列表），
+        // 不再进入"灰屏降级"模式——那只会截到灰色画面，体验更差
+        guard checkAndRequestPermission() else {
+            print("[WARN ScreenshotService] ⚠️ 没有屏幕录制权限，显示权限引导窗口")
+            DiagnosticCenter.warning("Screenshot", "触发截图但无屏幕录制权限，已弹出权限引导窗")
+            PermissionGuideController.shared.show()
+            return
         }
 
         // ⚠️ 传递隐藏/显示主窗口的回调
@@ -196,12 +196,84 @@ final class ScreenshotService {
         saveScreenshotRecord(image: image)
     }
 
+    /// 保存截图（推荐入口）：导出 PNG 文件到默认目录 + 复制绝对路径到剪贴板 + 存入闪记
+    func saveScreenshotWithFile(image: NSImage) {
+        let exportedPath = exportImageFile(image)
+        if let path = exportedPath {
+            DiagnosticCenter.info("Save", "截图已导出: \(path)")
+        } else {
+            DiagnosticCenter.error("Save", "截图导出文件失败（闪记记录不受影响）")
+        }
+
+        // 保存成功后把绝对路径复制到剪贴板，方便直接粘贴引用
+        if let path = exportedPath, PreferencesManager.shared.screenshotCopyPathAfterSave {
+            let pasteboard = NSPasteboard.general
+            pasteboard.clearContents()
+            pasteboard.setString(path, forType: .string)
+            print("[DEBUG ScreenshotService] 已复制文件路径到剪贴板: \(path)")
+        }
+
+        saveScreenshotRecord(image: image, exportedPath: exportedPath)
+    }
+
+    /// 导出 PNG 到用户设置的默认保存目录（未设置时使用桌面）
+    /// - Returns: 导出文件的绝对路径，失败返回 nil
+    func exportImageFile(_ image: NSImage) -> String? {
+        guard let tiffData = image.tiffRepresentation,
+              let bitmapImage = NSBitmapImageRep(data: tiffData),
+              let pngData = bitmapImage.representation(using: .png, properties: [:]) else {
+            print("[DEBUG ScreenshotService] 导出失败：无法生成 PNG 数据")
+            return nil
+        }
+
+        // 解析保存目录：未设置时默认桌面
+        let dirPref = PreferencesManager.shared.screenshotSaveDirectory
+        let dirURL: URL
+        if dirPref.isEmpty {
+            dirURL = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first
+                ?? URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
+        } else {
+            dirURL = URL(fileURLWithPath: (dirPref as NSString).expandingTildeInPath, isDirectory: true)
+        }
+
+        do {
+            try FileManager.default.createDirectory(at: dirURL, withIntermediateDirectories: true)
+
+            // 文件名与 macOS 原生截图风格一致：截图 2026-08-16 18.30.05.png
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd HH.mm.ss"
+            let baseName = "截图 \(formatter.string(from: Date()))"
+
+            var fileURL = dirURL.appendingPathComponent("\(baseName).png")
+            var counter = 2
+            while FileManager.default.fileExists(atPath: fileURL.path) {
+                fileURL = dirURL.appendingPathComponent("\(baseName)-\(counter).png")
+                counter += 1
+            }
+
+            try pngData.write(to: fileURL)
+            print("[DEBUG ScreenshotService] 截图已导出: \(fileURL.path)")
+            return fileURL.path
+        } catch {
+            print("[DEBUG ScreenshotService] 导出截图失败: \(error.localizedDescription)")
+            return nil
+        }
+    }
+
     /// 保存截图到记录中
-    private func saveScreenshotRecord(image: NSImage) {
+    private func saveScreenshotRecord(image: NSImage, exportedPath: String? = nil) {
         self.screenshotCount += 1
-        let message = "截图 \(self.screenshotCount)"
         let timestamp = Int(Date().timeIntervalSince1970)
         let hash = "screenshot_\(timestamp)_\(self.screenshotCount)"
+
+        // 有导出文件时，提示和记录都带上路径信息
+        let message: String
+        if let path = exportedPath {
+            message = "截图已保存 ✅ 路径已复制"
+            print("[DEBUG ScreenshotService] 导出路径: \(path)")
+        } else {
+            message = "截图 \(self.screenshotCount)"
+        }
 
         var sourceUrl: String? = nil
         
@@ -221,9 +293,15 @@ final class ScreenshotService {
         // 1. 发送轻提示
         self.recordStore?.postLightHint(message)
 
-        // 2. 创建真正的记录
+        // 2. 创建真正的记录（带上导出路径，方便日后检索定位文件）
+        let recordContent: String
+        if let path = exportedPath {
+            recordContent = "截图 \(self.screenshotCount)：\(path)"
+        } else {
+            recordContent = message
+        }
         self.recordStore?.addRecord(
-            content: message,
+            content: recordContent,
             hash: hash,
             sourceApp: "Screen Capture",
             sourceUrl: sourceUrl,

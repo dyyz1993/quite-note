@@ -32,6 +32,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// 应用启动回调：初始化状态栏与悬浮窗
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // 诊断中心最先启动：检测上次异常退出 + 崩溃捕获 + 卡死看门狗 + 文件日志
+        DiagnosticCenter.shared.start()
+
         // 初始化贴纸管理器
         _ = StickyNoteManager.shared
 
@@ -273,5 +276,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         print("[DEBUG] 清除图标缓存")
         LucideView.clearCache()
         recordStore?.postToast("图标缓存已清除", type: "success")
+    }
+
+    deinit {
+        cancellables.removeAll()
+        NotificationCenter.default.removeObserver(self)
     }
 }
