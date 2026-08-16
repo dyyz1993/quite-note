@@ -36,13 +36,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DiagnosticCenter.shared.start()
 
         // 任一权限缺失时自动弹出引导窗（主动可见，不再等用户触发才发现）；
-        // 引导顺序：先辅助功能（免重启），后屏幕录制（系统会要求退出重开）
+        // 引导顺序：先辅助功能（免重启），后屏幕录制（系统会要求退出重开）；
+        // 同时直接打开第一个缺失权限对应的系统设置页，省一步点击
         let screenOK = ScreenshotService.shared.checkScreenCapturePermission()
         let accessibilityOK = ScreenshotService.shared.checkAccessibilityPermission()
         if !screenOK || !accessibilityOK {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                 PermissionGuideController.shared.show()
-                DiagnosticCenter.info("Permission", "启动时检测到权限缺失（辅助功能:\(accessibilityOK ? "✓" : "✗") 录屏:\(screenOK ? "✓" : "✗")），自动弹出引导窗")
+                let target = !accessibilityOK ? "Privacy_Accessibility" : "Privacy_ScreenCapture"
+                if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(target)") {
+                    NSWorkspace.shared.open(url)
+                }
+                DiagnosticCenter.info("Permission", "启动时检测到权限缺失（辅助功能:\(accessibilityOK ? "✓" : "✗") 录屏:\(screenOK ? "✓" : "✗")），自动弹出引导窗并打开对应设置页")
             }
         }
 

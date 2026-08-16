@@ -213,9 +213,19 @@ struct PermissionGuideView: View {
 
     private func permissionRow(order: String, title: String, subtitle: String, granted: Bool, settingsURL: String) -> some View {
         HStack(spacing: 12) {
-            Image(systemName: granted ? "checkmark.circle.fill" : "circle.dashed")
-                .font(.system(size: 22))
-                .foregroundColor(granted ? .themeStatusSuccess : .themeTextTertiary)
+            // 待授权状态图标呼吸闪烁，主动吸引注意
+            Group {
+                if granted {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 22))
+                        .foregroundColor(.themeStatusSuccess)
+                } else {
+                    Image(systemName: "circle.dashed")
+                        .font(.system(size: 22))
+                        .foregroundColor(.themeBlue600)
+                        .modifier(PendingPulse())
+                }
+            }
 
             VStack(alignment: .leading, spacing: 3) {
                 Text("\(order) \(title)")
@@ -250,5 +260,20 @@ struct PermissionGuideView: View {
         .cornerRadius(10)
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.themeBorderSubtle))
         .padding(.horizontal, 24)
+    }
+}
+
+/// 待授权图标的呼吸闪烁效果（opacity 0.35~1.0 循环）
+struct PendingPulse: ViewModifier {
+    @State private var pulsing = false
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(pulsing ? 0.3 : 1.0)
+            .onAppear {
+                withAnimation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true)) {
+                    pulsing = true
+                }
+            }
     }
 }

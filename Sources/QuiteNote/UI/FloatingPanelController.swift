@@ -190,6 +190,11 @@ final class FloatingPanelController {
         }, onMinimize: { [weak self] in
             self?.minimizeToBall()
         }))
+        // ⚠️ 关键修复（2026-08-17 两次闪退根因）：禁止 SwiftUI 驱动窗口尺寸。
+        // NSHostingView 默认会按内容理想尺寸反向调整窗口大小，与手动 setFrame
+        // 相互触发形成布局死循环 → NSGenericException "Update Constraints in
+        // Window passes" → 闪退。窗口尺寸一律由本控制器手动管理（展开/浮球/恢复）。
+        hosting.sizingOptions = []
         panel.contentView = hosting
 
         NotificationCenter.default.addObserver(self, selector: #selector(onWindowLock(_:)), name: QuiteNoteNotification.windowLockChanged.name, object: nil)
