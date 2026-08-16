@@ -1,6 +1,16 @@
 import SwiftUI
 import AppKit
 
+/// 支持 ESC 直接关闭的识别窗口面板
+final class V2OCRESCClosablePanel: NSPanel {
+    override var canBecomeKey: Bool { true }
+
+    /// ESC 直接关闭窗口（识别结果可编辑场景下，用户直觉是"看完了就关"）
+    override func cancelOperation(_ sender: Any?) {
+        V2OCRResultPanelController.shared.close()
+    }
+}
+
 /// OCR 专属结果窗口：左边框选图片、右边识别结果
 ///
 /// 交互定位：用户点 OCR 意味着目的是取文字而非截图——触发即退出截图会话，
@@ -12,7 +22,7 @@ final class V2OCRResultPanelController {
 
     func show(image: NSImage) {
         if panel == nil {
-            let p = NSPanel(
+            let p = V2OCRESCClosablePanel(
                 contentRect: NSRect(x: 0, y: 0, width: 780, height: 480),
                 styleMask: [.titled, .closable, .miniaturizable],
                 backing: .buffered,
