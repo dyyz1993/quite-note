@@ -122,8 +122,9 @@ xcrun stapler staple "$DMG_FILE"
 # ------------------------------------------------------------------
 echo ""
 echo "🔍 最终验证 ..."
+# DMG 用 Apple 官方的 staple validate 验证（spctl 不适用于 dmg 文件本身，会误报 no usable signature）
 xcrun stapler validate "$DMG_FILE"
-spctl -a -t open --context context:primary-signature -vv "$DMG_FILE"
+# App 用 Gatekeeper 评估（公证后应为 accepted, source=Notarized Developer ID）
 spctl -a -t exec -vv "$APP_PATH"
 
 echo ""
