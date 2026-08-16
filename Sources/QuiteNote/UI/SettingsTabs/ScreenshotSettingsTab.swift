@@ -73,7 +73,7 @@ struct ScreenshotSettingsTab: View {
 
     private var saveDirectoryDescription: String {
         let raw = prefs.screenshotSaveDirectory
-        if raw.isEmpty { return "桌面（默认）" }
+        if raw.isEmpty { return "下载文件夹（默认）" }
         // 用 ~ 缩写 home 目录，显示更友好
         return raw.replacingOccurrences(of: NSHomeDirectory(), with: "~")
     }

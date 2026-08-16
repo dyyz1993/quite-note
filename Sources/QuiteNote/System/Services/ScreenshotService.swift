@@ -228,12 +228,12 @@ final class ScreenshotService {
             return nil
         }
 
-        // 解析保存目录：未设置时默认桌面
+        // 解析保存目录：未设置时默认「下载」文件夹（不弄乱桌面；设置里可改任意目录）
         let dirPref = PreferencesManager.shared.screenshotSaveDirectory
         let dirURL: URL
         if dirPref.isEmpty {
-            dirURL = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first
-                ?? URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
+            dirURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+                ?? FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first!
         } else {
             dirURL = URL(fileURLWithPath: (dirPref as NSString).expandingTildeInPath, isDirectory: true)
         }
