@@ -182,12 +182,13 @@ final class AIService: AIServiceProtocol {
 
     /// 纯文本改写：复用现有密钥/模型/BaseURL 配置，不要求 JSON 响应
     /// 与 summarize 的区别：输入输出都是自然语言文本，适合 OCR 整理等场景
-    /// 带一次自动重试——代理型端点偶发 401/网络抖动时不必让用户手动重点
+    /// 带自动重试（最多 4 次尝试，1s/2s/4s 指数退避）——
+    /// 实测中转型端点会在 200/401/超时之间随机波动，重试显著提升成功率
     func rewrite(system: String, user: String, completion: @escaping (Result<String, Error>) -> Void) {
-        attemptRewrite(system: system, user: user, allowRetry: true, completion: completion)
+        attemptRewrite(system: system, user: user, remainingRetries: 3, completion: completion)
     }
 
-    private func attemptRewrite(system: String, user: String, allowRetry: Bool, completion: @escaping (Result<String, Error>) -> Void) {
+    private func attemptRewrite(system: String, user: String, remainingRetries: Int, completion: @escaping (Result<String, Error>) -> Void) {
         var hasCompleted = false
         let safeCompletion: (Result<String, Error>) -> Void = { result in
             if !hasCompleted { hasCompleted = true; completion(result) }
@@ -222,24 +223,22 @@ final class AIService: AIServiceProtocol {
         config.requestCachePolicy = .reloadIgnoringLocalCacheData
 
         URLSession(configuration: config).dataTask(with: req) { data, response, error in
-            if let error {
-                if allowRetry {
-                    DiagnosticCenter.warning("OCR", "AI 请求网络错误，1 秒后自动重试: \(error.localizedDescription)")
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                        self.attemptRewrite(system: system, user: user, allowRetry: false, completion: completion)
-                    }
-                    return
+            // 可重试的错误：网络错误 / 401 / 5xx（中转端点会在这些状态间随机波动）
+            func scheduleRetry(reason: String) {
+                let delay = pow(2.0, Double(3 - remainingRetries))  // 1s → 2s → 4s
+                DiagnosticCenter.warning("OCR", "AI 请求\(reason)，\(Int(delay)) 秒后自动重试（剩 \(remainingRetries) 次）")
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                    self.attemptRewrite(system: system, user: user, remainingRetries: remainingRetries - 1, completion: completion)
                 }
+            }
+
+            if let error {
+                if remainingRetries > 0 { scheduleRetry(reason: "网络错误: \(error.localizedDescription)"); return }
                 safeCompletion(.failure(error)); return
             }
             if let http = response as? HTTPURLResponse, http.statusCode != 200 {
-                // 代理型端点偶发 401/5xx，自动重试一次（实测同一请求隔几秒即恢复）
-                if allowRetry && (http.statusCode == 401 || http.statusCode >= 500) {
-                    DiagnosticCenter.warning("OCR", "AI 请求 HTTP \(http.statusCode)，1 秒后自动重试")
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                        self.attemptRewrite(system: system, user: user, allowRetry: false, completion: completion)
-                    }
-                    return
+                if remainingRetries > 0 && (http.statusCode == 401 || http.statusCode >= 500) {
+                    scheduleRetry(reason: " HTTP \(http.statusCode)"); return
                 }
                 safeCompletion(.failure(AIRewriteError.http(http.statusCode))); return
             }
@@ -494,7 +493,11 @@ enum AIRewriteError: LocalizedError {
         switch self {
         case .notConfigured: return "未配置 AI 密钥（设置 → AI 中填写后即可使用）"
         case .badURL: return "无效的 AI Base URL"
-        case .http(let code): return "AI 请求失败（HTTP \(code)）"
+        case .http(let code):
+            if code == 401 {
+                return "AI 服务端不稳定（已自动重试仍 401）——多为中转端点波动，稍后再试；若持续失败请检查 设置 → AI 的 Base URL"
+            }
+            return "AI 请求失败（HTTP \(code)）"
         case .emptyResponse: return "AI 返回内容为空"
         }
     }
