@@ -235,6 +235,7 @@ struct V2RecordingEditorView: View {
     @State private var trimDragBase: [EditSegment]?
     @State private var panBaseOriginal: Double?
     @State private var volumePopoverLane: Int?
+    @State private var playbackRate: Float = 1
     @State private var isExporting = false
     @State private var copied = false
     @State private var savedToNotes = false
@@ -303,11 +304,8 @@ struct V2RecordingEditorView: View {
         .onChange(of: assetInfo.waveforms.count) { count in
             laneStates = Array(repeating: AudioLaneState(), count: count)
         }
-        .onChange(of: segments) { newValue in
-            // 选中段被删/被分割后自动落到播放头所在段（至少保留一个选中）
-            if let id = selectedSegmentID, newValue.contains(where: { $0.id == id }) { return }
-            selectedSegmentID = newValue.first(where: { displayOriginal >= $0.start && displayOriginal <= $0.end })?.id ?? newValue.first?.id
-        }
+        // 注意：不做「自动选中播放头所在段」——会与手动点选打架（选不中其他段的元凶）；
+        // 选中态只在 打开默认选中 / 分割 / 删除 / 撤销 时显式变更
         .onChange(of: segments) { _ in schedulePlaybackRebuild() }
         .onChange(of: laneStates) { _ in schedulePlaybackRebuild() }
         .onChange(of: dubState) { _ in schedulePlaybackRebuild() }
@@ -422,6 +420,25 @@ struct V2RecordingEditorView: View {
                 .foregroundColor(.themeTextTertiary)
 
             Spacer()
+
+            // 倍速播放（音调补偿，重建播放后保持）
+            Menu {
+                ForEach([0.5, 1.0, 1.5, 2.0], id: \.self) { rate in
+                    Button(String(format: "%.1fx", rate)) { setPlaybackRate(Float(rate)) }
+                }
+            } label: {
+                Text(String(format: "%.1fx", playbackRate))
+                    .font(.themeCaption)
+                    .fixedSize()
+                    .monospacedDigit()
+                    .foregroundColor(.themeTextPrimary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(RoundedRectangle(cornerRadius: 6).fill(Color.themeGray700))
+            }
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .help("播放速度（仅预览，不影响导出成片速度）")
 
             // 缩放
             HStack(spacing: 3) {
@@ -553,6 +570,24 @@ struct V2RecordingEditorView: View {
         zoomFitted = true
     }
 
+    /// 倍速播放：音调补偿（变速不变调），重建播放后经 defaultRate 保持
+    private func setPlaybackRate(_ rate: Float) {
+        playbackRate = rate
+        player.defaultRate = rate
+        player.currentItem?.audioTimePitchAlgorithm = .timeDomain
+        if player.timeControlStatus == .playing {
+            player.rate = rate
+        }
+    }
+
+    /// 拖动（播放头/轨道）跨越任一切割点时给一次轻震动反馈
+    private func crossedCutBoundary(from old: Double, to new: Double) -> Bool {
+        let lo = min(old, new), hi = max(old, new)
+        return segments.contains { seg in
+            (seg.start > lo && seg.start < hi) || (seg.end > lo && seg.end < hi)
+        }
+    }
+
     /// 把手修剪：以拖拽起手时的分段快照为基准，吸附播放头，钳制相邻段
     private func handleTrim(index: Int, isStart: Bool, g: DragGesture.Value) {
         guard !dubbing, segments.indices.contains(index) else { return }
@@ -682,6 +717,9 @@ struct V2RecordingEditorView: View {
                 if panBaseOriginal == nil { panBaseOriginal = displayOriginal }
                 guard let base = panBaseOriginal else { return }
                 let original = min(duration, max(0, base - (g.location.x - g.startLocation.x) / zoom))
+                if crossedCutBoundary(from: t, to: original) {
+                    HapticFeedbackManager.shared.lightImpact()
+                }
                 t = original
                 playback.seek(to: timelineTime(fromOriginal: original))
             }
@@ -696,6 +734,9 @@ struct V2RecordingEditorView: View {
                 if panBaseOriginal == nil { panBaseOriginal = displayOriginal }
                 guard let base = panBaseOriginal else { return }
                 let original = min(duration, max(0, base + (g.location.x - g.startLocation.x) / zoom))
+                if crossedCutBoundary(from: t, to: original) {
+                    HapticFeedbackManager.shared.lightImpact()
+                }
                 t = original
                 playback.seek(to: timelineTime(fromOriginal: original))
             }
@@ -741,10 +782,13 @@ struct V2RecordingEditorView: View {
 
     private func undo() {
         guard let prev = undoStack.popLast() else { return }
+        let restoreIndex = selectedIndex ?? 0
         segments = prev
-        if let id = selectedSegmentID, !segments.contains(where: { $0.id == id }) {
-            selectedSegmentID = segments.last?.id
-        }
+        // 优先保持同位置的段（而不是跳到最后一段）
+        if let id = selectedSegmentID, segments.contains(where: { $0.id == id }) { return }
+        selectedSegmentID = segments.indices.contains(restoreIndex)
+            ? segments[restoreIndex].id
+            : segments.last?.id
     }
 
     // MARK: 配音
@@ -939,6 +983,9 @@ struct V2RecordingEditorView: View {
         playback.seek(to: timelineTime(fromOriginal: originalNow))
         if wasPlaying {
             player.play()
+            if playbackRate != 1 {
+                player.rate = playbackRate
+            }
         }
     }
 
