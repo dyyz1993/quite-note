@@ -20,6 +20,15 @@ final class AIService: AIServiceProtocol {
     var openAIModel: String = "gpt-4o-mini"
     var timeout: TimeInterval = 60
 
+    /// 初始化即从用户设置读取配置——任何调用方 new 出来的实例都直接可用。
+    /// （修复 2026-08-17 的 OCR 401：新建实例曾只带写死的默认值打 openai.com，
+    /// 主实例靠 RecordStore 事后配置才正确，散装 new 的实例全部踩坑）
+    init() {
+        let prefs = PreferencesManager.shared
+        self.openAIBaseURL = prefs.openAIBaseURL
+        self.openAIModel = prefs.openAIModel
+    }
+
     // 延迟加载：避免重复访问 Keychain
     private var hasCheckedAPIKey = false
     private var cachedAPIKey: String? = nil
