@@ -257,6 +257,13 @@ struct V2RecordingPreviewView: View {
     @State private var snapIndicator: Double?
     /// 循环播放中的选段（删除前预听）
     @State private var loopingSelection: TimelineSelection?
+    /// 选区拖拽模式：选区内起手=平移（宽度不变），选区外起手=新建
+    @State private var selectionDrag: SelectionDragMode?
+
+    private enum SelectionDragMode {
+        case create(anchor: Double)
+        case move(baseStart: Double, baseWidth: Double, gestureAnchor: Double)
+    }
 
     init(fileURL: URL, player: AVPlayer) {
         self.fileURL = fileURL
@@ -709,21 +716,50 @@ struct V2RecordingPreviewView: View {
             .onEnded { _ in snapIndicator = nil }
     }
 
+    /// 时间线拖选：选区内起手 → 平移选区（长度固定、位置可调，磁吸卡点）；
+    /// 选区外起手 → 新建选区（起锚点拖出范围）
     private func rowDragGesture(target: CutTarget, width: CGFloat) -> some Gesture {
         DragGesture(minimumDistance: 6)
             .onChanged { g in
-                let f1 = min(1, max(0, g.startLocation.x / width))
-                let f2 = snap(min(1, max(0, g.location.x / width))) // 选区终点磁吸卡点
-                selection = TimelineSelection(target: target,
-                                               startFrac: min(f1, f2),
-                                               endFrac: max(f1, f2))
+                let gestureStart = min(1, max(0, g.startLocation.x / width))
+                let currentRaw = min(1, max(0, g.location.x / width))
+
+                // 起手模式判定（只判定一次）
+                if selectionDrag == nil {
+                    if let sel = selection, sel.target == target,
+                       gestureStart >= sel.startFrac, gestureStart <= sel.endFrac {
+                        selectionDrag = .move(baseStart: sel.startFrac,
+                                              baseWidth: sel.endFrac - sel.startFrac,
+                                              gestureAnchor: gestureStart)
+                    } else {
+                        selectionDrag = .create(anchor: gestureStart)
+                    }
+                }
+
+                switch selectionDrag {
+                case .create(let anchor):
+                    let snapped = snap(currentRaw)
+                    selection = TimelineSelection(target: target,
+                                                   startFrac: min(anchor, snapped),
+                                                   endFrac: max(anchor, snapped))
+                case .move(let baseStart, let baseWidth, let gestureAnchor):
+                    let snapped = snap(currentRaw)
+                    let delta = snapped - gestureAnchor
+                    let newStart = min(max(0, baseStart + delta), 1 - baseWidth)
+                    selection = TimelineSelection(target: target,
+                                                   startFrac: newStart,
+                                                   endFrac: newStart + baseWidth)
+                case nil:
+                    break
+                }
             }
             .onEnded { g in
                 snapIndicator = nil
-                // 误触保护：太短的选择视为点击（交给 tap 定位），清空选区
-                if abs(g.location.x - g.startLocation.x) < 12 {
+                // 误触保护仅对「新建」生效：平移模式下的小幅抖动不清除选区
+                if case .create = selectionDrag, abs(g.location.x - g.startLocation.x) < 12 {
                     selection = nil
                 }
+                selectionDrag = nil
             }
     }
 
