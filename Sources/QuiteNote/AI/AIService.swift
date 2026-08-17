@@ -182,7 +182,12 @@ final class AIService: AIServiceProtocol {
 
     /// 纯文本改写：复用现有密钥/模型/BaseURL 配置，不要求 JSON 响应
     /// 与 summarize 的区别：输入输出都是自然语言文本，适合 OCR 整理等场景
+    /// 带一次自动重试——代理型端点偶发 401/网络抖动时不必让用户手动重点
     func rewrite(system: String, user: String, completion: @escaping (Result<String, Error>) -> Void) {
+        attemptRewrite(system: system, user: user, allowRetry: true, completion: completion)
+    }
+
+    private func attemptRewrite(system: String, user: String, allowRetry: Bool, completion: @escaping (Result<String, Error>) -> Void) {
         var hasCompleted = false
         let safeCompletion: (Result<String, Error>) -> Void = { result in
             if !hasCompleted { hasCompleted = true; completion(result) }
@@ -218,9 +223,24 @@ final class AIService: AIServiceProtocol {
 
         URLSession(configuration: config).dataTask(with: req) { data, response, error in
             if let error {
+                if allowRetry {
+                    DiagnosticCenter.warning("OCR", "AI 请求网络错误，1 秒后自动重试: \(error.localizedDescription)")
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                        self.attemptRewrite(system: system, user: user, allowRetry: false, completion: completion)
+                    }
+                    return
+                }
                 safeCompletion(.failure(error)); return
             }
             if let http = response as? HTTPURLResponse, http.statusCode != 200 {
+                // 代理型端点偶发 401/5xx，自动重试一次（实测同一请求隔几秒即恢复）
+                if allowRetry && (http.statusCode == 401 || http.statusCode >= 500) {
+                    DiagnosticCenter.warning("OCR", "AI 请求 HTTP \(http.statusCode)，1 秒后自动重试")
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                        self.attemptRewrite(system: system, user: user, allowRetry: false, completion: completion)
+                    }
+                    return
+                }
                 safeCompletion(.failure(AIRewriteError.http(http.statusCode))); return
             }
             guard let data,

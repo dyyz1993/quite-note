@@ -95,6 +95,10 @@ final class V2OCRResultPanelController {
             p.isFloatingPanel = true
             p.hidesOnDeactivate = false
             p.isReleasedWhenClosed = false
+            // UI 风格适配：与 App 深色主题一致（遵循 AGENTS.md UI 规范）
+            p.appearance = NSAppearance(named: .darkAqua)
+            p.backgroundColor = NSColor(calibratedWhite: 0.12, alpha: 1.0)
+            p.titlebarAppearsTransparent = true
             panel = p
         }
 
