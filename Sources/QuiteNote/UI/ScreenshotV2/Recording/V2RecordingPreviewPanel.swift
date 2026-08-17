@@ -181,9 +181,26 @@ final class V2PlaybackModel: ObservableObject {
 // MARK: - 视频画面层
 
 private final class PlayerLayerNSView: NSView {
-    override var wantsUpdateLayer: Bool { true }
-    override func makeBackingLayer() -> CALayer { AVPlayerLayer() }
-    var playerLayer: AVPlayerLayer { layer as! AVPlayerLayer }
+    /// 直接持有播放层实例，不依赖懒创建的 backing layer
+    /// （此前用 `layer as! AVPlayerLayer` 在 layer 未创建时必崩，SIGTRAP）
+    let playerLayer = AVPlayerLayer()
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        layer = playerLayer
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        wantsLayer = true
+        layer = playerLayer
+    }
+
+    override func layout() {
+        super.layout()
+        playerLayer.frame = bounds
+    }
 }
 
 private struct PlayerLayerView: NSViewRepresentable {
