@@ -507,13 +507,33 @@ struct V2RecordingPreviewView: View {
                                     .allowsHitTesting(false)
                             }
 
-                            // 播放头
+                            // 播放头：白线 + 顶部圆形抓手（可拖动定位画面）
                             Rectangle()
                                 .fill(Color.white)
                                 .frame(width: 1.5)
                                 .offset(x: width * min(1, max(0, displayOriginalTime / duration)))
                                 .shadow(color: .black.opacity(0.6), radius: 1)
                                 .allowsHitTesting(false)
+                            Circle()
+                                .fill(Color.white)
+                                .frame(width: 7, height: 7)
+                                .offset(x: width * min(1, max(0, displayOriginalTime / duration)) - 3.5)
+                                .shadow(color: .black.opacity(0.5), radius: 1)
+                                .allowsHitTesting(false)
+
+                            // 播放头拖拽热区（比线宽，named 坐标空间保证拖动跟手不漂移）
+                            Color.clear
+                                .frame(width: 18, height: timelineHeight - 44)
+                                .contentShape(Rectangle())
+                                .gesture(
+                                    DragGesture(minimumDistance: 0, coordinateSpace: .named("timeline"))
+                                        .onChanged { g in
+                                            let fraction = min(1, max(0, g.location.x / width))
+                                            playback.seek(to: timelineTime(fromOriginal: duration * fraction))
+                                        }
+                                )
+                                .offset(x: width * min(1, max(0, displayOriginalTime / duration)) - 9)
+                                .help("拖动播放头定位画面")
 
                             // 黄色手柄（掐头去尾）
                             TrimHandle()
@@ -529,8 +549,9 @@ struct V2RecordingPreviewView: View {
                                 .contentShape(Rectangle())
                                 .gesture(rowDragGesture(target: .video, width: width))
                         }
-                        // 点击定位（点手柄/波形行以外区域）
+                        // 点击定位（点手柄/波形行以外区域）+ 定义播放头拖拽用的坐标空间
                         .contentShape(Rectangle())
+                        .coordinateSpace(name: "timeline")
                         .gesture(
                             SpatialTapGesture().onEnded { tap in
                                 let fraction = min(1, max(0, tap.location.x / width))
