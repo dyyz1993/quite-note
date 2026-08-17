@@ -208,7 +208,9 @@ struct V2RecordingEditorView: View {
     // 分段剪辑
     @State private var segments: [EditSegment] = []
     @State private var selectedSegmentID: UUID?
-    @State private var zoom: Double = 40          // px / 秒
+    @State private var zoom: Double = 40          // px / 秒（打开时自动适配到整片可见）
+    @State private var viewportWidth: CGFloat = 0
+    @State private var zoomFitted = false
     @State private var t: Double = 0              // 播放头（原始时间轴）
     @State private var undoStack: [[EditSegment]] = []
 
@@ -296,6 +298,7 @@ struct V2RecordingEditorView: View {
                 segments = [EditSegment(start: 0, end: newValue)]
                 selectedSegmentID = segments.first?.id
             }
+            fitZoomIfNeeded(duration: newValue)
         }
         .onChange(of: assetInfo.waveforms.count) { count in
             laneStates = Array(repeating: AudioLaneState(), count: count)
@@ -422,10 +425,10 @@ struct V2RecordingEditorView: View {
 
             // 缩放
             HStack(spacing: 3) {
-                Button(action: { zoom = max(14, zoom / 1.35) }) { Image(systemName: "minus") }
+                Button(action: { zoom = max(10, zoom / 1.35) }) { Image(systemName: "minus") }
                     .frame(width: 24, height: 24)
                 Text("\(Int(zoom))px/s").frame(minWidth: 40)
-                Button(action: { zoom = min(90, zoom * 1.35) }) { Image(systemName: "plus") }
+                Button(action: { zoom = min(400, zoom * 1.35) }) { Image(systemName: "plus") }
                     .frame(width: 24, height: 24)
             }
             .font(.themeCaption)
@@ -477,7 +480,6 @@ struct V2RecordingEditorView: View {
                 ZStack(alignment: .topLeading) {
                     // 半透明底（被删区域由 gap 覆盖层表达）
                     Color.themeGray900.opacity(0.25)
-
                     // 轨道内容（随播放头平移）
                     TrackContent(
                         segments: segments,
@@ -528,6 +530,11 @@ struct V2RecordingEditorView: View {
                         .offset(x: centerX(width: width) - 12)
                         .gesture(playheadDrag(width: width))
                 }
+                .onAppear {
+                    // 记录视口宽度并尝试自动适配缩放（时长通常此刻还在分析，onChange 会兜底）
+                    viewportWidth = width
+                    fitZoomIfNeeded(duration: duration)
+                }
             }
             .frame(height: timelineHeight)
         }
@@ -538,6 +545,13 @@ struct V2RecordingEditorView: View {
     }
 
     private func centerX(width: CGFloat) -> CGFloat { width / 2 }
+
+    /// 剪映式自动适配：打开时缩放到整片刚好可见（短视频放大、长视频缩小到下限）
+    private func fitZoomIfNeeded(duration: Double) {
+        guard !zoomFitted, duration > 0.2, viewportWidth > 100 else { return }
+        zoom = min(400, max(10, Double(viewportWidth - 24) / duration))
+        zoomFitted = true
+    }
 
     /// 把手修剪：以拖拽起手时的分段快照为基准，吸附播放头，钳制相邻段
     private func handleTrim(index: Int, isStart: Bool, g: DragGesture.Value) {
