@@ -25,6 +25,14 @@ APP_NAME="Quite Note"
 NOTARY_PROFILE="quitenote-notary"
 APP_PATH="$APP_NAME.app"
 DMG_FILE="QuiteNote-$VERSION.dmg"
+# Hardened Runtime 音频输入例外（公证版麦克风必需）
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ENTITLEMENTS="$SCRIPT_DIR/QuiteNote.entitlements"
+
+if [ ! -f "$ENTITLEMENTS" ]; then
+    echo "❌ 缺少 entitlements 文件: $ENTITLEMENTS"
+    exit 1
+fi
 
 echo "📦 发布版本: $VERSION"
 
@@ -73,6 +81,7 @@ echo ""
 echo "🔐 Developer ID 签名 ..."
 codesign --force --deep --options runtime --timestamp \
     --identifier "$BUNDLE_ID" \
+    --entitlements "$ENTITLEMENTS" \
     --sign "$SIGN_IDENTITY" \
     "$APP_PATH"
 

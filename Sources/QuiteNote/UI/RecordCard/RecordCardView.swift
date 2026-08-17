@@ -677,7 +677,8 @@ struct RecordCardView: View, Equatable {
     }
 
     private var originalContentBody: some View {
-        let isImage = record.type == .image || record.type == .screenshot
+        // 录屏记录的 sourceUrl 指向首帧图（FileCoordinator 存储），同截图走大图预览
+        let isImage = record.type == .image || record.type == .screenshot || record.type == .video
         // 对于 note 类型，只显示第一页内容
         let displayContent = record.type == .note ? extractFirstPageContent(record.content) : record.content
 
@@ -760,7 +761,7 @@ struct RecordCardView: View, Equatable {
 
                         // 复制按钮（始终显示）
                         Button(action: {
-                            let isImageType = record.type == .image || record.type == .screenshot
+                            let isImageType = record.type == .image || record.type == .screenshot || record.type == .video
                             if isImageType, let urlString = record.sourceUrl, let url = FileCoordinator.shared.resolveVirtualPath(urlString) {
                                 // 复制图片文件到剪贴板
                                 NSPasteboard.general.clearContents()

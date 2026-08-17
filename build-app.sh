@@ -6,6 +6,7 @@ set -e
 echo "开始构建 Quite Note 应用..."
 
 # 配置变量（默认正式变体；加 --dev 参数切换为开发变体，可与正式版共存互不干扰）
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_NAME="Quite Note"
 BUNDLE_ID="com.quitenote.app"
 EXECUTABLE_NAME="QuiteNote"
@@ -288,6 +289,8 @@ cat > "$CONTENTS/Info.plist" << EOF
     <string>Quite Note 需要系统管理权限来监听全局键盘快捷键，实现快速调用剪切板历史功能。</string>
     <key>NSScreenCaptureDescription</key>
     <string>Quite Note 需要屏幕录制权限来执行截图功能，帮助您快速截取和保存屏幕内容。</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Quite Note 需要访问麦克风来录制您的解说（口播）。仅在选择「录制麦克风」时使用，可在录屏设置中随时关闭。</string>
 </dict>
 </plist>
 EOF
@@ -308,10 +311,10 @@ if [ "$BINARY_CHANGED" = true ]; then
             SIGN_IDENTITY=$(security find-identity -v -p codesigning | awk -F'"' '/Apple Development/{print $2; exit}')
         fi
         if [ -n "$SIGN_IDENTITY" ]; then
-            codesign --force --deep --sign "$SIGN_IDENTITY" "$APP_PATH" --identifier "$BUNDLE_ID"
-            echo "代码签名完成 ($SIGN_IDENTITY，权限可跨编译保留)"
+            codesign --force --deep --sign "$SIGN_IDENTITY" "$APP_PATH" --identifier "$BUNDLE_ID" --entitlements "$SCRIPT_DIR/QuiteNote.entitlements"
+            echo "代码签名完成 ($SIGN_IDENTITY，权限可跨编译保留，含音频输入例外)"
         else
-            codesign --force --deep --sign - "$APP_PATH" --identifier "$BUNDLE_ID"
+            codesign --force --deep --sign - "$APP_PATH" --identifier "$BUNDLE_ID" --entitlements "$SCRIPT_DIR/QuiteNote.entitlements"
             echo "代码签名完成 (ad-hoc，注意: 每次编译后系统权限会失效)"
         fi
     else

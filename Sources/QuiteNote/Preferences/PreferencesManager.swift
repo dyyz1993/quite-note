@@ -119,6 +119,20 @@ final class PreferencesManager: ObservableObject {
 
     // 保存截图文件后自动复制绝对路径到剪贴板
     var screenshotCopyPathAfterSave: Bool { d.object(forKey: "screenshotCopyPathAfterSave") == nil ? true : d.bool(forKey: "screenshotCopyPathAfterSave") }
+
+    // 录屏设置：两路音频独立开关（都关 = 无声录制；都开 = 带解说的会议场景）
+    var recordingSystemAudio: Bool { d.object(forKey: "recordingSystemAudio") == nil ? true : d.bool(forKey: "recordingSystemAudio") }
+    var recordingMicrophone: Bool { d.object(forKey: "recordingMicrophone") == nil ? false : d.bool(forKey: "recordingMicrophone") }
+
+    func setRecordingSystemAudio(_ v: Bool) {
+        d.set(v, forKey: "recordingSystemAudio")
+        objectWillChange.send()
+    }
+
+    func setRecordingMicrophone(_ v: Bool) {
+        d.set(v, forKey: "recordingMicrophone")
+        objectWillChange.send()
+    }
     func setScreenshotCopyPathAfterSave(_ v: Bool) {
         objectWillChange.send()
         d.set(v, forKey: "screenshotCopyPathAfterSave")

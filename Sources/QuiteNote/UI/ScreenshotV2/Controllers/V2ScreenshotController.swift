@@ -171,7 +171,7 @@ class V2ScreenshotController {
                 return nil  // 阻止事件传递
             }
 
-            // 处理 Command+C/S
+            // 处理 Command+C/S/O/R
             let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
             if flags == .command {
                 if event.charactersIgnoringModifiers == "s" {
@@ -182,6 +182,9 @@ class V2ScreenshotController {
                     return nil  // 阻止事件传递
                 } else if event.charactersIgnoringModifiers == "o" {
                     NotificationCenter.default.post(name: NSNotification.Name("OCRScreenshot"), object: nil)
+                    return nil  // 阻止事件传递
+                } else if event.charactersIgnoringModifiers == "r" {
+                    NotificationCenter.default.post(name: NSNotification.Name("RecordScreenshot"), object: nil)
                     return nil  // 阻止事件传递
                 }
             }

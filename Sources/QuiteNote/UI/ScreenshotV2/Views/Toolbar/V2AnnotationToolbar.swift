@@ -6,6 +6,10 @@ struct V2AnnotationToolbar: View {
 
     private let colors: [Color] = [.red, .yellow, .green, .blue, .white, .black]
     @State private var expandedGroup: AnnotationToolGroup? = nil
+    /// 录制音频快选弹层（▾）：两路独立开关，写入 PreferencesManager 与设置页共用
+    @State private var showAudioPicker = false
+    @State private var audioSystem = PreferencesManager.shared.recordingSystemAudio
+    @State private var audioMicrophone = PreferencesManager.shared.recordingMicrophone
     // P2.1: 自定义 tooltip 状态
     @State private var tooltipText: String = ""
     @State private var tooltipPosition: CGPoint = .zero
@@ -25,6 +29,17 @@ struct V2AnnotationToolbar: View {
 
             // 2. 主工具栏
             mainToolbarContent
+
+            // 3. 音频快选弹层（浮动在主工具栏下方，右对齐录制按钮）
+            if showAudioPicker {
+                audioPickerPopover
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .offset(y: 54)
+                    .onHover { hovering in
+                        stateManager.isMouseOverUI = hovering
+                    }
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
         }
         // P2.1: 自定义 tooltip 覆盖层
         .overlay(
@@ -160,6 +175,64 @@ struct V2AnnotationToolbar: View {
             .onHover { hovering in
                 if hovering {
                     tooltipText = "复制到剪贴板 (Command+C)"
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        showTooltip = true
+                    }
+                } else {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        showTooltip = false
+                    }
+                }
+            }
+
+            // 区域录屏按钮：退出截图会话，对当前选区开始实时录制 (Command+R)
+            Button(action: {
+                NotificationCenter.default.post(name: NSNotification.Name("RecordScreenshot"), object: nil)
+            }) {
+                ZStack {
+                    Circle()
+                        .fill(LinearGradient(
+                            colors: [Color.themeRed500.opacity(0.85), Color.themeRed500],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ))
+                        .frame(width: 34, height: 34)
+
+                    Image(systemName: "record.circle")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(.white)
+                }
+            }
+            .buttonStyle(.plain)
+            .onHover { hovering in
+                if hovering {
+                    tooltipText = "录制视频 (⌘R)"
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        showTooltip = true
+                    }
+                } else {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        showTooltip = false
+                    }
+                }
+            }
+
+            // 音频快选 ▾：选择本次录制的音频来源（两路独立开关，与设置页共用存储）
+            Button(action: {
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    showAudioPicker.toggle()
+                }
+            }) {
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundColor(audioSystem || audioMicrophone ? .themeStatusSuccess : .white.opacity(0.55))
+                    .frame(width: 16, height: 34)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .onHover { hovering in
+                if hovering {
+                    tooltipText = "录制音频：\(audioDescription)"
                     withAnimation(.easeInOut(duration: 0.15)) {
                         showTooltip = true
                     }
@@ -360,5 +433,91 @@ struct V2AnnotationToolbar: View {
             }
         }
         .frame(width: 34, height: 34)
+    }
+
+    // MARK: - 录制音频快选
+
+    private var audioDescription: String {
+        switch (audioSystem, audioMicrophone) {
+        case (true, true): return "系统声 + 麦克风"
+        case (true, false): return "仅系统声"
+        case (false, true): return "仅麦克风（口播）"
+        case (false, false): return "无声"
+        }
+    }
+
+    /// ▾ 弹层：两路独立开关；写入偏好即长期记忆（口播↔演示高频切换不用进设置页）
+    private var audioPickerPopover: some View {
+        VStack(alignment: .leading, spacing: ThemeSpacing.px1.rawValue + 2) {
+            Text("本次录制音频（会被记住）")
+                .font(.themeCaption)
+                .foregroundColor(.themeTextTertiary)
+
+            audioToggleRow(isOn: $audioSystem,
+                           icon: "speaker.wave.2.fill",
+                           title: "系统声音",
+                           subtitle: "电脑播放的")
+
+            audioToggleRow(isOn: $audioMicrophone,
+                           icon: "mic.fill",
+                           title: "麦克风",
+                           subtitle: "口播解说")
+
+            Text("口播=只勾麦克风 · 会议=都勾 · 演示=只勾系统声")
+                .font(.themeCaptionSmall)
+                .foregroundColor(.themeTextTertiary)
+        }
+        .padding(ThemeSpacing.px3.rawValue)
+        .frame(width: 232, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: ThemeRadius.lg.rawValue)
+                .fill(Color.themeGray900.opacity(0.97))
+                .overlay(
+                    RoundedRectangle(cornerRadius: ThemeRadius.lg.rawValue)
+                        .stroke(Color.themeBorderSubtle, lineWidth: 1)
+                )
+        )
+        .onDisappear {
+            // 弹层收起时把选择持久化（与设置页同一个存储）
+            PreferencesManager.shared.setRecordingSystemAudio(audioSystem)
+            PreferencesManager.shared.setRecordingMicrophone(audioMicrophone)
+        }
+    }
+
+    private func audioToggleRow(isOn: Binding<Bool>, icon: String, title: String, subtitle: String) -> some View {
+        Button(action: {
+            isOn.wrappedValue.toggle()
+            PreferencesManager.shared.setRecordingSystemAudio(audioSystem)
+            PreferencesManager.shared.setRecordingMicrophone(audioMicrophone)
+        }) {
+            HStack(spacing: ThemeSpacing.px2.rawValue + 2) {
+                Image(systemName: icon)
+                    .font(.system(size: 12))
+                    .foregroundColor(isOn.wrappedValue ? .themeStatusSuccess : .themeTextTertiary)
+                    .frame(width: 16)
+                Text(title)
+                    .font(.themeBody)
+                    .foregroundColor(.themeTextPrimary)
+                Text(subtitle)
+                    .font(.themeCaption)
+                    .foregroundColor(.themeTextTertiary)
+                Spacer()
+                // 自绘勾选框（与主题一致的极简样式）
+                ZStack {
+                    RoundedRectangle(cornerRadius: 4)
+                        .stroke(isOn.wrappedValue ? Color.themeStatusSuccess : Color.themeBorderSubtle, lineWidth: 1.5)
+                        .frame(width: 16, height: 16)
+                    if isOn.wrappedValue {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundColor(.themeStatusSuccess)
+                    }
+                }
+            }
+            .padding(.vertical, ThemeSpacing.px1.rawValue)
+            .padding(.horizontal, ThemeSpacing.px1.rawValue + 2)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }

@@ -359,6 +359,18 @@ struct V2ScreenshotView: View {
         V2OCRResultPanelController.shared.show(image: finalImage)
     }
 
+    // 区域录屏：选区的目的是录动态画面——
+    // 同 OCR 模式：退出截图遮罩（否则录到的全是冻结画面），进入实时录制
+    private func startScreenRecording(rect: CGRect) {
+        guard rect.width >= 16, rect.height >= 16 else {
+            primaryScreenManager.postToast("选区太小，无法录制（至少 16×16）", type: "error")
+            return
+        }
+        DiagnosticCenter.info("Recording", "录屏模式：退出截图会话，选区 \(Int(rect.width))x\(Int(rect.height)) @ \(screen.localizedName)")
+        V2ScreenshotController.close()
+        V2RecordingController.shared.start(selection: rect, screen: screen)
+    }
+
     // 保存到闪记（同时导出文件到默认目录并复制路径）
     private func saveToFlashNotes(rect: CGRect) {
         addLog("Saving selection to flash notes...")
@@ -560,7 +572,18 @@ struct V2ScreenshotView: View {
                 }
             }
 
-            notificationObservers = [saveToken, copyToken, ocrToken]
+            // 监听录制通知 (Command+R)：退出截图会话，对选区开始实时录屏
+            let recordToken = NotificationCenter.default.addObserver(forName: NSNotification.Name("RecordScreenshot"), object: nil, queue: .main) { [self] _ in
+                guard controllerSessionID == currentSessionID else {
+                    print("⚠️ [RecordScreenshot] Ignored - session mismatch")
+                    return
+                }
+                if let selection = localSelectedArea {
+                    startScreenRecording(rect: selection)
+                }
+            }
+
+            notificationObservers = [saveToken, copyToken, ocrToken, recordToken]
         }
         .onDisappear {
             // 移除通知监听器：不移除的话闭包会一直持有视图（含整屏截图 NSImage），每次截图都泄漏一份

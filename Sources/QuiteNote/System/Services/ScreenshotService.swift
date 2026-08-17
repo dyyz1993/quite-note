@@ -1,5 +1,7 @@
 import Foundation
 import AppKit
+import AVFoundation
+import CoreMedia
 import OSLog
 
 /// 截图服务，处理权限申请、截图执行及剪贴板保存
@@ -196,6 +198,82 @@ final class ScreenshotService {
     /// 保存截图到闪记
     func saveScreenshotToFlashNotes(image: NSImage) {
         saveScreenshotRecord(image: image)
+    }
+
+    // MARK: - 录屏收尾提示（M1：文件 + 剪贴板路径 + 轻提示；预览/闪记入档在后续里程碑）
+
+    /// 录屏保存成功：复制路径到剪贴板（跟随截图的开关）+ 轻提示 + 日志
+    func announceRecordingSaved(path: String) {
+        DiagnosticCenter.info("Save", "录屏已导出: \(path)")
+        if PreferencesManager.shared.screenshotCopyPathAfterSave {
+            let pasteboard = NSPasteboard.general
+            pasteboard.clearContents()
+            pasteboard.setString(path, forType: .string)
+            print("[DEBUG ScreenshotService] 已复制录屏路径到剪贴板: \(path)")
+        }
+        recordStore?.postLightHint("录屏已保存 ✅ 路径已复制")
+    }
+
+    /// 录屏取消（用户主动丢弃）
+    func announceRecordingCancelled() {
+        recordStore?.postLightHint("已取消录制，未产生文件")
+    }
+
+    /// 录屏失败提示（启动/写盘错误）
+    func announceRecordingError(_ message: String) {
+        DiagnosticCenter.error("Recording", message)
+        recordStore?.postLightHint(message)
+    }
+
+    /// 把录屏存入闪记：首帧缩略图进附件库 + 路径引用记录（不拷贝视频本体，不占数据库体积）
+    /// - Parameters:
+    ///   - fileURL: 导出的 mp4（已在用户目录）
+    ///   - duration: 成片时长（秒），用于展示文案
+    func saveRecordingToFlashNotes(fileURL: URL, duration: Double) {
+        let path = fileURL.path
+        // 稳定哈希：同一文件重复保存走去重（更新时间戳），导出修剪后文件大小变化 → 视为新记录
+        let sizeBytes = (try? FileManager.default.attributesOfItem(atPath: path)[.size] as? Int64) ?? 0
+        let hash = "recording_\(path.hashValue)_\(sizeBytes)"
+
+        Task.detached(priority: .userInitiated) { [weak self] in
+            // 首帧图（宽松容差取关键帧，单帧很快）→ 附件库 → 虚拟路径 + 缓存缩略图
+            var virtualPath: String?
+            let asset = AVURLAsset(url: fileURL)
+            let generator = AVAssetImageGenerator(asset: asset)
+            generator.maximumSize = CGSize(width: 1280, height: 720)
+            generator.requestedTimeToleranceBefore = CMTime(seconds: 0.5, preferredTimescale: 600)
+            generator.requestedTimeToleranceAfter = CMTime(seconds: 0.5, preferredTimescale: 600)
+            if let frame = try? generator.copyCGImage(at: .zero, actualTime: nil) {
+                let image = NSImage(cgImage: frame, size: NSSize(width: frame.width, height: frame.height))
+                do {
+                    let localURL = try FileCoordinator.shared.storeImage(
+                        image, type: .file,
+                        originalName: fileURL.deletingPathExtension().lastPathComponent + ".png")
+                    virtualPath = FileCoordinator.shared.convertToVirtualPath(from: localURL)
+                    ThumbnailGenerator.shared.getThumbnailURLAsync(for: localURL) { _ in }
+                } catch {
+                    print("[DEBUG ScreenshotService] 录屏首帧保存失败: \(error.localizedDescription)")
+                }
+            }
+
+            let seconds = Int(max(0, duration))
+            let durationText = seconds >= 3600
+                ? String(format: "%d:%02d:%02d", seconds / 3600, (seconds % 3600) / 60, seconds % 60)
+                : String(format: "%d:%02d", seconds / 60, seconds % 60)
+
+            await MainActor.run { [weak self] in
+                self?.recordStore?.addRecord(
+                    content: "录屏 \(durationText)：\(path)",
+                    hash: hash,
+                    sourceApp: "Screen Recording",
+                    sourceUrl: virtualPath,
+                    type: .video,
+                    skipAI: true
+                )
+                self?.recordStore?.postLightHint("录屏已存入闪记 ✅")
+                DiagnosticCenter.info("Save", "录屏已存入闪记: \(fileURL.lastPathComponent)")
+            }
+        }
     }
 
     /// 保存截图（推荐入口）：导出 PNG 文件到默认目录 + 复制绝对路径到剪贴板 + 存入闪记
