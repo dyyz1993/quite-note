@@ -411,10 +411,12 @@ struct V2RecordingPreviewView: View {
                     Capsule().fill(Color.white)
                         .frame(width: max(4, geo.size.width * progress), height: 4)
                     Circle().fill(Color.white)
-                        .frame(width: 11, height: 11)
-                        .offset(x: geo.size.width * progress - 5.5)
+                        .frame(width: 12, height: 12)
+                        .offset(x: geo.size.width * progress - 6)
                         .shadow(radius: 2)
                 }
+                // 撑满 18pt 高度再挂手势：此前热区只有 4pt（内容条高度），拖不动
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .contentShape(Rectangle())
                 .gesture(
                     DragGesture(minimumDistance: 0).onChanged { g in
@@ -424,7 +426,7 @@ struct V2RecordingPreviewView: View {
                     }
                 )
             }
-            .frame(height: 14)
+            .frame(height: 18)
 
             Text(hasEdits ? "成片 \(timeLabel(keepDuration))" : timeLabel(duration))
                 .font(.themeCaption)
