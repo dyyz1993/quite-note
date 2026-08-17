@@ -329,6 +329,7 @@ struct V2OCRResultView: View {
         let service = AIService()
         guard service.hasAPIKey() else {
             aiError = "未配置 AI 密钥：设置 → AI 中填写后即可使用"
+            DiagnosticCenter.error("OCR", "AI 整理被拒：读不到钥匙串中的 API 密钥（可能为钥匙串 ACL 限制新签名身份，重存一次密钥即可修复）")
             return
         }
 
