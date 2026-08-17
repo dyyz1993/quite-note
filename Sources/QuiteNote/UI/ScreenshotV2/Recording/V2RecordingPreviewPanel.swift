@@ -287,15 +287,23 @@ struct V2RecordingEditorView: View {
         }
         .onAppear {
             segments = [EditSegment(start: 0, end: duration > 0.001 ? duration : 1)]
+            // 剪映默认选中当前片段：打开即有把手可掐头去尾
+            selectedSegmentID = segments.first?.id
             assetInfo.load(fileURL: fileURL)
         }
         .onChange(of: assetInfo.duration) { newValue in
             if segments.count == 1, let first = segments.first, first.end <= 0.001 || first.end == 1 {
                 segments = [EditSegment(start: 0, end: newValue)]
+                selectedSegmentID = segments.first?.id
             }
         }
         .onChange(of: assetInfo.waveforms.count) { count in
             laneStates = Array(repeating: AudioLaneState(), count: count)
+        }
+        .onChange(of: segments) { newValue in
+            // 选中段被删/被分割后自动落到播放头所在段（至少保留一个选中）
+            if let id = selectedSegmentID, newValue.contains(where: { $0.id == id }) { return }
+            selectedSegmentID = newValue.first(where: { displayOriginal >= $0.start && displayOriginal <= $0.end })?.id ?? newValue.first?.id
         }
         .onChange(of: segments) { _ in schedulePlaybackRebuild() }
         .onChange(of: laneStates) { _ in schedulePlaybackRebuild() }
@@ -682,15 +690,21 @@ struct V2RecordingEditorView: View {
 
     // MARK: 剪辑动作
 
+    /// 播放头所在的段（分割自动作用于它，无需先手动点选）
+    private var playheadSegmentIndex: Int? {
+        segments.firstIndex { displayOriginal >= $0.start && displayOriginal <= $0.end }
+    }
+
     private var canSplit: Bool {
-        guard let idx = selectedIndex else { return false }
+        guard let idx = playheadSegmentIndex else { return false }
         let seg = segments[idx]
         return displayOriginal > seg.start + 0.3 && displayOriginal < seg.end - 0.3
     }
 
     private func splitAtPlayhead() {
-        guard let idx = selectedIndex, canSplit else { return }
+        guard let idx = playheadSegmentIndex, canSplit else { return }
         pushUndo()
+        selectedSegmentID = segments[idx].id
         let seg = segments[idx]
         segments.replaceSubrange(idx...idx, with: [
             EditSegment(start: seg.start, end: displayOriginal),
@@ -1277,13 +1291,19 @@ private struct TrackContent: View {
         ForEach(segments.indices, id: \.self) { i in
             let seg = segments[i]
             let isSelected = seg.id == selectedID
+            // 白框主体：填充整段矩形作为点击热区（描边本身只有 2.5px，点不中）
             RoundedRectangle(cornerRadius: 8)
-                .stroke(isSelected ? Color.white : Color.white.opacity(0.4),
-                        lineWidth: isSelected ? 2.5 : 1.5)
+                .fill(Color.white.opacity(isSelected ? 0.02 : 0.001))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(isSelected ? Color.white : Color.white.opacity(0.4),
+                                lineWidth: isSelected ? 2.5 : 1.5)
+                )
                 .frame(width: seg.length * zoom, height: 48 + CGFloat(waveforms.count) * 26
                        + (dubTakes.isEmpty ? 0 : 26) - 2)
                 .offset(x: seg.start * zoom, y: 18)
-                .onTapGesture { if !isSelected { onSegmentTap?(seg.id) } }
+                .contentShape(Rectangle())
+                .onTapGesture { onSegmentTap?(seg.id) }
 
             if isSelected {
                 TrimHandleView()
