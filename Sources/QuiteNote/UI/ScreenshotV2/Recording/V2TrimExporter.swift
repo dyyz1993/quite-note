@@ -2,12 +2,10 @@ import Foundation
 import AVFoundation
 import CoreMedia
 
-/// 成片导出器：AVMutableComposition（多段删除/音轨静音/分段裁剪的合成结果）
-/// → AVAssetExportSession 直通（不转码，秒级）优先，失败回退重编码
+/// 成片导出器：AVMutableComposition（分段/音轨/配音的合成结果）→ mp4
 ///
-/// 直通只拷贝轨道样本，耗时≈复制文件；已知边界：切点向前对齐最近关键帧
-/// （屏录 GOP 约 1 秒）。直通对轨道组合不兼容时直接 failed，回退
-/// HighestQuality 重编码（慢但帧精确）。
+/// - 纯剪辑（无字幕、音量全 100%）：passthrough 直通（不转码，秒级）
+/// - 带音量/字幕烧录：HighestQuality 重编码 + audioMix + videoComposition
 enum V2TrimExporter {
 
     enum TrimError: LocalizedError {
@@ -19,29 +17,36 @@ enum V2TrimExporter {
         }
     }
 
-    /// 导出合成结果（视频 + 未静音音轨，各自按保留区间拼接）
-    /// - Returns: 导出产物（临时 mp4），调用方负责替换原文件
-    static func exportComposition(_ composition: AVMutableComposition) async throws -> URL {
+    /// - Parameters:
+    ///   - audioMix: 各音轨音量（nil = 不调节，可走直通）
+    ///   - videoComposition: 字幕烧录层（nil = 不烧录，可走直通）
+    static func export(composition: AVMutableComposition,
+                        audioMix: AVAudioMix? = nil,
+                        videoComposition: AVVideoComposition? = nil) async throws -> URL {
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("QuiteNote-Trim-\(UUID().uuidString).mp4")
 
-        // 1. 直通（不转码）
-        if let session = AVAssetExportSession(asset: composition, presetName: AVAssetExportPresetPassthrough) {
-            if let out = try? await run(session: session, outputURL: tempURL) {
-                return out
+        // 1. 直通（不转码）：仅纯剪辑可用
+        if audioMix == nil && videoComposition == nil {
+            if let session = AVAssetExportSession(asset: composition, presetName: AVAssetExportPresetPassthrough) {
+                if let out = try? await run(session: session, outputURL: tempURL) {
+                    return out
+                }
+                try? FileManager.default.removeItem(at: tempURL)
             }
-            try? FileManager.default.removeItem(at: tempURL)
         }
 
-        // 2. 回退：重编码（帧精确，耗时与时长成正比）
+        // 2. 重编码：支持音量调节与字幕烧录（耗时与时长成正比）
         if let session = AVAssetExportSession(asset: composition, presetName: AVAssetExportPresetHighestQuality) {
+            session.audioMix = audioMix
+            session.videoComposition = videoComposition
             if let out = try? await run(session: session, outputURL: tempURL) {
                 return out
             }
             try? FileManager.default.removeItem(at: tempURL)
         }
 
-        throw TrimError.exportFailed("直通与重编码均失败（轨道不兼容或文件被占用）")
+        throw TrimError.exportFailed("导出失败（轨道不兼容或文件被占用）")
     }
 
     private static func run(session: AVAssetExportSession, outputURL: URL) async throws -> URL {

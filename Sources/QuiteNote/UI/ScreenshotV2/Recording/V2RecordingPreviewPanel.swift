@@ -4,72 +4,40 @@ import AVFoundation
 import Combine
 import CoreMedia
 
-// MARK: - 裁剪模型（纯值类型，秒域）
+// MARK: - 剪辑模型（纯值类型，原始时间轴秒域）
 
-/// 一段被裁掉的时间区间
-struct CutSegment: Identifiable, Equatable {
+/// 一个保留段（成片 = 所有段按序拼接）
+struct EditSegment: Identifiable, Equatable {
     let id = UUID()
     var start: Double
     var end: Double
     var length: Double { end - start }
 }
 
-enum CutTarget: Equatable {
-    case video
-    case track(Int)
+/// 一段补录配音（独立 m4a 文件 + 在全片时间轴上的起止）
+struct DubTake: Identifiable, Equatable {
+    let id = UUID()
+    var start: Double
+    var end: Double
+    var fileURL: URL
 }
 
-struct TimelineSelection: Equatable {
-    var target: CutTarget
-    var startFrac: Double
-    var endFrac: Double
+/// 一条字幕
+struct CaptionChunk: Identifiable, Equatable {
+    let id = UUID()
+    var start: Double
+    var end: Double
+    var text: String
 }
 
-/// 区间数学（排序/合并/求补集）
-enum V2CutMath {
-    /// 排序 + 合并重叠 + 去掉过短片段
-    static func normalize(_ input: [CutSegment]) -> [CutSegment] {
-        let sorted = input.sorted { $0.start < $1.start }
-        var out: [CutSegment] = []
-        for c in sorted {
-            if let last = out.last, c.start <= last.end {
-                out[out.count - 1].end = max(last.end, c.end)
-            } else {
-                out.append(c)
-            }
-        }
-        return out.filter { $0.length > 0.01 }
-    }
-
-    /// [lo, hi] 减去 cuts 的补集（保留区间列表）
-    static func keepRanges(lo: Double, hi: Double, minus cuts: [CutSegment]) -> [(Double, Double)] {
-        var result: [(Double, Double)] = []
-        var cursor = lo
-        for c in normalize(cuts) {
-            let s = max(c.start, lo), e = min(c.end, hi)
-            if e <= cursor || s >= hi { continue }
-            if s > cursor { result.append((cursor, s)) }
-            cursor = max(cursor, e)
-        }
-        if cursor < hi { result.append((cursor, hi)) }
-        return result
-    }
-
-    /// [lo, t] 与 cuts 的重叠总长（原始时间 → 成片时间的偏移量）
-    static func removedBefore(_ t: Double, lo: Double, hi: Double, cuts: [CutSegment]) -> Double {
-        var removed = 0.0
-        for c in normalize(cuts) {
-            let s = max(c.start, lo), e = min(c.end, hi)
-            guard e > lo, s < hi else { continue }
-            removed += max(0, min(e, t) - s)
-        }
-        return removed
-    }
+/// 音轨状态（音量 0...2，1 = 100%）
+struct AudioLaneState: Equatable {
+    var volume: Double = 1
+    var muted: Bool = false
 }
 
 // MARK: - 窗口与控制器
 
-/// 支持 ESC 关闭的预览窗口面板
 final class V2RecordingPreviewPanel: NSPanel {
     override var canBecomeKey: Bool { true }
     override func cancelOperation(_ sender: Any?) {
@@ -77,12 +45,9 @@ final class V2RecordingPreviewPanel: NSPanel {
     }
 }
 
-/// 录屏预览工作台：录完即进，自定义播放器 + 时间线（缩略图/音轨波形）
-/// + 完整裁剪（掐头去尾/中间多段删除/音轨静音/音轨分段裁剪）
-///
-/// 交互定位（对应原型 ⑤⑥）：停止录制 → 文件已落盘 + 路径已复制 → 打开本窗口。
-/// 播放的是「合成结果」——任何裁剪/静音实时反映在播放里（所见即所得）；
-/// 导出与播放共用同一个 AVMutableComposition。
+/// 录屏预览工作台（剪映式快剪）：
+/// 拖动轨道浏览 + 播放头拖动定位 + 分段剪辑（掐头去尾/分割/删除）
+/// + 轨头音量静音 + 补录配音 + 自动字幕（macOS 26+）+ 直通导出
 @MainActor
 final class V2RecordingPreviewController {
     static let shared = V2RecordingPreviewController()
@@ -92,19 +57,19 @@ final class V2RecordingPreviewController {
     func show(fileURL: URL) {
         if panel == nil {
             let p = V2RecordingPreviewPanel(
-                contentRect: NSRect(x: 0, y: 0, width: 960, height: 700),
+                contentRect: NSRect(x: 0, y: 0, width: 980, height: 720),
                 styleMask: [.titled, .closable, .miniaturizable, .resizable],
                 backing: .buffered,
                 defer: false
             )
-            p.title = "录屏预览"
+            p.title = "快剪"
             p.level = .floating
             p.isFloatingPanel = true
             p.hidesOnDeactivate = false
             p.isReleasedWhenClosed = false
             p.appearance = NSAppearance(named: .darkAqua)
             p.backgroundColor = NSColor(calibratedWhite: 0.12, alpha: 1.0)
-            p.minSize = NSSize(width: 760, height: 560)
+            p.minSize = NSSize(width: 780, height: 580)
             panel = p
         }
 
@@ -116,13 +81,13 @@ final class V2RecordingPreviewController {
 
         panel?.title = fileURL.deletingPathExtension().lastPathComponent
         panel?.contentView = NSHostingView(
-            rootView: V2RecordingPreviewView(fileURL: fileURL, player: player))
+            rootView: V2RecordingEditorView(fileURL: fileURL, player: player))
         panel?.center()
         NSApp.activate(ignoringOtherApps: true)
         panel?.makeKeyAndOrderFront(nil)
         player.play()
 
-        DiagnosticCenter.info("Recording", "预览窗口已打开：\(fileURL.lastPathComponent)")
+        DiagnosticCenter.info("Recording", "快剪窗口已打开：\(fileURL.lastPathComponent)")
     }
 
     func close() {
@@ -167,7 +132,6 @@ final class V2PlaybackModel: ObservableObject {
         if player.timeControlStatus == .playing {
             player.pause()
         } else {
-            // 播放到末尾后再点播放：从头重播（否则 play() 立即结束，看起来像按钮失灵）
             if let itemDuration = player.currentItem?.duration,
                CMTIME_IS_NUMERIC(itemDuration),
                currentTime >= itemDuration.seconds - 0.05 {
@@ -192,18 +156,19 @@ final class V2PlaybackModel: ObservableObject {
 // MARK: - 视频画面层
 
 private final class PlayerLayerNSView: NSView {
-    /// 直接持有播放层实例，不依赖懒创建的 backing layer
-    /// （此前用 `layer as! AVPlayerLayer` 在 layer 未创建时必崩，SIGTRAP）
     let playerLayer = AVPlayerLayer()
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
-        wantsLayer = true
-        layer = playerLayer
+        setupLayer()
     }
 
     required init?(coder: NSCoder) {
         super.init(coder: coder)
+        setupLayer()
+    }
+
+    private func setupLayer() {
         wantsLayer = true
         layer = playerLayer
     }
@@ -231,43 +196,56 @@ private struct PlayerLayerView: NSViewRepresentable {
     }
 }
 
-// MARK: - 预览主视图
+// MARK: - 编辑器主视图
 
-struct V2RecordingPreviewView: View {
+struct V2RecordingEditorView: View {
     let fileURL: URL
     let player: AVPlayer
 
     @StateObject private var playback: V2PlaybackModel
     @StateObject private var assetInfo = V2RecordingAssetInfo()
 
-    // 掐头去尾（0...1 全片比例）
-    @State private var trimStart: Double = 0
-    @State private var trimEnd: Double = 1
-    // 中间多段删除（视频级：画面+全部声音都剪掉）
-    @State private var videoCuts: [CutSegment] = []
-    // 每条音轨自己的裁剪（只静音该轨该段，画面与另一轨不受影响）
-    @State private var trackCuts: [[CutSegment]] = []
-    // 整轨静音（导出时不写入）
-    @State private var mutedTracks: Set<Int> = []
-    // 时间线拖选（待确认的删除区间）
-    @State private var selection: TimelineSelection?
+    // 分段剪辑
+    @State private var segments: [EditSegment] = []
+    @State private var selectedSegmentID: UUID?
+    @State private var zoom: Double = 40          // px / 秒
+    @State private var t: Double = 0              // 播放头（原始时间轴）
+    @State private var undoStack: [[EditSegment]] = []
 
+    // 音轨（与 assetInfo.waveforms 一一对应）+ 配音轨
+    @State private var laneStates: [AudioLaneState] = []
+    @State private var dubState = AudioLaneState()
+    @State private var dubTakes: [DubTake] = []
+
+    // 字幕
+    @State private var captions: [CaptionChunk] = []
+    @State private var captionsOn = false
+    @State private var captionBusy = false
+    @State private var editingCaption: CaptionChunk?
+
+    // 配音
+    @State private var dubRecorder: V2DubRecorder?
+    @State private var dubTake: DubTake?
+    @State private var dubLevel: Float = 0
+
+    // 杂项
+    @State private var snapIndicator: Double?
+    @State private var trimDragBase: [EditSegment]?
+    @State private var panBaseOriginal: Double?
+    @State private var volumePopoverLane: Int?
     @State private var isExporting = false
     @State private var copied = false
-    @State private var exportError: String?
-    @State private var rebuildTask: Task<Void, Never>?
     @State private var savedToNotes = false
-    /// 磁吸命中时的吸附位置（全片比例），用于绘制吸附指示线
-    @State private var snapIndicator: Double?
-    /// 循环播放中的选段（删除前预听）
-    @State private var loopingSelection: TimelineSelection?
-    /// 选区拖拽模式：选区内起手=平移（宽度不变），选区外起手=新建
-    @State private var selectionDrag: SelectionDragMode?
+    @State private var rebuildTask: Task<Void, Never>?
 
-    private enum SelectionDragMode {
-        case create(anchor: Double)
-        case move(baseStart: Double, baseWidth: Double, gestureAnchor: Double)
-    }
+    private let dubColor = Color(red: 245/255, green: 158/255, blue: 11/255)
+    private let capColor = Color(red: 34/255, green: 197/255, blue: 94/255)
+
+    private var duration: Double { max(0.001, assetInfo.duration) }
+    private var keepDuration: Double { segments.reduce(0) { $0 + $1.length } }
+    private var dubbing: Bool { dubTake != nil }
+    private var hasEdits: Bool { segments.count > 1 || (segments.first.map { $0.start > 0.01 || $0.end < duration - 0.01 } ?? false) }
+    private var selectedIndex: Int? { segments.firstIndex(where: { $0.id == selectedSegmentID }) }
 
     init(fileURL: URL, player: AVPlayer) {
         self.fileURL = fileURL
@@ -275,79 +253,66 @@ struct V2RecordingPreviewView: View {
         _playback = StateObject(wrappedValue: V2PlaybackModel(player: player))
     }
 
-    private var duration: Double { max(0.001, assetInfo.duration) }
-    private var trimStartDur: Double { trimStart * duration }
-    private var trimEndDur: Double { trimEnd * duration }
+    // MARK: 时间映射（原始 ↔ 成片）
 
-    private var normalizedCuts: [CutSegment] {
-        V2CutMath.normalize(videoCuts)
-    }
-
-    /// 成片时长（掐头去尾 + 中间删除后）
-    private var keepDuration: Double {
-        (trimEndDur - trimStartDur)
-            - V2CutMath.removedBefore(trimEndDur, lo: trimStartDur, hi: trimEndDur, cuts: videoCuts)
-    }
-
-    private var hasEdits: Bool {
-        isTrimmed || !videoCuts.isEmpty
-            || trackCuts.contains(where: { !$0.isEmpty })
-            || !mutedTracks.isEmpty
-    }
-
-    private var isTrimmed: Bool { trimStart > 0.001 || trimEnd < 0.999 }
-
-    // MARK: 时间映射（原始时间轴 ↔ 成片时间轴；无裁剪时恒等）
-
-    private func timelineTime(fromOriginal t: Double) -> Double {
-        t - trimStartDur
-            - V2CutMath.removedBefore(min(max(t, trimStartDur), trimEndDur),
-                                      lo: trimStartDur, hi: trimEndDur, cuts: videoCuts)
+    private func timelineTime(fromOriginal o: Double) -> Double {
+        var acc: Double = 0
+        for g in segments {
+            if o <= g.start { return acc }
+            if o >= g.end { acc += g.length } else { return acc + (o - g.start) }
+        }
+        return acc
     }
 
     private func originalTime(fromTimeline x: Double) -> Double {
-        var cursor = trimStartDur
         var remaining = max(0, x)
-        for c in normalizedCuts {
-            let s = max(c.start, trimStartDur), e = min(c.end, trimEndDur)
-            guard e > cursor, s < trimEndDur else { continue }
-            if remaining < s - cursor { return cursor + remaining }
-            remaining -= s - cursor
-            cursor = e
+        for g in segments {
+            if remaining <= g.length { return g.start + remaining }
+            remaining -= g.length
         }
-        return cursor + remaining
+        return segments.last?.end ?? 0
     }
 
     /// 播放头显示用的原始时间
-    private var displayOriginalTime: Double {
-        originalTime(fromTimeline: playback.currentTime)
+    private var displayOriginal: Double {
+        min(duration, max(0, originalTime(fromTimeline: playback.currentTime)))
     }
 
     var body: some View {
         VStack(spacing: 0) {
             playerArea
+            controlBar
             timelineSection
-            segmentBar
-            infoStrip
-            actionBar
+            footer
         }
-        .onAppear { assetInfo.load(fileURL: fileURL) }
-        .onChange(of: assetInfo.waveforms.count) { _ in
-            trackCuts = Array(repeating: [], count: assetInfo.waveforms.count)
+        .onAppear {
+            segments = [EditSegment(start: 0, end: duration > 0.001 ? duration : 1)]
+            assetInfo.load(fileURL: fileURL)
         }
-        .onChange(of: videoCuts) { _ in schedulePlaybackRebuild() }
-        .onChange(of: trackCuts) { _ in schedulePlaybackRebuild() }
-        .onChange(of: mutedTracks) { _ in schedulePlaybackRebuild() }
-        .onChange(of: trimStart) { _ in schedulePlaybackRebuild() }
-        .onChange(of: trimEnd) { _ in schedulePlaybackRebuild() }
-        .onChange(of: selection) { _ in loopingSelection = nil }
-        .onReceive(playback.$currentTime) { current in
-            // 循环预听：播到选段末尾跳回选段开头
-            guard let loop = loopingSelection else { return }
-            let original = originalTime(fromTimeline: current)
-            if original >= duration * loop.endFrac - 0.05 {
-                playback.seek(to: timelineTime(fromOriginal: duration * loop.startFrac))
+        .onChange(of: assetInfo.duration) { newValue in
+            if segments.count == 1, let first = segments.first, first.end <= 0.001 || first.end == 1 {
+                segments = [EditSegment(start: 0, end: newValue)]
             }
+        }
+        .onChange(of: assetInfo.waveforms.count) { count in
+            laneStates = Array(repeating: AudioLaneState(), count: count)
+        }
+        .onChange(of: segments) { _ in schedulePlaybackRebuild() }
+        .onChange(of: laneStates) { _ in schedulePlaybackRebuild() }
+        .onChange(of: dubState) { _ in schedulePlaybackRebuild() }
+        .onChange(of: dubTakes) { _ in schedulePlaybackRebuild() }
+        .onReceive(playback.$currentTime) { current in
+            tick(current: current)
+        }
+    }
+
+    /// 周期回调：配音生长 / 成片循环
+    private func tick(current: Double) {
+        let original = originalTime(fromTimeline: current)
+        if dubbing {
+            dubTake?.end = min(duration, original)
+        } else if playback.isPlaying, current >= keepDuration - 0.05, keepDuration > 0.1 {
+            playback.seek(to: 0)   // 成片循环
         }
     }
 
@@ -358,7 +323,7 @@ struct V2RecordingPreviewView: View {
             PlayerLayerView(player: player)
                 .background(Color.black)
 
-            if !playback.isPlaying {
+            if !playback.isPlaying && !dubbing {
                 Button(action: { playback.toggle() }) {
                     Image(systemName: "play.fill")
                         .font(.system(size: 30, weight: .semibold))
@@ -372,759 +337,560 @@ struct V2RecordingPreviewView: View {
             }
 
             VStack {
+                HStack {
+                    Text("\(timeLabel(displayOriginal)) / \(timeLabel(keepDuration))")
+                        .font(.themeCaption)
+                        .monospacedDigit()
+                        .foregroundColor(.white.opacity(0.9))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Capsule().fill(Color.black.opacity(0.4)))
+                    Spacer()
+                    if dubbing {
+                        HStack(spacing: 6) {
+                            Circle().fill(Color.themeRed500).frame(width: 8, height: 8)
+                                .opacity(dubLevel > 0.25 ? 1 : 0.3)
+                            Text("配音中 · 跟着画面说话")
+                                .font(.themeCaption)
+                                .foregroundColor(.white)
+                            AudioLevelBars(level: dubLevel, color: dubColor)
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Capsule().fill(dubColor.opacity(0.92)))
+                    }
+                }
+                .padding(12)
                 Spacer()
-                customControls
-                    .padding(.horizontal, ThemeSpacing.px4.rawValue)
-                    .padding(.bottom, ThemeSpacing.px2.rawValue + 4)
-                    .background(
-                        LinearGradient(colors: [.clear, .black.opacity(0.65)],
-                                       startPoint: .top, endPoint: .bottom)
-                    )
+            }
+
+            // 字幕叠加（烧录效果的预览）
+            if captionsOn, let cap = currentCaption {
+                Text(cap.text)
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 6)
+                    .background(RoundedRectangle(cornerRadius: 6).fill(Color.black.opacity(0.35)))
+                    .padding(.bottom, 20)
+                    .frame(maxHeight: .infinity, alignment: .bottom)
+                    .allowsHitTesting(false)
             }
         }
-        .frame(minHeight: 240)
+        .frame(minHeight: 230)
         .contentShape(Rectangle())
-        .onTapGesture { playback.toggle() }
+        .onTapGesture { if !dubbing { playback.toggle() } }
     }
 
-    private var customControls: some View {
-        HStack(spacing: ThemeSpacing.px3.rawValue) {
-            Button(action: { playback.toggle() }) {
+    private var currentCaption: CaptionChunk? {
+        let original = displayOriginal
+        return captions.first { original >= $0.start && original <= $0.end }
+    }
+
+    // MARK: 控制条
+
+    private var controlBar: some View {
+        HStack(spacing: ThemeSpacing.px2.rawValue) {
+            Button(action: { if !dubbing { playback.toggle() } }) {
                 Image(systemName: playback.isPlaying ? "pause.fill" : "play.fill")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(.white)
-                    .frame(width: 26, height: 26)
-                    .contentShape(Rectangle())
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(Color.themeGray900)
+                    .frame(width: 28, height: 28)
+                    .background(Circle().fill(Color.white))
             }
             .buttonStyle(.plain)
 
-            Text(timeLabel(displayOriginalTime))
+            Text(timeLabel(displayOriginal))
+                .font(.themeBody.weight(.semibold))
+                .monospacedDigit()
+                .fixedSize()
+            Text("/ \(timeLabel(keepDuration))")
                 .font(.themeCaption)
                 .monospacedDigit()
                 .fixedSize()
-                .foregroundColor(.white)
+                .foregroundColor(.themeTextTertiary)
 
-            GeometryReader { geo in
-                let progress = min(1, max(0, displayOriginalTime / duration))
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Color.white.opacity(0.25)).frame(height: 4)
-                    Capsule().fill(Color.white)
-                        .frame(width: max(4, geo.size.width * progress), height: 4)
-                    Circle().fill(Color.white)
-                        .frame(width: 12, height: 12)
-                        .offset(x: geo.size.width * progress - 6)
-                        .shadow(radius: 2)
-                }
-                // 撑满 18pt 高度再挂手势：此前热区只有 4pt（内容条高度），拖不动
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .contentShape(Rectangle())
-                .gesture(
-                    DragGesture(minimumDistance: 0).onChanged { g in
-                        let fraction = min(1, max(0, g.location.x / max(1, geo.size.width)))
-                        let original = duration * fraction
-                        playback.seek(to: timelineTime(fromOriginal: original))
-                    }
-                )
+            Spacer()
+
+            // 缩放
+            HStack(spacing: 3) {
+                Button(action: { zoom = max(14, zoom / 1.35) }) { Image(systemName: "minus") }
+                    .frame(width: 24, height: 24)
+                Text("\(Int(zoom))px/s").frame(minWidth: 40)
+                Button(action: { zoom = min(90, zoom * 1.35) }) { Image(systemName: "plus") }
+                    .frame(width: 24, height: 24)
             }
-            .frame(height: 18)
+            .font(.themeCaption)
+            .foregroundColor(.themeTextSecondary)
+            .buttonStyle(.plain)
 
-            Text(hasEdits ? "成片 \(timeLabel(keepDuration))" : timeLabel(duration))
-                .font(.themeCaption)
-                .monospacedDigit()
-                .fixedSize()
-                .foregroundColor(hasEdits ? .themeYellow500 : .white.opacity(0.8))
-        }
-    }
-
-    // MARK: 时间线（缩略图 + 音轨波形 + 播放头 + 手柄 + 拖选）
-
-    private var timelineSection: some View {
-        VStack(spacing: ThemeSpacing.px1.rawValue + 4) {
-            if assetInfo.thumbnails.isEmpty && assetInfo.waveforms.isEmpty {
-                HStack(spacing: ThemeSpacing.px2.rawValue) {
-                    ProgressView().controlSize(.small)
-                    Text("正在分析画面与音轨…")
-                        .font(.themeCaption)
-                        .foregroundColor(.themeTextTertiary)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 24)
-            } else {
-                HStack(alignment: .top, spacing: ThemeSpacing.px2.rawValue) {
-                    // 左侧标签列（与时间线行高对齐）
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("画面")
-                            .font(.themeCaptionSmall)
-                            .foregroundColor(.themeTextTertiary)
-                            .frame(height: 44, alignment: .center)
-                        ForEach(assetInfo.waveforms.indices, id: \.self) { i in
-                            HStack(spacing: 4) {
-                                Text(assetInfo.waveforms[i].label)
-                                    .font(.themeCaptionSmall)
-                                    .foregroundColor(assetInfo.waveforms[i].color)
-                                    .fixedSize()
-                                Button(action: { toggleMute(i) }) {
-                                    Image(systemName: mutedTracks.contains(i) ? "speaker.slash.fill" : "speaker.wave.2.fill")
-                                        .font(.system(size: 10))
-                                        .foregroundColor(mutedTracks.contains(i) ? Color.themeRed400 : assetInfo.waveforms[i].color)
-                                        .frame(width: 16, height: 16)
-                                        .contentShape(Rectangle())
-                                }
-                                .buttonStyle(.plain)
-                                .help(mutedTracks.contains(i) ? "此轨已静音（点击恢复）" : "静音此轨（导出不含）")
-                            }
-                            .frame(height: 26, alignment: .leading)
-                        }
-                    }
-                    .frame(width: 84, alignment: .leading)
-
-                    // 时间线主体（所有元素共享同一坐标系）
-                    GeometryReader { geo in
-                        let width = max(1, geo.size.width)
-                        ZStack(alignment: .topLeading) {
-                            filmstripView
-                                .frame(height: 44, alignment: .top)
-
-                            waveformRows(width: width)
-                                .padding(.top, 48)
-
-                            // 掐头去尾遮罩（左右压暗 + 黄线）
-                            trimShadow(width: width)
-
-                            // 拖选（视频级）：缩略图条上的红色选区
-                            if let sel = selection, case .video = sel.target {
-                                selectionOverlay(start: sel.startFrac, end: sel.endFrac)
-                                    .frame(height: 44)
-                            }
-
-                            // 智能卡点：◆ 场景切换（点卡点跳转播放）
-                            sceneMarkers(width: width)
-
-                            // 磁吸指示线（手柄吸附到卡点时显示）
-                            if let snap = snapIndicator {
-                                Rectangle()
-                                    .fill(Color.themeYellow500.opacity(0.8))
-                                    .frame(width: 1.5)
-                                    .offset(x: width * snap)
-                                    .allowsHitTesting(false)
-                            }
-
-                            // 播放头：白线 + 顶部圆形抓手（可拖动定位画面）
-                            Rectangle()
-                                .fill(Color.white)
-                                .frame(width: 1.5)
-                                .offset(x: width * min(1, max(0, displayOriginalTime / duration)))
-                                .shadow(color: .black.opacity(0.6), radius: 1)
-                                .allowsHitTesting(false)
-                            Circle()
-                                .fill(Color.white)
-                                .frame(width: 7, height: 7)
-                                .offset(x: width * min(1, max(0, displayOriginalTime / duration)) - 3.5)
-                                .shadow(color: .black.opacity(0.5), radius: 1)
-                                .allowsHitTesting(false)
-
-                            // 播放头拖拽热区（比线宽，named 坐标空间保证拖动跟手不漂移）
-                            Color.clear
-                                .frame(width: 18, height: timelineHeight - 44)
-                                .contentShape(Rectangle())
-                                .gesture(
-                                    DragGesture(minimumDistance: 0, coordinateSpace: .named("timeline"))
-                                        .onChanged { g in
-                                            let fraction = min(1, max(0, g.location.x / width))
-                                            playback.seek(to: timelineTime(fromOriginal: duration * fraction))
-                                        }
-                                )
-                                .offset(x: width * min(1, max(0, displayOriginalTime / duration)) - 9)
-                                .help("拖动播放头定位画面")
-
-                            // 黄色手柄（掐头去尾）
-                            TrimHandle()
-                                .offset(x: width * trimStart - 5)
-                                .gesture(handleDrag(width: width, isStart: true))
-                            TrimHandle()
-                                .offset(x: width * trimEnd - 5)
-                                .gesture(handleDrag(width: width, isStart: false))
-
-                            // 缩略图条自身的拖选手势（视频级删除）
-                            Color.clear
-                                .frame(height: 44)
-                                .contentShape(Rectangle())
-                                .gesture(rowDragGesture(target: .video, width: width))
-                        }
-                        // 点击定位（点手柄/波形行以外区域）+ 定义播放头拖拽用的坐标空间
-                        .contentShape(Rectangle())
-                        .coordinateSpace(name: "timeline")
-                        .gesture(
-                            SpatialTapGesture().onEnded { tap in
-                                let fraction = min(1, max(0, tap.location.x / width))
-                                playback.seek(to: timelineTime(fromOriginal: duration * fraction))
-                            }
-                        )
-                    }
-                    .frame(height: timelineHeight)
-                }
+            toolButton("✂ 分割", disabled: !canSplit) { splitAtPlayhead() }
+            toolButton("🗑 删除此段", disabled: segments.count < 2 || selectedIndex == nil) { deleteSelected() }
+            toolButton(dubbing ? "⏹ 结束配音" : "🎙 补录配音",
+                       prominent: dubbing) { toggleDub() }
+            if V2CaptionTranscriber.available {
+                toolButton(captionBusy ? "识别中…" : (captions.isEmpty ? "💬 自动字幕" : (captionsOn ? "💬 字幕 ✓" : "💬 字幕 关")),
+                           disabled: captionBusy || (captions.isEmpty && !canTranscribe)) { toggleCaptions() }
             }
-
-            // 修剪信息行 + 选区操作
-            trimInfoRow
+            toolButton("↩ 撤销", disabled: undoStack.isEmpty) { undo() }
+            toolButton(isExporting ? "导出中…" : "导出成片", prominent: true, disabled: isExporting || dubbing) { exportFinal() }
         }
         .padding(.horizontal, ThemeSpacing.px4.rawValue)
-        .padding(.top, ThemeSpacing.px2.rawValue + 2)
-        .padding(.bottom, ThemeSpacing.px1.rawValue + 2)
-        .background(Color.themeGray900)
+        .padding(.vertical, ThemeSpacing.px2.rawValue)
+        .background(Color.themeGray800.opacity(0.6))
     }
 
-    /// 缩略图条：按画面变化折叠——静止段折叠成暗色插槽，有变化/卡点附近保留画面
-    private var filmstripView: some View {
-        HStack(spacing: 1) {
-            ForEach(assetInfo.thumbnails.indices, id: \.self) { i in
-                filmSlot(i)
-            }
+    private func toolButton(_ text: String, prominent: Bool = false,
+                            disabled: Bool = false, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(text)
+                .font(.themeCaption)
+                .fixedSize()
+                .foregroundColor(prominent ? .white : .themeTextPrimary)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 5)
+                .background(
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(prominent ? Color.themeRed500 : Color.themeGray700)
+                )
+                .opacity(disabled ? 0.35 : 1)
         }
+        .buttonStyle(.plain)
+        .disabled(disabled)
     }
 
-    @ViewBuilder
-    private func filmSlot(_ i: Int) -> some View {
-        if slotKeepsThumbnail(i) {
-            Image(nsImage: assetInfo.thumbnails[i])
-                .resizable()
-                .aspectRatio(contentMode: .fill)
-                .frame(maxWidth: .infinity, maxHeight: 44)
-                .clipped()
-                .cornerRadius(2)
-        } else {
-            // 折叠插槽：暗色 + 虚线框 + 省略号，表示这段画面基本没变
-            ZStack {
-                Rectangle()
-                    .fill(Color.themeGray800.opacity(0.75))
-                Text("⋯")
-                    .font(.themeCaption)
-                    .foregroundColor(.themeTextTertiary.opacity(0.6))
-            }
-            .frame(maxWidth: .infinity, maxHeight: 44)
-            .cornerRadius(2)
-            .overlay(
-                RoundedRectangle(cornerRadius: 2)
-                    .stroke(Color.themeBorderSubtle, style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
-            )
-        }
-    }
+    // MARK: 时间线
 
-    /// 槽位是否保留画面：能量够（画面有变化），或紧邻场景卡点（切换前后要能看到）
-    private func slotKeepsThumbnail(_ i: Int) -> Bool {
-        guard assetInfo.slotEnergies.count == assetInfo.thumbnails.count,
-              !assetInfo.thumbnails.isEmpty else { return true }
-        if assetInfo.slotEnergies[i] >= 0.05 { return true }
+    private var timelineSection: some View {
+        HStack(spacing: 0) {
+            gutter
+            GeometryReader { geo in
+                let width = max(1, geo.size.width)
+                ZStack(alignment: .topLeading) {
+                    // 半透明底（被删区域由 gap 覆盖层表达）
+                    Color.themeGray900.opacity(0.25)
 
-        let slotDuration = duration / Double(assetInfo.thumbnails.count)
-        let slotStart = Double(i) * slotDuration
-        // 卡点前一格与后两格保留画面（切换的前因后果）
-        for cut in assetInfo.sceneCuts where cut > slotStart - slotDuration && cut < slotStart + 2.5 * slotDuration {
-            return true
-        }
-        return false
-    }
+                    // 轨道内容（随播放头平移）
+                    TrackContent(
+                        segments: segments,
+                        selectedID: selectedSegmentID,
+                        thumbnails: assetInfo.thumbnails,
+                        waveforms: assetInfo.waveforms,
+                        laneStates: laneStates,
+                        dubTakes: dubTakes,
+                        dubGrowingEnd: dubTake?.end,
+                        captions: captions,
+                        duration: duration,
+                        zoom: zoom,
+                        playheadFraction: displayOriginal / duration,
+                        snapFraction: snapIndicator,
+                        onSegmentTap: { id in selectedSegmentID = id },
+                        onHandleDrag: { index, isStart, g in handleTrim(index: index, isStart: isStart, g: g) },
+                        onHandleEnd: {
+                            trimDragBase = nil
+                            snapIndicator = nil
+                        },
+                        onCaptionTap: { cap in editingCaption = cap })
+                    .frame(width: duration * zoom, alignment: .topLeading)
+                    .offset(x: centerX(width: width) - displayOriginal * zoom)
+                    .gesture(panGesture(width: width))
+                    .simultaneousGesture(SpatialTapGesture().onEnded { tap in
+                        if !dubbing {
+                            let original = min(duration, max(0, displayOriginal + (tap.location.x - centerX(width: width)) / zoom))
+                            t = original
+                            playback.seek(to: timelineTime(fromOriginal: original))
+                        }
+                    })
 
-    /// ◆ 场景切换卡点（缩略图条上方一排，点击跳转）
-    private func sceneMarkers(width: CGFloat) -> some View {
-        ForEach(assetInfo.sceneCuts, id: \.self) { time in
-            Text("◆")
-                .font(.system(size: 9))
-                .foregroundColor(.themeYellow500)
-                .frame(width: 12, height: 12)
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    playback.seek(to: timelineTime(fromOriginal: time))
+                    // 播放头（中央固定，可拖动）
+                    Rectangle()
+                        .fill(Color.white)
+                        .frame(width: 1.5)
+                        .offset(x: centerX(width: width))
+                        .allowsHitTesting(false)
+                    Circle()
+                        .fill(Color.white)
+                        .frame(width: 7, height: 7)
+                        .offset(x: centerX(width: width) - 3.5)
+                        .allowsHitTesting(false)
+                    Rectangle()
+                        .fill(Color.clear)
+                        .frame(width: 24, height: timelineHeight)
+                        .contentShape(Rectangle())
+                        .offset(x: centerX(width: width) - 12)
+                        .gesture(playheadDrag(width: width))
                 }
-                .help("场景切换 \(timeLabel(time)) · 点击跳转")
-                .offset(x: width * time / duration - 6, y: -10)
+            }
+            .frame(height: timelineHeight)
         }
+        .background(Color(red: 14/255, green: 21/255, blue: 36/255))
+        .overlay(
+            captionEditor.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+        )
     }
 
-    /// 音轨波形行（含该轨裁剪红区、该轨拖选、拖选手势）
-    private func waveformRows(width: CGFloat) -> some View {
-        VStack(spacing: 3) {
-            ForEach(assetInfo.waveforms.indices, id: \.self) { i in
-                waveRow(i: i, width: width)
-            }
+    private func centerX(width: CGFloat) -> CGFloat { width / 2 }
+
+    /// 把手修剪：以拖拽起手时的分段快照为基准，吸附播放头，钳制相邻段
+    private func handleTrim(index: Int, isStart: Bool, g: DragGesture.Value) {
+        guard !dubbing, segments.indices.contains(index) else { return }
+        if playback.isPlaying { playback.pause() }
+        if trimDragBase == nil {
+            trimDragBase = segments
+            pushUndo()
         }
-    }
-
-    private func waveRow(i: Int, width: CGFloat) -> some View {
-        let waveform = assetInfo.waveforms[i]
-        let cuts = trackCuts.indices.contains(i) ? trackCuts[i] : []
-        let rowPeaks = assetInfo.audioPeaks.indices.contains(i) ? assetInfo.audioPeaks[i] : []
-        let rowSelection: TimelineSelection? = {
-            guard let sel = selection, case .track(let ti) = sel.target, ti == i else { return nil }
-            return sel
-        }()
-
-        return ZStack {
-            WaveformBars(values: waveform.values, color: waveform.color,
-                         dimmed: mutedTracks.contains(i))
-                .frame(height: 26)
-
-            ForEach(cuts) { cut in
-                redZone(startFrac: cut.start / duration,
-                        lengthFrac: cut.length / duration)
-                    .frame(height: 26)
+        guard var base = trimDragBase, base.indices.contains(index) else { return }
+        var seg = base[index]
+        let delta = Double(g.translation.width) / zoom
+        var snapped = false
+        if isStart {
+            let prevEnd = index > 0 ? base[index - 1].end : 0
+            var newStart = min(seg.end - 0.5, max(prevEnd, seg.start + delta))
+            if abs(newStart - displayOriginal) < 0.35 {
+                newStart = min(seg.end - 0.5, max(prevEnd, displayOriginal))
+                snapped = true
             }
-
-            // ▲ 音频高潮卡点（该轨波形底部，点击跳转）
-            ForEach(rowPeaks, id: \.self) { time in
-                Text("▲")
-                    .font(.system(size: 9))
-                    .foregroundColor(waveform.color)
-                    .frame(width: 12, height: 10)
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        playback.seek(to: timelineTime(fromOriginal: time))
-                    }
-                    .help("音频高潮 \(timeLabel(time)) · 点击跳转")
-                    .offset(x: width * time / duration - 6, y: 14)
-            }
-
-            if let sel = rowSelection {
-                selectionOverlay(start: sel.startFrac, end: sel.endFrac)
-                    .frame(height: 26)
-            }
-        }
-        .frame(height: 26)
-        .contentShape(Rectangle())
-        .gesture(rowDragGesture(target: .track(i), width: width))
-    }
-
-    // MARK: 卡点磁吸
-
-    /// 全部吸附目标（全片比例）：场景切换 + 各轨音频高潮
-    private var snapFractions: [Double] {
-        var fractions = assetInfo.sceneCuts.map { $0 / duration }
-        for peaks in assetInfo.audioPeaks {
-            fractions += peaks.map { $0 / duration }
-        }
-        return fractions
-    }
-
-    /// 距最近卡点 < 0.8% 宽度时吸附；命中时记录指示线位置
-    private func snap(_ fraction: Double) -> Double {
-        let tolerance = 0.008
-        var best = fraction
-        var bestDistance = tolerance
-        for candidate in snapFractions {
-            let distance = abs(candidate - fraction)
-            if distance < bestDistance {
-                bestDistance = distance
-                best = candidate
-            }
-        }
-        if best != fraction {
-            snapIndicator = best
+            seg.start = newStart
         } else {
-            snapIndicator = nil
+            let nextStart = index < base.count - 1 ? base[index + 1].start : duration
+            var newEnd = max(seg.start + 0.5, min(nextStart, seg.end + delta))
+            if abs(newEnd - displayOriginal) < 0.35 {
+                newEnd = max(seg.start + 0.5, min(nextStart, displayOriginal))
+                snapped = true
+            }
+            seg.end = newEnd
         }
-        return best
+        base[index] = seg
+        segments = base
+        snapIndicator = snapped ? (isStart ? seg.start : seg.end) / duration : nil
     }
 
     private var timelineHeight: CGFloat {
-        48 + CGFloat(assetInfo.waveforms.count) * 29 + 6
+        16 + 48 + CGFloat(laneStates.count) * 26
+            + (dubTakes.isEmpty && !dubbing ? 0 : 26)
+            + (captions.isEmpty ? 0 : 26)
+            + 6
     }
 
-    private func handleDrag(width: CGFloat, isStart: Bool) -> some Gesture {
-        DragGesture(minimumDistance: 0)
-            .onChanged { g in
-                let raw = min(1, max(0, g.location.x / width))
-                let fraction = snap(raw) // 卡点磁吸（◆场景切换/▲音频高潮）
-                if isStart {
-                    trimStart = min(trimEnd - 0.01, fraction)
-                } else {
-                    trimEnd = max(trimStart + 0.01, fraction)
-                }
+    /// 左侧轨头（画面/各音轨/配音/字幕；音量弹层）
+    private var gutter: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("画面").font(.themeCaptionSmall).foregroundColor(.themeTextSecondary)
+                Spacer()
             }
-            .onEnded { _ in snapIndicator = nil }
+            .frame(width: 84, height: 16 + 48)
+
+            ForEach(assetInfo.waveforms.indices, id: \.self) { i in
+                laneHeader(index: i, label: assetInfo.waveforms[i].label,
+                           color: assetInfo.waveforms[i].color,
+                           state: Binding(
+                            get: { laneStates.indices.contains(i) ? laneStates[i] : AudioLaneState() },
+                            set: { if laneStates.indices.contains(i) { laneStates[i] = $0 } }))
+            }
+
+            if !dubTakes.isEmpty || dubbing {
+                laneHeader(index: -1, label: "配音", color: dubColor,
+                           state: $dubState)
+            }
+
+            if !captions.isEmpty {
+                HStack {
+                    Text("字幕").font(.themeCaptionSmall).foregroundColor(capColor)
+                    Spacer()
+                }
+                .frame(width: 84, height: 26)
+            }
+        }
+        .background(Color.themeGray900.opacity(0.4))
     }
 
-    /// 时间线拖选：选区内起手 → 平移选区（长度固定、位置可调，磁吸卡点）；
-    /// 选区外起手 → 新建选区（起锚点拖出范围）
-    private func rowDragGesture(target: CutTarget, width: CGFloat) -> some Gesture {
+    private func laneHeader(index: Int, label: String, color: Color,
+                            state: Binding<AudioLaneState>) -> some View {
+        HStack(spacing: 4) {
+            Button(action: { state.wrappedValue.muted.toggle() }) {
+                Image(systemName: state.wrappedValue.muted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                    .font(.system(size: 10))
+                    .foregroundColor(state.wrappedValue.muted ? Color.themeRed400 : color)
+                    .frame(width: 20, height: 20)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("静音/恢复")
+
+            Button(action: { volumePopoverLane = volumePopoverLane == index ? nil : index }) {
+                Text("\(label) \(Int(state.wrappedValue.volume * 100))%")
+                    .font(.themeCaptionSmall)
+                    .foregroundColor(color)
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .popover(isPresented: Binding(
+                get: { volumePopoverLane == index },
+                set: { if !$0, volumePopoverLane == index { volumePopoverLane = nil } })) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("\(label) 音量：\(Int(state.wrappedValue.volume * 100))%")
+                        .font(.themeCaption)
+                        .foregroundColor(.themeTextPrimary)
+                    Slider(value: Binding(
+                        get: { state.wrappedValue.volume },
+                        set: { state.wrappedValue.volume = $0 }), in: 0...2, step: 0.1)
+                        .frame(width: 180)
+                    Text("导出时非 100% 音量将走重编码（稍慢）")
+                        .font(.themeCaptionSmall)
+                        .foregroundColor(.themeTextTertiary)
+                }
+                .padding(12)
+            }
+        }
+        .padding(.horizontal, 6)
+        .frame(width: 84, height: 26, alignment: .leading)
+    }
+
+    // MARK: 手势
+
+    private func panGesture(width: CGFloat) -> some Gesture {
         DragGesture(minimumDistance: 6)
             .onChanged { g in
-                let gestureStart = min(1, max(0, g.startLocation.x / width))
-                let currentRaw = min(1, max(0, g.location.x / width))
-
-                // 起手模式判定（只判定一次）
-                if selectionDrag == nil {
-                    if let sel = selection, sel.target == target,
-                       gestureStart >= sel.startFrac, gestureStart <= sel.endFrac {
-                        selectionDrag = .move(baseStart: sel.startFrac,
-                                              baseWidth: sel.endFrac - sel.startFrac,
-                                              gestureAnchor: gestureStart)
-                    } else {
-                        selectionDrag = .create(anchor: gestureStart)
-                    }
-                }
-
-                switch selectionDrag {
-                case .create(let anchor):
-                    let snapped = snap(currentRaw)
-                    selection = TimelineSelection(target: target,
-                                                   startFrac: min(anchor, snapped),
-                                                   endFrac: max(anchor, snapped))
-                case .move(let baseStart, let baseWidth, let gestureAnchor):
-                    let snapped = snap(currentRaw)
-                    let delta = snapped - gestureAnchor
-                    let newStart = min(max(0, baseStart + delta), 1 - baseWidth)
-                    selection = TimelineSelection(target: target,
-                                                   startFrac: newStart,
-                                                   endFrac: newStart + baseWidth)
-                case nil:
-                    break
-                }
+                guard !dubbing else { return }
+                if playback.isPlaying { playback.pause() }
+                // 以起手时的原始时间为基准（t 会随移动更新，不能作基准）
+                if panBaseOriginal == nil { panBaseOriginal = displayOriginal }
+                guard let base = panBaseOriginal else { return }
+                let original = min(duration, max(0, base - (g.location.x - g.startLocation.x) / zoom))
+                t = original
+                playback.seek(to: timelineTime(fromOriginal: original))
             }
-            .onEnded { g in
-                snapIndicator = nil
-                // 误触保护仅对「新建」生效：平移模式下的小幅抖动不清除选区
-                if case .create = selectionDrag, abs(g.location.x - g.startLocation.x) < 12 {
-                    selection = nil
-                }
-                selectionDrag = nil
-            }
+            .onEnded { _ in panBaseOriginal = nil }
     }
 
-    private var selectionZone: some View { EmptyView() }
-
-    /// 待删除选区的红色覆盖（需要外部提供起止比例）
-    private func selectionOverlay(start: Double, end: Double) -> some View {
-        GeometryReader { geo in
-            ZStack(alignment: .leading) {
-                Color.red.opacity(0.28)
-                    .frame(width: geo.size.width * max(0.005, end - start))
-                    .frame(width: geo.size.width, alignment: .leading)
-                    .overlay(alignment: .leading) {
-                        Rectangle().fill(Color.themeRed500).frame(width: 1.5)
-                    }
-                    .overlay(alignment: .trailing) {
-                        Rectangle().fill(Color.themeRed500).frame(width: 1.5)
-                    }
-                    .offset(x: geo.size.width * start)
+    private func playheadDrag(width: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { g in
+                guard !dubbing else { return }
+                if playback.isPlaying { playback.pause() }
+                if panBaseOriginal == nil { panBaseOriginal = displayOriginal }
+                guard let base = panBaseOriginal else { return }
+                let original = min(duration, max(0, base + (g.location.x - g.startLocation.x) / zoom))
+                t = original
+                playback.seek(to: timelineTime(fromOriginal: original))
             }
-            .allowsHitTesting(false)
-        }
-    }
-
-    private func redZone(startFrac: Double, lengthFrac: Double) -> some View {
-        GeometryReader { geo in
-            ZStack(alignment: .leading) {
-                Color.red.opacity(0.32)
-                    .frame(width: geo.size.width * max(0.004, lengthFrac))
-                    .frame(width: geo.size.width, alignment: .leading)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 2)
-                            .stroke(Color.themeRed400, style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
-                            .frame(width: geo.size.width * max(0.004, lengthFrac))
-                            .frame(width: geo.size.width, alignment: .leading)
-                    )
-                    .offset(x: geo.size.width * startFrac)
-            }
-            .allowsHitTesting(false)
-        }
-    }
-
-    @ViewBuilder
-    private func trimShadow(width: CGFloat) -> some View {
-        Color.black.opacity(0.55)
-            .frame(width: max(0, width * trimStart), height: timelineHeight - 44)
-            .frame(width: width, height: timelineHeight - 44, alignment: .leading)
-            .overlay(alignment: .trailing) {
-                Rectangle().fill(Color.themeYellow500.opacity(0.9)).frame(width: 2)
-            }
-        Color.black.opacity(0.55)
-            .frame(width: max(0, width * (1 - trimEnd)), height: timelineHeight - 44)
-            .frame(width: width, height: timelineHeight - 44, alignment: .trailing)
-            .overlay(alignment: .leading) {
-                Rectangle().fill(Color.themeYellow500.opacity(0.9)).frame(width: 2)
-            }
-    }
-
-    private var trimInfoRow: some View {
-        HStack(spacing: ThemeSpacing.px2.rawValue) {
-            if let sel = selection {
-                Text("已选 \(timeLabel(duration * sel.startFrac))–\(timeLabel(duration * sel.endFrac))（\(selectionLabel(for: sel.target))）")
-                    .font(.themeCaptionSmall)
-                    .foregroundColor(.themeRed400)
-                    .fixedSize()
-                miniButton(loopingSelection == nil ? "▶ 循环此段" : "⏹ 停止循环", prominent: false) {
-                    if loopingSelection == nil {
-                        loopingSelection = sel
-                        // 立即跳到选段开头开始预听
-                        playback.seek(to: timelineTime(fromOriginal: duration * sel.startFrac))
-                        if !playback.isPlaying { playback.toggle() }
-                    } else {
-                        // 停止循环 = 停在当前位置（不继续往后播）
-                        loopingSelection = nil
-                        playback.pause()
-                    }
-                }
-                miniButton("✂ 删除此段", prominent: true) { commitSelection(sel) }
-                miniButton("取消", prominent: false) { selection = nil }
-            } else {
-                Text("保留 \(timeLabel(trimStartDur)) – \(timeLabel(trimEndDur))"
-                     + (videoCuts.isEmpty ? "" : " · 已删 \(videoCuts.count) 段")
-                     + " · 成片 \(timeLabel(keepDuration))")
-                    .font(.themeCaptionSmall)
-                    .foregroundColor(hasEdits ? .themeYellow500 : .themeTextTertiary)
-                    .monospacedDigit()
-            }
-
-            Spacer()
-
-            if !videoCuts.isEmpty || trackCuts.contains(where: { !$0.isEmpty }) {
-                miniButton("撤销一刀", prominent: false, action: undoLastCut)
-            }
-            if hasEdits {
-                miniButton("清空裁剪", prominent: false, action: resetEdits)
-            }
-        }
-        .frame(height: 22)
-    }
-
-    // MARK: 段条（成片结构预览）
-
-    @ViewBuilder
-    private var segmentBar: some View {
-        if videoCuts.isEmpty && !isTrimmed {
-            EmptyView()
-        } else {
-            GeometryReader { geo in
-                let width = max(1, geo.size.width)
-                HStack(spacing: 2) {
-                    // 头部裁掉
-                    if trimStart > 0.001 {
-                        segment(color: .themeRed500, dashed: true, label: "✂",
-                                width: width * trimStart) { resetTrimEnds() }
-                    }
-                    // 保留段与删除段交替
-                    let keeps = V2CutMath.keepRanges(lo: trimStartDur, hi: trimEndDur, minus: videoCuts)
-                    ForEach(keeps.indices, id: \.self) { i in
-                        let (ks, ke) = keeps[i]
-                        segment(color: .themeGreen500, dashed: false,
-                                label: i == 0 ? "保留" : "",
-                                width: width * (ke - ks) / duration) {}
-                        if i < keeps.count - 1, videoCuts.indices.contains(i) {
-                            let cut = videoCuts[i]
-                            segment(color: .themeRed500, dashed: true, label: "✂",
-                                    width: width * cut.length / duration) {
-                                removeCut(cut.id)
-                            }
-                        }
-                    }
-                    // 尾部裁掉
-                    if trimEnd < 0.999 {
-                        segment(color: .themeRed500, dashed: true, label: "✂",
-                                width: width * (1 - trimEnd)) { resetTrimEnds() }
-                    }
-                }
-                .frame(width: width, alignment: .leading)
-            }
-            .frame(height: 16)
-            .padding(.horizontal, ThemeSpacing.px4.rawValue)
-            .background(Color.themeGray900)
-        }
-    }
-
-    private func segment(color: Color, dashed: Bool, label: String,
-                         width: CGFloat, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(label)
-                .font(.system(size: 9))
-                .foregroundColor(color == .themeRed500 ? Color.themeRed400 : Color.themeGreen500)
-                .frame(width: max(6, width), height: 14)
-                .background(
-                    Rectangle()
-                        .fill(color.opacity(0.22))
-                        .overlay(
-                            Rectangle()
-                                .stroke(color.opacity(0.6),
-                                        style: dashed ? StrokeStyle(lineWidth: 1, dash: [3, 2]) : StrokeStyle(lineWidth: 1))
-                        )
-                )
-        }
-        .buttonStyle(.plain)
-        .disabled(label != "✂")
-        .help(label == "✂" ? "点击撤销这一刀" : "")
-    }
-
-    // MARK: 信息条 & 操作栏
-
-    private var infoStrip: some View {
-        HStack(spacing: ThemeSpacing.px3.rawValue) {
-            if assetInfo.duration > 0 {
-                Text(String(format: "⏱ %.1f 秒", assetInfo.duration))
-            }
-            if !assetInfo.pixelText.isEmpty {
-                Text(assetInfo.pixelText)
-            }
-            if assetInfo.waveforms.isEmpty {
-                Text("🔇 无声")
-            } else if !mutedTracks.isEmpty {
-                Text("🔊 \(assetInfo.waveforms.count - mutedTracks.count)/\(assetInfo.waveforms.count) 路音轨")
-                    .foregroundColor(.themeYellow500)
-            } else {
-                Text("🔊 \(assetInfo.waveforms.count) 路音轨")
-            }
-            if !assetInfo.fileSizeText.isEmpty {
-                Text(assetInfo.fileSizeText)
-            }
-        }
-        .font(.themeCaption)
-        .foregroundColor(.themeTextSecondary)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .lineLimit(1)
-        .padding(.horizontal, ThemeSpacing.px4.rawValue)
-        .padding(.vertical, ThemeSpacing.px1.rawValue + 2)
-        .background(Color.themeGray800.opacity(0.5))
-    }
-
-    private var actionBar: some View {
-        HStack(spacing: ThemeSpacing.px2.rawValue + 2) {
-            Button(action: copyPath) {
-                actionLabel(icon: "doc.on.doc", text: copied ? "已复制" : "复制路径",
-                            color: copied ? .themeStatusSuccess : .themeTextPrimary)
-            }
-            .buttonStyle(.plain)
-
-            Button(action: { NSWorkspace.shared.activateFileViewerSelecting([fileURL]) }) {
-                actionLabel(icon: "folder", text: "Finder 中显示", color: .themeTextPrimary)
-            }
-            .buttonStyle(.plain)
-
-            Button(action: saveToNotes) {
-                actionLabel(icon: savedToNotes ? "checkmark" : "tray.and.arrow.down",
-                            text: savedToNotes ? "已存入闪记" : "存入闪记",
-                            color: savedToNotes ? .themeStatusSuccess : .themeTextPrimary)
-            }
-            .buttonStyle(.plain)
-            .disabled(savedToNotes)
-            .help("创建闪记记录（首帧缩略图 + 路径引用，不拷贝视频本体）")
-
-            Spacer()
-
-            if let error = exportError {
-                Text(error)
-                    .font(.themeCaptionSmall)
-                    .foregroundColor(.themeStatusError)
-                    .lineLimit(1)
-                    .help(error)
-            }
-
-            if hasEdits {
-                Button(action: exportFinal) {
-                    HStack(spacing: ThemeSpacing.px1.rawValue + 2) {
-                        if isExporting {
-                            ProgressView().controlSize(.mini)
-                        } else {
-                            Image(systemName: "scissors")
-                                .font(.system(size: 12))
-                        }
-                        Text(isExporting ? "导出中…" : "导出成片")
-                            .font(.themeBody)
-                            .fixedSize()
-                    }
-                    .foregroundColor(.white)
-                    .padding(.horizontal, ThemeSpacing.px3.rawValue)
-                    .padding(.vertical, ThemeSpacing.px1.rawValue + 3)
-                    .background(
-                        RoundedRectangle(cornerRadius: ThemeRadius.md.rawValue)
-                            .fill(isExporting ? AnyShapeStyle(Color.themeGray600) : AnyShapeStyle(Color.themeRed500))
-                    )
-                }
-                .buttonStyle(.plain)
-                .disabled(isExporting)
-                .help("按当前裁剪/静音导出（直通不转码，秒级）")
-            }
-
-            Button(action: { V2RecordingPreviewController.shared.close() }) {
-                Text("关闭")
-                    .font(.themeBody)
-                    .fixedSize()
-                    .foregroundColor(.white)
-                    .padding(.horizontal, ThemeSpacing.px4.rawValue)
-                    .padding(.vertical, ThemeSpacing.px1.rawValue + 3)
-                    .background(
-                        RoundedRectangle(cornerRadius: ThemeRadius.md.rawValue)
-                            .fill(Color.themePurple500)
-                    )
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal, ThemeSpacing.px4.rawValue)
-        .padding(.vertical, ThemeSpacing.px2.rawValue + 2)
-        .background(Color.themeGray900)
-        .overlay(Rectangle().frame(height: 1).foregroundColor(Color.themeBorderSubtle), alignment: .top)
+            .onEnded { _ in panBaseOriginal = nil }
     }
 
     // MARK: 剪辑动作
 
-    private func toggleMute(_ i: Int) {
-        if mutedTracks.contains(i) {
-            mutedTracks.remove(i)
+    private var canSplit: Bool {
+        guard let idx = selectedIndex else { return false }
+        let seg = segments[idx]
+        return displayOriginal > seg.start + 0.3 && displayOriginal < seg.end - 0.3
+    }
+
+    private func splitAtPlayhead() {
+        guard let idx = selectedIndex, canSplit else { return }
+        pushUndo()
+        let seg = segments[idx]
+        segments.replaceSubrange(idx...idx, with: [
+            EditSegment(start: seg.start, end: displayOriginal),
+            EditSegment(start: displayOriginal, end: seg.end),
+        ])
+        selectedSegmentID = segments[idx].id
+    }
+
+    private func deleteSelected() {
+        guard segments.count >= 2, let idx = selectedIndex else { return }
+        pushUndo()
+        segments.remove(at: idx)
+        selectedSegmentID = segments[min(idx, segments.count - 1)].id
+    }
+
+    private func pushUndo() {
+        undoStack.append(segments)
+        if undoStack.count > 30 { undoStack.removeFirst() }
+    }
+
+    private func undo() {
+        guard let prev = undoStack.popLast() else { return }
+        segments = prev
+        if let id = selectedSegmentID, !segments.contains(where: { $0.id == id }) {
+            selectedSegmentID = segments.last?.id
+        }
+    }
+
+    // MARK: 配音
+
+    private func toggleDub() {
+        if !dubbing {
+            startDub()
         } else {
-            mutedTracks.insert(i)
+            stopDub()
         }
     }
 
-    private func commitSelection(_ sel: TimelineSelection) {
-        defer { selection = nil }
-        guard sel.endFrac - sel.startFrac > 0.005 else { return }
-        let cut = CutSegment(start: duration * sel.startFrac, end: duration * sel.endFrac)
-        switch sel.target {
-        case .video:
-            videoCuts = V2CutMath.normalize(videoCuts + [cut])
-        case .track(let i):
-            guard trackCuts.indices.contains(i) else { return }
-            trackCuts[i] = V2CutMath.normalize(trackCuts[i] + [cut])
+    private func startDub() {
+        // 麦克风授权（录制时未开麦的用户首次配音会走到这）
+        Task {
+            let granted = await Self.requestMicPermission()
+            guard granted else {
+                ScreenshotService.shared.announceRecordingError("麦克风权限未授予，无法配音")
+                return
+            }
+            let recorder = V2DubRecorder()
+            recorder.onLevel = { level in
+                Task { @MainActor in dubLevel = level }
+            }
+            do {
+                let url = try recorder.start()
+                dubRecorder = recorder
+                let take = DubTake(start: t, end: t, fileURL: url)
+                dubTake = take
+                dubTakes.append(take)
+                playback.seek(to: timelineTime(fromOriginal: t))
+                playback.toggleUnlessPlaying()
+            } catch {
+                ScreenshotService.shared.announceRecordingError("配音启动失败：\(error.localizedDescription)")
+            }
         }
     }
 
-    private func removeCut(_ id: UUID) {
-        videoCuts.removeAll { $0.id == id }
+    private func stopDub() {
+        guard let recorder = dubRecorder, let take = dubTake else { return }
+        playback.pause()
+        dubTake = nil
+        dubLevel = 0
+        Task {
+            if let url = await recorder.stop() {
+                if take.end - take.start < 0.4 {
+                    try? FileManager.default.removeItem(at: url)
+                    dubTakes.removeAll { $0.id == take.id }
+                    ScreenshotService.shared.announceRecordingError("配音太短，已丢弃")
+                } else {
+                    if let idx = dubTakes.firstIndex(where: { $0.id == take.id }) {
+                        dubTakes[idx].fileURL = url
+                        dubTakes[idx].end = take.end
+                    }
+                    DiagnosticCenter.info("Recording", String(format: "配音完成：%.1fs → %@", take.end - take.start, url.lastPathComponent))
+                }
+            } else {
+                dubTakes.removeAll { $0.id == take.id }
+            }
+            dubRecorder = nil
+            schedulePlaybackRebuild()
+        }
     }
 
-    private func undoLastCut() {
-        if !videoCuts.isEmpty {
-            videoCuts.removeLast()
-            return
+    private static func requestMicPermission() async -> Bool {
+        if #available(macOS 14.0, *) {
+            return await withCheckedContinuation { continuation in
+                AVAudioApplication.requestRecordPermission { granted in
+                    continuation.resume(returning: granted)
+                }
+            }
         }
-        for i in stride(from: trackCuts.count - 1, through: 0, by: -1) where !trackCuts[i].isEmpty {
-            trackCuts[i].removeLast()
-            return
+        return true
+    }
+
+    // MARK: 字幕
+
+    private var canTranscribe: Bool {
+        !dubTakes.isEmpty || assetInfo.waveforms.contains { $0.label == "麦克风" }
+    }
+
+    private func toggleCaptions() {
+        if captions.isEmpty {
+            generateCaptions()
+        } else {
+            captionsOn.toggle()
         }
     }
 
-    private func resetTrimEnds() {
-        withAnimation(.easeInOut(duration: 0.15)) {
-            trimStart = 0
-            trimEnd = 1
+    private func generateCaptions() {
+        captionBusy = true
+        Task {
+            do {
+                var chunks: [CaptionChunk] = []
+                if !dubTakes.isEmpty {
+                    for take in dubTakes {
+                        let raw = try await V2CaptionTranscriber.transcribe(fileURL: take.fileURL, offset: take.start)
+                        chunks += raw.map { CaptionChunk(start: $0.start, end: $0.end, text: $0.text) }
+                    }
+                } else {
+                    // 无配音：把原片的麦克风轨导出成临时 m4a 再识别
+                    let tempURL = FileManager.default.temporaryDirectory
+                        .appendingPathComponent("QuiteNote-Cap-\(UUID().uuidString).m4a")
+                    let asset = AVURLAsset(url: fileURL)
+                    if let session = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetAppleM4A) {
+                        session.outputURL = tempURL
+                        session.outputFileType = .m4a
+                        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+                            session.exportAsynchronously { cont.resume() }
+                        }
+                        if session.status == .completed {
+                            let raw = try await V2CaptionTranscriber.transcribe(fileURL: tempURL, offset: 0)
+                            chunks = raw.map { CaptionChunk(start: $0.start, end: $0.end, text: $0.text) }
+                        }
+                        try? FileManager.default.removeItem(at: tempURL)
+                    }
+                    if chunks.isEmpty {
+                        throw NSError(domain: "QuiteNote.Caption", code: 3,
+                                      userInfo: [NSLocalizedDescriptionKey: "没有可识别的音频（录屏时未开麦克风、也没有配音）"])
+                    }
+                }
+                captions = chunks.sorted { $0.start < $1.start }
+                captionsOn = true
+                DiagnosticCenter.info("Recording", "字幕生成完成：\(captions.count) 条")
+            } catch {
+                ScreenshotService.shared.announceRecordingError(error.localizedDescription)
+            }
+            captionBusy = false
         }
     }
 
-    private func resetEdits() {
-        withAnimation(.easeInOut(duration: 0.15)) {
-            trimStart = 0
-            trimEnd = 1
+    /// 字幕编辑弹层
+    @ViewBuilder
+    private var captionEditor: some View {
+        if let cap = editingCaption {
+            VStack(spacing: 10) {
+                Text("编辑字幕（\(timeLabel(cap.start)) – \(timeLabel(cap.end))）")
+                    .font(.themeCaption)
+                    .foregroundColor(.themeTextSecondary)
+                TextField("字幕内容", text: Binding(
+                    get: { editingCaption?.text ?? cap.text },
+                    set: { newValue in
+                        if let idx = captions.firstIndex(where: { $0.id == cap.id }) {
+                            captions[idx].text = newValue
+                        }
+                    }))
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 320)
+                HStack {
+                    Button("删除这条") {
+                        captions.removeAll { $0.id == cap.id }
+                        editingCaption = nil
+                    }
+                    .foregroundColor(.themeRed400)
+                    Spacer()
+                    Button("完成") { editingCaption = nil }
+                        .keyboardShortcut(.defaultAction)
+                }
+                .buttonStyle(.borderless)
+            }
+            .padding(16)
+            .background(RoundedRectangle(cornerRadius: 10).fill(Color.themeGray900))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.themeBorderSubtle))
+            .padding(20)
         }
-        videoCuts = []
-        for i in trackCuts.indices { trackCuts[i] = [] }
-        mutedTracks = []
-        selection = nil
     }
 
-    // MARK: 播放重建（合成实时预览）
+    // MARK: 合成与导出
 
     private func schedulePlaybackRebuild() {
         rebuildTask?.cancel()
         rebuildTask = Task {
-            try? await Task.sleep(nanoseconds: 300_000_000) // 防抖：拖手柄时不要反复重建
-            guard !Task.isCancelled, !isExporting else { return }
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            guard !Task.isCancelled, !isExporting, !dubbing else { return }
             await rebuildPlayback()
         }
     }
@@ -1133,8 +899,11 @@ struct V2RecordingPreviewView: View {
         let wasPlaying = playback.isPlaying
         let originalNow = originalTime(fromTimeline: playback.currentTime)
 
-        if hasEdits, let composition = try? await buildComposition() {
-            player.replaceCurrentItem(with: AVPlayerItem(asset: composition))
+        if hasEdits || !dubTakes.isEmpty || laneStates.contains(where: { $0.muted || abs($0.volume - 1) > 0.01 }),
+           let built = try? await buildComposition() {
+            let item = AVPlayerItem(asset: built.composition)
+            item.audioMix = built.mix
+            player.replaceCurrentItem(with: item)
         } else {
             player.replaceCurrentItem(with: AVPlayerItem(asset: AVURLAsset(url: fileURL)))
         }
@@ -1145,69 +914,165 @@ struct V2RecordingPreviewView: View {
         }
     }
 
-    /// 合成 = 视频按保留区间拼接 + 未静音音轨按各自保留区间拼接
-    private func buildComposition() async throws -> AVMutableComposition? {
+    /// 合成 = 分段视频 + 各音轨（静音/音量）+ 配音轨（映射到成片时间轴）
+    private func buildComposition() async throws -> (composition: AVMutableComposition, mix: AVAudioMix?)? {
         let asset = AVURLAsset(url: fileURL)
-        guard let videoSource = (try? await asset.loadTracks(withMediaType: .video))?.first else { return nil }
+        guard let videoSource = (try? await asset.loadTracks(withMediaType: .video))?.first,
+              !segments.isEmpty else { return nil }
 
         let composition = AVMutableComposition()
         guard let videoTrack = composition.addMutableTrack(
             withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid) else { return nil }
 
-        let videoKeeps = V2CutMath.keepRanges(lo: trimStartDur, hi: trimEndDur, minus: videoCuts)
-        guard !videoKeeps.isEmpty else { return nil }
-
-        var insertedAny = false
-        for (ks, ke) in videoKeeps {
-            let range = CMTimeRange(start: CMTime(seconds: ks, preferredTimescale: 600),
-                                    end: CMTime(seconds: ke, preferredTimescale: 600))
+        for seg in segments {
+            let range = CMTimeRange(start: CMTime(seconds: seg.start, preferredTimescale: 600),
+                                    end: CMTime(seconds: seg.end, preferredTimescale: 600))
             try? videoTrack.insertTimeRanges([NSValue(timeRange: range)], of: [videoSource], at: .zero)
-            insertedAny = true
         }
-        guard insertedAny else { return nil }
 
-        for (i, source) in assetInfo.audioTracks.enumerated() where !mutedTracks.contains(i) {
-            let extra = trackCuts.indices.contains(i) ? trackCuts[i] : []
-            let keeps = V2CutMath.keepRanges(lo: trimStartDur, hi: trimEndDur, minus: videoCuts + extra)
-            guard !keeps.isEmpty,
-                  let audioTrack = composition.addMutableTrack(
-                    withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) else { continue }
-            for (ks, ke) in keeps {
-                let range = CMTimeRange(start: CMTime(seconds: ks, preferredTimescale: 600),
-                                        end: CMTime(seconds: ke, preferredTimescale: 600))
+        var mixParams: [AVMutableAudioMixInputParameters] = []
+        let totalTimeline = keepDuration
+
+        func registerVolume(_ volume: Double, track: AVCompositionTrack) {
+            guard abs(volume - 1) > 0.01 else { return }
+            let p = AVMutableAudioMixInputParameters(track: track)
+            let full = CMTimeRange(start: .zero, duration: CMTime(seconds: totalTimeline, preferredTimescale: 600))
+            p.setVolumeRamp(fromStartVolume: Float(volume), toEndVolume: Float(volume), timeRange: full)
+            mixParams.append(p)
+        }
+
+        // 源音轨
+        for (i, source) in assetInfo.audioTracks.enumerated() {
+            let state = laneStates.indices.contains(i) ? laneStates[i] : AudioLaneState()
+            guard !state.muted else { continue }
+            guard let audioTrack = composition.addMutableTrack(
+                withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) else { continue }
+            for seg in segments {
+                let range = CMTimeRange(start: CMTime(seconds: seg.start, preferredTimescale: 600),
+                                        end: CMTime(seconds: seg.end, preferredTimescale: 600))
                 try? audioTrack.insertTimeRanges([NSValue(timeRange: range)], of: [source], at: .zero)
             }
+            registerVolume(state.volume, track: audioTrack)
         }
-        return composition
+
+        // 配音：每段 take 与各保留段求交，按映射位置插入（对齐成片时间轴）
+        if !dubState.muted {
+            for take in dubTakes {
+                let dubAsset = AVURLAsset(url: take.fileURL)
+                guard let dubSource = (try? await dubAsset.loadTracks(withMediaType: .audio))?.first,
+                      let audioTrack = composition.addMutableTrack(
+                        withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) else { continue }
+                for seg in segments {
+                    let s = max(seg.start, take.start)
+                    let e = min(seg.end, take.end)
+                    guard e - s > 0.05 else { continue }
+                    let srcRange = CMTimeRange(start: CMTime(seconds: s - take.start, preferredTimescale: 600),
+                                               duration: CMTime(seconds: e - s, preferredTimescale: 600))
+                    let at = CMTime(seconds: timelineTime(fromOriginal: s), preferredTimescale: 600)
+                    try? audioTrack.insertTimeRanges([NSValue(timeRange: srcRange)], of: [dubSource], at: at)
+                }
+                registerVolume(dubState.volume, track: audioTrack)
+            }
+        }
+
+        let mix = mixParams.isEmpty ? nil : {
+            let m = AVMutableAudioMix()
+            m.inputParameters = mixParams
+            return m
+        }()
+        return (composition, mix)
     }
 
-    // MARK: 导出
+    /// 字幕烧录：装载字幕到自定义合成器（AVCoreAnimationTool 已从 macOS 26 SDK 移除）
+    private func captionVideoComposition(for composition: AVMutableComposition) async -> AVVideoComposition? {
+        guard captionsOn, !captions.isEmpty,
+              let videoTrack = composition.tracks(withMediaType: .video).first,
+              let size = try? await videoTrack.load(.naturalSize),
+              size.width > 0 else { return nil }
+
+        var loaded: [(CMTimeRange, String)] = []
+        for cap in captions {
+            let start = timelineTime(fromOriginal: cap.start)
+            let end = timelineTime(fromOriginal: cap.end)
+            guard end - start > 0.1 else { continue }
+            loaded.append((CMTimeRange(start: CMTime(seconds: start, preferredTimescale: 600),
+                                        duration: CMTime(seconds: end - start, preferredTimescale: 600)),
+                           cap.text))
+        }
+        guard !loaded.isEmpty else { return nil }
+        V2CaptionCompositor.activeCaptions = loaded
+
+        let vc = AVMutableVideoComposition()
+        vc.renderSize = size
+        vc.frameDuration = CMTime(value: 1, timescale: 30)
+        vc.customVideoCompositorClass = V2CaptionCompositor.self
+        return vc
+    }
 
     private func exportFinal() {
-        guard hasEdits, !isExporting else { return }
+        guard !isExporting, !dubbing else { return }
         isExporting = true
-        exportError = nil
 
         Task {
             do {
-                guard let composition = try await buildComposition() else {
-                    throw V2TrimExporter.TrimError.exportFailed("内容被裁空")
+                guard let built = try await buildComposition() else {
+                    throw V2TrimExporter.TrimError.exportFailed("内容为空")
                 }
-                let trimmedURL = try await V2TrimExporter.exportComposition(composition)
-                // 原地替换：文件名/已复制的路径保持有效
+                let burn = await captionVideoComposition(for: built.composition)
+                let trimmedURL = try await V2TrimExporter.export(
+                    composition: built.composition,
+                    audioMix: built.mix,
+                    videoComposition: burn)
+
                 try? FileManager.default.removeItem(at: fileURL)
                 try? FileManager.default.moveItem(at: trimmedURL, to: fileURL)
-                DiagnosticCenter.info("Recording", "裁剪导出完成：\(fileURL.lastPathComponent)")
+                DiagnosticCenter.info("Recording", "成片导出完成：\(fileURL.lastPathComponent)")
                 V2RecordingPreviewController.shared.show(fileURL: fileURL)
             } catch {
-                exportError = error.localizedDescription
-                DiagnosticCenter.error("Recording", "裁剪导出失败：\(error.localizedDescription)")
+                ScreenshotService.shared.announceRecordingError(error.localizedDescription)
             }
             isExporting = false
         }
     }
 
-    // MARK: 小部件
+    // MARK: 底栏
+
+    private var footer: some View {
+        HStack(spacing: ThemeSpacing.px3.rawValue) {
+            let removed = duration - keepDuration
+            let dubSec = dubTakes.reduce(0.0) { $0 + $1.end - $1.start }
+            Text("成片 \(timeLabel(keepDuration)) · \(segments.count) 段"
+                 + (removed > 0.05 ? " · 已删 \(String(format: "%.1f", removed))s" : "")
+                 + (dubSec > 0.05 ? " · 配音 \(Int(dubSec))s" : "")
+                 + (captions.isEmpty ? "" : " · 字幕 \(captions.count) 条"))
+                .font(.themeCaptionSmall)
+                .monospacedDigit()
+                .foregroundColor(hasEdits || !captions.isEmpty ? .themeYellow500 : .themeTextTertiary)
+
+            Spacer()
+
+            Button(action: copyPath) {
+                Text(copied ? "已复制" : "复制路径")
+                    .font(.themeCaptionSmall).fixedSize()
+                    .foregroundColor(copied ? .themeStatusSuccess : .themeTextSecondary)
+            }.buttonStyle(.plain)
+            Button(action: { NSWorkspace.shared.activateFileViewerSelecting([fileURL]) }) {
+                Text("Finder").font(.themeCaptionSmall).fixedSize()
+                    .foregroundColor(.themeTextSecondary)
+            }.buttonStyle(.plain)
+            Button(action: saveToNotes) {
+                Text(savedToNotes ? "已存闪记 ✓" : "存入闪记").font(.themeCaptionSmall).fixedSize()
+                    .foregroundColor(savedToNotes ? .themeStatusSuccess : .themeTextSecondary)
+            }.buttonStyle(.plain).disabled(savedToNotes)
+            Button(action: { V2RecordingPreviewController.shared.close() }) {
+                Text("关闭").font(.themeCaptionSmall).fixedSize()
+                    .foregroundColor(.themeTextSecondary)
+            }.buttonStyle(.plain)
+        }
+        .padding(.horizontal, ThemeSpacing.px4.rawValue)
+        .padding(.vertical, ThemeSpacing.px2.rawValue)
+        .background(Color.themeGray800.opacity(0.5))
+    }
 
     private func copyPath() {
         let pasteboard = NSPasteboard.general
@@ -1223,49 +1088,7 @@ struct V2RecordingPreviewView: View {
     private func saveToNotes() {
         guard !savedToNotes else { return }
         savedToNotes = true
-        ScreenshotService.shared.saveRecordingToFlashNotes(fileURL: fileURL,
-                                                           duration: assetInfo.duration)
-    }
-
-    private func selectionLabel(for target: CutTarget) -> String {
-        switch target {
-        case .video: return "画面段"
-        case .track(let i):
-            return assetInfo.waveforms.indices.contains(i) ? assetInfo.waveforms[i].label : "音轨"
-        }
-    }
-
-    private func miniButton(_ text: String, prominent: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(text)
-                .font(.themeCaptionSmall)
-                .fixedSize()
-                .foregroundColor(prominent ? .white : .themeTextSecondary)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 2)
-                .background(
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(prominent ? Color.themeRed500 : Color.themeGray700)
-                )
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func actionLabel(icon: String, text: String, color: Color) -> some View {
-        HStack(spacing: ThemeSpacing.px1.rawValue + 2) {
-            Image(systemName: icon)
-                .font(.system(size: 12))
-            Text(text)
-                .font(.themeBody)
-                .fixedSize()
-        }
-        .foregroundColor(color)
-        .padding(.horizontal, ThemeSpacing.px3.rawValue)
-        .padding(.vertical, ThemeSpacing.px1.rawValue + 3)
-        .background(
-            RoundedRectangle(cornerRadius: ThemeRadius.md.rawValue)
-                .fill(Color.themeGray700)
-        )
+        ScreenshotService.shared.saveRecordingToFlashNotes(fileURL: fileURL, duration: keepDuration)
     }
 
     private func timeLabel(_ seconds: Double) -> String {
@@ -1277,31 +1100,241 @@ struct V2RecordingPreviewView: View {
     }
 }
 
-// MARK: - 时间线子组件
+// MARK: - 播放辅助
 
-private struct TrimHandle: View {
+private extension V2PlaybackModel {
+    func toggleUnlessPlaying() {
+        if !isPlaying {
+            playFromZeroIfNeededAndPlay()
+        }
+    }
+
+    func playFromZeroIfNeededAndPlay() {
+        if let itemDuration = player.currentItem?.duration,
+           CMTIME_IS_NUMERIC(itemDuration),
+           currentTime >= itemDuration.seconds - 0.05 {
+            player.seek(to: .zero)
+            currentTime = 0
+        }
+        player.play()
+    }
+}
+
+// MARK: - 轨道内容（track 坐标系，宽 = duration × zoom）
+
+private struct TrackContent: View {
+    let segments: [EditSegment]
+    let selectedID: UUID?
+    let thumbnails: [NSImage]
+    let waveforms: [V2RecordingAssetInfo.WaveformTrack]
+    let laneStates: [AudioLaneState]
+    let dubTakes: [DubTake]
+    let dubGrowingEnd: Double?
+    let captions: [CaptionChunk]
+    let duration: Double
+    let zoom: Double
+    let playheadFraction: Double
+    let snapFraction: Double?
+    var onSegmentTap: ((UUID) -> Void)?
+    var onHandleDrag: ((Int, Bool, DragGesture.Value) -> Void)?
+    var onHandleEnd: (() -> Void)?
+    var onCaptionTap: ((CaptionChunk) -> Void)?
+
     var body: some View {
-        RoundedRectangle(cornerRadius: 2)
-            .fill(Color.themeYellow500)
-            .frame(width: 10, height: 40)
-            .shadow(color: .black.opacity(0.5), radius: 2)
-            .overlay(
-                RoundedRectangle(cornerRadius: 2)
-                    .stroke(Color.white.opacity(0.5), lineWidth: 1)
-            )
+        ZStack(alignment: .topLeading) {
+            ruler
+            thumbs
+            waveLanes
+            dubLane
+            captionLane
+            gapOverlays
+            segmentFrames
+            snapLine
+        }
+    }
+
+    // MARK: 刻度尺（自适应）
+
+    private var ruler: some View {
+        Canvas { context, size in
+            let labelStep: Double = zoom >= 60 ? 1 : zoom >= 25 ? 5 : 10
+            let minorStep = labelStep / 5
+            var sec: Double = 0
+            while sec <= duration + 0.001 {
+                let x = sec * zoom
+                let major = abs(sec.truncatingRemainder(dividingBy: labelStep)) < 0.001
+                let h: CGFloat = major ? 9 : 4
+                let path = Path(CGRect(x: x, y: 16 - h, width: 1, height: h))
+                context.fill(path, with: .color(major ? Color(red: 107/255, green: 121/255, blue: 148/255) : Color(red: 61/255, green: 74/255, blue: 104/255)))
+                if major {
+                    let label = "\(Int(sec / 60)):\(String(format: "%02d", Int(sec.truncatingRemainder(dividingBy: 60))))"
+                    context.draw(Text(label).font(.system(size: 9.5)).foregroundColor(Color(red: 139/255, green: 149/255, blue: 171/255)),
+                                 at: CGPoint(x: x, y: 6))
+                }
+                sec += minorStep
+            }
+        }
+        .frame(height: 16)
+    }
+
+    private var thumbs: some View {
+        HStack(spacing: 1) {
+            ForEach(thumbnails.indices, id: \.self) { i in
+                Image(nsImage: thumbnails[i])
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(maxWidth: .infinity, maxHeight: 44)
+                    .clipped()
+                    .cornerRadius(2)
+            }
+        }
+        .frame(width: duration * zoom, height: 48, alignment: .topLeading)
+        .padding(.top, 16)
+    }
+
+    // MARK: 波形轨
+
+    @ViewBuilder
+    private var waveLanes: some View {
+        ForEach(waveforms.indices, id: \.self) { i in
+            let state = laneStates.indices.contains(i) ? laneStates[i] : AudioLaneState()
+            LaneWave(values: waveforms[i].values,
+                     color: waveforms[i].color,
+                     opacity: state.muted ? 0.15 : 0.35 + 0.65 * min(1, state.volume))
+                .frame(width: duration * zoom, height: 24)
+                .offset(y: 16 + 48 + CGFloat(i) * 26 + 1)
+        }
+    }
+
+    @ViewBuilder
+    private var dubLane: some View {
+        if !dubTakes.isEmpty {
+            ForEach(dubTakes) { take in
+                let end = (take.id == dubTakes.last?.id && dubGrowingEnd != nil) ? dubGrowingEnd! : take.end
+                RoundedRectangle(cornerRadius: 5)
+                    .fill(dubColor.opacity(0.35))
+                    .overlay(RoundedRectangle(cornerRadius: 5).stroke(dubColor, lineWidth: 1.5))
+                    .frame(width: max(6, (end - take.start) * zoom), height: 24)
+                    .offset(x: take.start * zoom,
+                            y: 16 + 48 + CGFloat(waveforms.count) * 26 + 1)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var captionLane: some View {
+        if !captions.isEmpty {
+            ForEach(captions) { cap in
+                Text(cap.text)
+                    .font(.system(size: 9.5))
+                    .foregroundColor(Color(red: 169/255, green: 232/255, blue: 191/255))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .padding(.horizontal, 5)
+                    .frame(width: max(30, (cap.end - cap.start) * zoom), height: 22, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 4).fill(capColor.opacity(0.15)))
+                    .overlay(RoundedRectangle(cornerRadius: 4).stroke(capColor.opacity(0.55), lineWidth: 1))
+                    .offset(x: cap.start * zoom,
+                            y: 16 + 48 + CGFloat(waveforms.count) * 26 + (dubTakes.isEmpty ? 0 : 26) + 2)
+                    .onTapGesture { onCaptionTap?(cap) }
+            }
+        }
+    }
+
+    // MARK: 被删空隙
+
+    @ViewBuilder
+    private var gapOverlays: some View {
+        let topY: CGFloat = 16
+        let bottomY: CGFloat = 16 + 48 + CGFloat(waveforms.count) * 26
+            + (dubTakes.isEmpty ? 0 : 26) + 6
+        let gaps = complement(of: segments, in: 0...duration)
+        ForEach(gaps.indices, id: \.self) { i in
+            let gap = gaps[i]
+            Color.black.opacity(0.66)
+                .frame(width: (gap.upperBound - gap.lowerBound) * zoom)
+                .offset(x: gap.lowerBound * zoom, y: topY)
+                .frame(width: duration * zoom, height: bottomY - topY, alignment: .topLeading)
+        }
+    }
+
+    /// [0, d] 减去 segments 的补集
+    private func complement(of segments: [EditSegment], in range: ClosedRange<Double>) -> [ClosedRange<Double>] {
+        var result: [ClosedRange<Double>] = []
+        var cursor = range.lowerBound
+        for seg in segments.sorted(by: { $0.start < $1.start }) {
+            if seg.start > cursor { result.append(cursor...min(seg.start, range.upperBound)) }
+            cursor = max(cursor, seg.end)
+        }
+        if cursor < range.upperBound { result.append(cursor...range.upperBound) }
+        return result.filter { $0.upperBound - $0.lowerBound > 0.02 }
+    }
+
+    // MARK: 段白框与把手
+
+    @ViewBuilder
+    private var segmentFrames: some View {
+        ForEach(segments.indices, id: \.self) { i in
+            let seg = segments[i]
+            let isSelected = seg.id == selectedID
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(isSelected ? Color.white : Color.white.opacity(0.4),
+                        lineWidth: isSelected ? 2.5 : 1.5)
+                .frame(width: seg.length * zoom, height: 48 + CGFloat(waveforms.count) * 26
+                       + (dubTakes.isEmpty ? 0 : 26) - 2)
+                .offset(x: seg.start * zoom, y: 18)
+                .onTapGesture { if !isSelected { onSegmentTap?(seg.id) } }
+
+            if isSelected {
+                TrimHandleView()
+                    .offset(x: seg.start * zoom - 7, y: 18 + 12)
+                    .gesture(handleDrag(index: i, isStart: true))
+                TrimHandleView()
+                    .offset(x: seg.end * zoom - 7, y: 18 + 12)
+                    .gesture(handleDrag(index: i, isStart: false))
+            }
+        }
+    }
+
+    private func handleDrag(index: Int, isStart: Bool) -> some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { g in onHandleDrag?(index, isStart, g) }
+            .onEnded { _ in onHandleEnd?() }
+    }
+
+    @ViewBuilder
+    private var snapLine: some View {
+        if let snap = snapFraction {
+            Rectangle()
+                .fill(Color.themeBlue500.opacity(0.8))
+                .frame(width: 1.5)
+                .offset(x: snap * duration * zoom)
+        }
+    }
+
+    private var dubColor: Color { Color(red: 245/255, green: 158/255, blue: 11/255) }
+    private var capColor: Color { Color(red: 34/255, green: 197/255, blue: 94/255) }
+}
+
+private struct TrimHandleView: View {
+    var body: some View {
+        RoundedRectangle(cornerRadius: 3)
+            .fill(Color.white)
+            .frame(width: 14, height: 46)
+            .overlay(RoundedRectangle(cornerRadius: 3).stroke(Color.black.opacity(0.2), lineWidth: 1))
+            .shadow(color: .black.opacity(0.4), radius: 2)
             .contentShape(Rectangle())
     }
 }
 
-private struct WaveformBars: View {
+private struct LaneWave: View {
     let values: [Float]
     let color: Color
-    var dimmed: Bool = false
+    var opacity: Double = 1
 
     var body: some View {
         Canvas { context, size in
             guard !values.isEmpty else { return }
-            let barColor = dimmed ? color.opacity(0.25) : color
             let barWidth = size.width / CGFloat(values.count)
             for (i, v) in values.enumerated() {
                 let h = max(1.5, CGFloat(v) * size.height)
@@ -1309,10 +1342,32 @@ private struct WaveformBars: View {
                                   y: (size.height - h) / 2,
                                   width: max(0.8, barWidth - 0.6),
                                   height: h)
-                context.fill(Path(roundedRect: rect, cornerRadius: 0.8), with: .color(barColor))
+                context.fill(Path(roundedRect: rect, cornerRadius: 0.8), with: .color(color.opacity(opacity)))
             }
         }
-        .frame(maxWidth: .infinity)
-        .animation(.easeInOut(duration: 0.2), value: dimmed)
+    }
+}
+
+private struct AudioLevelBars: View {
+    let level: Float
+    let color: Color
+
+    var body: some View {
+        HStack(spacing: 1.5) {
+            ForEach(0..<3, id: \.self) { i in
+                Capsule()
+                    .fill(Color.white)
+                    .frame(width: 2.5, height: barHeight(i))
+            }
+        }
+        .frame(height: 14, alignment: .bottom)
+        .animation(.linear(duration: 0.08), value: level)
+    }
+
+    private func barHeight(_ index: Int) -> CGFloat {
+        let thresholds: [Float] = [0.04, 0.22, 0.5]
+        let spans: [Float] = [0.28, 0.4, 0.5]
+        let value = max(0, min(1, (level - thresholds[index]) / spans[index]))
+        return 3 + CGFloat(value) * 11
     }
 }
