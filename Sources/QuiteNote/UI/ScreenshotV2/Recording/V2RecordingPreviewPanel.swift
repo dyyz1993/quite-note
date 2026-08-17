@@ -1206,17 +1206,29 @@ private struct TrackContent: View {
     }
 
     private var thumbs: some View {
-        HStack(spacing: 1) {
-            ForEach(thumbnails.indices, id: \.self) { i in
-                Image(nsImage: thumbnails[i])
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .frame(maxWidth: .infinity, maxHeight: 44)
-                    .clipped()
-                    .cornerRadius(2)
+        // 剪映式平铺：格子宽度 ≈ 画面自然比例（44pt 高 ≈ 78pt 宽），数量按轨道长度算，
+        // 从 24 张采样图里就近取样——不再是均分细条
+        let naturalWidth: CGFloat = 44 * 16 / 9
+        let trackWidth = duration * zoom
+        let count = max(1, Int((trackWidth / naturalWidth).rounded()))
+        let cellWidth = trackWidth / CGFloat(count)
+        return HStack(spacing: 0) {
+            ForEach(0..<count, id: \.self) { i in
+                let sampleIndex = min(thumbnails.count - 1,
+                                       i * max(1, thumbnails.count) / max(1, count))
+                if thumbnails.indices.contains(sampleIndex) {
+                    Image(nsImage: thumbnails[sampleIndex])
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: cellWidth, height: 44)
+                        .clipped()
+                } else {
+                    Color.themeGray700.frame(width: cellWidth, height: 44)
+                }
             }
         }
-        .frame(width: duration * zoom, height: 48, alignment: .topLeading)
+        .frame(width: trackWidth, height: 48, alignment: .topLeading)
+        .clipped()
         .padding(.top, 16)
     }
 

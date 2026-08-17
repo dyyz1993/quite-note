@@ -50,7 +50,7 @@ final class V2RecordingAssetInfo: ObservableObject {
 
             // 缩略图：宽松容差 → 直接取最近关键帧，避免完整解码
             var thumbs: [NSImage] = []
-            let thumbCount = 24
+            let thumbCount = 40 // 时间线放大后平铺仍清晰（就近取样复用）
             if duration > 0 {
                 let gen = AVAssetImageGenerator(asset: asset)
                 gen.maximumSize = CGSize(width: 240, height: 140)
