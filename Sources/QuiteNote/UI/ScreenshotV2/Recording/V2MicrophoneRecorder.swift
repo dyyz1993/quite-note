@@ -15,6 +15,8 @@ final class V2MicrophoneRecorder {
 
     /// 采集回调（在内部串行队列上回调，非音频线程）；失败时 error 为 nil 之外的情况
     var onBuffer: ((CMSampleBuffer) -> Void)?
+    /// 实时电平回调（0...1，queue 上回调），控制条电平条用
+    var onLevel: ((Float) -> Void)?
     /// 启动/停止失败等异常上报（主线程）
     var onError: ((String) -> Void)?
 
@@ -40,6 +42,24 @@ final class V2MicrophoneRecorder {
 
         input.installTap(onBus: 0, bufferSize: 2048, format: targetFormat) { [weak self] buffer, _ in
             guard let self else { return }
+            // 实时电平（在音频线程外计算，走内部队列）
+            if let channel = buffer.floatChannelData?[0], let onLevel = self.onLevel {
+                let frames = Int(buffer.frameLength)
+                if frames > 0 {
+                    var sum: Float = 0
+                    var count = 0
+                    var i = 0
+                    while i < frames {
+                        let v = channel[i]
+                        sum += v * v
+                        count += 1
+                        i += 8 // 采样步进
+                    }
+                    let rms = sqrt(sum / Float(count))
+                    let level = min(1, rms * 3)
+                    self.queue.async { onLevel(level) }
+                }
+            }
             self.queue.async {
                 guard let onBuffer = self.onBuffer else { return }
                 if let sample = Self.makeSampleBuffer(buffer) {

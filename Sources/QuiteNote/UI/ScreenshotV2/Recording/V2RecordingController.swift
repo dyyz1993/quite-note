@@ -19,12 +19,19 @@ final class V2RecordingController: ObservableObject {
     @Published private(set) var isFinalizing = false
     /// 暂停中（控制条切 ▶、计时冻结、红框变黄虚线）
     @Published private(set) var isPaused = false
+    /// 麦克风实时电平（0...1，20Hz 刷新驱动控制条电平条）
+    @Published private(set) var micLevel: Float = 0
+    /// 系统声实时电平（0...1）
+    @Published private(set) var systemAudioLevel: Float = 0
 
     private let engine = V2ScreenRecorderEngine()
     private var borderPanel: NSPanel?
     private var controlPanel: NSPanel?
     private var micRecorder: V2MicrophoneRecorder?
     private var ticker: Timer?
+    private var levelTimer: Timer?
+    /// 音频线程 → UI 的电平中转（跨线程读写加锁）
+    private let levelBox = V2RecordingAudioLevelBox()
     private var startedAt: Date?
     /// 暂停累计（用于计时器扣除）
     private var pauseStartedAt: Date?
@@ -122,6 +129,9 @@ final class V2RecordingController: ObservableObject {
                     mic.onBuffer = { [weak self] sample in
                         self?.engine.ingestMicrophone(sample)
                     }
+                    mic.onLevel = { [levelBox] level in
+                        levelBox.mic = level
+                    }
                     do {
                         try mic.start()
                         micRecorder = mic
@@ -129,6 +139,10 @@ final class V2RecordingController: ObservableObject {
                         DiagnosticCenter.warning("Recording", "麦克风启动失败（无设备/被占用）：\(error.localizedDescription)")
                         ScreenshotService.shared.announceRecordingError("麦克风启动失败，本次录制不含麦克风")
                     }
+                }
+                // 系统声实时电平
+                engine.onSystemAudioLevel = { [levelBox] level in
+                    levelBox.system = level
                 }
 
                 self.active = true
@@ -139,6 +153,7 @@ final class V2RecordingController: ObservableObject {
                 self.showOverlay(selection: localRect, screen: screen,
                                  systemAudio: wantsSystemAudio, microphone: micRecorder != nil)
                 self.startTicker()
+                self.startLevelTicker()
             } catch {
                 try? FileManager.default.removeItem(at: tempURL)
                 DiagnosticCenter.error("Recording", "录屏启动失败：\(error.localizedDescription)")
@@ -338,8 +353,43 @@ final class V2RecordingController: ObservableObject {
         }
     }
 
+    /// 20Hz 电平刷新：从跨线程中转盒取最新值驱动 UI（暂停时归零）
+    private func startLevelTicker() {
+        levelTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                if self.isPaused || !self.active {
+                    self.micLevel = 0
+                    self.systemAudioLevel = 0
+                } else {
+                    self.micLevel = self.levelBox.mic
+                    self.systemAudioLevel = self.levelBox.system
+                }
+            }
+        }
+    }
+
     private func stopTicker() {
         ticker?.invalidate()
         ticker = nil
+        levelTimer?.invalidate()
+        levelTimer = nil
+    }
+}
+
+/// 音频线程 → 主线程的电平中转盒（音频回调频率高，UI 定时器按 20Hz 取值）
+final class V2RecordingAudioLevelBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _mic: Float = 0
+    private var _system: Float = 0
+
+    var mic: Float {
+        get { lock.lock(); defer { lock.unlock() }; return _mic }
+        set { lock.lock(); defer { lock.unlock() }; _mic = newValue }
+    }
+
+    var system: Float {
+        get { lock.lock(); defer { lock.unlock() }; return _system }
+        set { lock.lock(); defer { lock.unlock() }; _system = newValue }
     }
 }

@@ -78,18 +78,17 @@ struct V2RecordingControlBarView: View {
                         .foregroundColor(controller.isPaused ? .themeYellow500 : .themeTextPrimary)
                 }
 
-                // 本次录制的音频源（只读展示，避免录到一半改变行为导致音轨不一致）
-                HStack(spacing: ThemeSpacing.px1.rawValue + 2) {
-                    Image(systemName: "speaker.wave.2.fill")
-                        .font(.system(size: 11))
-                        .foregroundColor(systemAudio ? .themeStatusSuccess : .themeTextTertiary)
-                    Image(systemName: "mic.fill")
-                        .font(.system(size: 11))
-                        .foregroundColor(microphone ? .themeStatusSuccess : .themeTextTertiary)
+                // 本次录制的音频源 + 实时电平（说话/放音乐时柱子随音量起伏）
+                HStack(spacing: ThemeSpacing.px2.rawValue) {
+                    AudioLevelMeter(systemImage: "speaker.wave.2.fill",
+                                    level: controller.systemAudioLevel,
+                                    active: systemAudio,
+                                    color: .themeBlue400)
+                    AudioLevelMeter(systemImage: "mic.fill",
+                                    level: controller.micLevel,
+                                    active: microphone,
+                                    color: .themePurple400)
                 }
-                .help(systemAudio || microphone
-                      ? "正在录制：\(systemAudio ? "系统声音" : "")\(systemAudio && microphone ? " + " : "")\(microphone ? "麦克风" : "")"
-                      : "无声录制（可在截图工具栏 ⏺ 旁的 ▾ 开启音频）")
 
                 Divider()
                     .frame(height: 18)
@@ -152,5 +151,42 @@ struct V2RecordingControlBarView: View {
     private static func timeString(_ interval: TimeInterval) -> String {
         let total = Int(interval)
         return String(format: "%02d:%02d", total / 60, total % 60)
+    }
+}
+
+/// 音频电平表：图标 + 三根灵敏度递增的电平柱（说话/放音乐时实时起伏）
+struct AudioLevelMeter: View {
+    let systemImage: String
+    let level: Float
+    let active: Bool
+    let color: Color
+
+    var body: some View {
+        HStack(spacing: 3) {
+            Image(systemName: systemImage)
+                .font(.system(size: 11))
+                .foregroundColor(active ? color : .themeTextTertiary)
+
+            if active {
+                HStack(spacing: 1.5) {
+                    ForEach(0..<3, id: \.self) { i in
+                        Capsule()
+                            .fill(color)
+                            .frame(width: 2.5, height: barHeight(i))
+                    }
+                }
+                .frame(height: 16, alignment: .bottom)
+                .animation(.linear(duration: 0.08), value: level)
+            }
+        }
+        .help(active ? "实时电平（录制中）" : "未开启此音源")
+    }
+
+    /// 三根柱子不同阈值/跨度：第一根很轻就动，第三根要很响才满
+    private func barHeight(_ index: Int) -> CGFloat {
+        let thresholds: [Float] = [0.04, 0.22, 0.5]
+        let spans: [Float] = [0.28, 0.4, 0.5]
+        let value = max(0, min(1, (level - thresholds[index]) / spans[index]))
+        return 3 + CGFloat(value) * 13
     }
 }

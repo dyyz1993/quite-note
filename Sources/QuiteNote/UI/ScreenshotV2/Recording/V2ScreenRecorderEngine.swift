@@ -43,6 +43,9 @@ final class V2ScreenRecorderEngine: NSObject, SCStreamOutput, SCStreamDelegate {
     /// 被系统强制停止（权限撤销、菜单栏录屏指示器停止）时回调，主线程执行
     var onForcedStop: (() -> Void)?
 
+    /// 系统声实时电平（0...1，frameQueue 上回调），控制条电平条用
+    var onSystemAudioLevel: ((Float) -> Void)?
+
     private let frameQueue = DispatchQueue(label: "com.quitenote.recording.frames")
     private let stateLock = NSLock()
 
@@ -407,7 +410,8 @@ final class V2ScreenRecorderEngine: NSObject, SCStreamOutput, SCStreamDelegate {
 
     private func ingestSystemAudio(_ sampleBuffer: CMSampleBuffer) {
         let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
-        // 系统声与视频同帧回调队列，但 SCK 的音频不带 frame status，直接处理
+        // 实时电平：录到多响就显示多响（暂停期间不产帧，电平自然归零）
+        onSystemAudioLevel?(Self.rmsLevel(of: sampleBuffer))
 
         stateLock.lock()
         defer { stateLock.unlock() }
@@ -417,6 +421,41 @@ final class V2ScreenRecorderEngine: NSObject, SCStreamOutput, SCStreamDelegate {
         let effective = V2RecordingTiming.effectivePTS(rawPTS: pts, pausedDuration: pausedDuration)
         ensureSessionStarted(effectivePTS: effective)
         appendAudio(sampleBuffer, effectivePTS: effective, lastPTS: &lastSystemAudioPTS, into: input)
+    }
+
+    /// CMSampleBuffer（Float32 PCM）→ 归一化 RMS 电平
+    private static func rmsLevel(of sample: CMSampleBuffer) -> Float {
+        var needed = 0
+        var audioBufferList = AudioBufferList()
+        var blockBuffer: CMBlockBuffer?
+        guard CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(
+            sample,
+            bufferListSizeNeededOut: &needed,
+            bufferListOut: &audioBufferList,
+            bufferListSize: MemoryLayout<AudioBufferList>.size,
+            blockBufferAllocator: nil,
+            blockBufferMemoryAllocator: nil,
+            flags: 0,
+            blockBufferOut: &blockBuffer) == noErr else { return 0 }
+
+        let buffers = UnsafeMutableAudioBufferListPointer(&audioBufferList)
+        var sum: Float = 0
+        var count = 0
+        for buffer in buffers {
+            guard let data = buffer.mData, buffer.mDataByteSize >= 4 else { continue }
+            let floats = data.bindMemory(to: Float.self, capacity: Int(buffer.mDataByteSize) / 4)
+            let n = Int(buffer.mDataByteSize) / 4
+            var i = 0
+            while i < n {
+                let v = floats[i]
+                sum += v * v
+                count += 1
+                i += 8 // 采样步进，电平不需要逐样本
+            }
+        }
+        guard count > 0 else { return 0 }
+        let rms = sqrt(sum / Float(count))
+        return min(1, rms * 3) // 展示尺度放大：语音 RMS 常在 0.05~0.3
     }
 
     /// 音频公共追加路径：重定时 + 单调保护 + append（实时录制不阻塞，来不及就丢这包）
