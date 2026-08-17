@@ -24,6 +24,9 @@ final class V2RecordingAssetInfo: ObservableObject {
     @Published var sceneCuts: [Double] = []
     /// 智能卡点：每条音轨的音频高潮时刻（秒，与 waveforms 一一对应）
     @Published var audioPeaks: [[Double]] = []
+    /// 每个缩略图槽位的画面变化能量（0...1，与 thumbnails 一一对应）：
+    /// 低能量=静止段（时间线上折叠成插槽），高能量=有变化（保留画面）
+    @Published var slotEnergies: [Float] = []
     @Published var duration: Double = 0
     @Published var pixelText: String = ""
     @Published var fileSizeText: String = ""
@@ -55,7 +58,7 @@ final class V2RecordingAssetInfo: ObservableObject {
 
             // 缩略图：宽松容差 → 直接取最近关键帧，避免完整解码
             var thumbs: [NSImage] = []
-            let thumbCount = 12
+            let thumbCount = 24 // 密一点的槽位，静止段折叠后仍有足够画面密度
             if duration > 0 {
                 let gen = AVAssetImageGenerator(asset: asset)
                 gen.maximumSize = CGSize(width: 240, height: 140)
@@ -94,14 +97,17 @@ final class V2RecordingAssetInfo: ObservableObject {
                 }
             }
 
-            // 智能卡点：音频高潮（包络峰值）+ 场景切换（帧差）
+            // 智能卡点：音频高潮（包络峰值）+ 场景切换（帧差，同时产出槽位能量）
             var peaks: [[Double]] = []
             for wave in waves {
                 peaks.append(Self.peaks(from: wave.values, duration: duration, buckets: 240))
             }
             var cuts: [Double] = []
+            var energies: [Float] = []
             if duration > 0, let videoTrack = (try? await asset.loadTracks(withMediaType: .video))?.first {
-                cuts = Self.detectSceneCuts(asset: asset, track: videoTrack)
+                let analysis = Self.analyzeVideo(asset: asset, track: videoTrack, buckets: thumbCount)
+                cuts = analysis.cuts
+                energies = analysis.energies
             }
 
             await MainActor.run { [weak self] in
@@ -114,6 +120,9 @@ final class V2RecordingAssetInfo: ObservableObject {
                 self.audioTracks = sources
                 self.sceneCuts = cuts
                 self.audioPeaks = peaks
+                self.slotEnergies = energies
+                let trackDesc = waves.map { $0.label }.joined(separator: "+")
+                DiagnosticCenter.info("Recording", "分析完成：缩略图 \(thumbs.count)，音轨 \(waves.count)（\(trackDesc.isEmpty ? "无声" : trackDesc)），场景卡点 \(cuts.count)，音频卡点 \(peaks.reduce(0) { $0 + $1.count })")
             }
         }
     }
@@ -145,10 +154,12 @@ final class V2RecordingAssetInfo: ObservableObject {
         return Array(result.prefix(20))
     }
 
-    /// 场景切换：降采样（64×36）逐帧差分，均差超阈值且距上一刀 > 1 秒记一处
+    /// 场景切换 + 槽位能量：降采样（64×36）逐帧差分（每 3 帧比一次）
+    /// - cuts：均差超阈值且距上一刀 > 1 秒的时刻
+    /// - energies：按缩略图槽位分桶的平均变化能量（归一化 0...1），驱动时间线折叠
     /// 解码是主要成本（约与时长线性，1 分钟 720p 数秒），在后台任务中调用
-    private static func detectSceneCuts(asset: AVURLAsset, track: AVAssetTrack) -> [Double] {
-        guard let reader = try? AVAssetReader(asset: asset) else { return [] }
+    private static func analyzeVideo(asset: AVURLAsset, track: AVAssetTrack, buckets: Int) -> (cuts: [Double], energies: [Float]) {
+        guard let reader = try? AVAssetReader(asset: asset), buckets > 0 else { return ([], []) }
         let settings: [String: Any] = [
             kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
             kCVPixelBufferWidthKey as String: 64,
@@ -157,11 +168,16 @@ final class V2RecordingAssetInfo: ObservableObject {
         let output = AVAssetReaderTrackOutput(track: track, outputSettings: settings)
         output.alwaysCopiesSampleData = false
         reader.add(output)
-        guard reader.startReading() else { return [] }
+        guard reader.startReading() else { return ([], []) }
+
+        let duration = track.timeRange.duration.seconds
+        guard duration > 0 else { return ([], []) }
 
         var previous: [UInt8]?
         var cuts: [Double] = []
         var lastCut = -10.0
+        var bucketSums = [Double](repeating: 0, count: buckets)
+        var bucketCounts = [Int](repeating: 0, count: buckets)
         var frameIndex = 0
 
         while let sample = output.copyNextSampleBuffer() {
@@ -200,10 +216,25 @@ final class V2RecordingAssetInfo: ObservableObject {
                     cuts.append(time)
                     lastCut = time
                 }
+                let bucket = min(buckets - 1, max(0, Int(time / duration * Double(buckets))))
+                bucketSums[bucket] += normalized
+                bucketCounts[bucket] += 1
             }
             previous = current
         }
-        return Array(cuts.prefix(30))
+
+        var energies: [Float] = []
+        var peak = 0.0001
+        var raw: [Double] = []
+        for i in 0..<buckets {
+            let e = bucketCounts[i] == 0 ? 0 : bucketSums[i] / Double(bucketCounts[i])
+            raw.append(e)
+            peak = max(peak, e)
+        }
+        for e in raw {
+            energies.append(Float(min(1, e / peak)))
+        }
+        return (Array(cuts.prefix(30)), energies)
     }
 
     /// PCM 能量包络：AVAssetReader 顺序读取 → 分桶 RMS → 归一化

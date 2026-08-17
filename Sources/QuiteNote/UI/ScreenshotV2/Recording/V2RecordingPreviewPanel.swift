@@ -167,6 +167,13 @@ final class V2PlaybackModel: ObservableObject {
         if player.timeControlStatus == .playing {
             player.pause()
         } else {
+            // 播放到末尾后再点播放：从头重播（否则 play() 立即结束，看起来像按钮失灵）
+            if let itemDuration = player.currentItem?.duration,
+               CMTIME_IS_NUMERIC(itemDuration),
+               currentTime >= itemDuration.seconds - 0.05 {
+                player.seek(to: .zero)
+                currentTime = 0
+            }
             player.play()
         }
     }
@@ -248,6 +255,8 @@ struct V2RecordingPreviewView: View {
     @State private var savedToNotes = false
     /// 磁吸命中时的吸附位置（全片比例），用于绘制吸附指示线
     @State private var snapIndicator: Double?
+    /// 循环播放中的选段（删除前预听）
+    @State private var loopingSelection: TimelineSelection?
 
     init(fileURL: URL, player: AVPlayer) {
         self.fileURL = fileURL
@@ -320,6 +329,15 @@ struct V2RecordingPreviewView: View {
         .onChange(of: mutedTracks) { _ in schedulePlaybackRebuild() }
         .onChange(of: trimStart) { _ in schedulePlaybackRebuild() }
         .onChange(of: trimEnd) { _ in schedulePlaybackRebuild() }
+        .onChange(of: selection) { _ in loopingSelection = nil }
+        .onReceive(playback.$currentTime) { current in
+            // 循环预听：播到选段末尾跳回选段开头
+            guard let loop = loopingSelection else { return }
+            let original = originalTime(fromTimeline: current)
+            if original >= duration * loop.endFrac - 0.05 {
+                playback.seek(to: timelineTime(fromOriginal: duration * loop.startFrac))
+            }
+        }
     }
 
     // MARK: 播放区
@@ -522,18 +540,55 @@ struct V2RecordingPreviewView: View {
         .background(Color.themeGray900)
     }
 
-    /// 缩略图条
+    /// 缩略图条：按画面变化折叠——静止段折叠成暗色插槽，有变化/卡点附近保留画面
     private var filmstripView: some View {
-        HStack(spacing: 2) {
+        HStack(spacing: 1) {
             ForEach(assetInfo.thumbnails.indices, id: \.self) { i in
-                Image(nsImage: assetInfo.thumbnails[i])
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .frame(maxWidth: .infinity, maxHeight: 44)
-                    .clipped()
-                    .cornerRadius(2)
+                filmSlot(i)
             }
         }
+    }
+
+    @ViewBuilder
+    private func filmSlot(_ i: Int) -> some View {
+        if slotKeepsThumbnail(i) {
+            Image(nsImage: assetInfo.thumbnails[i])
+                .resizable()
+                .aspectRatio(contentMode: .fill)
+                .frame(maxWidth: .infinity, maxHeight: 44)
+                .clipped()
+                .cornerRadius(2)
+        } else {
+            // 折叠插槽：暗色 + 虚线框 + 省略号，表示这段画面基本没变
+            ZStack {
+                Rectangle()
+                    .fill(Color.themeGray800.opacity(0.75))
+                Text("⋯")
+                    .font(.themeCaption)
+                    .foregroundColor(.themeTextTertiary.opacity(0.6))
+            }
+            .frame(maxWidth: .infinity, maxHeight: 44)
+            .cornerRadius(2)
+            .overlay(
+                RoundedRectangle(cornerRadius: 2)
+                    .stroke(Color.themeBorderSubtle, style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
+            )
+        }
+    }
+
+    /// 槽位是否保留画面：能量够（画面有变化），或紧邻场景卡点（切换前后要能看到）
+    private func slotKeepsThumbnail(_ i: Int) -> Bool {
+        guard assetInfo.slotEnergies.count == assetInfo.thumbnails.count,
+              !assetInfo.thumbnails.isEmpty else { return true }
+        if assetInfo.slotEnergies[i] >= 0.05 { return true }
+
+        let slotDuration = duration / Double(assetInfo.thumbnails.count)
+        let slotStart = Double(i) * slotDuration
+        // 卡点前一格与后两格保留画面（切换的前因后果）
+        for cut in assetInfo.sceneCuts where cut > slotStart - slotDuration && cut < slotStart + 2.5 * slotDuration {
+            return true
+        }
+        return false
     }
 
     /// ◆ 场景切换卡点（缩略图条上方一排，点击跳转）
@@ -734,6 +789,16 @@ struct V2RecordingPreviewView: View {
                     .font(.themeCaptionSmall)
                     .foregroundColor(.themeRed400)
                     .fixedSize()
+                miniButton(loopingSelection == nil ? "▶ 循环此段" : "⏹ 停止循环", prominent: false) {
+                    if loopingSelection == nil {
+                        loopingSelection = sel
+                        // 立即跳到选段开头开始预听
+                        playback.seek(to: timelineTime(fromOriginal: duration * sel.startFrac))
+                        if !playback.isPlaying { playback.toggle() }
+                    } else {
+                        loopingSelection = nil
+                    }
+                }
                 miniButton("✂ 删除此段", prominent: true) { commitSelection(sel) }
                 miniButton("取消", prominent: false) { selection = nil }
             } else {
