@@ -178,6 +178,10 @@ final class V2PlaybackModel: ObservableObject {
         }
     }
 
+    func pause() {
+        player.pause()
+    }
+
     func seek(to seconds: Double) {
         player.seek(to: CMTime(seconds: seconds, preferredTimescale: 600),
                     toleranceBefore: .zero, toleranceAfter: .zero)
@@ -832,7 +836,9 @@ struct V2RecordingPreviewView: View {
                         playback.seek(to: timelineTime(fromOriginal: duration * sel.startFrac))
                         if !playback.isPlaying { playback.toggle() }
                     } else {
+                        // 停止循环 = 停在当前位置（不继续往后播）
                         loopingSelection = nil
+                        playback.pause()
                     }
                 }
                 miniButton("✂ 删除此段", prominent: true) { commitSelection(sel) }
