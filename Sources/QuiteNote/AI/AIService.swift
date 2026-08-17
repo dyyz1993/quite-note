@@ -205,6 +205,8 @@ final class AIService: AIServiceProtocol {
         req.httpMethod = "POST"
         req.addValue("application/json", forHTTPHeaderField: "Content-Type")
         req.addValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        // 诊断：密钥指纹（前4位+长度）与目标 URL——排查"App 读到的密钥与命令行读到的不一致"类问题
+        DiagnosticCenter.info("OCR", "AI 请求 → \(url.absoluteString) | key=\(apiKey.prefix(4))…(len=\(apiKey.count))")
 
         let body: [String: Any] = [
             "model": openAIModel,
@@ -237,6 +239,10 @@ final class AIService: AIServiceProtocol {
                 safeCompletion(.failure(error)); return
             }
             if let http = response as? HTTPURLResponse, http.statusCode != 200 {
+                // 诊断：失败响应体落日志——401 是代理拒的还是上游拒的，一看便知
+                if let data, let body = String(data: data, encoding: .utf8) {
+                    DiagnosticCenter.error("OCR", "AI HTTP \(http.statusCode) 响应体: \(String(body.prefix(200)))")
+                }
                 if remainingRetries > 0 && (http.statusCode == 401 || http.statusCode >= 500) {
                     scheduleRetry(reason: " HTTP \(http.statusCode)"); return
                 }
