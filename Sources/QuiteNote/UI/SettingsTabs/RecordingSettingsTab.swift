@@ -28,6 +28,31 @@ struct RecordingSettingsTab: View {
                     get: { prefs.recordingMicrophone },
                     set: { prefs.setRecordingMicrophone($0) }))
 
+            // 鼠标模式（与工具栏 ▾ 弹层共用存储）
+            HStack(alignment: .top, spacing: ThemeSpacing.px3.rawValue) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("鼠标呈现")
+                        .font(.themeBody)
+                        .foregroundColor(.themeTextPrimary)
+                    Text("录教程建议隐藏或点击高亮（高亮需 macOS 14.2+，旧系统自动回退保留）")
+                        .font(.themeCaption)
+                        .foregroundColor(.themeTextTertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+                Picker("", selection: Binding(
+                    get: { V2RecordingCursorMode(rawValue: prefs.recordingCursorMode) ?? .keep },
+                    set: { prefs.setRecordingCursorMode($0) })) {
+                    ForEach(V2RecordingCursorMode.allCases, id: \.self) { mode in
+                        Text(mode.localizedName).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 170)
+                .controlSize(.small)
+            }
+            .padding(.vertical, ThemeSpacing.px1.rawValue + 2)
+
             hintCard("两个开关独立组合：口播=只开麦克风 · 会议解说=都开 · 操作演示=只开系统声 · 都关=无声录制。截图工具栏 ⏺ 旁的 ▾ 可在每次录制前临时切换（会被记住）。")
         }
         .padding(ThemeSpacing.px4.rawValue)

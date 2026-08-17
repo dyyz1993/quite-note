@@ -5,6 +5,21 @@ import CoreMedia
 import CoreVideo
 import ScreenCaptureKit
 
+/// 录制中的鼠标呈现方式
+enum V2RecordingCursorMode: String, CaseIterable {
+    case keep      // 保留鼠标（默认）
+    case hide      // 隐藏鼠标（录教程去干扰）
+    case highlight // 保留 + 点击高亮（macOS 14.2+，旧系统自动回退保留）
+
+    var localizedName: String {
+        switch self {
+        case .keep: return "保留"
+        case .hide: return "隐藏"
+        case .highlight: return "点击高亮"
+        }
+    }
+}
+
 /// 录制引擎：SCStream 按选区采集（画面 + 可选系统声）→ AVAssetWriter 直写 .mp4（H.264 + AAC）
 /// 麦克风由 V2MicrophoneRecorder 独立采集，经 ingestMicrophone 合流为第二条音轨。
 ///
@@ -38,6 +53,8 @@ final class V2ScreenRecorderEngine: NSObject, SCStreamOutput, SCStreamDelegate {
         let captureSystemAudio: Bool
         /// 录麦克风（引擎只负责建轨与合流，采集由 V2MicrophoneRecorder 喂入）
         let captureMicrophone: Bool
+        /// 鼠标呈现方式（保留/隐藏/点击高亮）
+        let cursorMode: V2RecordingCursorMode
     }
 
     /// 被系统强制停止（权限撤销、菜单栏录屏指示器停止）时回调，主线程执行
@@ -91,7 +108,10 @@ final class V2ScreenRecorderEngine: NSObject, SCStreamOutput, SCStreamDelegate {
         config.height = parameters.pixelHeight
         config.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(parameters.fps))
         config.queueDepth = 5
-        config.showsCursor = true
+        config.showsCursor = (parameters.cursorMode != .hide)
+        if parameters.cursorMode == .highlight, #available(macOS 15.0, *) {
+            config.showMouseClicks = true
+        }
         config.pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
         if parameters.captureSystemAudio {
             config.capturesAudio = true

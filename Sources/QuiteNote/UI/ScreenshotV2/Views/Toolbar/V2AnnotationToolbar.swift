@@ -10,6 +10,8 @@ struct V2AnnotationToolbar: View {
     @State private var showAudioPicker = false
     @State private var audioSystem = PreferencesManager.shared.recordingSystemAudio
     @State private var audioMicrophone = PreferencesManager.shared.recordingMicrophone
+    @State private var cursorMode: V2RecordingCursorMode =
+        V2RecordingCursorMode(rawValue: PreferencesManager.shared.recordingCursorMode) ?? .keep
     // P2.1: 自定义 tooltip 状态
     @State private var tooltipText: String = ""
     @State private var tooltipPosition: CGPoint = .zero
@@ -446,10 +448,10 @@ struct V2AnnotationToolbar: View {
         }
     }
 
-    /// ▾ 弹层：两路独立开关；写入偏好即长期记忆（口播↔演示高频切换不用进设置页）
+    /// ▾ 弹层：录制前配置（音频两开关 + 鼠标模式）；写入偏好即长期记忆
     private var audioPickerPopover: some View {
         VStack(alignment: .leading, spacing: ThemeSpacing.px1.rawValue + 2) {
-            Text("本次录制音频（会被记住）")
+            Text("本次录制配置（会被记住）")
                 .font(.themeCaption)
                 .foregroundColor(.themeTextTertiary)
 
@@ -463,12 +465,35 @@ struct V2AnnotationToolbar: View {
                            title: "麦克风",
                            subtitle: "口播解说")
 
+            Divider().frame(height: 1).background(Color.themeBorderSubtle)
+
+            // 鼠标模式：保留 / 隐藏 / 点击高亮（14.2+）
+            HStack(spacing: ThemeSpacing.px2.rawValue) {
+                Text("鼠标")
+                    .font(.themeBody)
+                    .foregroundColor(.themeTextPrimary)
+                Spacer()
+                Picker("", selection: Binding(
+                    get: { cursorMode },
+                    set: { newValue in
+                        cursorMode = newValue
+                        PreferencesManager.shared.setRecordingCursorMode(newValue)
+                    })) {
+                    ForEach(V2RecordingCursorMode.allCases, id: \.self) { mode in
+                        Text(mode.localizedName).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 150)
+            }
+            .padding(.vertical, ThemeSpacing.px1.rawValue)
+
             Text("口播=只勾麦克风 · 会议=都勾 · 演示=只勾系统声")
                 .font(.themeCaptionSmall)
                 .foregroundColor(.themeTextTertiary)
         }
         .padding(ThemeSpacing.px3.rawValue)
-        .frame(width: 232, alignment: .leading)
+        .frame(width: 240, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: ThemeRadius.lg.rawValue)
                 .fill(Color.themeGray900.opacity(0.97))

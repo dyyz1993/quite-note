@@ -123,6 +123,8 @@ final class PreferencesManager: ObservableObject {
     // 录屏设置：两路音频独立开关（都关 = 无声录制；都开 = 带解说的会议场景）
     var recordingSystemAudio: Bool { d.object(forKey: "recordingSystemAudio") == nil ? true : d.bool(forKey: "recordingSystemAudio") }
     var recordingMicrophone: Bool { d.object(forKey: "recordingMicrophone") == nil ? false : d.bool(forKey: "recordingMicrophone") }
+    /// 鼠标呈现：keep 保留 / hide 隐藏 / highlight 点击高亮（14.2+，旧系统回退保留）
+    var recordingCursorMode: String { d.string(forKey: "recordingCursorMode") ?? V2RecordingCursorMode.keep.rawValue }
 
     func setRecordingSystemAudio(_ v: Bool) {
         d.set(v, forKey: "recordingSystemAudio")
@@ -131,6 +133,11 @@ final class PreferencesManager: ObservableObject {
 
     func setRecordingMicrophone(_ v: Bool) {
         d.set(v, forKey: "recordingMicrophone")
+        objectWillChange.send()
+    }
+
+    func setRecordingCursorMode(_ v: V2RecordingCursorMode) {
+        d.set(v.rawValue, forKey: "recordingCursorMode")
         objectWillChange.send()
     }
     func setScreenshotCopyPathAfterSave(_ v: Bool) {

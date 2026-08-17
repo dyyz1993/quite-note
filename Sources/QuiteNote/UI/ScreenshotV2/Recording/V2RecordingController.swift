@@ -88,6 +88,10 @@ final class V2RecordingController: ObservableObject {
 
         Task {
             do {
+                // 起录稳定延迟：截图遮罩刚关闭时画面合成器可能还有残影，
+                // 等 250ms 让底层画面完全就位再起流（否则首帧可能录到遮罩残影/层级错乱）
+                try await Task.sleep(nanoseconds: 250_000_000)
+
                 // 麦克风需要独立 TCC 授权：先请求，拒绝则本次降级为不开麦（不阻断录制）
                 if wantsMicrophone {
                     let granted = await Self.requestMicrophonePermission()
@@ -108,6 +112,10 @@ final class V2RecordingController: ObservableObject {
                 let selfApp = content.applications.first {
                     $0.bundleIdentifier == Bundle.main.bundleIdentifier
                 }
+                if selfApp == nil {
+                    // 排除失败时自己的 UI 可能入画（含遮罩残影），落日志便于排查
+                    DiagnosticCenter.warning("Recording", "未能在 SCShareableContent 中定位本应用（bundleID=\(Bundle.main.bundleIdentifier ?? "nil")），窗口排除未生效")
+                }
 
                 try await engine.start(parameters: .init(
                     display: display,
@@ -120,7 +128,8 @@ final class V2RecordingController: ObservableObject {
                     outputURL: tempURL,
                     excludedApplications: selfApp.map { [$0] } ?? [],
                     captureSystemAudio: wantsSystemAudio,
-                    captureMicrophone: wantsMicrophone
+                    captureMicrophone: wantsMicrophone,
+                    cursorMode: V2RecordingCursorMode(rawValue: PreferencesManager.shared.recordingCursorMode) ?? .keep
                 ))
 
                 // 麦克风采集器在引擎就绪后再启动（拿到 TCC 授权的时机也更自然）
