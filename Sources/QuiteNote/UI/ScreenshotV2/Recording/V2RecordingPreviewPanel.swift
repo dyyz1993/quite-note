@@ -526,6 +526,10 @@ struct V2RecordingEditorView: View {
                             let original = min(duration, max(0, displayOriginal + (tap.location.x - centerX(width: width)) / zoom))
                             t = original
                             playback.seek(to: timelineTime(fromOriginal: original))
+                            // 点击定位的同时选中所在段（剪映行为；绕开子视图手势竞争）
+                            if let idx = segments.firstIndex(where: { original >= $0.start && original <= $0.end }) {
+                                selectedSegmentID = segments[idx].id
+                            }
                         }
                     })
 
@@ -1369,7 +1373,7 @@ private struct TrackContent: View {
                 .fill(Color.white.opacity(isSelected ? 0.02 : 0.001))
                 .overlay(
                     RoundedRectangle(cornerRadius: 8)
-                        .stroke(isSelected ? Color.white : Color.white.opacity(0.4),
+                        .stroke(isSelected ? Color.white : Color.white.opacity(0.55),
                                 lineWidth: isSelected ? 2.5 : 1.5)
                 )
                 .frame(width: seg.length * zoom, height: 48 + CGFloat(waveforms.count) * 26
