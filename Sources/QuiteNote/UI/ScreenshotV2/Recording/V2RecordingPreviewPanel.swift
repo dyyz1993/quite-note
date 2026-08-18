@@ -199,6 +199,15 @@ private struct PlayerLayerView: NSViewRepresentable {
 // MARK: - 编辑器主视图
 
 struct V2RecordingEditorView: View {
+    private struct EditorSnapshot: Equatable {
+        var segments: [EditSegment]
+        var laneStates: [AudioLaneState]
+        var dubState: AudioLaneState
+        var dubTakes: [DubTake]
+        var captions: [CaptionChunk]
+        var captionsOn: Bool
+    }
+
     let fileURL: URL
     let player: AVPlayer
 
@@ -212,7 +221,8 @@ struct V2RecordingEditorView: View {
     @State private var viewportWidth: CGFloat = 0
     @State private var zoomFitted = false
     @State private var t: Double = 0              // 播放头（原始时间轴）
-    @State private var undoStack: [[EditSegment]] = []
+    @State private var undoStack: [EditorSnapshot] = []
+    @State private var redoStack: [EditorSnapshot] = []
 
     // 音轨（与 assetInfo.waveforms 一一对应）+ 配音轨
     @State private var laneStates: [AudioLaneState] = []
@@ -234,6 +244,7 @@ struct V2RecordingEditorView: View {
     @State private var snapIndicator: Double?
     @State private var trimDragBase: [EditSegment]?
     @State private var panBaseOriginal: Double?
+    @State private var lastSnapTarget: Double?
     @State private var volumePopoverLane: Int?
     @State private var playbackRate: Float = 1
     @State private var isExporting = false
@@ -408,6 +419,8 @@ struct V2RecordingEditorView: View {
                     .background(Circle().fill(Color.white))
             }
             .buttonStyle(.plain)
+            .keyboardShortcut(.space, modifiers: [])
+            .help("播放 / 暂停（空格）")
 
             Text(timeLabel(displayOriginal))
                 .font(.themeBody.weight(.semibold))
@@ -440,6 +453,9 @@ struct V2RecordingEditorView: View {
             .fixedSize()
             .help("播放速度（仅预览，不影响导出成片速度）")
 
+            Divider()
+                .frame(height: 18)
+
             // 缩放
             HStack(spacing: 3) {
                 Button(action: { zoom = max(10, zoom / 1.35) }) { Image(systemName: "minus") }
@@ -452,39 +468,59 @@ struct V2RecordingEditorView: View {
             .foregroundColor(.themeTextSecondary)
             .buttonStyle(.plain)
 
-            toolButton("✂ 分割", disabled: !canSplit) { splitAtPlayhead() }
-            toolButton("🗑 删除此段", disabled: segments.count < 2 || selectedIndex == nil) { deleteSelected() }
-            toolButton(dubbing ? "⏹ 结束配音" : "🎙 补录配音",
+            Divider()
+                .frame(height: 18)
+
+            toolButton(icon: "scissors", title: "分割", disabled: !canSplit) { splitAtPlayhead() }
+            toolButton(icon: "trash", title: "删除此段",
+                       disabled: segments.count < 2 || selectedIndex == nil) { deleteSelected() }
+
+            Divider()
+                .frame(height: 18)
+
+            toolButton(icon: dubbing ? "stop.fill" : "mic.fill",
+                       title: dubbing ? "结束配音" : "补录配音",
                        prominent: dubbing) { toggleDub() }
             if V2CaptionTranscriber.available {
-                toolButton(captionBusy ? "识别中…" : (captions.isEmpty ? "💬 自动字幕" : (captionsOn ? "💬 字幕 ✓" : "💬 字幕 关")),
+                toolButton(icon: captionBusy ? "hourglass" : "captions.bubble",
+                           title: captionBusy ? "识别中…" : (captions.isEmpty ? "自动字幕" : (captionsOn ? "字幕 · 开" : "字幕 · 关")),
                            disabled: captionBusy || (captions.isEmpty && !canTranscribe)) { toggleCaptions() }
             }
-            toolButton("↩ 撤销", disabled: undoStack.isEmpty) { undo() }
-            toolButton(isExporting ? "导出中…" : "导出成片", prominent: true, disabled: isExporting || dubbing) { exportFinal() }
+
+            Divider()
+                .frame(height: 18)
+
+            toolButton(icon: "arrow.uturn.backward", title: "撤销剪辑", disabled: undoStack.isEmpty) { undo() }
+                .keyboardShortcut("z", modifiers: .command)
+            toolButton(icon: "arrow.uturn.forward", title: "重做剪辑", disabled: redoStack.isEmpty) { redo() }
+                .keyboardShortcut("z", modifiers: [.command, .shift])
+            toolButton(icon: "square.and.arrow.up", title: isExporting ? "导出中…" : "导出成片",
+                       prominent: true, disabled: isExporting || dubbing) { exportFinal() }
         }
         .padding(.horizontal, ThemeSpacing.px4.rawValue)
         .padding(.vertical, ThemeSpacing.px2.rawValue)
         .background(Color.themeGray800.opacity(0.6))
     }
 
-    private func toolButton(_ text: String, prominent: Bool = false,
+    private func toolButton(icon: String, title: String, prominent: Bool = false,
                             disabled: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Text(text)
+            Label(title, systemImage: icon)
                 .font(.themeCaption)
                 .fixedSize()
                 .foregroundColor(prominent ? .white : .themeTextPrimary)
-                .padding(.horizontal, 9)
+                .labelStyle(.titleAndIcon)
+                .padding(.horizontal, 8)
                 .padding(.vertical, 5)
                 .background(
                     RoundedRectangle(cornerRadius: 6)
-                        .fill(prominent ? Color.themeRed500 : Color.themeGray700)
+                        .fill(prominent ? Color.themeBlue600 : Color.themeGray700)
                 )
                 .opacity(disabled ? 0.35 : 1)
         }
         .buttonStyle(.plain)
         .disabled(disabled)
+        .help(title)
     }
 
     // MARK: 时间线
@@ -507,6 +543,7 @@ struct V2RecordingEditorView: View {
                         dubTakes: dubTakes,
                         dubGrowingEnd: dubTake?.end,
                         captions: captions,
+                        sceneCuts: assetInfo.sceneCuts,
                         duration: duration,
                         zoom: zoom,
                         playheadFraction: displayOriginal / duration,
@@ -516,14 +553,24 @@ struct V2RecordingEditorView: View {
                         onHandleEnd: {
                             trimDragBase = nil
                             snapIndicator = nil
+                            lastSnapTarget = nil
                         },
-                        onCaptionTap: { cap in editingCaption = cap })
+                        onCaptionTap: { cap in
+                            pushUndo()
+                            editingCaption = cap
+                        },
+                        onSeekOriginal: { original in
+                            t = original
+                            playback.seek(to: timelineTime(fromOriginal: original))
+                        })
                     .frame(width: duration * zoom, alignment: .topLeading)
                     .offset(x: centerX(width: width) - displayOriginal * zoom)
                     .gesture(panGesture(width: width))
                     .simultaneousGesture(SpatialTapGesture().onEnded { tap in
                         if !dubbing {
-                            let original = min(duration, max(0, displayOriginal + (tap.location.x - centerX(width: width)) / zoom))
+                            // TrackContent 局部坐标：x / zoom 即原始时间
+                            // （此前误用视口换算，选中的永远是播放头附近的段——点前段不切换的根因）
+                            let original = min(duration, max(0, tap.location.x / zoom))
                             t = original
                             playback.seek(to: timelineTime(fromOriginal: original))
                             // 点击定位的同时选中所在段（剪映行为；绕开子视图手势竞争）
@@ -560,6 +607,19 @@ struct V2RecordingEditorView: View {
             .frame(height: timelineHeight)
         }
         .background(Color(red: 14/255, green: 21/255, blue: 36/255))
+        // 滚轮/触控板横向滚动浏览时间线（水平手势优先，鼠标滚轮的竖直分量也接住）
+        .onScrollWheel { event in
+            guard !dubbing else { return }
+            let delta = event.scrollingDeltaX != 0 ? event.scrollingDeltaX : event.scrollingDeltaY
+            guard delta != 0 else { return }
+            if playback.isPlaying { playback.pause() }
+            let original = min(duration, max(0, t - Double(delta) / zoom))
+            if crossedCutBoundary(from: t, to: original) {
+                HapticFeedbackManager.shared.lightImpact()
+            }
+            t = original
+            playback.seek(to: timelineTime(fromOriginal: original))
+        }
         .overlay(
             captionEditor.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         )
@@ -603,27 +663,42 @@ struct V2RecordingEditorView: View {
         guard var base = trimDragBase, base.indices.contains(index) else { return }
         var seg = base[index]
         let delta = Double(g.translation.width) / zoom
-        var snapped = false
+        // 吸附目标：播放头 + 所有场景转场点位（◆）
+        let snapCandidates = [displayOriginal] + assetInfo.sceneCuts
+        var snapTarget: Double?
         if isStart {
             let prevEnd = index > 0 ? base[index - 1].end : 0
             var newStart = min(seg.end - 0.5, max(prevEnd, seg.start + delta))
-            if abs(newStart - displayOriginal) < 0.35 {
-                newStart = min(seg.end - 0.5, max(prevEnd, displayOriginal))
-                snapped = true
+            snapTarget = snapCandidates
+                .map { min(seg.end - 0.5, max(prevEnd, $0)) }
+                .min(by: { abs($0 - newStart) < abs($1 - newStart) })
+            if let target = snapTarget, abs(target - newStart) < 0.35 {
+                newStart = target
+            } else {
+                snapTarget = nil
             }
             seg.start = newStart
         } else {
             let nextStart = index < base.count - 1 ? base[index + 1].start : duration
             var newEnd = max(seg.start + 0.5, min(nextStart, seg.end + delta))
-            if abs(newEnd - displayOriginal) < 0.35 {
-                newEnd = max(seg.start + 0.5, min(nextStart, displayOriginal))
-                snapped = true
+            snapTarget = snapCandidates
+                .map { max(seg.start + 0.5, min(nextStart, $0)) }
+                .min(by: { abs($0 - newEnd) < abs($1 - newEnd) })
+            if let target = snapTarget, abs(target - newEnd) < 0.35 {
+                newEnd = target
+            } else {
+                snapTarget = nil
             }
             seg.end = newEnd
         }
         base[index] = seg
         segments = base
-        snapIndicator = snapped ? (isStart ? seg.start : seg.end) / duration : nil
+        snapIndicator = snapTarget.map { target in (isStart ? seg.start : seg.end) / duration }
+        // 吸附命中时轻触反馈（目标变化才震，避免连续震动）
+        if let target = snapTarget, target != lastSnapTarget {
+            HapticFeedbackManager.shared.lightImpact()
+        }
+        lastSnapTarget = snapTarget
     }
 
     private var timelineHeight: CGFloat {
@@ -669,7 +744,10 @@ struct V2RecordingEditorView: View {
     private func laneHeader(index: Int, label: String, color: Color,
                             state: Binding<AudioLaneState>) -> some View {
         HStack(spacing: 4) {
-            Button(action: { state.wrappedValue.muted.toggle() }) {
+            Button(action: {
+                pushUndo()
+                state.wrappedValue.muted.toggle()
+            }) {
                 Image(systemName: state.wrappedValue.muted ? "speaker.slash.fill" : "speaker.wave.2.fill")
                     .font(.system(size: 10))
                     .foregroundColor(state.wrappedValue.muted ? Color.themeRed400 : color)
@@ -679,7 +757,10 @@ struct V2RecordingEditorView: View {
             .buttonStyle(.plain)
             .help("静音/恢复")
 
-            Button(action: { volumePopoverLane = volumePopoverLane == index ? nil : index }) {
+            Button(action: {
+                if volumePopoverLane != index { pushUndo() }
+                volumePopoverLane = volumePopoverLane == index ? nil : index
+            }) {
                 Text("\(label) \(Int(state.wrappedValue.volume * 100))%")
                     .font(.themeCaptionSmall)
                     .foregroundColor(color)
@@ -779,20 +860,45 @@ struct V2RecordingEditorView: View {
         selectedSegmentID = segments[min(idx, segments.count - 1)].id
     }
 
+    private func snapshot() -> EditorSnapshot {
+        EditorSnapshot(
+            segments: segments,
+            laneStates: laneStates,
+            dubState: dubState,
+            dubTakes: dubTakes,
+            captions: captions,
+            captionsOn: captionsOn)
+    }
+
+    private func restore(_ snapshot: EditorSnapshot) {
+        segments = snapshot.segments
+        laneStates = snapshot.laneStates
+        dubState = snapshot.dubState
+        dubTakes = snapshot.dubTakes
+        captions = snapshot.captions
+        captionsOn = snapshot.captionsOn
+        selectedSegmentID = segments.indices.contains(selectedIndex ?? 0)
+            ? segments[selectedIndex ?? 0].id
+            : segments.last?.id
+        schedulePlaybackRebuild()
+    }
+
     private func pushUndo() {
-        undoStack.append(segments)
+        undoStack.append(snapshot())
+        redoStack.removeAll()
         if undoStack.count > 30 { undoStack.removeFirst() }
     }
 
     private func undo() {
         guard let prev = undoStack.popLast() else { return }
-        let restoreIndex = selectedIndex ?? 0
-        segments = prev
-        // 优先保持同位置的段（而不是跳到最后一段）
-        if let id = selectedSegmentID, segments.contains(where: { $0.id == id }) { return }
-        selectedSegmentID = segments.indices.contains(restoreIndex)
-            ? segments[restoreIndex].id
-            : segments.last?.id
+        redoStack.append(snapshot())
+        restore(prev)
+    }
+
+    private func redo() {
+        guard let next = redoStack.popLast() else { return }
+        undoStack.append(snapshot())
+        restore(next)
     }
 
     // MARK: 配音
@@ -821,6 +927,7 @@ struct V2RecordingEditorView: View {
                 let url = try recorder.start()
                 dubRecorder = recorder
                 let take = DubTake(start: t, end: t, fileURL: url)
+                pushUndo()
                 dubTake = take
                 dubTakes.append(take)
                 playback.seek(to: timelineTime(fromOriginal: t))
@@ -875,6 +982,7 @@ struct V2RecordingEditorView: View {
     }
 
     private func toggleCaptions() {
+        pushUndo()
         if captions.isEmpty {
             generateCaptions()
         } else {
@@ -1136,13 +1244,21 @@ struct V2RecordingEditorView: View {
                     .foregroundColor(copied ? .themeStatusSuccess : .themeTextSecondary)
             }.buttonStyle(.plain)
             Button(action: { NSWorkspace.shared.activateFileViewerSelecting([fileURL]) }) {
-                Text("Finder").font(.themeCaptionSmall).fixedSize()
+                Label("在 Finder 中显示", systemImage: "folder")
+                    .font(.themeCaptionSmall)
+                    .fixedSize()
                     .foregroundColor(.themeTextSecondary)
             }.buttonStyle(.plain)
             Button(action: saveToNotes) {
-                Text(savedToNotes ? "已存闪记 ✓" : "存入闪记").font(.themeCaptionSmall).fixedSize()
-                    .foregroundColor(savedToNotes ? .themeStatusSuccess : .themeTextSecondary)
-            }.buttonStyle(.plain).disabled(savedToNotes)
+                Label(savedToNotes ? "已存入闪记" : "存入闪记",
+                      systemImage: savedToNotes ? "checkmark.circle.fill" : "tray.and.arrow.down.fill")
+                    .font(.themeCaption)
+                    .fixedSize()
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(savedToNotes ? .themeStatusSuccess : .themeBlue600)
+            .controlSize(.small)
+            .disabled(savedToNotes)
             Button(action: { V2RecordingPreviewController.shared.close() }) {
                 Text("关闭").font(.themeCaptionSmall).fixedSize()
                     .foregroundColor(.themeTextSecondary)
@@ -1210,6 +1326,7 @@ private struct TrackContent: View {
     let dubTakes: [DubTake]
     let dubGrowingEnd: Double?
     let captions: [CaptionChunk]
+    let sceneCuts: [Double]
     let duration: Double
     let zoom: Double
     let playheadFraction: Double
@@ -1218,6 +1335,7 @@ private struct TrackContent: View {
     var onHandleDrag: ((Int, Bool, DragGesture.Value) -> Void)?
     var onHandleEnd: (() -> Void)?
     var onCaptionTap: ((CaptionChunk) -> Void)?
+    var onSeekOriginal: ((Double) -> Void)?
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -1228,6 +1346,7 @@ private struct TrackContent: View {
             captionLane
             gapOverlays
             segmentFrames
+            sceneMarkers
             snapLine
         }
     }
@@ -1406,6 +1525,21 @@ private struct TrackContent: View {
                 .fill(Color.themeBlue500.opacity(0.8))
                 .frame(width: 1.5)
                 .offset(x: snap * duration * zoom)
+        }
+    }
+
+    /// 场景转场点位（◆ 黄色小菱形，刻度尺下方）：点击跳转；修剪把手靠近时吸附
+    @ViewBuilder
+    private var sceneMarkers: some View {
+        ForEach(sceneCuts, id: \.self) { cut in
+            Text("◆")
+                .font(.system(size: 8))
+                .foregroundColor(.themeYellow500)
+                .frame(width: 11, height: 11)
+                .contentShape(Rectangle())
+                .onTapGesture { onSeekOriginal?(cut) }
+                .help(String(format: "转场 %.1f 秒 · 点击跳转", cut))
+                .offset(x: cut * zoom - 5.5, y: 11)
         }
     }
 

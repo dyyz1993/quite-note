@@ -19,6 +19,8 @@ final class V2RecordingAssetInfo: ObservableObject {
     @Published var waveforms: [WaveformTrack] = []
     /// 与 waveforms 一一对应的源音轨（合成导出用）
     @Published var audioTracks: [AVAssetTrack] = []
+    /// 场景切换时刻（秒）：帧差检测的画面突变点，时间线上标 ◆ 并供修剪吸附
+    @Published var sceneCuts: [Double] = []
     @Published var duration: Double = 0
     @Published var pixelText: String = ""
     @Published var fileSizeText: String = ""
@@ -89,6 +91,12 @@ final class V2RecordingAssetInfo: ObservableObject {
                 }
             }
 
+            // 场景切换检测（帧差）：与缩略图并行
+            var cuts: [Double] = []
+            if duration > 0, let videoTrack = (try? await asset.loadTracks(withMediaType: .video))?.first {
+                cuts = Self.detectSceneCuts(asset: asset, track: videoTrack)
+            }
+
             await MainActor.run { [weak self] in
                 guard let self else { return }
                 self.duration = duration
@@ -97,10 +105,71 @@ final class V2RecordingAssetInfo: ObservableObject {
                 self.thumbnails = thumbs
                 self.waveforms = waves
                 self.audioTracks = sources
+                self.sceneCuts = cuts
                 let trackDesc = waves.map { $0.label }.joined(separator: "+")
-                DiagnosticCenter.info("Recording", "分析完成：缩略图 \(thumbs.count)，音轨 \(waves.count)（\(trackDesc.isEmpty ? "无声" : trackDesc)）")
+                DiagnosticCenter.info("Recording", "分析完成：缩略图 \(thumbs.count)，音轨 \(waves.count)（\(trackDesc.isEmpty ? "无声" : trackDesc)），转场 \(cuts.count)")
             }
         }
+    }
+
+    /// 场景切换：降采样（64×36）逐帧差分（每 3 帧比一次），均差超阈值且距上一刀 > 1 秒记一处
+    private static func detectSceneCuts(asset: AVURLAsset, track: AVAssetTrack) -> [Double] {
+        guard let reader = try? AVAssetReader(asset: asset) else { return [] }
+        let settings: [String: Any] = [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+            kCVPixelBufferWidthKey as String: 64,
+            kCVPixelBufferHeightKey as String: 36,
+        ]
+        let output = AVAssetReaderTrackOutput(track: track, outputSettings: settings)
+        output.alwaysCopiesSampleData = false
+        reader.add(output)
+        guard reader.startReading() else { return [] }
+
+        var previous: [UInt8]?
+        var cuts: [Double] = []
+        var lastCut = -10.0
+        var frameIndex = 0
+
+        while let sample = output.copyNextSampleBuffer() {
+            frameIndex += 1
+            guard frameIndex % 3 == 0,
+                  let pixelBuffer = CMSampleBufferGetImageBuffer(sample) else { continue }
+
+            CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
+            defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
+
+            guard let base = CVPixelBufferGetBaseAddress(pixelBuffer) else { continue }
+            let bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
+            let width = CVPixelBufferGetWidth(pixelBuffer)
+            let height = CVPixelBufferGetHeight(pixelBuffer)
+            var current = [UInt8](repeating: 0, count: height * bytesPerRow)
+            current.withUnsafeMutableBytes { raw in
+                _ = raw.baseAddress.map { memcpy($0, base, height * bytesPerRow) }
+            }
+
+            if let prev = previous {
+                var difference = 0
+                var channels = 0
+                for y in 0..<height {
+                    let row = y * bytesPerRow
+                    for x in 0..<width {
+                        let offset = row + x * 4
+                        difference += abs(Int(current[offset]) - Int(prev[offset]))
+                        difference += abs(Int(current[offset + 1]) - Int(prev[offset + 1]))
+                        difference += abs(Int(current[offset + 2]) - Int(prev[offset + 2]))
+                        channels += 3
+                    }
+                }
+                let normalized = Double(difference) / Double(max(1, channels)) / 255.0
+                let time = CMSampleBufferGetPresentationTimeStamp(sample).seconds
+                if normalized > 0.14, time - lastCut > 1.0 {
+                    cuts.append(time)
+                    lastCut = time
+                }
+            }
+            previous = current
+        }
+        return Array(cuts.prefix(30))
     }
 
     /// 从 format description 读声道数（区分麦克风/系统声的依据）
