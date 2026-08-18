@@ -126,10 +126,17 @@ final class RecordStore: ObservableObject {
     /// 附件存储目录
     public var currentAttachmentsDirectory: URL {
         if !attachmentsPath.isEmpty {
-            let customURL = URL(fileURLWithPath: attachmentsPath)
-            // 确保目录存在
-            try? FileManager.default.createDirectory(at: customURL, withIntermediateDirectories: true)
-            return customURL
+            let bookmarkStore = SecurityScopedBookmarkStore.shared
+            if let customURL = bookmarkStore.resolve(forKey: "attachmentsDirectoryBookmark") {
+                try? FileManager.default.createDirectory(at: customURL, withIntermediateDirectories: true)
+                return customURL
+            }
+            // 已有书签但授权失效时，不再把沙盒外的旧路径当成可写目录。
+            if !bookmarkStore.hasBookmark(forKey: "attachmentsDirectoryBookmark") {
+                let customURL = URL(fileURLWithPath: attachmentsPath)
+                try? FileManager.default.createDirectory(at: customURL, withIntermediateDirectories: true)
+                return customURL
+            }
         }
         
         let paths = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
@@ -752,10 +759,12 @@ final class RecordStore: ObservableObject {
         // 同步搜索配置
         syncToSearcher()
 
-        // 添加到搜索历史
-        searchHistoryManager.add(query)
-
-        searcher.debouncedSearch(query, in: records, delay: delay, completion: completion)
+        // 搜索历史只记录真正执行过（防抖后）的搜索词：
+        // 若在这里立即 add，每个按键都会触发 didUpdate → searchHistory @Published 更新 → 搜索栏重渲染
+        searcher.debouncedSearch(query, in: records, delay: delay) { [weak self] results in
+            self?.searchHistoryManager.add(query)
+            completion(results)
+        }
     }
 
     /// 清空搜索历史

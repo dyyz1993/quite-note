@@ -384,6 +384,7 @@ struct FileSettingsTab: View {
         openPanel.begin { response in
             if response == .OK, let url = openPanel.url {
                 DispatchQueue.main.async {
+                    _ = SecurityScopedBookmarkStore.shared.save(url, forKey: "attachmentsDirectoryBookmark")
                     store.attachmentsPath = url.path
                     store.savePreferences()
                     Task {

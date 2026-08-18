@@ -85,7 +85,7 @@ struct ScreenshotSettingsTab: View {
         panel.canCreateDirectories = true
         panel.message = "选择截图的默认保存目录"
         if panel.runModal() == .OK, let url = panel.url {
-            prefs.setScreenshotSaveDirectory(url.path)
+            prefs.setScreenshotSaveDirectory(url)
         }
     }
     

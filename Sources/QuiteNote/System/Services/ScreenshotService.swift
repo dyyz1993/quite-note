@@ -85,67 +85,19 @@ final class ScreenshotService {
             return
         }
         
-        // 2. 准备路径
-        let tempDir = NSTemporaryDirectory()
-        let fileName = "quite_note_screenshot_\(Int(Date().timeIntervalSince1970)).png"
-        let tempPath = (tempDir as NSString).appendingPathComponent(fileName)
-        
-        // 3. 激活应用
-        // 交互式截图需要应用处于活跃状态
-        NSApp.activate(ignoringOtherApps: true)
-        
-        // 4. 执行命令
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
-        
-        // 使用 -i (交互式) 和 -x (不播放声音，我们自己处理或者用系统的)
-        // 注意：不使用 -c，因为直接存文件更可靠，我们可以事后读取并存入剪贴板
-        process.arguments = ["-i", tempPath]
-        
-        logger.info("执行命令: /usr/sbin/screencapture -i \(tempPath)")
-        
-        process.terminationHandler = { process in
-            let status = process.terminationStatus
-            self.logger.info("screencapture 进程结束，退出码: \(status)")
-            
-            DispatchQueue.main.async {
-                if status == 0 {
-                    // 检查文件是否存在
-                    if FileManager.default.fileExists(atPath: tempPath) {
-                        if let image = NSImage(contentsOfFile: tempPath) {
-                            self.logger.info("成功从文件读取截图: \(tempPath)")
-                            
-                            // 存入剪贴板
-                            let pasteboard = NSPasteboard.general
-                            pasteboard.clearContents()
-                            pasteboard.writeObjects([image])
-                            self.logger.info("已同步存入剪贴板")
-                            
-                            // 删除临时文件
-                            try? FileManager.default.removeItem(atPath: tempPath)
-                            
-                            completion(image)
-                        } else {
-                            self.logger.error("文件存在但无法解析为 NSImage")
-                            completion(nil)
-                        }
-                    } else {
-                        self.logger.error("截图进程返回成功，但文件不存在: \(tempPath)")
-                        completion(nil)
-                    }
-                } else {
-                    self.logger.warning("截图取消或失败，退出码: \(status)")
-                    completion(nil)
-                }
-            }
-        }
-        
-        do {
-            try process.run()
-        } catch {
-            logger.error("启动 screencapture 失败: \(error.localizedDescription)")
+        // 进程内 CoreGraphics 截图，避免 App Sandbox 中启动
+        // /usr/sbin/screencapture。交互式选区统一走 startScreenshot() 的 V2 流程。
+        guard let screen = NSScreen.main,
+              let displayID = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID,
+              let cgImage = CGDisplayCreateImage(displayID) else {
+            logger.error("进程内截图失败：无法获取主屏幕图像")
             completion(nil)
+            return
         }
+
+        let image = NSImage(cgImage: cgImage, size: screen.frame.size)
+        saveToClipboard(image: image)
+        completion(image)
     }
     
     /// 将图片保存到系统剪贴板
@@ -311,9 +263,17 @@ final class ScreenshotService {
         let dirURL: URL
         if dirPref.isEmpty {
             dirURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
-                ?? FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first!
+                ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         } else {
-            dirURL = URL(fileURLWithPath: (dirPref as NSString).expandingTildeInPath, isDirectory: true)
+            let bookmarkStore = SecurityScopedBookmarkStore.shared
+            if let scopedURL = bookmarkStore.resolve(forKey: "screenshotSaveDirectoryBookmark") {
+                dirURL = scopedURL
+            } else if bookmarkStore.hasBookmark(forKey: "screenshotSaveDirectoryBookmark") {
+                logger.error("截图导出失败：保存目录授权已失效，请重新选择目录")
+                return nil
+            } else {
+                dirURL = URL(fileURLWithPath: (dirPref as NSString).expandingTildeInPath, isDirectory: true)
+            }
         }
 
         do {
