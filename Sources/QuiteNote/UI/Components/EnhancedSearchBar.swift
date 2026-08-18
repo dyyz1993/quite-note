@@ -121,23 +121,33 @@ struct EnhancedSearchBar: View {
         HStack {
             LucideView(name: .search, size: 16, color: .themeTextSecondary)
             
-            TextField("搜索标题或内容...", text: $searchTerm)
-                .textFieldStyle(.plain)
-                .font(Font.system(size: 13))
-                .foregroundColor(.themeTextPrimary)
-                .focused($isSearchFieldFocused)
-                .onSubmit {
-                    performSearch()
+            // 自绘占位符：不依赖系统占位符颜色（plain 样式 TextField 在部分系统外观下
+            // 会忽略 foregroundColor 渲染成黑色），显式使用淡白辅助色
+            ZStack(alignment: .leading) {
+                if searchTerm.isEmpty {
+                    Text("搜索标题或内容...")
+                        .font(Font.system(size: 13))
+                        .foregroundColor(.themeTextSecondary)
+                        .allowsHitTesting(false)
                 }
-                .onChange(of: searchTerm) { newValue in
-                    // 手动输入时也不显示历史面板，直接搜索
-                    if !newValue.isEmpty {
-                        showHistory = false
-                        showAdvancedOptions = false
-                    } else {
-                        showHistory = false
+                TextField("", text: $searchTerm)
+                    .textFieldStyle(.plain)
+                    .font(Font.system(size: 13))
+                    .foregroundColor(.themeTextPrimary)
+                    .focused($isSearchFieldFocused)
+                    .onSubmit {
+                        performSearch()
                     }
-                }
+                    .onChange(of: searchTerm) { newValue in
+                        // 手动输入时也不显示历史面板，直接搜索
+                        if !newValue.isEmpty {
+                            showHistory = false
+                            showAdvancedOptions = false
+                        } else {
+                            showHistory = false
+                        }
+                    }
+            }
             
             // 清空按钮
             if !searchTerm.isEmpty {
