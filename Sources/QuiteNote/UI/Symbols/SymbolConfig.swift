@@ -313,43 +313,60 @@ extension SymbolConfig {
     /// 转换为 YAML 字符串
     func toYaml() -> String {
         var lines: [String] = []
+        let q = SymbolConfig.yamlEscaped
 
         // Metadata
         lines.append("metadata:")
-        lines.append("  name: \"\(metadata.name)\"")
-        lines.append("  icon: \"\(metadata.icon)\"")
+        lines.append("  name: \"\(q(metadata.name))\"")
+        lines.append("  icon: \"\(q(metadata.icon))\"")
         lines.append("  priority: \(metadata.priority)")
         lines.append("  enabled: \(metadata.enabled)")
         lines.append("")
 
         // Global config
         lines.append("global:")
-        lines.append("  trigger_prefix: \"\(global.triggerPrefix)\"")
+        lines.append("  trigger_prefix: \"\(q(global.triggerPrefix))\"")
         lines.append("  auto_hide: \(global.autoHide)")
         lines.append("  auto_clean: \(global.autoClean)")
-        lines.append("  panel_position: \"\(global.panelPosition)\"")
-        lines.append("  panel_width: \"\(global.panelWidth)\"")
+        lines.append("  panel_position: \"\(q(global.panelPosition))\"")
+        lines.append("  panel_width: \"\(q(global.panelWidth))\"")
         lines.append("")
 
         // Symbol menus
         lines.append("symbol_menus:")
         for menu in menus.sorted(by: { $0.sort < $1.sort }) {
-            lines.append("  - title: \"\(menu.title)\"")
+            lines.append("  - title: \"\(q(menu.title))\"")
             lines.append("    sort: \(menu.sort)")
             if let icon = menu.icon {
-                lines.append("    icon: \"\(icon)\"")
+                lines.append("    icon: \"\(q(icon))\"")
             }
             lines.append("    symbols:")
             for symbol in menu.symbols {
-                let triggers = symbol.triggers.map { "\"\($0)\"" }.joined(separator: ", ")
+                let triggers = symbol.triggers.map { "\"\(q($0))\"" }.joined(separator: ", ")
                 lines.append("      - trigger: [\(triggers)]")
-                lines.append("        content: \"\(symbol.content)\"")
-                lines.append("        desc: \"\(symbol.desc)\"")
+                lines.append("        content: \"\(q(symbol.content))\"")
+                lines.append("        desc: \"\(q(symbol.desc))\"")
             }
             lines.append("")
         }
 
         return lines.joined(separator: "\n")
+    }
+
+    /// YAML 双引号标量转义：内容含引号/反斜杠/换行时必须转义，否则导出的配置无法再导入
+    private static func yamlEscaped(_ value: String) -> String {
+        var escaped = ""
+        for ch in value {
+            switch ch {
+            case "\\": escaped += "\\\\"
+            case "\"": escaped += "\\\""
+            case "\n": escaped += "\\n"
+            case "\r": escaped += "\\r"
+            case "\t": escaped += "\\t"
+            default: escaped.append(ch)
+            }
+        }
+        return escaped
     }
 
     /// 转换为字典格式（用于 plist 保存）
@@ -408,6 +425,7 @@ enum SymbolConfigError: LocalizedError {
     case missingMenus
     case invalidMenuFormat
     case invalidSymbolFormat
+    case custom(String)
 
     var errorDescription: String? {
         switch self {
@@ -423,6 +441,8 @@ enum SymbolConfigError: LocalizedError {
             return "菜单格式无效"
         case .invalidSymbolFormat:
             return "符号格式无效"
+        case .custom(let message):
+            return message
         }
     }
 }

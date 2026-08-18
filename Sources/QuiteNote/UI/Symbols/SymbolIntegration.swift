@@ -29,9 +29,9 @@ class ClickableNSHostingView<Content: View>: NSHostingView<Content> {
 
 // MARK: - Logging Helper
 
-/// 追加日志到文件
+/// 追加日志到文件（仅 DEBUG 构建落盘；此前每次按键都写 /tmp，生产环境日志无限增长）
 private func appendLog(_ message: String, toPath path: String) {
-    // 确保文件存在
+    #if DEBUG
     if !FileManager.default.fileExists(atPath: path) {
         FileManager.default.createFile(atPath: path, contents: nil, attributes: nil)
     }
@@ -43,6 +43,7 @@ private func appendLog(_ message: String, toPath path: String) {
             fileHandle.write(data)
         }
     }
+    #endif
 }
 
 // MARK: - Associated Keys
@@ -66,51 +67,6 @@ class SymbolSelectionState: ObservableObject {
 
 /// 符号快捷功能集成到 StickyNote
 extension StickyNoteEditor.Coordinator {
-    // MARK: - Public Methods for Coordinator to Call
-
-    /// Public method that can be called from Coordinator's showSymbolSuggestionPanel
-    func showSymbolSuggestionPanelExtension(at cursorInfo: CursorLocationInfo?, triggerText: String, suggestions: [MatchedSymbolItem], parentWindow: NSWindow?) {
-        let logPath = "/tmp/quitenote-symbol-debug.log"
-        let timestamp = Date()
-        let logMsg = "[SymbolIntegration] [\(timestamp)] showSymbolSuggestionPanelExtension called: cursorInfo=\(cursorInfo?.debugDescription ?? "nil"), trigger='\(triggerText)', suggestions=\(suggestions.count)\n"
-        print(logMsg)
-        appendLog(logMsg, toPath: logPath)
-
-        guard let cursorInfo = cursorInfo else {
-            print("[SymbolIntegration] ⚠️ cursorInfo 为 nil，无法显示面板")
-            return
-        }
-
-        // Store trigger info for the extension methods to use
-        self.updateSymbolTriggerInfo(triggerText: triggerText, suggestions: suggestions)
-
-        // Call the existing implementation
-        self.performShowSymbolSuggestionPanel(at: cursorInfo, triggerText: triggerText, suggestions: suggestions, parentWindow: parentWindow)
-    }
-
-    /// Public method that can be called from Coordinator's hideSymbolSuggestionPanel
-    func hideSymbolSuggestionPanelExtension() {
-        // Call the existing implementation
-        self.performHideSymbolSuggestionPanel()
-    }
-
-    /// Store trigger info temporarily
-    private func updateSymbolTriggerInfo(triggerText: String, suggestions: [MatchedSymbolItem]) {
-        // The extension uses its own state management via associated objects
-        // This is just a placeholder if we need to pass additional info
-    }
-
-    // The actual implementation (renamed from private methods to allow calling)
-    private func performShowSymbolSuggestionPanel(at cursorInfo: CursorLocationInfo, triggerText: String, suggestions: [MatchedSymbolItem], parentWindow: NSWindow?) {
-        // This is the original showSymbolSuggestionPanel implementation
-        // We'll call the original method by its original name
-        self.internalShowSymbolSuggestionPanel(at: cursorInfo, triggerText: triggerText, suggestions: suggestions, parentWindow: parentWindow)
-    }
-
-    private func performHideSymbolSuggestionPanel() {
-        // This is the original hideSymbolSuggestionPanel implementation
-        self.internalHideSymbolSuggestionPanel()
-    }
     // MARK: - Helper Properties
 
     /// Helper property to access textView without ambiguity
@@ -218,42 +174,6 @@ extension StickyNoteEditor.Coordinator {
             }
             .store(in: &cancellables)
 
-        // 监听符号浏览器选择 - 插入符号
-        NotificationCenter.default.publisher(for: .insertSymbolFromBrowser)
-            .sink { [weak self, weak textView] notification in
-                guard let self = self, let textView = textView else { return }
-                if let userInfo = notification.userInfo {
-                    // ⭐ 检查是否有目标 textView 指定
-                    if let targetAddress = userInfo["targetTextView"] as? UnsafeMutableRawPointer {
-                        // 获取当前 textView 的地址
-                        let currentAddress = Unmanaged.passUnretained(textView).toOpaque()
-                        // 只有匹配时才插入
-                        if targetAddress == currentAddress {
-                            if let mode = userInfo["mode"] as? String,
-                               let symbol = userInfo["symbol"] as? SymbolItem {
-                                print("[SymbolIntegration] \(mode)模式插入符号到当前textView: \(symbol.content)")
-                                self.insertSymbolDirectly(textView: textView, symbol: symbol)
-                            }
-                        } else {
-                            print("[SymbolIntegration] 跳过插入 - 不匹配的textView")
-                        }
-                    }
-                    // 回退：没有指定目标 textView，所有窗口都响应（旧模式）
-                    else if let mode = userInfo["mode"] as? String,
-                       let symbol = userInfo["symbol"] as? SymbolItem {
-                        print("[SymbolIntegration] \(mode)模式插入符号: \(symbol.content)")
-                        self.insertSymbolDirectly(textView: textView, symbol: symbol)
-                    }
-                    // 旧模式：直接传递 newText 和 newCursorPos
-                    else if let newText = userInfo["newText"] as? String,
-                            let newCursorPos = userInfo["newCursorPos"] as? Int {
-                        print("[SymbolIntegration] 插入符号: newCursorPos=\(newCursorPos)")
-                        self.insertSymbolText(textView: textView, newText: newText, newCursorPos: newCursorPos)
-                    }
-                }
-            }
-            .store(in: &cancellables)
-
         print("[SymbolIntegration] 符号检测设置完成")
     }
 
@@ -310,8 +230,8 @@ extension StickyNoteEditor.Coordinator {
         // 重置选中索引（每次显示面板时都重置）
         symbolSelectionState.selectedIndex = 0
 
-        // 计算面板大小
-        let panelWidth: CGFloat = 300
+        // 计算面板大小（320 与 SymbolSuggestionPanelWrapper 的 maxWidth 保持一致，避免内容被挤压）
+        let panelWidth: CGFloat = 320
         let newPanelHeight = calculatePanelHeight(for: suggestions)
 
         // 如果面板已存在，更新内容和位置
@@ -810,65 +730,6 @@ extension StickyNoteEditor.Coordinator {
         internalHideSymbolSuggestionPanel()
         symbolDetector.clearDetection()
     }
-
-    /// 从浏览器插入符号（不包含触发词替换）
-    private func insertSymbolText(textView: NSTextView, newText: String, newCursorPos: Int) {
-        // 更新文本视图
-        isUpdatingFromTextView = true
-
-        let attrString = markdownToAttributed(newText)
-        textView.textStorage?.setAttributedString(attrString)
-
-        // 设置光标位置
-        let newRange = NSRange(location: min(newCursorPos, newText.count), length: 0)
-        textView.setSelectedRange(newRange)
-
-        isUpdatingFromTextView = false
-
-        // 通知外部更新
-        let finalText = attributedToMarkdown(textView.attributedString())
-        if parent.text != finalText {
-            parent.text = finalText
-        }
-
-        textView.didChangeText()
-    }
-
-    /// 直接插入符号内容（内联模式使用）
-    private func insertSymbolDirectly(textView: NSTextView, symbol: SymbolItem) {
-        let text = textView.string
-        let cursorPosition = textView.selectedRange().location
-
-        // 直接在光标位置插入符号内容
-        let nsString = text as NSString
-        let newText = nsString.replacingCharacters(in: NSRange(location: cursorPosition, length: 0), with: symbol.content)
-
-        // ⭐ 关键修复：使用 NSString.length (UTF-16) 而不是 String.count (UTF-8/UTF-16 视图不同)
-        // NSTextView 使用 UTF-16 坐标系，所以必须使用 NSString.length
-        let symbolUTF16Length = (symbol.content as NSString).length
-        let newCursorPos = cursorPosition + symbolUTF16Length
-        let newTextUTF16Length = (newText as NSString).length
-
-        // 更新文本视图
-        isUpdatingFromTextView = true
-
-        let attrString = markdownToAttributed(newText)
-        textView.textStorage?.setAttributedString(attrString)
-
-        // 设置光标位置 - 使用 UTF-16 长度
-        let newRange = NSRange(location: min(newCursorPos, newTextUTF16Length), length: 0)
-        textView.setSelectedRange(newRange)
-
-        isUpdatingFromTextView = false
-
-        // 通知外部更新
-        let finalText = attributedToMarkdown(textView.attributedString())
-        if parent.text != finalText {
-            parent.text = finalText
-        }
-
-        textView.didChangeText()
-    }
 }
 
 // MARK: - Symbol Suggestion Panel Wrapper
@@ -1068,12 +929,6 @@ class SymbolSuggestionPanelBridge {
         lock.unlock()
         print("[SymbolSuggestionPanelBridge] Panel visible: \(visible)")
     }
-}
-
-// MARK: - Notifications
-
-extension Notification.Name {
-    static let insertSymbolFromBrowser = Notification.Name("insertSymbolFromBrowser")
 }
 
 // MARK: - Integration with StickyNoteEditor

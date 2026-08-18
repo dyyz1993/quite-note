@@ -8,11 +8,6 @@ struct SymbolBrowserPanel: View {
     let onClose: () -> Void
     let onSelect: (SymbolItem) -> Void
 
-    var currentMenu: SymbolMenu {
-        guard currentMenuIndex < menus.count else { return menus[0] }
-        return menus[currentMenuIndex]
-    }
-
     var body: some View {
         VStack(spacing: 0) {
             // 顶部：分组标签行

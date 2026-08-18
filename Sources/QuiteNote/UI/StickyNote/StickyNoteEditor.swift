@@ -144,17 +144,12 @@ struct StickyNoteEditor: NSViewRepresentable {
         var cancellables = Set<AnyCancellable>()  // Internal access for SymbolIntegration extension
         var textView: NSTextView?  // Internal access for SymbolIntegration extension
 
-        // Symbol detection state
-        private var symbolDetector: SymbolTriggerDetector?
-        private var symbolSelectionState: SymbolSelectionState?
         // Duplicate prevention: track last processed symbol with timestamp
         private var lastProcessedSymbol: (symbol: String, timestamp: Date)?
 
         init(_ parent: StickyNoteEditor) {
             self.parent = parent
             super.init()
-            // Initialize symbol detection state
-            self.symbolSelectionState = SymbolSelectionState()
         }
 
         deinit {
@@ -177,62 +172,16 @@ struct StickyNoteEditor: NSViewRepresentable {
             // ⭐ 关键修复：清空旧的订阅，防止重复订阅
             cancellables.removeAll()
 
-            let timestamp = Date()
-            let logMessage = "[StickyNoteEditor.Coordinator] [\(timestamp)] ========== 设置符号检测（直接方法）==========\n"
-            print(logMessage)
-
-            // Write to file for debugging
-            let logPath = "/tmp/quitenote-symbol-debug.log"
-            let fileLog = logMessage + "textView: \(textView)\n"
-            if let fileHandle = FileHandle(forWritingAtPath: logPath) {
-                fileHandle.seekToEndOfFile()
-                fileHandle.write(fileLog.data(using: .utf8)!)
-                fileHandle.closeFile()
-            } else {
-                try? fileLog.write(toFile: logPath, atomically: true, encoding: .utf8)
-            }
-
-            print("[StickyNoteEditor.Coordinator] textView: \(textView)")
-
-            // ⭐ 重要：调用 SymbolIntegration 的 setupSymbolDetection 来存储 symbolTextView
+            // SymbolIntegration 的 setupSymbolDetection 负责：存储 textView、订阅文本变化做触发检测、
+            // 监听窗口失焦/结束编辑时隐藏联想面板。
+            // 此处不再重复订阅 NSText.didChangeNotification——修复前每个按键会跑两遍检测、两遍面板更新
             self.setupSymbolDetection(for: textView)
 
-            // Initialize symbol detector if needed
-            if symbolDetector == nil {
-                symbolDetector = SymbolTriggerDetector()
-                print("[StickyNoteEditor.Coordinator] 创建 SymbolTriggerDetector")
-            }
-
-            // Check config loading
             let configCount = SymbolConfigManager.shared.configs.count
             print("[StickyNoteEditor.Coordinator] 当前已加载 \(configCount) 个符号配置")
-
             if configCount == 0 {
                 print("[StickyNoteEditor.Coordinator] ⚠️ 警告：没有加载任何配置！")
             }
-
-            // Monitor text changes
-            NotificationCenter.default.publisher(for: NSText.didChangeNotification, object: textView)
-                .sink { [weak self, weak textView] notification in
-                    guard let self = self, let textView = textView else { return }
-                    let timestamp = Date()
-                    let logMsg = "[StickyNoteEditor.Coordinator] [\(timestamp)] 🔔 文本变化通知\n"
-                    print(logMsg)
-
-                    // Write to file
-                    let logPath = "/tmp/quitenote-symbol-debug.log"
-                    let fileLog = logMsg + "文本长度: \(textView.string.count), 光标位置: \(textView.selectedRange().location)\n"
-                    if let fileHandle = FileHandle(forWritingAtPath: logPath) {
-                        fileHandle.seekToEndOfFile()
-                        fileHandle.write(fileLog.data(using: .utf8)!)
-                        fileHandle.closeFile()
-                    } else {
-                        try? fileLog.write(toFile: logPath, atomically: true, encoding: .utf8)
-                    }
-
-                    self.handleSymbolDetection(textView: textView)
-                }
-                .store(in: &cancellables)
 
             // Monitor InsertSymbolFromBrowser notification (from SymbolBrowserPanelManager)
             NotificationCenter.default.publisher(for: NSNotification.Name("InsertSymbolFromBrowser"))
@@ -284,105 +233,6 @@ struct StickyNoteEditor: NSViewRepresentable {
             print("[StickyNoteEditor.Coordinator] ✅ 符号检测设置完成，已监听文本变化")
         }
 
-        private func handleSymbolDetection(textView: NSTextView) {
-            let logPath = "/tmp/quitenote-symbol-debug.log"
-            let timestamp = Date()
-
-            guard let detector = symbolDetector else {
-                let logMsg = "[StickyNoteEditor.Coordinator] [\(timestamp)] ⚠️ symbolDetector 为 nil\n"
-                print(logMsg)
-                try? logMsg.write(toFile: logPath, atomically: true, encoding: .utf8)
-                return
-            }
-
-            let text = textView.string
-            let cursorPosition = textView.selectedRange().location
-
-            let logMsg = "[StickyNoteEditor.Coordinator] [\(timestamp)] 执行符号检测，文本: '\(text)', 长度: \(text.count), 光标位置: \(cursorPosition)\n"
-            print(logMsg)
-
-            // Write to file
-            if let fileHandle = FileHandle(forWritingAtPath: logPath) {
-                fileHandle.seekToEndOfFile()
-                fileHandle.write(logMsg.data(using: .utf8)!)
-                fileHandle.closeFile()
-            } else {
-                try? logMsg.write(toFile: logPath, atomically: true, encoding: .utf8)
-            }
-
-            // Detect trigger
-            detector.detectTrigger(in: text, cursorPosition: cursorPosition)
-
-            // Debug output
-            if let trigger = detector.detectedTrigger {
-                let successMsg = "[StickyNoteEditor.Coordinator] [\(timestamp)] ✅ 检测到触发词: ':/\(trigger)' (长度: \(trigger.count)), 建议: \(detector.suggestions.count) 个\n"
-                print(successMsg)
-
-                if let fileHandle = FileHandle(forWritingAtPath: logPath) {
-                    fileHandle.seekToEndOfFile()
-                    fileHandle.write(successMsg.data(using: .utf8)!)
-                    fileHandle.closeFile()
-                } else {
-                    try? successMsg.write(toFile: logPath, atomically: true, encoding: .utf8)
-                }
-
-                // Show suggestion panel
-                showSymbolSuggestionPanel(for: textView, triggerText: trigger, suggestions: detector.suggestions)
-            } else {
-                let failMsg = "[StickyNoteEditor.Coordinator] [\(timestamp)] 未检测到触发词\n"
-                print(failMsg)
-
-                if let fileHandle = FileHandle(forWritingAtPath: logPath) {
-                    fileHandle.seekToEndOfFile()
-                    fileHandle.write(failMsg.data(using: .utf8)!)
-                    fileHandle.closeFile()
-                } else {
-                    try? failMsg.write(toFile: logPath, atomically: true, encoding: .utf8)
-                }
-
-                hideSymbolSuggestionPanel()
-            }
-        }
-
-        private func showSymbolSuggestionPanel(for textView: NSTextView, triggerText: String, suggestions: [MatchedSymbolItem]) {
-            let logPath = "/tmp/quitenote-symbol-debug.log"
-            let timestamp = Date()
-            let logMsg = "[StickyNoteEditor.Coordinator] [\(timestamp)] 显示符号建议面板: trigger='\(triggerText)', suggestions=\(suggestions.count)\n"
-            print(logMsg)
-
-            if let fileHandle = FileHandle(forWritingAtPath: logPath) {
-                fileHandle.seekToEndOfFile()
-                fileHandle.write(logMsg.data(using: .utf8)!)
-                fileHandle.closeFile()
-            } else {
-                try? logMsg.write(toFile: logPath, atomically: true, encoding: .utf8)
-            }
-
-            // Get cursor location info for panel positioning (includes line rect to avoid overlapping text)
-            let cursorInfo = textView.cursorLocationInfo()
-
-            // Call the extension method to show the panel
-            // This uses the SymbolIntegration extension's implementation
-            self.showSymbolSuggestionPanelExtension(at: cursorInfo, triggerText: triggerText, suggestions: suggestions, parentWindow: textView.window)
-        }
-
-        private func hideSymbolSuggestionPanel() {
-            let logPath = "/tmp/quitenote-symbol-debug.log"
-            let timestamp = Date()
-            let logMsg = "[StickyNoteEditor.Coordinator] [\(timestamp)] 隐藏符号建议面板\n"
-            print(logMsg)
-
-            if let fileHandle = FileHandle(forWritingAtPath: logPath) {
-                fileHandle.seekToEndOfFile()
-                fileHandle.write(logMsg.data(using: .utf8)!)
-                fileHandle.closeFile()
-            } else {
-                try? logMsg.write(toFile: logPath, atomically: true, encoding: .utf8)
-            }
-
-            // Call the extension method to hide the panel
-            self.hideSymbolSuggestionPanelExtension()
-        }
 
         private func handleCommand(_ command: StickyNoteCommand) {
             guard self.textView != nil else { return }

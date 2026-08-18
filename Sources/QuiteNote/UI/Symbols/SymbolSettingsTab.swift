@@ -438,20 +438,9 @@ symbol_menus:
     }
 
     private func openInVSCode(_ url: URL) -> Bool {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/local/bin/code")
-        if process.executableURL == nil {
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/code")
-        }
-
-        process.arguments = [url.path]
-
-        do {
-            try process.run()
-            return true
-        } catch {
-            return false
-        }
+        // 通过 Launch Services 打开文件，避免沙盒应用直接启动
+        // /usr/local/bin/code 或其它沙盒外的可执行文件。
+        return NSWorkspace.shared.open(url)
     }
 
     private func startWatchingFile(_ url: URL) {
