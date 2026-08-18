@@ -214,8 +214,8 @@ final class AIService: AIServiceProtocol {
         req.httpMethod = "POST"
         req.addValue("application/json", forHTTPHeaderField: "Content-Type")
         req.addValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        // 诊断：密钥指纹（前4位+长度）与目标 URL——排查"App 读到的密钥与命令行读到的不一致"类问题
-        DiagnosticCenter.info("OCR", "AI 请求 → \(url.absoluteString) | key=\(apiKey.prefix(4))…(len=\(apiKey.count))")
+        // 诊断只记录目标端点，不记录 API Key 的任何片段或长度。
+        DiagnosticCenter.info("OCR", "AI 请求 → \(url.absoluteString) | API key configured")
 
         let body: [String: Any] = [
             "model": openAIModel,

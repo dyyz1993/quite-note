@@ -64,14 +64,15 @@ showUsage() {
 🎯 权限设置说明
 ===================
 
-macOS (11.0+) 对「屏幕录制」和「辅助功能」有极严的安全限制。
+macOS (13.0+) 对「屏幕录制」和「辅助功能」有极严的安全限制。
 脚本无法完全自动开启这些权限，必须由用户在系统设置中手动确认。
 
 ⚡ 使用方法：
    1. 正常构建：./build-app.sh (会自动运行检查)
    2. 开发变体：./build-app.sh --dev (构建 Quite Note Dev，可与正式版共存)
-   3. 检查权限状态：./build-app.sh --check-permissions
-   4. 帮助说明：./build-app.sh --help
+   3. App Store 沙盒本地验证：./build-app.sh --app-store --no-launch
+   4. 检查权限状态：./build-app.sh --check-permissions
+   5. 帮助说明：./build-app.sh --help
 
 � 手动确认路径：
    系统设置 → 隐私与安全性 → 屏幕录制
@@ -82,6 +83,8 @@ EOF
 
 # 处理命令行参数（支持组合，如 ./build-app.sh --dev --no-launch）
 SKIP_BUILD=false
+APP_STORE_MODE=false
+ENTITLEMENTS_FILE="$SCRIPT_DIR/QuiteNote.entitlements"
 for arg in "$@"; do
     case "$arg" in
         --check-permissions)
@@ -105,6 +108,11 @@ for arg in "$@"; do
             BUNDLE_ID="com.quitenote.app.dev"
             EXECUTABLE_NAME="QuiteNoteDev"
             echo "开发变体: $APP_NAME ($BUNDLE_ID)"
+            ;;
+        --app-store)
+            APP_STORE_MODE=true
+            ENTITLEMENTS_FILE="$SCRIPT_DIR/QuiteNote-AppStore.entitlements"
+            echo "App Store 沙盒验证模式（本地签名，不代表可直接上传）"
             ;;
     esac
 done
@@ -266,29 +274,26 @@ cat > "$CONTENTS/Info.plist" << EOF
     <string>$VERSION</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.productivity</string>
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>LSMinimumSystemVersion</key>
-    <string>12.0</string>
+    <string>13.0</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon.icns</string>
     <key>LSUIElement</key>
     <true/>
     <key>NSSupportsAutomaticGraphicsSwitching</key>
     <true/>
-    <key>NSAppTransportSecurity</key>
-    <dict>
-        <key>NSAllowsArbitraryLoads</key>
-        <true/>
-    </dict>
     <key>NSBluetoothAlwaysUsageDescription</key>
     <string>Quite Note 需要访问蓝牙来发现和连接附近的设备，用于设备间数据同步和分享功能。</string>
     <key>NSBluetoothPeripheralUsageDescription</key>
     <string>Quite Note 使用蓝牙来与周边设备通信，实现剪切板内容的快速分享和同步。</string>
-    <key>NSSystemAdministrationUsageDescription</key>
-    <string>Quite Note 需要系统管理权限来监听全局键盘快捷键，实现快速调用剪切板历史功能。</string>
-    <key>NSScreenCaptureDescription</key>
+    <key>NSScreenCaptureUsageDescription</key>
     <string>Quite Note 需要屏幕录制权限来执行截图功能，帮助您快速截取和保存屏幕内容。</string>
+    <key>NSAudioCaptureUsageDescription</key>
+    <string>Quite Note 需要系统声音录制权限来录制您选择的屏幕内容中的音频。</string>
     <key>NSMicrophoneUsageDescription</key>
     <string>Quite Note 需要访问麦克风来录制您的解说（口播）。仅在选择「录制麦克风」时使用，可在录屏设置中随时关闭。</string>
 </dict>
@@ -306,15 +311,19 @@ if [ "$BINARY_CHANGED" = true ]; then
         # 优先用 Developer ID Application 证书签名（与发布流水线同一身份）：
         # 签名身份统一后，开发构建 ↔ 发布构建来回切换不会导致系统权限失效。
         # ad-hoc 签名身份每次编译都变，会导致权限被系统重置、每次都要重新授权。
-        SIGN_IDENTITY=$(security find-identity -v -p codesigning | awk -F'"' '/Developer ID Application/{print $2; exit}')
-        if [ -z "$SIGN_IDENTITY" ]; then
+        if [ "$APP_STORE_MODE" = true ]; then
+            SIGN_IDENTITY=$(security find-identity -v -p codesigning | awk -F'"' '/Apple Development|Apple Distribution/{print $2; exit}')
+        else
+            SIGN_IDENTITY=$(security find-identity -v -p codesigning | awk -F'"' '/Developer ID Application/{print $2; exit}')
+        fi
+        if [ -z "$SIGN_IDENTITY" ] && [ "$APP_STORE_MODE" = false ]; then
             SIGN_IDENTITY=$(security find-identity -v -p codesigning | awk -F'"' '/Apple Development/{print $2; exit}')
         fi
         if [ -n "$SIGN_IDENTITY" ]; then
-            codesign --force --deep --sign "$SIGN_IDENTITY" "$APP_PATH" --identifier "$BUNDLE_ID" --entitlements "$SCRIPT_DIR/QuiteNote.entitlements"
+            codesign --force --deep --sign "$SIGN_IDENTITY" "$APP_PATH" --identifier "$BUNDLE_ID" --entitlements "$ENTITLEMENTS_FILE"
             echo "代码签名完成 ($SIGN_IDENTITY，权限可跨编译保留，含音频输入例外)"
         else
-            codesign --force --deep --sign - "$APP_PATH" --identifier "$BUNDLE_ID" --entitlements "$SCRIPT_DIR/QuiteNote.entitlements"
+            codesign --force --deep --sign - "$APP_PATH" --identifier "$BUNDLE_ID" --entitlements "$ENTITLEMENTS_FILE"
             echo "代码签名完成 (ad-hoc，注意: 每次编译后系统权限会失效)"
         fi
     else

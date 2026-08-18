@@ -29,7 +29,7 @@ struct AISettingsTab: View {
                         .font(.themeH2)
                         .foregroundColor(.themeTextPrimary)
                 }
-                Text("开启后自动为新记录生成标题和总结。")
+                Text("开启后会将符合条件的新记录发送给下方配置的 AI 服务商，自动生成标题和总结。")
                     .font(.themeCaption)
                     .foregroundColor(.themeTextTertiary)
             }

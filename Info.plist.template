@@ -16,15 +16,21 @@
     <string>1.0.0</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.productivity</string>
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>LSMinimumSystemVersion</key>
-    <string>12.0</string>
+    <string>13.0</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon.icns</string>
     <key>LSUIElement</key>
     <true/>
-    <key>NSScreenCaptureDescription</key>
+    <key>NSScreenCaptureUsageDescription</key>
     <string>Quite Note 需要屏幕录制权限来执行截图功能。</string>
+    <key>NSAudioCaptureUsageDescription</key>
+    <string>Quite Note 需要系统声音录制权限来录制您选择的屏幕内容中的音频。</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Quite Note 需要访问麦克风来录制您的解说（口播）。</string>
 </dict>
 </plist>
