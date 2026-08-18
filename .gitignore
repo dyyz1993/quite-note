@@ -5,8 +5,11 @@ node_modules
 note.jsx
 Quite Note.app/
 *.dmg
+*.pkg
 venv/
 .trae/
 Quite Note Dev.app/
 icons.xcassets/
-AGENTS.mdQuite Note Dev.app/
+AGENTS.md
+output/
+.playwright-cli/
