@@ -26,6 +26,7 @@ final class KeyboardShortcutManager {
     var onQuit: (() -> Void)?
     var onGlobalPaste: (() -> Void)?
     var onScreenshot: (() -> Void)?
+    var onStopRecording: (() -> Void)?
 
     /// ⚠️ 防抖触发截图回调
     /// 防止全局监听和应用内监听同时触发导致的重复调用
@@ -146,6 +147,8 @@ final class KeyboardShortcutManager {
         manager.register(key: "e", modifiers: cmdOpt, id: 2004) { [weak self] in self?.onExport?() }
         // ⌥⌘ D: Force Center
         manager.register(key: "d", modifiers: cmdOpt, id: 2005) { [weak self] in self?.onForceCenter?() }
+        // ⌥⌘ .: Stop active screen recording
+        manager.register(key: ".", modifiers: cmdOpt, id: 2006) { [weak self] in self?.onStopRecording?() }
         
         // ⌥⌘⇧ R: Force Center (Backup)
         manager.register(key: "r", modifiers: cmdOptShift, id: 3001) { [weak self] in self?.onForceCenter?() }
@@ -178,6 +181,7 @@ final class KeyboardShortcutManager {
             case "c": self.onCaptureClipboard?(); return true
             case "e": self.onExport?(); return true
             case "d": self.onForceCenter?(); return true
+            case ".": self.onStopRecording?(); return true
             default: break
             }
         }
@@ -265,6 +269,7 @@ final class KeyboardShortcutManager {
         GlobalHotkeyManager.shared.unregister(id: 2003)
         GlobalHotkeyManager.shared.unregister(id: 2004)
         GlobalHotkeyManager.shared.unregister(id: 2005)
+        GlobalHotkeyManager.shared.unregister(id: 2006)
         GlobalHotkeyManager.shared.unregister(id: 3001)
         GlobalHotkeyManager.shared.unregister(id: 3002)
     }
@@ -273,4 +278,3 @@ final class KeyboardShortcutManager {
         stop()
     }
 }
-

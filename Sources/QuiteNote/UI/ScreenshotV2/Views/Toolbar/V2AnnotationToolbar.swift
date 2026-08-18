@@ -1,5 +1,29 @@
 import SwiftUI
 
+private enum RecordingAudioPreset: CaseIterable, Identifiable {
+    case demo, voiceover, meeting, silent
+
+    var id: Self { self }
+    var title: String {
+        switch self {
+        case .demo: return "操作演示"
+        case .voiceover: return "口播教程"
+        case .meeting: return "会议解说"
+        case .silent: return "静音录屏"
+        }
+    }
+    var icon: String {
+        switch self {
+        case .demo: return "speaker.wave.2.fill"
+        case .voiceover: return "mic.fill"
+        case .meeting: return "person.2.fill"
+        case .silent: return "speaker.slash.fill"
+        }
+    }
+    var systemAudio: Bool { self == .demo || self == .meeting }
+    var microphone: Bool { self == .voiceover || self == .meeting }
+}
+
 /// V2 标注工具栏 - 完整的 11 种标注工具（精致的浮动子工具栏设计）
 struct V2AnnotationToolbar: View {
     @ObservedObject var stateManager: V2PrimaryScreenStateManager
@@ -455,6 +479,16 @@ struct V2AnnotationToolbar: View {
                 .font(.themeCaption)
                 .foregroundColor(.themeTextTertiary)
 
+            Text("快速预设")
+                .font(.themeCaptionSmall)
+                .foregroundColor(.themeTextTertiary)
+
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 6) {
+                ForEach(RecordingAudioPreset.allCases) { preset in
+                    presetButton(preset)
+                }
+            }
+
             audioToggleRow(isOn: $audioSystem,
                            icon: "speaker.wave.2.fill",
                            title: "系统声音",
@@ -488,6 +522,22 @@ struct V2AnnotationToolbar: View {
             }
             .padding(.vertical, ThemeSpacing.px1.rawValue)
 
+            HStack(spacing: ThemeSpacing.px2.rawValue) {
+                Text("倒计时")
+                    .font(.themeBody)
+                    .foregroundColor(.themeTextPrimary)
+                Spacer()
+                Picker("", selection: Binding(
+                    get: { PreferencesManager.shared.recordingCountdownSeconds },
+                    set: { PreferencesManager.shared.setRecordingCountdownSeconds($0) })) {
+                    Text("关闭").tag(0)
+                    Text("3 秒").tag(3)
+                    Text("5 秒").tag(5)
+                }
+                .pickerStyle(.menu)
+                .controlSize(.small)
+            }
+
             Text("口播=只勾麦克风 · 会议=都勾 · 演示=只勾系统声")
                 .font(.themeCaptionSmall)
                 .foregroundColor(.themeTextTertiary)
@@ -507,6 +557,37 @@ struct V2AnnotationToolbar: View {
             PreferencesManager.shared.setRecordingSystemAudio(audioSystem)
             PreferencesManager.shared.setRecordingMicrophone(audioMicrophone)
         }
+    }
+
+    private func presetButton(_ preset: RecordingAudioPreset) -> some View {
+        let selected = audioSystem == preset.systemAudio && audioMicrophone == preset.microphone
+        return Button(action: {
+            audioSystem = preset.systemAudio
+            audioMicrophone = preset.microphone
+            PreferencesManager.shared.setRecordingSystemAudio(audioSystem)
+            PreferencesManager.shared.setRecordingMicrophone(audioMicrophone)
+        }) {
+            HStack(spacing: 5) {
+                Image(systemName: preset.icon)
+                    .font(.system(size: 10, weight: .semibold))
+                Text(preset.title)
+                    .font(.themeCaptionSmall)
+                    .lineLimit(1)
+            }
+            .foregroundColor(selected ? .white : .themeTextSecondary)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: ThemeRadius.sm.rawValue)
+                    .fill(selected ? Color.themeBlue600.opacity(0.85) : Color.themeGray700)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: ThemeRadius.sm.rawValue)
+                    .stroke(selected ? Color.themeBlue400 : Color.clear, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .help(preset.title)
     }
 
     private func audioToggleRow(isOn: Binding<Bool>, icon: String, title: String, subtitle: String) -> some View {

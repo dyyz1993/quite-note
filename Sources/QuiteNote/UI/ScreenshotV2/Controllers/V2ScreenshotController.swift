@@ -15,6 +15,8 @@ class V2ScreenshotController {
     private static var localMonitor: Any?
     /// 失焦自动拉回监听器（cleanup 时必须移除，否则闭包持有旧面板数组，截图结束后失焦会把已关闭的"幽灵"面板拉回前台）
     private static var resignActiveObserver: NSObjectProtocol?
+    /// 焦点看门狗：截图会话存续期间，App 未活跃则每秒强制拉回
+    private static var focusWatchdogTimer: Timer?
 
     /// ✨ 新增：互斥锁，确保同一时间只有一个截图流程在运行
     private static var isShowing = false
@@ -45,6 +47,17 @@ class V2ScreenshotController {
 
         // 清理可能残留的状态
         cleanup()
+
+        // 恢复上次录屏区域：仅匹配同一显示器，使用归一化坐标适配分辨率变化。
+        // 这样用户可以打开截图后直接按 ⌘R 开始录制，也仍可像以前一样拖出新选区覆盖它。
+        if let reusableScreen = NSScreen.screens.first(where: {
+            PreferencesManager.shared.resolvedLastRecordingSelection(on: $0) != nil
+        }), let reusableRect = PreferencesManager.shared.resolvedLastRecordingSelection(on: reusableScreen) {
+            let manager = V2PrimaryScreenStateManager.shared
+            manager.updatePrimaryScreen(reusableScreen)
+            manager.updateSelection(reusableRect, on: reusableScreen)
+            DiagnosticCenter.info("Screenshot", "恢复上次录屏区域：\(reusableScreen.localizedName) \(Int(reusableRect.width))×\(Int(reusableRect.height))")
+        }
 
         // ✨ 设置全局键盘监听
         setupKeyboardMonitor()
@@ -123,6 +136,10 @@ class V2ScreenshotController {
             localMonitor = nil
         }
 
+        // 停止焦点看门狗
+        focusWatchdogTimer?.invalidate()
+        focusWatchdogTimer = nil
+
         // 移除失焦监听器（关键：不移除会在截图结束后触发"幽灵面板"重新弹出）
         if let observer = resignActiveObserver {
             NotificationCenter.default.removeObserver(observer)
@@ -196,54 +213,93 @@ class V2ScreenshotController {
         // ⚠️ 修复：用实时的 debugPanels 判断（不能用闭包捕获的旧数组），
         // 并在 cleanup 时移除监听，否则截图结束后的任何一次失焦都会把已关闭的面板重新拉出来
         resignActiveObserver = NotificationCenter.default.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { _ in
-            guard !debugPanels.isEmpty else { return }
-            // 延迟一点重新激活，确保系统完成焦点切换
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                guard !debugPanels.isEmpty else { return }
-                // 重新激活所有 Panel
-                for panel in debugPanels {
-                    panel.orderFrontRegardless()
-                    panel.becomeKey()
-                }
+            DispatchQueue.main.async {
+                V2ScreenshotController.refocusScreenshotSession()
             }
+        }
+
+        // ✨ 新增（2026-08-18）：焦点看门狗
+        // 根因：show() 的 NSApp.activate 与前台应用抢焦点可能输掉（Electron 类应用会立刻夺回），
+        // App 不活跃时 localMonitor 收不到任何键盘事件 → ESC 失效 → 用户被困在全屏遮罩里（实锤：日志里
+        // 出现过 3 分钟 / 12 分钟才结束的截图会话）。失焦监听救不了"从未激活"的情况，必须轮询兜底。
+        focusWatchdogTimer?.invalidate()
+        let watchdog = Timer(timeInterval: 1.0, repeats: true) { _ in
+            DispatchQueue.main.async {
+                V2ScreenshotController.refocusScreenshotSession()
+            }
+        }
+        RunLoop.main.add(watchdog, forMode: .common)
+        focusWatchdogTimer = watchdog
+    }
+
+    /// 会话存续期间强制保持 App 活跃与面板置顶。
+    /// 长图采集期间跳过：目标应用必须保持前台以接收滚动/点击，此时不能抢焦点。
+    private static func refocusScreenshotSession() {
+        guard !debugPanels.isEmpty else {
+            focusWatchdogTimer?.invalidate()
+            focusWatchdogTimer = nil
+            return
+        }
+        guard !V2PrimaryScreenStateManager.shared.isCapturing else { return }
+        if !NSApp.isActive {
+            NSApp.activate(ignoringOtherApps: true)
+        }
+        for panel in debugPanels {
+            panel.orderFrontRegardless()
+            panel.becomeKey()
         }
     }
     
+    /// ESC 后退的阶段性决策（纯函数，可单测）
+    /// - 有标注：双击 ESC（2 秒窗口）防误触
+    /// - 无标注有选区：先清选区（阶段后退）
+    /// - 其余：立即退出
+    enum V2EscDecision: Equatable {
+        case requireDoublePress
+        case clearSelection
+        case exitNow
+    }
+
+    static func escDecision(hasElements: Bool, lastEscPress: Date?, now: Date, hasSelection: Bool) -> V2EscDecision {
+        if hasElements {
+            if let last = lastEscPress, now.timeIntervalSince(last) < 2.0 {
+                return .exitNow
+            }
+            return .requireDoublePress
+        }
+        if hasSelection {
+            return .clearSelection
+        }
+        return .exitNow
+    }
+
     private static func handleGlobalExitCommand() {
         let manager = V2PrimaryScreenStateManager.shared
-        
-        // 1. 如果有标注内容，为了防止误操作，需要双击 ESC 退出
-        if !manager.elements.isEmpty {
-            if let lastEscTime = manager.lastEscKeyPressTime,
-               Date().timeIntervalSince(lastEscTime) < 2.0 {
-                close()
-            } else {
-                let now = Date()
-                manager.lastEscKeyPressTime = now
-                manager.postToast("再按一次退出 (已保留标注内容)", type: "info")
-                
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                    if manager.lastEscKeyPressTime == now {
-                        manager.lastEscKeyPressTime = nil
-                    }
+
+        switch escDecision(hasElements: !manager.elements.isEmpty,
+                           lastEscPress: manager.lastEscKeyPressTime,
+                           now: Date(),
+                           hasSelection: manager.selectedArea != nil) {
+        case .requireDoublePress:
+            let now = Date()
+            manager.lastEscKeyPressTime = now
+            manager.postToast("再按一次退出 (已保留标注内容)", type: "info")
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                if manager.lastEscKeyPressTime == now {
+                    manager.lastEscKeyPressTime = nil
                 }
             }
-            return
-        }
-        
-        // 2. 阶段返回逻辑：如果有选区，先清除选区
-        if manager.selectedArea != nil {
+        case .clearSelection:
             manager.updateSelection(nil, on: nil)
             manager.updateHover(nil, label: nil, on: nil)
             // 重置工具和模式
             manager.updateTool(.cursor)
             manager.selectedElementId = nil
             manager.isLongScreenshotMode = false
-            return
+        case .exitNow:
+            close()
         }
-        
-        // 3. 初始状态或仅选择了工具但未画图，直接退出
-        close()
     }
 
     /// 显示/隐藏长图采集预览面板

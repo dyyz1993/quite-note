@@ -65,4 +65,32 @@ final class RecordingFileFinalizerTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: result.path),
                       "目标目录不存在时应自动创建")
     }
+
+    func testFinalizeEditedKeepsSourceAndUsesDistinctName() throws {
+        let source = tempDir.appendingPathComponent("录屏 2026-08-18 13.00.00.mp4")
+        try Data("source".utf8).write(to: source)
+        let edited = try makeTempRecording()
+
+        let result = try V2RecordingFileFinalizer.finalizeEdited(
+            tempURL: edited, beside: source)
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: source.path),
+                      "剪辑导出不能删除原始录屏")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: result.path))
+        XCTAssertTrue(result.lastPathComponent.contains("剪辑版"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: edited.path))
+    }
+
+    func testFinalizeEditedDoesNotOverwritePreviousEdit() throws {
+        let source = tempDir.appendingPathComponent("录屏 2026-08-18 13.00.00.mp4")
+        try Data("source".utf8).write(to: source)
+
+        let first = try V2RecordingFileFinalizer.finalizeEdited(
+            tempURL: try makeTempRecording(), beside: source)
+        let second = try V2RecordingFileFinalizer.finalizeEdited(
+            tempURL: try makeTempRecording(), beside: source)
+
+        XCTAssertNotEqual(first.path, second.path)
+        XCTAssertTrue(second.lastPathComponent.contains("剪辑版-2"))
+    }
 }

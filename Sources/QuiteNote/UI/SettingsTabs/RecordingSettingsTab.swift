@@ -53,6 +53,29 @@ struct RecordingSettingsTab: View {
             }
             .padding(.vertical, ThemeSpacing.px1.rawValue + 2)
 
+            HStack(alignment: .top, spacing: ThemeSpacing.px3.rawValue) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("开始倒计时")
+                        .font(.themeBody)
+                        .foregroundColor(.themeTextPrimary)
+                    Text("给自己一点准备时间；倒计时期间不会录入画面")
+                        .font(.themeCaption)
+                        .foregroundColor(.themeTextTertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+                Picker("", selection: Binding(
+                    get: { prefs.recordingCountdownSeconds },
+                    set: { prefs.setRecordingCountdownSeconds($0) })) {
+                    Text("关闭").tag(0)
+                    Text("3 秒").tag(3)
+                    Text("5 秒").tag(5)
+                }
+                .pickerStyle(.menu)
+                .controlSize(.small)
+            }
+            .padding(.vertical, ThemeSpacing.px1.rawValue + 2)
+
             hintCard("两个开关独立组合：口播=只开麦克风 · 会议解说=都开 · 操作演示=只开系统声 · 都关=无声录制。截图工具栏 ⏺ 旁的 ▾ 可在每次录制前临时切换（会被记住）。")
         }
         .padding(ThemeSpacing.px4.rawValue)

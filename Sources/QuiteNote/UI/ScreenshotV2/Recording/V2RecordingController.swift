@@ -23,10 +23,18 @@ final class V2RecordingController: ObservableObject {
     @Published private(set) var micLevel: Float = 0
     /// 系统声实时电平（0...1）
     @Published private(set) var systemAudioLevel: Float = 0
+    /// 录制启动阶段可调整的音频来源。真正起流前会读取最新值。
+    @Published private(set) var pendingSystemAudio: Bool = PreferencesManager.shared.recordingSystemAudio
+    @Published private(set) var pendingMicrophone: Bool = PreferencesManager.shared.recordingMicrophone
+    /// 已点击录制但采集流还在启动中；用于立即显示红框和底部控制条。
+    @Published private(set) var isStarting = false
+    /// 录制前倒计时剩余秒数；倒计时期间尚未启动采集
+    @Published private(set) var countdownRemaining: Int?
 
     private let engine = V2ScreenRecorderEngine()
     private var borderPanel: NSPanel?
     private var controlPanel: NSPanel?
+    private var countdownPanel: NSPanel?
     private var micRecorder: V2MicrophoneRecorder?
     private var ticker: Timer?
     private var levelTimer: Timer?
@@ -38,6 +46,7 @@ final class V2RecordingController: ObservableObject {
     private var pausedSeconds: TimeInterval = 0
     /// 引擎正在运行（含启动中）；active=false 且 isFinalizing=true 是收尾窗口期
     private var active = false
+    private var startTask: Task<Void, Never>?
 
     private init() {
         engine.onForcedStop = { [weak self] in
@@ -45,7 +54,7 @@ final class V2RecordingController: ObservableObject {
         }
     }
 
-    var isRunning: Bool { active || isFinalizing }
+    var isRunning: Bool { active || isStarting || isFinalizing || countdownRemaining != nil }
 
     // MARK: - 启动
 
@@ -75,28 +84,56 @@ final class V2RecordingController: ObservableObject {
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("QuiteNote-Recording-\(UUID().uuidString).mp4")
 
+        PreferencesManager.shared.setLastRecordingSelection(localRect, on: screen)
+
         // 音频两路独立开关（设置页/工具栏 ▾ 快选共用同一存储）
-        var wantsSystemAudio = PreferencesManager.shared.recordingSystemAudio
-        var wantsMicrophone = PreferencesManager.shared.recordingMicrophone
+        pendingSystemAudio = PreferencesManager.shared.recordingSystemAudio
+        pendingMicrophone = PreferencesManager.shared.recordingMicrophone
 
         DiagnosticCenter.info("Recording", String(format: "开始区域录屏：%.0f×%.0fpt @ %@ → %d×%dpx，系统声 %@ 麦克风 %@",
                                                   sourceRect.width, sourceRect.height,
                                                   screen.localizedName,
                                                   Int(pixels.width), Int(pixels.height),
-                                                  wantsSystemAudio ? "开" : "关",
-                                                  wantsMicrophone ? "开" : "关"))
+                                                  pendingSystemAudio ? "开" : "关",
+                                                  pendingMicrophone ? "开" : "关"))
 
-        Task {
+        let countdownSeconds = PreferencesManager.shared.recordingCountdownSeconds
+        isStarting = true
+        // 先把反馈 UI 放出来，再做 SCK 内容枚举、音频权限和起流。
+        // 这样点击录制后马上能看到选区边界，也能在真正起流前切换音频来源。
+        showOverlay(selection: localRect, screen: screen)
+        if countdownSeconds > 0 {
+            countdownRemaining = countdownSeconds
+            showCountdown(selection: localRect, screen: screen)
+        }
+
+        startTask = Task { [weak self] in
+            guard let self else { return }
             do {
+                if countdownSeconds > 0 {
+                    for remaining in stride(from: countdownSeconds, through: 1, by: -1) {
+                        guard !Task.isCancelled else {
+                            self.hideCountdown()
+                            return
+                        }
+                        self.countdownRemaining = remaining
+                        try await Task.sleep(nanoseconds: 1_000_000_000)
+                    }
+                    self.hideCountdown()
+                }
+
                 // 起录稳定延迟：截图遮罩刚关闭时画面合成器可能还有残影，
                 // 等 250ms 让底层画面完全就位再起流（否则首帧可能录到遮罩残影/层级错乱）
                 try await Task.sleep(nanoseconds: 250_000_000)
 
                 // 麦克风需要独立 TCC 授权：先请求，拒绝则本次降级为不开麦（不阻断录制）
+                let wantsSystemAudio = self.pendingSystemAudio
+                var wantsMicrophone = self.pendingMicrophone
                 if wantsMicrophone {
                     let granted = await Self.requestMicrophonePermission()
                     if !granted {
                         wantsMicrophone = false
+                        self.pendingMicrophone = false
                         DiagnosticCenter.warning("Recording", "麦克风权限未授予，本次录制不含麦克风")
                         ScreenshotService.shared.announceRecordingError("麦克风权限未授予，本次录制不含麦克风")
                     }
@@ -159,14 +196,17 @@ final class V2RecordingController: ObservableObject {
                 self.elapsed = 0
                 self.pausedSeconds = 0
                 self.isPaused = false
-                self.showOverlay(selection: localRect, screen: screen,
-                                 systemAudio: wantsSystemAudio, microphone: micRecorder != nil)
+                self.pendingSystemAudio = wantsSystemAudio
+                self.pendingMicrophone = micRecorder != nil
+                self.isStarting = false
                 self.startTicker()
                 self.startLevelTicker()
             } catch {
                 try? FileManager.default.removeItem(at: tempURL)
+                self.hideCountdown()
                 DiagnosticCenter.error("Recording", "录屏启动失败：\(error.localizedDescription)")
                 ScreenshotService.shared.announceRecordingError("录屏启动失败：\(error.localizedDescription)")
+                self.teardown()
             }
         }
     }
@@ -230,7 +270,12 @@ final class V2RecordingController: ObservableObject {
     }
 
     func cancel() {
-        guard active else { return }
+        guard active || isStarting else { return }
+        if isStarting && !active {
+            startTask?.cancel()
+            teardown()
+            return
+        }
         active = false
         stopTicker()
         stopMicrophone()
@@ -257,8 +302,7 @@ final class V2RecordingController: ObservableObject {
 
     // MARK: - 面板
 
-    private func showOverlay(selection localRect: CGRect, screen: NSScreen,
-                             systemAudio: Bool, microphone: Bool) {
+    private func showOverlay(selection localRect: CGRect, screen: NSScreen) {
         let globalRect = V2RecordingGeometry.appKitGlobalRect(local: localRect, screenFrame: screen.frame)
 
         // 红框：画在选区外侧 2pt，不会被录进视频（且内容过滤已排除本应用窗口，双保险）
@@ -275,9 +319,7 @@ final class V2RecordingController: ObservableObject {
 
         // 控制条：先量内容实际尺寸再定面板大小（写死宽度会把文字压成 "…"），
         // 三级动态定位（与截图工具栏同策略），visibleFrame 避开 Dock 与菜单栏
-        let barView = V2RecordingControlBarView(controller: self,
-                                                systemAudio: systemAudio,
-                                                microphone: microphone)
+        let barView = V2RecordingControlBarView(controller: self)
         let barHosting = NSHostingView(rootView: barView)
         let fitting = barHosting.fittingSize
         let barSize = CGSize(width: max(340, ceil(fitting.width) + 4),
@@ -291,6 +333,29 @@ final class V2RecordingController: ObservableObject {
         positionControlPanel(control, selection: globalRect, barSize: barSize, screen: screen)
         control.orderFrontRegardless()
         controlPanel = control
+    }
+
+    private func showCountdown(selection localRect: CGRect, screen: NSScreen) {
+        let globalRect = V2RecordingGeometry.appKitGlobalRect(local: localRect, screenFrame: screen.frame)
+        let size = CGSize(width: 184, height: 132)
+        let visible = screen.visibleFrame
+        let x = max(visible.minX + 8, min(globalRect.midX - size.width / 2, visible.maxX - size.width - 8))
+        let y = max(visible.minY + 8, min(globalRect.midY - size.height / 2, visible.maxY - size.height - 8))
+
+        let panel = NSPanel(
+            contentRect: NSRect(origin: CGPoint(x: x, y: y), size: size),
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered, defer: false)
+        configureFloatingPanel(panel, ignoresMouse: true)
+        panel.contentView = NSHostingView(rootView: V2RecordingCountdownView(controller: self))
+        panel.orderFrontRegardless()
+        countdownPanel = panel
+    }
+
+    private func hideCountdown() {
+        countdownPanel?.close()
+        countdownPanel = nil
+        countdownRemaining = nil
     }
 
     private func configureFloatingPanel(_ panel: NSPanel, ignoresMouse: Bool) {
@@ -335,16 +400,33 @@ final class V2RecordingController: ObservableObject {
     }
 
     private func teardown() {
+        stopTicker()
+        startTask = nil
+        hideCountdown()
         borderPanel?.close()
         borderPanel = nil
         controlPanel?.close()
         controlPanel = nil
         isFinalizing = false
+        isStarting = false
         isPaused = false
         elapsed = 0
         startedAt = nil
         pauseStartedAt = nil
         pausedSeconds = 0
+    }
+
+    /// 录制真正起流前切换音频来源。录制开始后音轨结构已锁定，按钮会自动变为只读。
+    func setPendingSystemAudio(_ enabled: Bool) {
+        guard isStarting else { return }
+        pendingSystemAudio = enabled
+        PreferencesManager.shared.setRecordingSystemAudio(enabled)
+    }
+
+    func setPendingMicrophone(_ enabled: Bool) {
+        guard isStarting else { return }
+        pendingMicrophone = enabled
+        PreferencesManager.shared.setRecordingMicrophone(enabled)
     }
 
     // MARK: - 计时（扣除暂停段）

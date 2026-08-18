@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>录屏快剪 · 剪映风格交互原型 v3（音频+字幕）</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; user-select:none; }
+  body {
+    background:#0b0f19; color:#e5e9f0; font-family:-apple-system,"PingFang SC",sans-serif;
+    display:flex; gap:22px; padding:26px 30px; align-items:flex-start;
+  }
+  .win {
+    width:920px; background:#111827; border:1px solid #2a3550; border-radius:12px;
+    overflow:hidden; box-shadow:0 30px 80px rgba(0,0,0,.55); flex-shrink:0;
+  }
+  .titlebar {
+    height:38px; background:#1a2234; display:flex; align-items:center; padding:0 14px; gap:10px;
+    font-size:12.5px; color:#8b95ab; border-bottom:1px solid #2a3550;
+  }
+  .tl-dot { width:12px;height:12px;border-radius:50% }
+  .tl-dot:nth-child(1){background:#ff5f57}.tl-dot:nth-child(2){background:#febc2e}.tl-dot:nth-child(3){background:#28c840}
+
+  .player {
+    position:relative; height:340px; cursor:pointer;
+    background:
+      radial-gradient(700px 300px at 30% 35%, #2b4470 0%, transparent 65%),
+      radial-gradient(500px 260px at 75% 70%, #3a2b5e 0%, transparent 60%), #0d1322;
+  }
+  .player .bigplay {
+    position:absolute; inset:0; margin:auto; width:72px; height:72px; border-radius:50%;
+    background:rgba(0,0,0,.45); border:1px solid rgba(255,255,255,.35); backdrop-filter:blur(4px);
+    display:flex; align-items:center; justify-content:center; font-size:26px; color:#fff;
+    transition:transform .15s, opacity .2s;
+  }
+  .player.playing .bigplay { opacity:0; transform:scale(.8); pointer-events:none; }
+  .player .vtime {
+    position:absolute; left:14px; top:12px; font-size:12px; color:rgba(255,255,255,.85);
+    background:rgba(0,0,0,.4); padding:3px 9px; border-radius:6px; font-variant-numeric:tabular-nums;
+  }
+  .player .dub-banner {
+    position:absolute; top:12px; left:50%; transform:translateX(-50%); display:none;
+    background:#f59e0b; color:#111827; font-size:12.5px; font-weight:700; padding:5px 14px;
+    border-radius:8px; align-items:center; gap:8px;
+  }
+  .player .dub-banner.on { display:flex; }
+  .dot-rec { width:9px;height:9px;border-radius:50%;background:#ef4444;animation:blink 1s infinite }
+  @keyframes blink { 50% { opacity:.25 } }
+  .subtitle-overlay {
+    position:absolute; left:50%; bottom:18px; transform:translateX(-50%);
+    font-size:17px; font-weight:600; color:#fff; text-shadow:0 1px 4px rgba(0,0,0,.9);
+    background:rgba(0,0,0,.35); padding:4px 14px; border-radius:6px; display:none;
+    pointer-events:none; white-space:nowrap; max-width:88%; overflow:hidden;
+  }
+
+  .ctrlbar {
+    display:flex; align-items:center; gap:8px; padding:9px 14px;
+    background:#141c2e; border-bottom:1px solid #2a3550; flex-wrap:wrap;
+  }
+  .playbtn {
+    width:32px;height:32px;border-radius:50%;background:#fff;color:#111827;border:none;
+    font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;
+  }
+  .time-main { font-size:13px; font-weight:600; font-variant-numeric:tabular-nums; }
+  .time-total { color:#8b95ab; font-size:12px; font-variant-numeric:tabular-nums; }
+  .spacer { flex:1 }
+  .zoom { display:flex; align-items:center; gap:4px; color:#8b95ab; font-size:12px; }
+  .zoom button { width:24px;height:24px;border-radius:6px;border:1px solid #2a3550;background:#1a2234;color:#e5e9f0;cursor:pointer;font-size:13px; }
+  .btn {
+    height:30px; padding:0 12px; border-radius:8px; border:1px solid #2a3550;
+    background:#1a2234; color:#e5e9f0; font-size:12.5px; cursor:pointer;
+    display:inline-flex; align-items:center; gap:5px; white-space:nowrap;
+  }
+  .btn:disabled { opacity:.35; cursor:default }
+  .btn.primary { background:#ef4444; border-color:#ef4444; color:#fff; font-weight:600 }
+  .btn.split { border-color:rgba(59,130,246,.5); color:#93c5fd }
+  .btn.dub { border-color:rgba(245,158,11,.55); color:#fbbf24 }
+  .btn.dub.rec { background:#f59e0b; border-color:#f59e0b; color:#111827; font-weight:700 }
+
+  .tl-wrap { position:relative; background:#0e1524; padding:6px 0 4px; }
+  .tl-outer { display:flex; }
+  .gutter { width:76px; flex-shrink:0; border-right:1px solid #1e2942; }
+  .gutter .grow { display:flex; align-items:center; gap:5px; padding:0 6px 0 8px; font-size:10.5px; color:#8b95ab; position:relative; }
+  .gutter .grow b { font-weight:600; }
+  .gutter .mute {
+    width:18px;height:18px;border-radius:4px;border:none;cursor:pointer;font-size:10px;
+    display:inline-flex;align-items:center;justify-content:center;background:#1a2234;color:#8b95ab;
+    border:1px solid #2a3550;
+  }
+  .gutter .mute.off { color:#fca5a5; border-color:rgba(239,68,68,.5); background:rgba(239,68,68,.12) }
+  .volpop {
+    position:absolute; left:70px; top:-6px; z-index:30; background:#111827; border:1px solid #2a3550;
+    border-radius:8px; padding:8px 10px; display:none; width:150px; box-shadow:0 10px 30px rgba(0,0,0,.5);
+  }
+  .volpop.show { display:block }
+  .volpop input { width:100%; accent-color:#3b82f6 }
+  .volpop .vv { font-size:10px; color:#8b95ab; display:flex; justify-content:space-between }
+
+  .timeline { position:relative; flex:1; height:158px; overflow:hidden; cursor:grab; touch-action:none; }
+  .timeline.panning { cursor:grabbing; }
+  .track { position:absolute; top:0; bottom:0; will-change:transform; }
+  .ruler { position:relative; height:16px; }
+  .tick { position:absolute; bottom:0; width:1px; background:#3d4a68; }
+  .tick.major { background:#6b7994; height:9px; }
+  .tick.minor { height:4px; }
+  .tick-label { position:absolute; bottom:8px; transform:translateX(-50%); font-size:9.5px; color:#8b95ab; font-variant-numeric:tabular-nums; }
+  .thumbs { position:relative; height:48px; display:flex; }
+  .thumb { flex:1; height:48px; border-radius:3px; }
+  .lane { position:relative; height:24px; margin:2px 0; }
+  .lane .wv { position:absolute; inset:0; display:flex; align-items:center; gap:1px; }
+  .lane .wv i { flex:1; border-radius:1px; min-height:2px; }
+  .lane.dub-seg {
+    position:absolute; top:0; bottom:0; background:rgba(245,158,11,.16);
+    border:1.5px solid #f59e0b; border-radius:5px; overflow:hidden;
+  }
+  .lane.dub-seg .wv i { background:#f59e0b; opacity:.8 }
+  .cap-chip {
+    position:absolute; top:2px; bottom:2px; background:rgba(34,197,94,.15); border:1px solid rgba(34,197,94,.55);
+    border-radius:4px; font-size:9.5px; color:#a9e8bf; display:flex; align-items:center;
+    padding:0 5px; overflow:hidden; white-space:nowrap;
+  }
+
+  .frame { position:absolute; top:20px; bottom:2px; border-radius:8px; pointer-events:none; }
+  .frame.sel { border:2.5px solid #fff; box-shadow:0 0 0 1px rgba(0,0,0,.35); }
+  .frame.unsel { border:1.5px solid rgba(255,255,255,.4); cursor:pointer; pointer-events:auto; }
+  .handle {
+    position:absolute; top:50%; transform:translateY(-50%); width:15px; height:52px;
+    border-radius:4px; background:#fff; cursor:ew-resize; pointer-events:auto;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .handle::after { content:""; width:2px; height:22px; border-radius:1px; background:rgba(0,0,0,.25); }
+  .handle.l { left:-8px } .handle.r { right:-8px }
+  .gap { position:absolute; top:20px; bottom:2px; background:rgba(10,14,24,.74); pointer-events:none; }
+
+  .playhead-zone { position:absolute; top:0; bottom:0; left:50%; width:26px; transform:translateX(-50%); cursor:ew-resize; z-index:6; touch-action:none; }
+  .playhead { position:absolute; top:2px; bottom:2px; left:50%; width:2px; background:#fff; pointer-events:none; z-index:7; box-shadow:0 0 6px rgba(255,255,255,.5); }
+  .playhead::before { content:""; position:absolute; top:-2px; left:50%; transform:translateX(-50%); border:6px solid transparent; border-top-color:#fff; border-radius:2px; }
+  .badge {
+    position:absolute; top:4px; left:50%; transform:translateX(-50%); z-index:8;
+    background:#ef4444; color:#fff; font-size:12px; font-weight:600; padding:4px 12px;
+    border-radius:7px; display:none; font-variant-numeric:tabular-nums; white-space:nowrap;
+  }
+  .badge.snap { background:#3b82f6 }
+
+  .footer { display:flex; align-items:center; gap:12px; padding:9px 14px; font-size:12px; background:#141c2e; border-top:1px solid #2a3550; color:#8b95ab; }
+  .footer .cutinfo { color:#f59e0b; font-variant-numeric:tabular-nums; }
+  .link { color:#8b95ab; cursor:pointer; text-decoration:underline dotted; }
+  .link:hover { color:#e5e9f0 }
+
+  .toast {
+    position:fixed; top:24px; left:50%; transform:translateX(-50%); z-index:99;
+    background:#111827; border:1px solid #2a3550; color:#e5e9f0; padding:10px 18px;
+    border-radius:10px; font-size:13px; display:none; box-shadow:0 10px 40px rgba(0,0,0,.6); max-width:70%;
+  }
+
+  .notes { width:330px; flex-shrink:0; position:sticky; top:20px; }
+  .notes h2 { font-size:15px; margin-bottom:4px; }
+  .notes .sub { color:#8b95ab; font-size:12px; margin-bottom:12px; line-height:1.6 }
+  .ntable { width:100%; border-collapse:collapse; font-size:12px; margin-bottom:10px }
+  .ntable th { text-align:left; color:#8b95ab; font-weight:500; padding:5px 6px; border-bottom:1px solid #2a3550; font-size:11px }
+  .ntable td { padding:6px; border-bottom:1px solid rgba(42,53,80,.4); vertical-align:top; line-height:1.5 }
+  .card { border-radius:9px; padding:9px 11px; font-size:12px; line-height:1.6; margin-top:8px }
+  .card.ok { background:rgba(34,197,94,.07); border:1px solid rgba(34,197,94,.3); color:#a9e8bf }
+  .card.ask { background:rgba(245,158,11,.07); border:1px solid rgba(245,158,11,.35); color:#ffd9a0 }
+  .card.warn { background:rgba(239,68,68,.06); border:1px solid rgba(239,68,68,.3); color:#fca5a5 }
+</style>
+</head>
+<body>
+
+<div class="win">
+  <div class="titlebar">
+    <span class="tl-dot"></span><span class="tl-dot"></span><span class="tl-dot"></span>
+    <span>快剪 · 录屏 2026-08-17 15.30.00.mp4</span>
+    <span style="margin-left:auto">960×540 · 30fps</span>
+  </div>
+
+  <div class="player" id="player">
+    <div class="vtime" id="vtime">00:00 / 00:47</div>
+    <div class="dub-banner" id="dubBanner"><span class="dot-rec"></span>配音中 · 跟着画面说话 · 点「⏹ 结束配音」停止</div>
+    <div class="bigplay">▶</div>
+    <div class="subtitle-overlay" id="subOverlay"></div>
+  </div>
+
+  <div class="ctrlbar">
+    <button class="playbtn" id="btnPlay">▶</button>
+    <span class="time-main" id="tCur">00:00</span>
+    <span class="time-total" id="tTotal">/ 00:47</span>
+    <div class="spacer"></div>
+    <div class="zoom"><button id="zOut">−</button><span id="zVal">40px/s</span><button id="zIn">＋</button></div>
+    <button class="btn split" id="btnSplit">✂ 分割</button>
+    <button class="btn" id="btnDelete" disabled>🗑 删除此段</button>
+    <button class="btn dub" id="btnDub">🎙 补录配音</button>
+    <button class="btn" id="btnCap" disabled title="从配音/麦克风轨本地识别生成（macOS 26+）">💬 自动字幕</button>
+    <button class="btn" id="btnUndo" disabled>↩ 撤销</button>
+    <button class="btn primary" id="btnExport">导出成片</button>
+  </div>
+
+  <div class="tl-wrap">
+    <div class="tl-outer">
+      <div class="gutter" id="gutter"></div>
+      <div class="timeline" id="timeline">
+        <div class="track" id="track"></div>
+        <div class="playhead-zone" id="phZone" title="拖动播放头定位"></div>
+        <div class="playhead"></div>
+        <div class="badge" id="badge"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <span>成片：<span class="cutinfo" id="cutinfo">完整 00:47 · 1 段</span></span>
+    <div style="flex:1"></div>
+    <span class="link" onclick="toast('路径已复制')">复制路径</span>
+    <span class="link" onclick="toast('已在 Finder 中显示')">Finder 显示</span>
+    <span class="link" onclick="toast('已存入闪记')">存入闪记</span>
+    <span class="link" onclick="toast('关闭预览（文件已保存）')">关闭</span>
+  </div>
+</div>
+
+<aside class="notes">
+  <h2>剪映风格 · v3 音频+字幕</h2>
+  <div class="sub">新增三块：<b>补录配音</b>（录完补口播）、<b>每轨音量/静音</b>（左侧轨头点开）、<b>自动字幕</b>（从配音/麦克风采纹生成）。</div>
+  <table class="ntable">
+    <tr><th>操作</th><th>行为</th></tr>
+    <tr><td><b>🎙 补录配音</b></td><td>进入配音模式：画面连播，你跟着说，橙色配音轨实时生长；再点一下结束。可多段补录，导出自动合入</td></tr>
+    <tr><td><b>轨头（系统声/麦克风/配音）</b></td><td>点名字弹音量条（0–200%）+ 静音按钮；某轨太吵/太小现场调</td></tr>
+    <tr><td><b>💬 自动字幕</b></td><td>有配音或麦克风轨后可用：设备端语音识别生成字幕轨（绿色条），画面底部同步显示；播放走一遍校对</td></tr>
+    <tr><td><b>字幕条</b></td><td>点字幕条可改文案（原型未演示）；成片导出时烧录进画面</td></tr>
+  </table>
+  <div class="card ok">建议做的：补录配音（命中你说的"后期加口述"）、每轨音量/静音、自动字幕（你机器 macOS 26 支持本地识别带时间戳）</div>
+  <div class="card warn">两个代价要想清楚：① 字幕烧录导出需要<b>重新编码</b>（不再直通秒级，47 秒视频约十几秒）；无字幕时仍走直通 ② 自动字幕仅 macOS 26+ 可用，旧系统隐藏该按钮</div>
+  <div class="card ask">不建议做的：手动逐条打字幕（费劲，价值低）、花字/贴纸/转场（超出"录完快修"定位）。确认这个边界 OK 我就按 v3 实现 App 版。</div>
+</aside>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── 状态 ──
+const D = 47;
+let t = 0;
+let segments = [{ s: 0, e: D }];
+let sel = 0;
+let z = 40;
+let playing = false, timer = null;
+let undoStack = [];
+
+// 音频轨（可补录配音）
+let lanes = [
+  { id:'sys', label:'系统声', color:'#4d7ba3', vol:80, muted:false },
+  { id:'mic', label:'麦克风', color:'#7c6cc9', vol:100, muted:false },
+  { id:'dub', label:'配音',   color:'#f59e0b', vol:100, muted:false, segs: [] },
+];
+let dubbing = null;              // { seg } 配音中的段
+let captions = [];               // { s,e,text }
+let captionsOn = false;
+
+const track = document.getElementById('track');
+const timeline = document.getElementById('timeline');
+const player = document.getElementById('player');
+const badge = document.getElementById('badge');
+
+const keepDuration = () => segments.reduce((a, g) => a + g.e - g.s, 0);
+const dubSeconds = () => lanes[2].segs.reduce((a, g) => a + g.e - g.s, 0);
+function laneTop(i) { return 16 + 48 + i * 26 + 2; }   // ruler + thumbs + 第 i 轨
+const timelineHeight = () => 16 + 48 + lanes.length * 26 + (captions.length ? 26 : 0) + 6;
+
+function waveBars(color, opacity) {
+  let html = '';
+  for (let i = 0; i < 160; i++) {
+    const loud = Math.abs(Math.sin(i * 0.9)) * (i > 55 ? 18 : 11) + 2;
+    html += `<i style="height:${loud}px;background:${color};opacity:${opacity}"></i>`;
+  }
+  return html;
+}
+
+function buildGutter() {
+  const g = document.getElementById('gutter');
+  g.innerHTML = '';
+  // 画面行（与 thumbs 对齐）
+  const vrow = document.createElement('div');
+  vrow.className = 'grow';
+  vrow.style.height = (16 + 48) + 'px';
+  vrow.style.alignItems = 'flex-end';
+  vrow.style.paddingBottom = '4px';
+  vrow.innerHTML = '<b style="color:#e5e9f0">画面</b>';
+  g.appendChild(vrow);
+  lanes.forEach((ln, i) => {
+    const row = document.createElement('div');
+    row.className = 'grow';
+    row.style.height = '26px';
+    row.innerHTML = `
+      <button class="mute ${ln.muted?'off':''}" data-i="${i}" title="静音/恢复">${ln.muted?'🔇':'🔊'}</button>
+      <b style="color:${ln.color};cursor:pointer" data-vol="${i}">${ln.label}</b>
+      <div class="volpop" id="volpop${i}">
+        <div class="vv"><span>音量</span><span id="volVal${i}">${ln.vol}%</span></div>
+        <input type="range" min="0" max="200" value="${ln.vol}" data-range="${i}">
+      </div>`;
+    g.appendChild(row);
+  });
+  if (captions.length) {
+    const row = document.createElement('div');
+    row.className = 'grow';
+    row.style.height = '26px';
+    row.innerHTML = `<b style="color:#22c55e">字幕</b>`;
+    g.appendChild(row);
+  }
+  // 静音
+  g.querySelectorAll('.mute').forEach(b => b.onclick = ev => {
+    ev.stopPropagation();
+    const i = +b.dataset.i;
+    lanes[i].muted = !lanes[i].muted;
+    buildGutter(); buildTrack();
+  });
+  // 音量弹层
+  g.querySelectorAll('b[data-vol]').forEach(b => b.onclick = ev => {
+    ev.stopPropagation();
+    document.querySelectorAll('.volpop').forEach(p => p.classList.remove('show'));
+    document.getElementById('volpop' + b.dataset.vol).classList.add('show');
+  });
+  g.querySelectorAll('input[data-range]').forEach(r => r.oninput = () => {
+    const i = +r.dataset.range;
+    lanes[i].vol = +r.value;
+    document.getElementById('volVal' + i).textContent = r.value + '%';
+  });
+}
+
+function buildTrack() {
+  const W = D * z;
+  track.style.width = W + 'px';
+  const labelStep = z >= 60 ? 1 : z >= 25 ? 5 : 10;
+  const minorStep = labelStep / 5;
+  let html = '<div class="ruler">';
+  for (let sec = 0; sec <= D + 0.001; sec += minorStep) {
+    const v = Math.round(sec * 10) / 10;
+    const major = Math.abs(v % labelStep) < 0.001;
+    html += `<div class="tick ${major?'major':'minor'}" style="left:${v*z}px"></div>`;
+    if (major) html += `<div class="tick-label" style="left:${v*z}px">${fmt(v)}</div>`;
+  }
+  html += '</div><div class="thumbs">';
+  for (let i = 0; i < 20; i++) {
+    const hue = 210 + (i % 7) * 9;
+    html += `<div class="thumb" style="width:${W/20}px;background:linear-gradient(135deg,hsl(${hue} 35% 32%),hsl(${hue+18} 30% 24%))"></div>`;
+  }
+  html += '</div>';
+  track.innerHTML = html;
+
+  // 音频轨波形
+  lanes.forEach((ln, i) => {
+    const lane = document.createElement('div');
+    lane.className = 'lane';
+    lane.style.top = laneTop(i) + 'px';
+    const op = ln.muted ? 0.18 : 0.25 + 0.75 * (ln.vol / 100);
+    if (ln.id === 'dub') {
+      // 配音轨：只在有段的区域画波形
+      ln.segs.forEach(seg => {
+        const d = document.createElement('div');
+        d.className = 'lane dub-seg';
+        d.style.left = seg.s * z + 'px';
+        d.style.width = Math.max(6, (seg.e - seg.s) * z) + 'px';
+        d.innerHTML = `<div class="wv">${waveBars('#f59e0b', 0.9)}</div>`;
+        lane.appendChild(d);
+      });
+    } else {
+      lane.innerHTML = `<div class="wv">${waveBars(ln.color, op)}</div>`;
+    }
+    track.appendChild(lane);
+  });
+
+  // 字幕轨
+  if (captions.length) {
+    const lane = document.createElement('div');
+    lane.className = 'lane';
+    lane.style.top = laneTop(lanes.length) + 'px';
+    captions.forEach(c => {
+      const chip = document.createElement('div');
+      chip.className = 'cap-chip';
+      chip.style.left = c.s * z + 'px';
+      chip.style.width = Math.max(30, (c.e - c.s) * z) + 'px';
+      chip.textContent = c.text;
+      chip.title = '点击改文案';
+      chip.onclick = ev => { ev.stopPropagation(); toast('App 版：点击弹出文本框就地编辑'); };
+      lane.appendChild(chip);
+    });
+    track.appendChild(lane);
+  }
+
+  // 被删空隙
+  let cursor = 0;
+  const addGap = (s, e) => {
+    if (e - s < 0.02) return;
+    const d = document.createElement('div');
+    d.className = 'gap';
+    d.style.top = '20px'; d.style.bottom = (track.scrollHeight - (16+48) ) + 'px';
+    d.style.left = s * z + 'px'; d.style.width = (e - s) * z + 'px';
+    track.appendChild(d);
+  };
+  segments.forEach(g => { addGap(cursor, g.s); cursor = g.e; });
+  addGap(cursor, D);
+
+  // 段白框
+  segments.forEach((g, i) => {
+    const f = document.createElement('div');
+    f.className = 'frame ' + (i === sel ? 'sel' : 'unsel');
+    f.style.left = g.s * z + 'px';
+    f.style.width = (g.e - g.s) * z + 'px';
+    if (i === sel) {
+      const hl = document.createElement('div'); hl.className = 'handle l';
+      const hr = document.createElement('div'); hr.className = 'handle r';
+      f.append(hl, hr);
+      bindHandle(hl, i, 'l'); bindHandle(hr, i, 'r');
+    } else {
+      f.addEventListener('pointerdown', ev => ev.stopPropagation());
+      f.addEventListener('click', ev => { ev.stopPropagation(); sel = i; buildTrack(); layout(); });
+    }
+    track.appendChild(f);
+  });
+
+  timeline.style.height = timelineHeight() + 'px';
+  layout();
+}
+
+function layout() {
+  track.style.transform = `translateX(${centerX() - t * z}px)`;
+  document.getElementById('tCur').textContent = fmt(t);
+  document.getElementById('tTotal').textContent = '/ ' + fmt(keepDuration());
+  document.getElementById('vtime').textContent = fmt(t) + ' / ' + fmt(keepDuration());
+  const removed = D - keepDuration();
+  document.getElementById('cutinfo').textContent =
+    `${fmt(keepDuration())} · ${segments.length} 段`
+    + (removed > 0.05 ? ` · 已删 ${removed.toFixed(1)}s` : '')
+    + (dubSeconds() > 0.05 ? ` · 配音 ${dubSeconds().toFixed(0)}s` : '')
+    + (captions.length ? ` · 字幕 ${captions.length} 条` : '');
+  document.getElementById('btnUndo').disabled = undoStack.length === 0;
+  document.getElementById('btnDelete').disabled = segments.length < 2;
+  const seg = segments[sel];
+  document.getElementById('btnSplit').disabled = !(seg && t > seg.s + 0.3 && t < seg.e - 0.3);
+  document.getElementById('btnCap').disabled = !(dubSeconds() > 0.5 || !lanes[1].muted) || captions.length > 0;
+  // 播放器字幕
+  const ov = document.getElementById('subOverlay');
+  if (captionsOn) {
+    const c = captions.find(c => t >= c.s && t <= c.e);
+    ov.textContent = c ? c.text : '';
+    ov.style.display = c ? 'block' : 'none';
+  } else ov.style.display = 'none';
+}
+function centerX() { return timeline.clientWidth / 2; }
+function fmt(sec) { sec = Math.max(0, Math.round(sec)); return String(Math.floor(sec/60)).padStart(2,'0') + ':' + String(sec%60).padStart(2,'0'); }
+
+// ── 播放 ──
+function setPlaying(p) {
+  playing = p;
+  player.classList.toggle('playing', p);
+  document.getElementById('btnPlay').textContent = p ? '❙❙' : '▶';
+  clearInterval(timer);
+  if (p) timer = setInterval(() => {
+    t += 0.1;
+    const inside = segments.find(g => t >= g.s && t <= g.e);
+    if (!inside) {
+      const next = segments.find(g => g.s > t);
+      t = next ? next.s : segments[0].s;
+    }
+    if (dubbing) { dubbing.seg.e = t; buildTrackLite(); }   // 配音轨生长
+    layout();
+  }, 100);
+}
+function buildTrackLite() {
+  // 配音生长期间只更新最后一段宽度（避免整轨重建的抖动）
+  const dubLaneSegs = track.querySelectorAll('.lane.dub-seg');
+  const last = dubLaneSegs[dubLaneSegs.length - 1];
+  if (last) last.style.width = Math.max(6, (dubbing.seg.e - dubbing.seg.s) * z) + 'px';
+}
+player.onclick = () => { if (!dubbing) setPlaying(!playing); };
+document.getElementById('btnPlay').onclick = () => { if (!dubbing) setPlaying(!playing); };
+
+// ── 轨道拖动 ──
+let pan = null;
+timeline.addEventListener('pointerdown', ev => {
+  if (ev.target.closest('.handle') || ev.target.closest('.playhead-zone') || ev.target.closest('.cap-chip')) return;
+  pan = { x0: ev.clientX, t0: t, moved: 0 };
+  timeline.classList.add('panning');
+  if (playing && !dubbing) setPlaying(false);
+  timeline.setPointerCapture(ev.pointerId);
+});
+timeline.addEventListener('pointermove', ev => {
+  if (!pan) return;
+  const dx = ev.clientX - pan.x0;
+  pan.moved = Math.max(pan.moved, Math.abs(dx));
+  t = Math.min(D, Math.max(0, pan.t0 - dx / z));
+  layout();
+});
+timeline.addEventListener('pointerup', () => { pan = null; timeline.classList.remove('panning'); });
+
+// ── 播放头拖动 ──
+const phZone = document.getElementById('phZone');
+phZone.addEventListener('pointerdown', ev => {
+  ev.stopPropagation();
+  if (dubbing) return;
+  if (playing) setPlaying(false);
+  const x0 = ev.clientX, t0 = t;
+  phZone.setPointerCapture(ev.pointerId);
+  const move = m => { t = Math.min(D, Math.max(0, t0 + (m.clientX - x0) / z)); layout(); };
+  const up = () => { phZone.removeEventListener('pointermove', move); phZone.removeEventListener('pointerup', up); };
+  phZone.addEventListener('pointermove', move);
+  phZone.addEventListener('pointerup', up);
+});
+
+// ── 修剪把手 ──
+function bindHandle(el, segIdx, side) {
+  el.addEventListener('pointerdown', ev => {
+    ev.stopPropagation();
+    if (playing) setPlaying(false);
+    const seg = segments[segIdx];
+    const prevE = segIdx > 0 ? segments[segIdx - 1].e : 0;
+    const nextS = segIdx < segments.length - 1 ? segments[segIdx + 1].s : D;
+    const s0 = seg.s, e0 = seg.e, x0 = ev.clientX;
+    el.setPointerCapture(ev.pointerId);
+    badge.style.display = 'block';
+    const move = m => {
+      const dx = (m.clientX - x0) / z;
+      let snapped = false;
+      if (side === 'l') {
+        let ns = Math.min(e0 - 0.5, Math.max(prevE, s0 + dx));
+        if (Math.abs(ns - t) < 0.35) { ns = t; snapped = true; }
+        seg.s = ns;
+      } else {
+        let ne = Math.max(s0 + 0.5, Math.min(nextS, e0 + dx));
+        if (Math.abs(ne - t) < 0.35) { ne = t; snapped = true; }
+        seg.e = ne;
+      }
+      badge.className = 'badge' + (snapped ? ' snap' : '');
+      badge.textContent = `${side === 'l' ? '起点' : '终点'} ${fmt(side==='l'?seg.s:seg.e)}`
+        + (snapped ? ' · ⇢ 已吸附播放头' : ` · 本段 ${fmt(seg.e - seg.s)}`);
+      layout();
+    };
+    const up = () => {
+      badge.style.display = 'none';
+      if (Math.abs(seg.s - s0) > 0.05 || Math.abs(seg.e - e0) > 0.05) pushUndo();
+      el.removeEventListener('pointermove', move);
+      el.removeEventListener('pointerup', up);
+    };
+    el.addEventListener('pointermove', move);
+    el.addEventListener('pointerup', up);
+  });
+}
+
+// ── 分割 / 删除 / 撤销 ──
+document.getElementById('btnSplit').onclick = () => {
+  const seg = segments[sel];
+  if (!seg || t <= seg.s + 0.3 || t >= seg.e - 0.3) { toast('请把播放头移到要分割的位置（段内）'); return; }
+  pushUndo();
+  segments.splice(sel, 1, { s: seg.s, e: t }, { s: t, e: seg.e });
+  toast(`已分割（点选一段后可删除）`);
+  buildTrack();
+};
+document.getElementById('btnDelete').onclick = () => {
+  if (segments.length < 2) return;
+  pushUndo();
+  const removed = segments.splice(sel, 1)[0];
+  sel = Math.min(sel, segments.length - 1);
+  toast(`已删除 ${fmt(removed.s)}–${fmt(removed.e)}（↩ 可撤销）`);
+  buildTrack();
+};
+document.getElementById('btnUndo').onclick = () => {
+  const prev = undoStack.pop();
+  if (!prev) return;
+  segments = prev.segments; sel = Math.min(prev.sel, segments.length - 1);
+  buildTrack();
+};
+function pushUndo() {
+  undoStack.push({ segments: segments.map(g => ({ ...g })), sel });
+  if (undoStack.length > 30) undoStack.shift();
+}
+
+// ── 补录配音（模拟：播放头连播 + 橙轨生长） ──
+const btnDub = document.getElementById('btnDub');
+btnDub.onclick = () => {
+  if (!dubbing) {
+    dubbing = { seg: { s: t, e: t } };
+    lanes[2].segs.push(dubbing.seg);
+    btnDub.textContent = '⏹ 结束配音'; btnDub.classList.add('rec');
+    document.getElementById('dubBanner').classList.add('on');
+    buildTrack();
+    setPlaying(true);
+  } else {
+    setPlaying(false);
+    const seg = dubbing.seg;
+    if (seg.e - seg.s < 0.4) lanes[2].segs.pop();   // 太短丢弃
+    dubbing = null;
+    btnDub.textContent = '🎙 补录配音'; btnDub.classList.remove('rec');
+    document.getElementById('dubBanner').classList.remove('on');
+    buildGutter(); buildTrack();
+    toast(`配音已加入（${fmt(seg.s)}–${fmt(seg.e)}），可继续补录多段，或生成字幕`);
+  }
+};
+
+// ── 自动字幕（模拟识别） ──
+document.getElementById('btnCap').onclick = () => {
+  const btn = document.getElementById('btnCap');
+  btn.textContent = '识别中…'; btn.disabled = true;
+  setTimeout(() => {
+    const src = lanes[2].segs.length ? lanes[2].segs : [{ s: 3, e: 40 }];
+    captions = [];
+    src.forEach(seg => {
+      const lines = ['先看一下这个界面的布局', '点击右上角开始录制', '这里可以调整参数', '最后导出就可以了'];
+      const n = 4, span = (seg.e - seg.s) / n;
+      for (let i = 0; i < n; i++) {
+        captions.push({ s: seg.s + i * span, e: seg.s + (i + 1) * span, text: lines[i % lines.length] });
+      }
+    });
+    captionsOn = true;
+    btn.textContent = '💬 字幕 ✓'; btn.disabled = false;
+    buildGutter(); buildTrack();
+    toast(`已生成 ${captions.length} 条字幕（本地识别）· 播放校对，点字幕条可改文案`);
+  }, 1200);
+};
+
+// ── 导出 / 缩放 ──
+document.getElementById('btnExport').onclick = () => {
+  const btn = document.getElementById('btnExport');
+  btn.textContent = '导出中…'; btn.disabled = true;
+  const heavy = captions.length > 0;
+  setTimeout(() => {
+    btn.textContent = '导出成片'; btn.disabled = false;
+    toast(`✓ 成片 ${fmt(keepDuration())} · ${segments.length} 段`
+      + (dubSeconds() > 0.05 ? ` · 配音 ${dubSeconds().toFixed(0)}s` : '')
+      + (captions.length ? ` · 字幕 ${captions.length} 条（烧录需重编码${heavy?'，稍慢':''}）` : ' · 直通导出秒级'));
+  }, heavy ? 1600 : 900);
+};
+document.getElementById('zIn').onclick = () => { z = Math.min(90, z * 1.35); buildGutter(); buildTrack(); };
+document.getElementById('zOut').onclick = () => { z = Math.max(14, z / 1.35); buildGutter(); buildTrack(); };
+
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.style.display = 'block';
+  clearTimeout(el._h); el._h = setTimeout(() => el.style.display = 'none', 3000);
+}
+
+buildGutter();
+buildTrack();
+</script>
+</body>
+</html>

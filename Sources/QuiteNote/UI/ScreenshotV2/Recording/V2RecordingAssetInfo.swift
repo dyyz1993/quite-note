@@ -82,12 +82,15 @@ final class V2RecordingAssetInfo: ObservableObject {
                         label = channels == 1 ? "麦克风" : "音频"
                     }
                     let color = channels == 1 ? Color.themePurple400 : Color.themeBlue400
+                    let trackDuration = track.timeRange.duration.seconds
                     let values = Self.rmsEnvelope(asset: asset, track: track,
-                                                  duration: track.timeRange.duration.seconds, buckets: 240)
-                    if !values.isEmpty {
-                        waves.append(WaveformTrack(label: label, values: values, color: color))
-                        sources.append(track)
-                    }
+                                                  duration: trackDuration, buckets: 240)
+                    // 波形解析失败时仍保留音轨，避免“有录音但时间线没有轨道、导出时也丢音频”。
+                    waves.append(WaveformTrack(
+                        label: label,
+                        values: values.isEmpty ? Array(repeating: Float.zero, count: 240) : values,
+                        color: color))
+                    sources.append(track)
                 }
             }
 
@@ -172,14 +175,22 @@ final class V2RecordingAssetInfo: ObservableObject {
         return Array(cuts.prefix(30))
     }
 
-    /// 从 format description 读声道数（区分麦克风/系统声的依据）
+    /// 从音频格式描述读取声道数（区分麦克风/系统声的依据）。
     private static func channelCount(of track: AVAssetTrack) -> Int {
         guard let descs = try? track.formatDescriptions,
               let anyDesc = descs.first else { return 0 }
-        // CoreFoundation 桥接转换恒成功，编译器不允许 as? 形式
-        let desc = anyDesc as! CMFormatDescription
-        guard let ext = desc.extensions as? [String: Any] else { return 0 }
-        return ext["Channels"] as? Int ?? 0
+        let desc = anyDesc as! CMAudioFormatDescription
+        guard let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(desc)?.pointee else { return 0 }
+        return Int(asbd.mChannelsPerFrame)
+    }
+
+    private static func sampleRate(of track: AVAssetTrack) -> Double {
+        guard let descs = try? track.formatDescriptions,
+              let anyDesc = descs.first else { return 48_000 }
+        let desc = anyDesc as! CMAudioFormatDescription
+        guard let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(desc)?.pointee,
+              asbd.mSampleRate > 0 else { return 48_000 }
+        return asbd.mSampleRate
     }
 
     /// PCM 能量包络：AVAssetReader 顺序读取 → 分桶 RMS → 归一化
@@ -201,6 +212,7 @@ final class V2RecordingAssetInfo: ObservableObject {
 
         var sums = [Double](repeating: 0, count: buckets)
         var counts = [Int](repeating: 0, count: buckets)
+        let sampleRate = Self.sampleRate(of: track)
 
         while let sample = output.copyNextSampleBuffer() {
             guard let block = CMSampleBufferGetDataBuffer(sample) else { continue }
@@ -214,9 +226,8 @@ final class V2RecordingAssetInfo: ObservableObject {
             guard copied == kCMBlockBufferNoErr else { continue }
 
             let startSeconds = CMSampleBufferGetPresentationTimeStamp(sample).seconds
-            // 录制链路两轨均为 48kHz（引擎写死），无需从 ASBD 读取
-            let sampleRate = 48000.0
-            let frames = length / MemoryLayout<Int16>.size
+            let decodedFrames = CMSampleBufferGetNumSamples(sample)
+            let frames = min(decodedFrames, length / MemoryLayout<Int16>.size)
 
             data.withUnsafeBytes { (raw: UnsafeRawBufferPointer) in
                 let ints = raw.bindMemory(to: Int16.self)
@@ -240,10 +251,16 @@ final class V2RecordingAssetInfo: ObservableObject {
         for i in 0..<buckets {
             let r = counts[i] == 0 ? 0 : sqrt(sums[i] / Double(counts[i]))
             raw.append(r)
-            peak = max(peak, r)
         }
+
+        // 用 95 分位而不是单个峰值归一化，避免一次爆音把整条轨道压成细线；
+        // 再用轻微 gamma 提升人声/低音量录音，让高低起伏更接近剪辑软件的波形。
+        let sorted = raw.sorted()
+        let percentileIndex = min(sorted.count - 1, max(0, Int(Double(sorted.count - 1) * 0.95)))
+        peak = max(0.04, sorted.isEmpty ? 0 : sorted[percentileIndex])
         for r in raw {
-            rms.append(Float(min(1, r / peak)))
+            let normalized = min(1, r / peak)
+            rms.append(Float(pow(normalized, 0.78)))
         }
         return rms
     }

@@ -12,6 +12,11 @@ class HapticFeedbackManager {
     func lightImpact() {
         performFeedback(.generic)
     }
+
+    /// 时间线对齐反馈：比通用 generic 更轻，适合吸附切点这类高频操作。
+    func softImpact() {
+        performFeedback(.alignment)
+    }
     
     /// 执行中等强度震动反馈
     func mediumImpact() {

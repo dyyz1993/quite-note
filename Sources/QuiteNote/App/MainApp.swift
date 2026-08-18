@@ -2,6 +2,7 @@ import SwiftUI
 import AppKit
 import UserNotifications
 import Combine
+import UniformTypeIdentifiers
 
 @main
 struct MainApp: App {
@@ -171,12 +172,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         shortcuts?.onBulkSummarize = { 
             store.bulkResummarize()
         }
-        shortcuts?.onExport = { 
-            let md = store.exportMarkdown()
-            let desktop = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first!
-            let url = desktop.appendingPathComponent("QuiteNote_Export.md")
-            try? md.write(to: url, atomically: true, encoding: .utf8)
-            store.postLightHint("已导出到桌面：QuiteNote_Export.md")
+        shortcuts?.onExport = { [weak self] in
+            self?.exportMarkdownWithSavePanel()
         }
         shortcuts?.onOpenSettings = { [weak self] in
             self?.floatingPanelController?.showSettings()
@@ -190,6 +187,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         shortcuts?.onScreenshot = {
             // 使用统一截图入口
             ScreenshotService.shared.startScreenshot()
+        }
+        shortcuts?.onStopRecording = {
+            guard V2RecordingController.shared.isRunning else { return }
+            DiagnosticCenter.info("Recording", "全局停止快捷键触发（⌥⌘.）")
+            V2RecordingController.shared.stop()
         }
         shortcuts?.start()
         
@@ -212,6 +214,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         
         print("[DEBUG] 应用启动完成")
+    }
+
+    /// 导出必须经过系统保存面板，确保 App Sandbox 获得用户选择的文件授权。
+    private func exportMarkdownWithSavePanel() {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.plainText]
+        panel.nameFieldStringValue = "QuiteNote_Export.md"
+        panel.title = "导出 Quite Note 记录"
+        panel.prompt = "导出"
+
+        panel.begin { [weak self] response in
+            guard response == .OK, let url = panel.url, let self else { return }
+            do {
+                try self.recordStore.exportMarkdown().write(to: url, atomically: true, encoding: .utf8)
+                self.recordStore.postLightHint("导出成功：\(url.lastPathComponent)")
+            } catch {
+                self.recordStore.postToast("导出失败：\(error.localizedDescription)", type: "error")
+            }
+        }
     }
 
     /// 处理粘贴事件（无输入框聚焦时）
