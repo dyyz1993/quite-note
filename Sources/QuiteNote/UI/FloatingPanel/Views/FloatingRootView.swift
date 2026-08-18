@@ -133,6 +133,10 @@ struct FloatingRootView: View {
                     .allowsHitTesting(false) // 预览图不响应交互
             }
         }
+        // 强制深色 scheme：本应用为固定深色主题，但卡片里的日期/来源应用/输入文字等
+        // 依赖系统默认色的文本，在系统浅色外观下会解析成黑色（panel.appearance 会被
+        // NSHostingView 覆盖，SwiftUI 层的 preferredColorScheme 才能可靠生效）
+        .preferredColorScheme(.dark)
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("StickyNoteSaveToRecord"))) { notification in
             print("[DEBUG] FloatingRootView received StickyNoteSaveToRecord notification")
             if let userInfo = notification.userInfo,

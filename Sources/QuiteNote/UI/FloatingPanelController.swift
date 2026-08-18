@@ -138,6 +138,9 @@ final class FloatingPanelController {
         panel.titleVisibility = .hidden  // 隐藏标题栏
         panel.titlebarAppearsTransparent = true  // 标题栏透明
         panel.backgroundColor = NSColor.clear.withAlphaComponent(0.9) // 设置为透明背景，让SwiftUI内容显示
+        // 强制深色外观（与 OCR 结果面板一致）：系统浅色外观下，TextField 输入文字/占位符等
+        // 依赖系统默认色的文本会解析成黑色，打在深色主题背景上不可见
+        panel.appearance = NSAppearance(named: .darkAqua)
         // 禁用全局窗口拖拽，只允许 WindowDragHandler 区域拖拽
         panel.isMovableByWindowBackground = false
         panel.hasShadow = true // Ensure shadow is visible for borderless window
