@@ -568,14 +568,19 @@ struct V2RecordingEditorView: View {
                     .gesture(panGesture(width: width))
                     .simultaneousGesture(SpatialTapGesture().onEnded { tap in
                         if !dubbing {
+                            // 点击 = 停下来看这一帧（先暂停，避免 seek 后继续播造成"快切"感）
+                            if playback.isPlaying { playback.pause() }
                             // TrackContent 局部坐标：x / zoom 即原始时间
-                            // （此前误用视口换算，选中的永远是播放头附近的段——点前段不切换的根因）
                             let original = min(duration, max(0, tap.location.x / zoom))
                             t = original
                             playback.seek(to: timelineTime(fromOriginal: original))
-                            // 点击定位的同时选中所在段（剪映行为；绕开子视图手势竞争）
+                            // 选中：点在段上选中该段；点在被删区域（gap）选中相邻段——任何点击都有反馈
                             if let idx = segments.firstIndex(where: { original >= $0.start && original <= $0.end }) {
                                 selectedSegmentID = segments[idx].id
+                            } else if let next = segments.firstIndex(where: { $0.start >= original }) {
+                                selectedSegmentID = segments[next].id
+                            } else if let last = segments.last {
+                                selectedSegmentID = last.id
                             }
                         }
                     })
@@ -1487,13 +1492,14 @@ private struct TrackContent: View {
         ForEach(segments.indices, id: \.self) { i in
             let seg = segments[i]
             let isSelected = seg.id == selectedID
-            // 白框主体：填充整段矩形作为点击热区（描边本身只有 2.5px，点不中）
+            // 白框主体：填充整段矩形作为点击热区；选中态高亮明显（亮边+白罩+把手）
             RoundedRectangle(cornerRadius: 8)
-                .fill(Color.white.opacity(isSelected ? 0.02 : 0.001))
+                .fill(Color.white.opacity(isSelected ? 0.10 : 0.001))
                 .overlay(
                     RoundedRectangle(cornerRadius: 8)
                         .stroke(isSelected ? Color.white : Color.white.opacity(0.55),
-                                lineWidth: isSelected ? 2.5 : 1.5)
+                                lineWidth: isSelected ? 3 : 1.5)
+                        .shadow(color: isSelected ? .white.opacity(0.6) : .clear, radius: 3)
                 )
                 .frame(width: seg.length * zoom, height: 48 + CGFloat(waveforms.count) * 26
                        + (dubTakes.isEmpty ? 0 : 26) - 2)
