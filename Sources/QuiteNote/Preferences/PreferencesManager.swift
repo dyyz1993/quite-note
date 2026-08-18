@@ -1,6 +1,12 @@
 import Foundation
 import AppKit
 import Combine
+import ServiceManagement
+
+struct LastRecordingSelection {
+    let normalizedRect: CGRect
+    let displayID: CGDirectDisplayID
+}
 
 final class PreferencesManager: ObservableObject {
     static let shared = PreferencesManager()
@@ -40,7 +46,8 @@ final class PreferencesManager: ObservableObject {
         }
     }
 
-    var enableAI: Bool { d.object(forKey: "enableAI") == nil ? true : d.bool(forKey: "enableAI") }
+    // 新安装默认关闭，避免用户未明确同意时自动把剪贴板内容发送给第三方 AI。
+    var enableAI: Bool { d.object(forKey: "enableAI") == nil ? false : d.bool(forKey: "enableAI") }
     var titleLimit: Int { max(15, d.integer(forKey: "titleLimit")) }
     var summaryTrigger: Int { max(0, d.integer(forKey: "summaryTrigger")) }
     var summaryLimit: Int { max(50, d.integer(forKey: "summaryLimit")) }
@@ -97,7 +104,43 @@ final class PreferencesManager: ObservableObject {
     func setWindowLock(_ v: Bool) { d.set(v, forKey: "windowLock") }
     func setAnimationsEnabled(_ v: Bool) { d.set(v, forKey: "animationsEnabled") }
     func setRememberWindowPosition(_ v: Bool) { d.set(v, forKey: "rememberWindowPosition") }
+
+    // MARK: - 开机自启动（macOS 13+ SMAppService）
+    // 状态以系统登录项注册表为准（不落 UserDefaults）：用户可能在「系统设置 → 通用 → 登录项」里手动增删，
+    // 只存 UserDefaults 会与系统实际状态脱节。resetAll() 也不动它——系统级注册不属于应用内偏好。
+
+    /// 登录项是否已注册
+    var launchAtLogin: Bool { SMAppService.mainApp.status == .enabled }
+    /// 系统要求用户到登录项列表里手动放行（注册被挂起）
+    var loginItemNeedsApproval: Bool { SMAppService.mainApp.status == .requiresApproval }
+
+    /// 设置开机自启动；返回是否成功，失败时调用方应回读 `launchAtLogin` 回退 UI
+    @discardableResult
+    func setLaunchAtLogin(_ v: Bool) -> Bool {
+        let service = SMAppService.mainApp
+        guard v != (service.status == .enabled) else { return true }
+        do {
+            if v {
+                try service.register()
+            } else {
+                try service.unregister()
+            }
+            DiagnosticCenter.info("App", v ? "开机自启动已开启" : "开机自启动已关闭")
+            return true
+        } catch {
+            DiagnosticCenter.error("App", "开机自启动设置失败: \(error.localizedDescription)")
+            return false
+        }
+    }
     func setAttachmentsPath(_ v: String?) { d.set(v, forKey: "attachmentsPath") }
+    func setAttachmentsDirectory(_ url: URL?) {
+        setAttachmentsPath(url?.path)
+        if let url {
+            _ = SecurityScopedBookmarkStore.shared.save(url, forKey: "attachmentsDirectoryBookmark")
+        } else {
+            SecurityScopedBookmarkStore.shared.remove(forKey: "attachmentsDirectoryBookmark")
+        }
+    }
     func setPreferredEditor(_ v: String) { d.set(v, forKey: "preferredEditor") }
 
     func setScreenshotShortcut(_ v: String) { 
@@ -110,11 +153,24 @@ final class PreferencesManager: ObservableObject {
     }
     func setScreenshotSaveToClipboard(_ v: Bool) { d.set(v, forKey: "screenshotSaveToClipboard") }
 
-    // 截图文件保存目录（空字符串 = 使用桌面）
+    // 截图文件保存目录（空字符串 = 使用下载目录）
     var screenshotSaveDirectory: String { d.string(forKey: "screenshotSaveDirectory") ?? "" }
     func setScreenshotSaveDirectory(_ v: String) {
         objectWillChange.send()
         d.set(v, forKey: "screenshotSaveDirectory")
+        if v.isEmpty {
+            SecurityScopedBookmarkStore.shared.remove(forKey: "screenshotSaveDirectoryBookmark")
+        }
+    }
+
+    func setScreenshotSaveDirectory(_ url: URL?) {
+        objectWillChange.send()
+        d.set(url?.path ?? "", forKey: "screenshotSaveDirectory")
+        if let url {
+            _ = SecurityScopedBookmarkStore.shared.save(url, forKey: "screenshotSaveDirectoryBookmark")
+        } else {
+            SecurityScopedBookmarkStore.shared.remove(forKey: "screenshotSaveDirectoryBookmark")
+        }
     }
 
     // 保存截图文件后自动复制绝对路径到剪贴板
@@ -125,6 +181,29 @@ final class PreferencesManager: ObservableObject {
     var recordingMicrophone: Bool { d.object(forKey: "recordingMicrophone") == nil ? false : d.bool(forKey: "recordingMicrophone") }
     /// 鼠标呈现：keep 保留 / hide 隐藏 / highlight 点击高亮（14.2+，旧系统回退保留）
     var recordingCursorMode: String { d.string(forKey: "recordingCursorMode") ?? V2RecordingCursorMode.keep.rawValue }
+    /// 录制前倒计时：0 = 关闭；建议教程/演示使用 3 秒
+    var recordingCountdownSeconds: Int {
+        let value = d.integer(forKey: "recordingCountdownSeconds")
+        return [0, 3, 5].contains(value) ? value : 0
+    }
+
+    /// 上次录屏区域：按显示器保存归一化坐标，避免分辨率变化或多屏切换时直接复用绝对坐标
+    var lastRecordingSelection: LastRecordingSelection? {
+        guard let values = d.dictionary(forKey: "lastRecordingSelection"),
+              let displayID = values["displayID"] as? NSNumber,
+              let x = values["x"] as? NSNumber,
+              let y = values["y"] as? NSNumber,
+              let width = values["width"] as? NSNumber,
+              let height = values["height"] as? NSNumber else {
+            return nil
+        }
+
+        let rect = CGRect(x: x.doubleValue, y: y.doubleValue,
+                          width: width.doubleValue, height: height.doubleValue)
+        guard rect.width > 0, rect.height > 0 else { return nil }
+        return LastRecordingSelection(normalizedRect: rect,
+                                      displayID: CGDirectDisplayID(displayID.uint32Value))
+    }
 
     func setRecordingSystemAudio(_ v: Bool) {
         d.set(v, forKey: "recordingSystemAudio")
@@ -139,6 +218,49 @@ final class PreferencesManager: ObservableObject {
     func setRecordingCursorMode(_ v: V2RecordingCursorMode) {
         d.set(v.rawValue, forKey: "recordingCursorMode")
         objectWillChange.send()
+    }
+
+    func setRecordingCountdownSeconds(_ v: Int) {
+        d.set([0, 3, 5].contains(v) ? v : 0, forKey: "recordingCountdownSeconds")
+        objectWillChange.send()
+    }
+
+    func setLastRecordingSelection(_ rect: CGRect, on screen: NSScreen) {
+        guard rect.width > 0, rect.height > 0,
+              screen.frame.width > 0, screen.frame.height > 0,
+              let displayNumber = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber else {
+            return
+        }
+
+        let size = screen.frame.size
+        let normalized = CGRect(x: rect.minX / size.width,
+                                y: rect.minY / size.height,
+                                width: rect.width / size.width,
+                                height: rect.height / size.height)
+        d.set([
+            "displayID": displayNumber,
+            "x": normalized.minX,
+            "y": normalized.minY,
+            "width": normalized.width,
+            "height": normalized.height
+        ], forKey: "lastRecordingSelection")
+    }
+
+    func resolvedLastRecordingSelection(on screen: NSScreen) -> CGRect? {
+        guard let saved = lastRecordingSelection,
+              let displayNumber = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber,
+              displayNumber.uint32Value == saved.displayID else {
+            return nil
+        }
+
+        let size = screen.frame.size
+        let rect = CGRect(x: saved.normalizedRect.minX * size.width,
+                          y: saved.normalizedRect.minY * size.height,
+                          width: saved.normalizedRect.width * size.width,
+                          height: saved.normalizedRect.height * size.height)
+        let screenBounds = CGRect(origin: .zero, size: size)
+        let resolved = rect.intersection(screenBounds)
+        return resolved.width >= 16 && resolved.height >= 16 ? resolved : nil
     }
     func setScreenshotCopyPathAfterSave(_ v: Bool) {
         objectWillChange.send()
@@ -175,8 +297,10 @@ final class PreferencesManager: ObservableObject {
             "enableAI", "titleLimit", "summaryTrigger", "summaryLimit", 
             "dedupEnabled", "maxScreenshots", "debounceSeconds", "windowLock", 
             "animationsEnabled", "rememberWindowPosition", "attachmentsPath",
-            "openAIBaseURL", "openAIModel", "aiSystemPrompt", "aiUserPrompt",
-            "preferredEditor"
+            "attachmentsDirectoryBookmark", "screenshotSaveDirectoryBookmark",
+            "screenshotSaveDirectory", "openAIBaseURL", "openAIModel", "aiSystemPrompt", "aiUserPrompt",
+            "preferredEditor", "recordingSystemAudio", "recordingMicrophone", "recordingCursorMode",
+            "recordingCountdownSeconds", "lastRecordingSelection"
         ]
         for key in keys {
             d.removeObject(forKey: key)
@@ -230,4 +354,3 @@ final class PreferencesManager: ObservableObject {
         return NSScreen.main
     }
 }
-

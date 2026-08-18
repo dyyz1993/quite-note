@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import Combine
+import UniformTypeIdentifiers
 
 /// 菜单栏图标与菜单管理，含快捷入口与状态指示
 final class StatusBarController {
@@ -174,6 +175,14 @@ final class StatusBarController {
         menu.addItem(clearAll)
         
         menu.addItem(NSMenuItem.separator())
+
+        // 开机自启动（状态每次重建菜单时从登录项注册表实时读取）
+        let launch = NSMenuItem(title: "开机时启动", action: #selector(onToggleLaunchAtLogin), keyEquivalent: "")
+        launch.target = self
+        launch.isEnabled = true
+        launch.state = PreferencesManager.shared.launchAtLogin ? .on : .off
+        menu.addItem(launch)
+
         let prefs = NSMenuItem(title: "偏好设置", action: #selector(openSettings), keyEquivalent: ",")
         prefs.target = self
         prefs.isEnabled = true
@@ -209,19 +218,42 @@ final class StatusBarController {
         QuiteNoteNotification.post(.showSettings)
     }
 
+    /// 菜单：切换开机自启动（设置失败时给出原因提示，菜单勾选态回读系统实际状态）
+    @objc private func onToggleLaunchAtLogin() {
+        let target = !PreferencesManager.shared.launchAtLogin
+        if PreferencesManager.shared.setLaunchAtLogin(target) {
+            store.postToast(target ? "开机自启动已开启" : "开机自启动已关闭")
+        } else if PreferencesManager.shared.loginItemNeedsApproval {
+            store.postToast("需在「系统设置 → 通用 → 登录项」中允许 QuiteNote", type: "error")
+        } else {
+            store.postToast("开机自启动设置失败，请稍后重试", type: "error")
+        }
+        setupMenu()
+    }
+
     /// 菜单：退出应用
     @objc private func quit() { NSApp.terminate(nil) }
 
     /// 菜单：批量重新提炼
     @objc private func onBulkSummarize() { store.bulkResummarize() }
 
-    /// 菜单：导出所有记录为 Markdown 到桌面
+    /// 菜单：通过系统保存面板导出所有记录为 Markdown
     @objc private func onExport() {
-        let md = store.exportMarkdown()
-        let desktop = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first!
-        let url = desktop.appendingPathComponent("QuiteNote_Export.md")
-        try? md.write(to: url, atomically: true, encoding: .utf8)
-        store.postLightHint("已导出到桌面：QuiteNote_Export.md")
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.plainText]
+        panel.nameFieldStringValue = "QuiteNote_Export.md"
+        panel.title = "导出 Quite Note 记录"
+        panel.prompt = "导出"
+
+        panel.begin { [weak self] response in
+            guard response == .OK, let url = panel.url, let self else { return }
+            do {
+                try self.store.exportMarkdown().write(to: url, atomically: true, encoding: .utf8)
+                self.store.postLightHint("导出成功：\(url.lastPathComponent)")
+            } catch {
+                self.store.postToast("导出失败：\(error.localizedDescription)", type: "error")
+            }
+        }
     }
 
     /// 菜单：采集剪贴板（触发与硬件按钮一致的逻辑）
