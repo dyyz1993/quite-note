@@ -791,50 +791,41 @@ final class FloatingPanelController {
             PreferencesManager.shared.setWindowPosition(targetFrame)
         }
 
-        // 与 minimizeToBall 同一配方（见那边的注释）：窗口 alpha 淡出 →
-        // 不可见期间瞬时 setFrame + 换内容（无过渡）→ morph transform 从球心展开。
+        // 复刻原「窗口从球位置生长」的观感（原实现是窗口 frame 逐帧动画，
+        // 会触发约束闪退已弃用）：内容瞬时换成面板（不可见态）+ 窗口直接落位，
+        // 然后内容以球位置为锚点从约 1/3 比例 easeInOut 长到位——起始尺度大、
+        // 曲线平缓无过冲，文字全程可辨，观感等同于窗口生长且零空拍
         focusProvider.isRestoring = true
 
-        NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0.12
-            ctx.timingFunction = CAMediaTimingFunction(name: .easeIn)
-            panel.animator().alphaValue = 0
-        } completionHandler: { [weak self] in
+        panel.setFrame(targetFrame, display: false)
+        panel.backgroundColor = NSColor.clear.withAlphaComponent(0.9)
+        panel.isBallMode = false
+        panel.isMovable = !windowLocked
+        focusProvider.mode = .expanded
+
+        focusProvider.morph = MorphVisual(
+            scale: 0.3,
+            opacity: 0,
+            anchor: morphAnchor(ballCenter: ballCenter, in: targetFrame)
+        )
+
+        // 初值先渲染一帧，下一帧再启动动画（同 runloop 连设两次会被合并失效）
+        DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            // 窗口已不可见：瞬时落位 + 换内容 + 换 chrome（无过渡 = 无过渡期尺寸回写）
-            self.panel.setFrame(targetFrame, display: false)
-            self.panel.backgroundColor = NSColor.clear.withAlphaComponent(0.9)
-            // 窗口阴影等形变结束再开（透明标题窗的阴影框整窗大小，空窗期间会出现
-            // 空影子框），形变期间由内容自带的 SwiftUI 阴影顶着
-            self.panel.isBallMode = false
-            self.panel.isMovable = !self.windowLocked
-            self.focusProvider.mode = .expanded
-
-            // 展开形变：内容从球位置长出来。先无动画设初值，下一帧再动画到 identity
-            // （同一 runloop 内连设两次会被合并，动画就不生效了）
-            self.focusProvider.morph = MorphVisual(
-                scale: 0.05,
-                opacity: 0,
-                anchor: self.morphAnchor(ballCenter: ballCenter, in: targetFrame)
-            )
-            self.panel.alphaValue = 1 // 内容 opacity=0，窗口可见也不显示东西
-
-            DispatchQueue.main.async {
-                withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
-                    self.focusProvider.morph = .identity
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.36) { [weak self] in
-                    self?.panel.hasShadow = true
-                }
+            withAnimation(.easeInOut(duration: 0.35)) {
+                self.focusProvider.morph = .identity
             }
-
-            // 关键：始终使用原始保存的 ballCenter，保持浮球位置不变
-            self.focusProvider.ballPosition = ballCenter
-            self.focusProvider.ballPositionLastSet = CFAbsoluteTimeGetCurrent()
-            self.focusProvider.isRestoring = false
-
-            // 恢复后强制获取一次焦点，确保搜索框等组件可用
-            self.requestRegularFocus(reason: "restore")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.38) { [weak self] in
+                self?.panel.hasShadow = true
+            }
         }
+
+        // 关键：始终使用原始保存的 ballCenter，保持浮球位置不变
+        focusProvider.ballPosition = ballCenter
+        focusProvider.ballPositionLastSet = CFAbsoluteTimeGetCurrent()
+        focusProvider.isRestoring = false
+
+        // 恢复后强制获取一次焦点，确保搜索框等组件可用
+        requestRegularFocus(reason: "restore")
     }
 }
