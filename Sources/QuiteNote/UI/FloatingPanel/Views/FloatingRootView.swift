@@ -135,6 +135,10 @@ struct FloatingRootView: View {
                     .allowsHitTesting(false) // 预览图不响应交互
             }
         }
+        // 形变动效：scale/opacity 纯渲染 transform（安全——不触发布局重排，
+        // 不触发 NSHostingView 尺寸回写）；换内容的瞬间仍在内容不可见时完成
+        .scaleEffect(focus.morph.scale, anchor: focus.morph.anchor)
+        .opacity(focus.morph.opacity)
         // 强制深色 scheme：本应用为固定深色主题，但卡片里的日期/来源应用/输入文字等
         // 依赖系统默认色的文本，在系统浅色外观下会解析成黑色（panel.appearance 会被
         // NSHostingView 覆盖，SwiftUI 层的 preferredColorScheme 才能可靠生效）
