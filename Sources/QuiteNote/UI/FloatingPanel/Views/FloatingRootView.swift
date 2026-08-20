@@ -74,10 +74,6 @@ struct FloatingRootView: View {
     @ObservedObject var heatmapVM: HeatmapViewModel
     @ObservedObject var bluetooth: BluetoothManager
     @ObservedObject var focus: WindowFocusProvider
-    /// 展开形变状态——**故意不用 @ObservedObject**：形变期间逐帧变化若被根视图
-    /// 观察，整棵重内容树会跟着每帧重算（实测卡顿根源）；只由
-    /// MorphShellLayer / MorphContentFade 两个轻量子视图观察
-    var morph: PanelMorphState
     var onHoverChanged: ((Bool) -> Void)? = nil
     var onInteractionChanged: ((Bool) -> Void)? = nil
     var onClose: (() -> Void)? = nil
@@ -98,26 +94,20 @@ struct FloatingRootView: View {
             KeyboardInterceptViewRepresentable()
                 .allowsHitTesting(false)
 
-            // 展开形变的生长壳：真描边+真阴影的圆角矩形以球为锚点从球大小
-            // 长到面板大小（几何等同原窗口 frame 生长），位于重内容之下
-            MorphShellLayer(morph: morph)
-
             if focus.mode == .floatingBall {
                 FloatingBallView(store: store, focus: focus)
                     .transition(.opacity) // 简化转换，移除复杂的 scale 转换以提升性能
                     .zIndex(1)
             } else {
-                MorphContentFade(morph: morph) {
-                    baseContentView
-                        .background(Color.themeBackground.opacity(0.9))
-                        .cornerRadius(16)
-                        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.themeBorder, lineWidth: 1).allowsHitTesting(false))
-                        .shadow(color: Color.themeShadowHeavy, radius: 20, x: 0, y: 10)
-                        // 注意：不加 scale/位移类过渡——过渡动画会让 NSHostingView 在
-                        // macOS 26 上回写窗口尺寸引发约束循环闪退，形变统一走壳/morph
-                        .transition(.opacity)
-                        .zIndex(0)
-                }
+                baseContentView
+                    .background(Color.themeBackground.opacity(0.9))
+                    .cornerRadius(16)
+                    .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.themeBorder, lineWidth: 1).allowsHitTesting(false))
+                    .shadow(color: Color.themeShadowHeavy, radius: 20, x: 0, y: 10)
+                    // 注意：不加 scale/位移类过渡——过渡动画会让 NSHostingView 在
+                    // macOS 26 上回写窗口尺寸引发约束循环闪退，形变期间内容切换保持瞬时
+                    .transition(.opacity)
+                    .zIndex(0)
             }
             
             // 统一确认对话框
@@ -208,9 +198,6 @@ struct FloatingRootView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .ignoresSafeArea()
-        // 展开形变的揭示遮罩（常驻；常态超大矩形等效不遮挡）。
-        // 放在尺寸修饰符外层，视图边界=窗口，遮罩矩形才能用窗口本地坐标
-        .mask(MorphRevealMask(morph: morph))
         .onHover { hovering in onHoverChanged?(hovering) }
         .simultaneousGesture(
             DragGesture(minimumDistance: 10, coordinateSpace: .local)
@@ -852,52 +839,6 @@ struct FloatingRootView: View {
         .frame(height: 32)
         .background(Color.themePanel)
         .overlay(Rectangle().frame(height: 1).foregroundColor(Color.themeBorder).allowsHitTesting(false), alignment: .top)
-    }
-}
-
-// MARK: - 形变子层（只观察 PanelMorphState，隔离逐帧失效，根视图不参与重算）
-
-/// 揭示壳：常驻视图树（透明度开关、不插拔——条件插入的新视图在重内容首次
-/// 布局未提交时启动动画会直接跳终值），真实尺寸圆角矩形 frame 逐帧长大，
-/// 真 1px 描边/真 16pt 圆角/真阴影，不用 scaleEffect（会把描边圆角压变形）
-private struct MorphShellLayer: View {
-    @ObservedObject var morph: PanelMorphState
-
-    var body: some View {
-        RoundedRectangle(cornerRadius: 16)
-            .fill(Color.themeBackground.opacity(0.96))
-            .overlay(
-                RoundedRectangle(cornerRadius: 16)
-                    .stroke(Color.themeBorder, lineWidth: 1)
-                    .allowsHitTesting(false)
-            )
-            .shadow(color: Color.themeShadowHeavy, radius: 20, x: 0, y: 10)
-            .frame(width: morph.visual.revealRect.width, height: morph.visual.revealRect.height)
-            .position(x: morph.visual.revealRect.midX, y: morph.visual.revealRect.midY)
-            .opacity(morph.visual.shellVisible ? 1 : 0)
-            .allowsHitTesting(false)
-    }
-}
-
-/// 揭示遮罩：常驻（常态=超大矩形等效不遮挡），与壳同矩形逐帧长大，
-/// 把底下的内容逐块揭示出来——GPU 裁剪，不触发内容重排
-private struct MorphRevealMask: View {
-    @ObservedObject var morph: PanelMorphState
-
-    var body: some View {
-        RoundedRectangle(cornerRadius: 16)
-            .frame(width: morph.visual.revealRect.width, height: morph.visual.revealRect.height)
-            .position(x: morph.visual.revealRect.midX, y: morph.visual.revealRect.midY)
-    }
-}
-
-/// 内容透明层：重内容只做层透明度（合成器开销），不参与形变
-private struct MorphContentFade<Content: View>: View {
-    @ObservedObject var morph: PanelMorphState
-    @ViewBuilder var content: () -> Content
-
-    var body: some View {
-        content().opacity(morph.visual.contentOpacity)
     }
 }
 

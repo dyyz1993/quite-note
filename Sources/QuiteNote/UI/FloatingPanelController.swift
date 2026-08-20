@@ -80,35 +80,6 @@ final class WindowFocusProvider: ObservableObject {
     var ballPositionLastSet: TimeInterval = 0 // 记录 ballPosition 最后设置的时间，用于防止 windowDidMove 覆盖
 }
 
-/// 面板展开形变状态。**独立于 WindowFocusProvider 是有意的**：形变期间该状态
-/// 逐帧变化，若挂在根视图观察的对象上，整棵重内容视图树会跟着每帧重算（实测
-/// 卡顿根源）。隔离后逐帧变化只牵动壳层/遮罩层两个轻量子视图。
-/// 形变方式=**遮罩揭示**（原版窗口生长的数学等价物）：内容以完整尺寸静止布局，
-/// 一个真实尺寸、frame 逐帧长大的圆角矩形当壳（真描边/真阴影/真圆角）兼遮罩，
-/// 从球位置把内容揭示出来——文字全程 100% 清晰，无任何等比缩放发虚。
-final class PanelMorphState: ObservableObject {
-    struct Visual {
-        /// 壳/遮罩矩形（窗口本地坐标，SwiftUI 顶左原点）。常态=超大矩形
-        /// （等效不遮挡）；形变时从球矩形逐帧长到全窗。
-        /// 常驻不插拔是关键：条件插入的新视图在重内容首次布局未提交时启动
-        /// 动画，首帧会直接落在动画终值上（表现为边框瞬间跳满、无动画）
-        var revealRect: CGRect = CGRect(x: -1000, y: -1000, width: 100000, height: 100000)
-        var shellVisible: Bool = false
-        var contentOpacity: Double = 1
-
-        /// 揭示起始态：壳从球矩形开始、内容被遮罩且隐藏
-        static func revealStart(ballRectLocal: CGRect) -> Visual {
-            Visual(
-                revealRect: ballRectLocal,
-                shellVisible: true,
-                contentOpacity: 0
-            )
-        }
-    }
-
-    @Published var visual = Visual()
-}
-
 // MARK: - FloatingPanelController
 
 private typealias MorphVisual = WindowFocusProvider.MorphVisual
@@ -133,7 +104,7 @@ final class FloatingPanelController {
     private var previousApp: NSRunningApplication? // 记录焦点夺取前的活跃应用
     private var windowLocked: Bool = false // 窗口锁定状态（展开模式下决定 isMovable）
     private var isProgrammaticallyMovingBall: Bool = false // 区分我们的 setFrame 与系统侧移动，用于外部移动日志
-    private let morphState = PanelMorphState() // 展开形变（壳生长）状态，独立观察隔离逐帧失效
+    private var isAnimatingWindowFrame: Bool = false // 窗口 frame 动画进行中（展开形变），期间 windowDidMove/Resize 不逐帧写 UserDefaults
 
     var isVisible: Bool { panel.isVisible }
     
@@ -218,7 +189,7 @@ final class FloatingPanelController {
         panel.standardWindowButton(.miniaturizeButton)?.isHidden = true
         panel.standardWindowButton(.zoomButton)?.isHidden = true
 
-        hosting = NSHostingView(rootView: FloatingRootView(store: store, heatmapVM: heatmapVM, bluetooth: bluetooth, focus: focusProvider, morph: morphState, onHoverChanged: { [weak self] hovering in
+        hosting = NSHostingView(rootView: FloatingRootView(store: store, heatmapVM: heatmapVM, bluetooth: bluetooth, focus: focusProvider, onHoverChanged: { [weak self] hovering in
             guard let self else { return }
             print("[DEBUG] onHoverChanged: \(hovering), mode: \(self.focusProvider.mode)")
             if hovering {
@@ -369,7 +340,6 @@ final class FloatingPanelController {
         // 2. 重置透明度，防止动画状态残留
         panel.alphaValue = 1
         focusProvider.morph = .identity // 防御：中断的形变不得把面板卡在缩小/透明态
-        morphState.visual = .init()
         // 确保层级高于便签窗口
         panel.level = .mainMenu + 2  // 高于便签窗口的 .mainMenu + 1
 
@@ -406,7 +376,6 @@ final class FloatingPanelController {
         // 1. 基础属性重置
         panel.alphaValue = 1
         focusProvider.morph = .identity // 防御：中断的形变不得把面板卡在缩小/透明态
-        morphState.visual = .init()
         panel.isOpaque = false
         panel.level = .mainMenu + 2  // 高于便签窗口的 .mainMenu + 1
 
@@ -552,8 +521,9 @@ final class FloatingPanelController {
             DiagnosticCenter.warning("Panel", "浮球窗口被外部移动: frame=\(panel.frame)")
         }
 
-        // 窗口移动时保存位置和屏幕信息，仅在展开模式下保存，防止保存缩放过程中的中间状态或浮球位置
-        if PreferencesManager.shared.rememberWindowPosition && focusProvider.mode == .expanded {
+        // 窗口移动时保存位置和屏幕信息，仅在展开模式下保存，防止保存缩放过程中的中间状态或浮球位置；
+        // 形变动画期间逐帧保存是卡顿源，结束后一次性保存
+        if PreferencesManager.shared.rememberWindowPosition && focusProvider.mode == .expanded && !isAnimatingWindowFrame {
             PreferencesManager.shared.setWindowPosition(panel.frame)
 
             // 如果不是正在执行恢复动画，且距离上次设置 ballPosition 超过 1 秒，则更新球体位置
@@ -574,8 +544,8 @@ final class FloatingPanelController {
     }
 
     @objc private func windowDidResize(_ note: Notification) {
-        // 窗口调整大小时保存位置和屏幕信息，仅在展开模式下保存
-        if PreferencesManager.shared.rememberWindowPosition && focusProvider.mode == .expanded {
+        // 窗口调整大小时保存位置和屏幕信息，仅在展开模式下保存；形变动画期间跳过（结束后一次性保存）
+        if PreferencesManager.shared.rememberWindowPosition && focusProvider.mode == .expanded && !isAnimatingWindowFrame {
             PreferencesManager.shared.setWindowPosition(panel.frame)
 
             // 保存当前屏幕的ID
@@ -730,7 +700,6 @@ final class FloatingPanelController {
         panel.hasShadow = false
         panel.isBallMode = true
         panel.isMovable = false
-        morphState.visual = .init() // 防御：上次展开形变若被打断，不得残留壳/隐藏态
 
         // 收缩形变：面板内容向球所在位置缩小并淡出
         withAnimation(.easeIn(duration: 0.28)) {
@@ -824,48 +793,45 @@ final class FloatingPanelController {
             PreferencesManager.shared.setWindowPosition(targetFrame)
         }
 
-        // 展开形变=遮罩揭示（原版「窗口从球位置生长」的数学等价物；原实现=窗口
-        // frame 逐帧动画，在 macOS 26 上与 NSHostingView 尺寸回写互相触发约束
-        // 循环闪退，弃用）：内容以完整尺寸静止布局，壳/遮罩矩形从球大小逐帧
-        // 长到全窗把内容揭示出来——文字全程 100% 清晰、描边/圆角/阴影全真尺寸。
+        // 还原为原版动画机制：窗口 frame 从球大小逐帧长到面板大小（0.4s
+        // easeInEaseOut，与原版完全一致），内容以真实尺寸逐帧布局——这就是
+        // 「慢慢放大」观感的来源。与原版的唯一差别（也是闪退的修复）：
+        // 内容切换为瞬时、不包 withAnimation——约束闪退链的触发条件是
+        // 「内容过渡动画」与「窗口逐帧 resize」并发（NSHostingView 会把
+        // 过渡期理想尺寸回写窗口），纯窗口缩放 + 静态内容树是安全的
+        // （正常 app 的窗口缩放从不触发）。
         focusProvider.isRestoring = true
+        isAnimatingWindowFrame = true
 
-        panel.setFrame(targetFrame, display: false)
         panel.backgroundColor = NSColor.clear.withAlphaComponent(0.9)
         panel.isBallMode = false
         panel.isMovable = !windowLocked
-        focusProvider.mode = .expanded
+        focusProvider.mode = .expanded // 瞬时换内容（无过渡动画）
 
-        // 球心换算到窗口本地坐标（SwiftUI 顶左原点，AppKit 全局是底左原点）
-        let localCenter = CGPoint(
-            x: ballCenter.x - targetFrame.minX,
-            y: targetFrame.maxY - ballCenter.y
-        )
-        morphState.visual = .revealStart(ballRectLocal: CGRect(
-            x: localCenter.x - 40, y: localCenter.y - 40, width: 80, height: 80
-        ))
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
-            guard let self else { return }
-            // 壳生长 + 内容同步渐显（原版交叉淡入的等效）。
-            // 延迟 3 帧再启动：重内容首次布局提交后再动画，首帧才不会跳终值
-            withAnimation(.easeInOut(duration: 0.4)) {
-                self.morphState.visual.revealRect = CGRect(origin: .zero, size: targetFrame.size)
-                self.morphState.visual.contentOpacity = 1
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { [weak self] in
-                guard let self, self.focusProvider.mode == .expanded else { return }
-                self.morphState.visual = .init() // 撤壳撤遮罩（内容已全显，瞬时无感）
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.4
+            ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            panel.animator().setFrame(targetFrame, display: true)
+        } completionHandler: { [weak self] in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+                guard let self else { return }
+                self.isAnimatingWindowFrame = false
                 self.panel.hasShadow = true
+                // 结束后一次性保存位置（动画期间逐帧写 UserDefaults 是卡顿源）
+                if PreferencesManager.shared.rememberWindowPosition {
+                    PreferencesManager.shared.setWindowPosition(self.panel.frame)
+                    if let screen = self.panel.screen,
+                       let screenNumber = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber {
+                        PreferencesManager.shared.setWindowScreenId(screenNumber.stringValue)
+                    }
+                }
+                // 关键：始终使用原始保存的 ballCenter，保持浮球位置不变
+                self.focusProvider.ballPosition = ballCenter
+                self.focusProvider.ballPositionLastSet = CFAbsoluteTimeGetCurrent()
+                self.focusProvider.isRestoring = false
+                // 恢复后强制获取一次焦点，确保搜索框等组件可用
+                self.requestRegularFocus(reason: "restore")
             }
         }
-
-        // 关键：始终使用原始保存的 ballCenter，保持浮球位置不变
-        focusProvider.ballPosition = ballCenter
-        focusProvider.ballPositionLastSet = CFAbsoluteTimeGetCurrent()
-        focusProvider.isRestoring = false
-
-        // 恢复后强制获取一次焦点，确保搜索框等组件可用
-        requestRegularFocus(reason: "restore")
     }
 }
