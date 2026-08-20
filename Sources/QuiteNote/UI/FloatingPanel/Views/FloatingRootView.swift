@@ -107,7 +107,7 @@ struct FloatingRootView: View {
                     .transition(.opacity) // 简化转换，移除复杂的 scale 转换以提升性能
                     .zIndex(1)
             } else {
-                MorphContentReveal(morph: morph) {
+                MorphContentFade(morph: morph) {
                     baseContentView
                         .background(Color.themeBackground.opacity(0.9))
                         .cornerRadius(16)
@@ -208,6 +208,9 @@ struct FloatingRootView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .ignoresSafeArea()
+        // 展开形变的揭示遮罩（常驻；常态超大矩形等效不遮挡）。
+        // 放在尺寸修饰符外层，视图边界=窗口，遮罩矩形才能用窗口本地坐标
+        .mask(MorphRevealMask(morph: morph))
         .onHover { hovering in onHoverChanged?(hovering) }
         .simultaneousGesture(
             DragGesture(minimumDistance: 10, coordinateSpace: .local)
@@ -854,46 +857,47 @@ struct FloatingRootView: View {
 
 // MARK: - 形变子层（只观察 PanelMorphState，隔离逐帧失效，根视图不参与重算）
 
-/// 揭示壳：真实尺寸的圆角矩形（真描边/真阴影/真圆角），frame 逐帧长大——
-/// 不是 scaleEffect 等比缩放（缩放会把 1px 描边和 16pt 圆角压变形）
+/// 揭示壳：常驻视图树（透明度开关、不插拔——条件插入的新视图在重内容首次
+/// 布局未提交时启动动画会直接跳终值），真实尺寸圆角矩形 frame 逐帧长大，
+/// 真 1px 描边/真 16pt 圆角/真阴影，不用 scaleEffect（会把描边圆角压变形）
 private struct MorphShellLayer: View {
     @ObservedObject var morph: PanelMorphState
 
     var body: some View {
-        if morph.visual.shellVisible {
-            RoundedRectangle(cornerRadius: 16)
-                .fill(Color.themeBackground.opacity(0.96))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke(Color.themeBorder, lineWidth: 1)
-                        .allowsHitTesting(false)
-                )
-                .shadow(color: Color.themeShadowHeavy, radius: 20, x: 0, y: 10)
-                .frame(width: morph.visual.revealRect.width, height: morph.visual.revealRect.height)
-                .position(x: morph.visual.revealRect.midX, y: morph.visual.revealRect.midY)
-                .allowsHitTesting(false)
-        }
+        RoundedRectangle(cornerRadius: 16)
+            .fill(Color.themeBackground.opacity(0.96))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(Color.themeBorder, lineWidth: 1)
+                    .allowsHitTesting(false)
+            )
+            .shadow(color: Color.themeShadowHeavy, radius: 20, x: 0, y: 10)
+            .frame(width: morph.visual.revealRect.width, height: morph.visual.revealRect.height)
+            .position(x: morph.visual.revealRect.midX, y: morph.visual.revealRect.midY)
+            .opacity(morph.visual.shellVisible ? 1 : 0)
+            .allowsHitTesting(false)
     }
 }
 
-/// 内容揭示层：重内容以完整尺寸静止布局，只被同尺寸生长的遮罩逐帧揭示
-/// （层透明度另做渐显）；内容本体零缩放零重排——遮罩是 GPU 裁剪
-private struct MorphContentReveal<Content: View>: View {
+/// 揭示遮罩：常驻（常态=超大矩形等效不遮挡），与壳同矩形逐帧长大，
+/// 把底下的内容逐块揭示出来——GPU 裁剪，不触发内容重排
+private struct MorphRevealMask: View {
+    @ObservedObject var morph: PanelMorphState
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 16)
+            .frame(width: morph.visual.revealRect.width, height: morph.visual.revealRect.height)
+            .position(x: morph.visual.revealRect.midX, y: morph.visual.revealRect.midY)
+    }
+}
+
+/// 内容透明层：重内容只做层透明度（合成器开销），不参与形变
+private struct MorphContentFade<Content: View>: View {
     @ObservedObject var morph: PanelMorphState
     @ViewBuilder var content: () -> Content
 
     var body: some View {
-        if morph.visual.contentMasked {
-            content()
-                .mask(
-                    RoundedRectangle(cornerRadius: 16)
-                        .frame(width: morph.visual.revealRect.width, height: morph.visual.revealRect.height)
-                        .position(x: morph.visual.revealRect.midX, y: morph.visual.revealRect.midY)
-                )
-                .opacity(morph.visual.contentOpacity)
-        } else {
-            content().opacity(morph.visual.contentOpacity)
-        }
+        content().opacity(morph.visual.contentOpacity)
     }
 }
 

@@ -88,10 +88,12 @@ final class WindowFocusProvider: ObservableObject {
 /// 从球位置把内容揭示出来——文字全程 100% 清晰，无任何等比缩放发虚。
 final class PanelMorphState: ObservableObject {
     struct Visual {
-        /// 壳/遮罩矩形（窗口本地坐标，SwiftUI 顶左原点），动画期间从球大小长到全窗
-        var revealRect: CGRect = .zero
+        /// 壳/遮罩矩形（窗口本地坐标，SwiftUI 顶左原点）。常态=超大矩形
+        /// （等效不遮挡）；形变时从球矩形逐帧长到全窗。
+        /// 常驻不插拔是关键：条件插入的新视图在重内容首次布局未提交时启动
+        /// 动画，首帧会直接落在动画终值上（表现为边框瞬间跳满、无动画）
+        var revealRect: CGRect = CGRect(x: -1000, y: -1000, width: 100000, height: 100000)
         var shellVisible: Bool = false
-        var contentMasked: Bool = false
         var contentOpacity: Double = 1
 
         /// 揭示起始态：壳从球矩形开始、内容被遮罩且隐藏
@@ -99,7 +101,6 @@ final class PanelMorphState: ObservableObject {
             Visual(
                 revealRect: ballRectLocal,
                 shellVisible: true,
-                contentMasked: true,
                 contentOpacity: 0
             )
         }
@@ -844,15 +845,15 @@ final class FloatingPanelController {
             x: localCenter.x - 40, y: localCenter.y - 40, width: 80, height: 80
         ))
 
-        DispatchQueue.main.async { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
             guard let self else { return }
             // 壳生长 + 内容同步渐显（原版交叉淡入的等效）。
-            // 先渲染一帧初值，同 runloop 连设两次会被合并导致动画失效
+            // 延迟 3 帧再启动：重内容首次布局提交后再动画，首帧才不会跳终值
             withAnimation(.easeInOut(duration: 0.4)) {
                 self.morphState.visual.revealRect = CGRect(origin: .zero, size: targetFrame.size)
                 self.morphState.visual.contentOpacity = 1
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.43) { [weak self] in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { [weak self] in
                 guard let self, self.focusProvider.mode == .expanded else { return }
                 self.morphState.visual = .init() // 撤壳撤遮罩（内容已全显，瞬时无感）
                 self.panel.hasShadow = true
