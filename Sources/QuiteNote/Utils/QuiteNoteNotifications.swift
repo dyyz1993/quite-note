@@ -55,6 +55,9 @@ enum QuiteNoteNotification {
     /// 更新球位置
     case updateBallPosition
 
+    /// 松手后吸附浮球到屏幕边缘（由控制器以 panel.frame 为准计算）
+    case snapBallToEdge
+
     // MARK: - AI 相关
 
     /// AI 处理开始
@@ -102,6 +105,8 @@ enum QuiteNoteNotification {
             return Notification.Name("qn.panel.restoreFromBall")
         case .updateBallPosition:
             return Notification.Name("qn.panel.updateBallPosition")
+        case .snapBallToEdge:
+            return Notification.Name("qn.panel.snapBallToEdge")
         case .aiProcessingStarted:
             return Notification.Name("qn.ai.started")
         case .aiProcessingCompleted:

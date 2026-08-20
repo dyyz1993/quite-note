@@ -92,12 +92,18 @@ struct FloatingBallView: View {
                 withAnimation(.interpolatingSpring(stiffness: 300, damping: 15).repeatForever(autoreverses: true)) {
                     iconOffset = -6
                 }
-                NSCursor.pointingHand.set()
+                // 悬停即提示可拖动（affordance 先行）。macOS 公开 API 没有
+                // 四向移动光标（系统私有），标准的"可抓取"光标是 openHand，
+                // 拖动中切换 closedHand
+                NSCursor.openHand.set()
             } else {
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.5)) {
                     iconOffset = 0
                 }
-                NSCursor.arrow.set()
+                // 拖动中鼠标可能被边缘钳制甩出窗口外，此时不清光标，松手后由下一次 hover 恢复
+                if !isDragging {
+                    NSCursor.arrow.set()
+                }
             }
         }
         .onAppear {
@@ -120,7 +126,9 @@ struct FloatingBallView: View {
                 .onChanged { _ in
                     if !isDragging {
                         isDragging = true
-                        NSCursor.closedHand.push()
+                        // 抓住：配合悬停时的 openHand，构成标准的抓取光标对；
+                        // 用 set() 不用 push/pop，避免拖动中鼠标滑出窗口时光标栈失衡
+                        NSCursor.closedHand.set()
                     }
                     // 直接使用鼠标的绝对屏幕坐标，这在多显示器环境下是最可靠的
                     let currentMouse = NSEvent.mouseLocation
@@ -129,8 +137,13 @@ struct FloatingBallView: View {
                 .onEnded { _ in
                     if isDragging {
                         isDragging = false
-                        NSCursor.pop()
-                        snapToEdge()
+                        // 松手恢复：鼠标还在球上就回到 openHand，否则回箭头
+                        NSCursor.arrow.set()
+                        if hovering {
+                            NSCursor.openHand.set()
+                        }
+                        // 吸附由控制器以 panel.frame 为准计算（避免视图侧位置状态过期）
+                        QuiteNoteNotification.post(.snapBallToEdge)
                     }
                 }
         )
@@ -165,35 +178,6 @@ struct FloatingBallView: View {
     }
 
     // MARK: - Actions
-
-    private func snapToEdge() {
-        // 获取包含当前窗口中心点的屏幕
-        let currentBallPos = focus.ballPosition
-        let screens = NSScreen.screens
-        let targetScreen = screens.first { NSMouseInRect(currentBallPos, $0.frame, false) } ?? NSScreen.main ?? screens.first!
-
-        let screenFrame = targetScreen.visibleFrame
-        let padding: CGFloat = 16
-        let ballRadius: CGFloat = 28 // 56/2
-        var finalPos = currentBallPos
-
-        // 在当前所在的屏幕内进行边界吸附
-        if finalPos.x < screenFrame.minX + padding + ballRadius {
-            finalPos.x = screenFrame.minX + padding + ballRadius
-        } else if finalPos.x > screenFrame.maxX - padding - ballRadius {
-            finalPos.x = screenFrame.maxX - padding - ballRadius
-        }
-
-        if finalPos.y < screenFrame.minY + padding + ballRadius {
-            finalPos.y = screenFrame.minY + padding + ballRadius
-        } else if finalPos.y > screenFrame.maxY - padding - ballRadius {
-            finalPos.y = screenFrame.maxY - padding - ballRadius
-        }
-
-        withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
-            QuiteNoteNotification.post(.updateBallPosition, object: finalPos)
-        }
-    }
 
     private func handleRestore() {
         QuiteNoteNotification.post(.restoreFromBall)

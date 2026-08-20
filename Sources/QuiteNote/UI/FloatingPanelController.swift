@@ -30,6 +30,28 @@ class DraggableNSView: NSView {
 class CustomPanel: NSWindow {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
+
+    /// 浮球模式下系统侧的窗口摆放（order front 位置约束、标题栏拖拽、空间切换等）
+    /// 一律经 BallEdgeGeometry 钳回可视区域。此前窗口一旦被系统摆到部分出屏，
+    /// 会被推回来再被拖拽逻辑摆回去，来回拉扯表现为边缘闪跳；覆写这里之后
+    /// 系统不再有机会把 80pt 窗口放到出屏/贴边打架的位置。
+    var isBallMode: Bool = false
+
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
+        guard isBallMode else { return super.constrainFrameRect(frameRect, to: screen) }
+        var frame = super.constrainFrameRect(frameRect, to: screen)
+        let screens = NSScreen.screens.map {
+            BallEdgeGeometry.ScreenBounds(frame: $0.frame, visibleFrame: $0.visibleFrame)
+        }
+        let clamped = BallEdgeGeometry.clampDrag(
+            center: CGPoint(x: frame.midX, y: frame.midY),
+            windowSize: frame.width,
+            screens: screens
+        )
+        frame.origin.x = clamped.x - frame.width / 2
+        frame.origin.y = clamped.y - frame.height / 2
+        return frame
+    }
 }
 
 enum WindowMode {
@@ -66,6 +88,8 @@ final class FloatingPanelController {
     private var lastInteractionChange: TimeInterval = 0 // 记录上次交互状态变更时间
     private var userHidden: Bool = false // 用户主动隐藏标记，防止自动前置
     private var previousApp: NSRunningApplication? // 记录焦点夺取前的活跃应用
+    private var windowLocked: Bool = false // 窗口锁定状态（展开模式下决定 isMovable）
+    private var isProgrammaticallyMovingBall: Bool = false // 区分我们的 setFrame 与系统侧移动，用于外部移动日志
 
     var isVisible: Bool { panel.isVisible }
     
@@ -214,20 +238,72 @@ final class FloatingPanelController {
 
         // 监听浮球位置更新通知
         NotificationCenter.default.addObserver(self, selector: #selector(onUpdateBallPosition(_:)), name: QuiteNoteNotification.updateBallPosition.name, object: nil)
+
+        // 监听浮球松手吸附通知（控制器以 panel.frame 为准计算，视图侧不再持有位置真值）
+        NotificationCenter.default.addObserver(self, selector: #selector(onSnapBallToEdge), name: QuiteNoteNotification.snapBallToEdge.name, object: nil)
+
+        // 屏幕参数变化（接线/分辨率/Dock 大小变动）时刷新缓存
+        NotificationCenter.default.addObserver(self, selector: #selector(onScreenParametersChanged), name: NSApplication.didChangeScreenParametersNotification, object: nil)
     }
 
     @objc private func onRestoreFromBall() {
         restoreFromBall()
     }
 
+    @objc private func onSnapBallToEdge() {
+        guard focusProvider.mode == .floatingBall else { return }
+        let size = panel.frame.size
+        let center = CGPoint(x: panel.frame.midX, y: panel.frame.midY)
+        let snapped = BallEdgeGeometry.snapCenter(center, visualRadius: 28, screens: currentScreenBounds())
+        let newFrame = NSRect(x: snapped.x - size.width/2, y: snapped.y - size.height/2, width: size.width, height: size.height)
+        isProgrammaticallyMovingBall = true
+        panel.setFrame(newFrame, display: true)
+        DispatchQueue.main.async { [weak self] in self?.isProgrammaticallyMovingBall = false }
+        // 拖动过程中不发布中间位置，松手吸附时一次性更新（见 onUpdateBallPosition 注释）
+        focusProvider.ballPosition = snapped
+    }
+
+    @objc private func onScreenParametersChanged() {
+        screenBoundsCache = nil
+    }
+
     @objc private func onUpdateBallPosition(_ notification: Notification) {
         guard let pos = notification.object as? CGPoint else { return }
         let size = panel.frame.size
-        let newFrame = NSRect(x: pos.x - size.width/2, y: pos.y - size.height/2, width: size.width, height: size.height)
+        // 拖拽时鼠标可进入菜单栏/Dock/屏幕边缘，先把球心钳回可视区域内：
+        // 窗口一旦部分出屏，macOS 置前时会把它推回来，与拖拽的 setFrame
+        // 互相拉扯，表现为浮球在屏幕边缘来回闪跳
+        let clamped = BallEdgeGeometry.clampDrag(
+            center: pos,
+            windowSize: size.width,
+            screens: currentScreenBounds()
+        )
+        let newFrame = NSRect(x: clamped.x - size.width/2, y: clamped.y - size.height/2, width: size.width, height: size.height)
+        isProgrammaticallyMovingBall = true
         panel.setFrame(newFrame, display: true)
+        DispatchQueue.main.async { [weak self] in self?.isProgrammaticallyMovingBall = false }
 
-        // 更新球的位置状态
-        focusProvider.ballPosition = pos
+        // 注意：拖动过程中故意不发布 ballPosition——@Published 逐帧更新会让
+        // 整棵 SwiftUI 视图树跟着每个鼠标事件重算，拖动明显不跟手；
+        // 位置真值在窗口 frame 上，松手吸附（onSnapBallToEdge）/恢复时才发布
+    }
+
+    /// 屏幕信息缓存：NSScreen.screens 是窗口服务器往返查询，拖动时逐事件
+    /// 调用会拖慢跟手度；缓存 + 2 秒 TTL 兜住 Dock 移动等不发通知的变化
+    private var screenBoundsCache: [BallEdgeGeometry.ScreenBounds]?
+    private var screenBoundsCachedAt: TimeInterval = 0
+
+    private func currentScreenBounds() -> [BallEdgeGeometry.ScreenBounds] {
+        let now = CFAbsoluteTimeGetCurrent()
+        if let cache = screenBoundsCache, now - screenBoundsCachedAt < 2.0 {
+            return cache
+        }
+        let bounds = NSScreen.screens.map {
+            BallEdgeGeometry.ScreenBounds(frame: $0.frame, visibleFrame: $0.visibleFrame)
+        }
+        screenBoundsCache = bounds
+        screenBoundsCachedAt = now
+        return bounds
     }
 
     /// 显示悬浮窗，不强制居中（用于静默采集等场景）
@@ -405,9 +481,10 @@ final class FloatingPanelController {
 
     @objc private func onWindowLock(_ note: Notification) {
         if let lock = note.object as? Bool {
-            panel.isMovable = !lock
-            // 保持 isMovableByWindowBackground 为 false，只允许 WindowDragHandler 区域拖拽
-            // panel.isMovableByWindowBackground = !lock  // 注释掉，不使用全局窗口拖拽
+            windowLocked = lock
+            // 浮球模式下窗口一律不可系统拖拽（球有自己的拖拽手势），
+            // 展开模式按用户的锁定状态来
+            panel.isMovable = focusProvider.mode == .expanded ? !lock : false
         }
     }
 
@@ -420,6 +497,13 @@ final class FloatingPanelController {
     }
 
     @objc private func windowDidMove(_ note: Notification) {
+        // 浮球模式下出现「非我们 setFrame」的移动，说明有系统侧力量在动窗口
+        // （order front 约束 / 标题栏拖拽 / 空间切换）——这是边缘闪跳的元凶特征，
+        // 落盘留证便于定位
+        if focusProvider.mode == .floatingBall && !isProgrammaticallyMovingBall {
+            DiagnosticCenter.warning("Panel", "浮球窗口被外部移动: frame=\(panel.frame)")
+        }
+
         // 窗口移动时保存位置和屏幕信息，仅在展开模式下保存，防止保存缩放过程中的中间状态或浮球位置
         if PreferencesManager.shared.rememberWindowPosition && focusProvider.mode == .expanded {
             PreferencesManager.shared.setWindowPosition(panel.frame)
@@ -459,6 +543,10 @@ final class FloatingPanelController {
     func requestRegularFocus(reason: String) {
         // 如果用户主动隐藏了窗口，则不进行任何前置操作
         if userHidden { return }
+
+        // 拖拽中不抢焦点：中途 makeKeyAndOrderFront 会触发系统对出屏窗口的
+        // 位置约束，与拖拽的 setFrame 拉扯造成边缘闪跳，还可能打断拖拽手势
+        if isInteracting { return }
 
         // 如果已经是关键窗口，不需要再次请求焦点
         if panel.isKeyWindow { return }
@@ -590,6 +678,9 @@ final class FloatingPanelController {
         // 先切换背景和阴影，避免动画过程中出现黑边或奇怪的阴影
         panel.backgroundColor = NSColor.clear
         panel.hasShadow = false
+        // 进入浮球模式：系统侧摆放一律钳制回可视区；系统标题栏拖拽关闭（球有自己的手势）
+        panel.isBallMode = true
+        panel.isMovable = false
 
         // 先切换模式（SwiftUI 动画）
         withAnimation(.easeInOut(duration: duration)) {
@@ -702,6 +793,9 @@ final class FloatingPanelController {
                 // 恢复背景
                 panel?.backgroundColor = NSColor.clear.withAlphaComponent(0.9)
                 panel?.hasShadow = true
+                // 退出浮球模式：解除系统侧钳制；isMovable 按用户锁定状态恢复
+                panel?.isBallMode = false
+                panel?.isMovable = !self.windowLocked
 
                 // 读取实际窗口位置用于调试
                 let actualFrame = panel?.frame ?? targetFrame
