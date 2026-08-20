@@ -94,7 +94,13 @@ struct FloatingRootView: View {
             KeyboardInterceptViewRepresentable()
                 .allowsHitTesting(false)
 
-            if focus.mode == .floatingBall {
+            if focus.isMorphing {
+                // 形变期间的轻量壳：只画面板底色和描边。窗口逐帧 resize 时
+                // SwiftUI 只需重排一层圆角矩形，记录列表等重内容不进树
+                morphShellView
+                    .transition(.opacity)
+                    .zIndex(1)
+            } else if focus.mode == .floatingBall {
                 FloatingBallView(store: store, focus: focus)
                     .transition(.opacity) // 简化转换，移除复杂的 scale 转换以提升性能
                     .zIndex(1)
@@ -104,7 +110,7 @@ struct FloatingRootView: View {
                     .cornerRadius(16)
                     .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.themeBorder, lineWidth: 1).allowsHitTesting(false))
                     .shadow(color: Color.themeShadowHeavy, radius: 20, x: 0, y: 10)
-                    .transition(.opacity) // 简化转换，移除复杂的 scale 转换以提升性能
+                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
                     .zIndex(0)
             }
             
@@ -241,6 +247,17 @@ struct FloatingRootView: View {
     }
 
     // MARK: - 子视图组件
+
+    /// 形变壳：与展开面板同底色/描边的圆角矩形，无任何重内容
+    private var morphShellView: some View {
+        RoundedRectangle(cornerRadius: 16)
+            .fill(Color.themeBackground.opacity(0.9))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(Color.themeBorder, lineWidth: 1)
+                    .allowsHitTesting(false)
+            )
+    }
 
     /// 基础内容视图，包含主要的布局结构
     private var baseContentView: some View {
