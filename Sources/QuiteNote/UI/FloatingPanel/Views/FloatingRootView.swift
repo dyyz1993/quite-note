@@ -107,7 +107,7 @@ struct FloatingRootView: View {
                     .transition(.opacity) // 简化转换，移除复杂的 scale 转换以提升性能
                     .zIndex(1)
             } else {
-                MorphContentFade(morph: morph) {
+                MorphContentReveal(morph: morph) {
                     baseContentView
                         .background(Color.themeBackground.opacity(0.9))
                         .cornerRadius(16)
@@ -854,12 +854,13 @@ struct FloatingRootView: View {
 
 // MARK: - 形变子层（只观察 PanelMorphState，隔离逐帧失效，根视图不参与重算）
 
-/// 生长壳：单个圆角矩形（真描边+真阴影），非等比缩放复刻原窗口生长几何
+/// 揭示壳：真实尺寸的圆角矩形（真描边/真阴影/真圆角），frame 逐帧长大——
+/// 不是 scaleEffect 等比缩放（缩放会把 1px 描边和 16pt 圆角压变形）
 private struct MorphShellLayer: View {
     @ObservedObject var morph: PanelMorphState
 
     var body: some View {
-        if morph.visual.shellOpacity > 0 {
+        if morph.visual.shellVisible {
             RoundedRectangle(cornerRadius: 16)
                 .fill(Color.themeBackground.opacity(0.96))
                 .overlay(
@@ -868,20 +869,31 @@ private struct MorphShellLayer: View {
                         .allowsHitTesting(false)
                 )
                 .shadow(color: Color.themeShadowHeavy, radius: 20, x: 0, y: 10)
-                .scaleEffect(x: morph.visual.shellScaleX, y: morph.visual.shellScaleY, anchor: morph.visual.anchor)
-                .opacity(morph.visual.shellOpacity)
+                .frame(width: morph.visual.revealRect.width, height: morph.visual.revealRect.height)
+                .position(x: morph.visual.revealRect.midX, y: morph.visual.revealRect.midY)
                 .allowsHitTesting(false)
         }
     }
 }
 
-/// 内容透明层：重内容只做层透明度（合成器开销），不参与形变缩放
-private struct MorphContentFade<Content: View>: View {
+/// 内容揭示层：重内容以完整尺寸静止布局，只被同尺寸生长的遮罩逐帧揭示
+/// （层透明度另做渐显）；内容本体零缩放零重排——遮罩是 GPU 裁剪
+private struct MorphContentReveal<Content: View>: View {
     @ObservedObject var morph: PanelMorphState
     @ViewBuilder var content: () -> Content
 
     var body: some View {
-        content().opacity(morph.visual.contentOpacity)
+        if morph.visual.contentMasked {
+            content()
+                .mask(
+                    RoundedRectangle(cornerRadius: 16)
+                        .frame(width: morph.visual.revealRect.width, height: morph.visual.revealRect.height)
+                        .position(x: morph.visual.revealRect.midX, y: morph.visual.revealRect.midY)
+                )
+                .opacity(morph.visual.contentOpacity)
+        } else {
+            content().opacity(morph.visual.contentOpacity)
+        }
     }
 }
 

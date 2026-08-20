@@ -82,28 +82,25 @@ final class WindowFocusProvider: ObservableObject {
 
 /// 面板展开形变状态。**独立于 WindowFocusProvider 是有意的**：形变期间该状态
 /// 逐帧变化，若挂在根视图观察的对象上，整棵重内容视图树会跟着每帧重算（实测
-/// 卡顿根源）。隔离后逐帧变化只牵动 MorphShellLayer / MorphContentFade 两个
-/// 轻量子视图，根视图零重算——壳是单个圆角矩形，缩放零成本。
+/// 卡顿根源）。隔离后逐帧变化只牵动壳层/遮罩层两个轻量子视图。
+/// 形变方式=**遮罩揭示**（原版窗口生长的数学等价物）：内容以完整尺寸静止布局，
+/// 一个真实尺寸、frame 逐帧长大的圆角矩形当壳（真描边/真阴影/真圆角）兼遮罩，
+/// 从球位置把内容揭示出来——文字全程 100% 清晰，无任何等比缩放发虚。
 final class PanelMorphState: ObservableObject {
     struct Visual {
-        /// 壳（窗口生长观感的载体）的非等比缩放：从球比例长到面板比例，
-        /// 几何上与原窗口 frame 逐帧动画完全一致
-        var shellScaleX: CGFloat = 1
-        var shellScaleY: CGFloat = 1
-        /// 0 = 不显示壳（常态）
-        var shellOpacity: Double = 0
-        /// 重内容只做层透明度淡入（合成器开销），不参与缩放
+        /// 壳/遮罩矩形（窗口本地坐标，SwiftUI 顶左原点），动画期间从球大小长到全窗
+        var revealRect: CGRect = .zero
+        var shellVisible: Bool = false
+        var contentMasked: Bool = false
         var contentOpacity: Double = 1
-        var anchor: UnitPoint = .center
 
-        /// 壳从球大小（startSize）开始生长、内容隐藏的初始态
-        static func growingShell(anchor: UnitPoint, frame: NSRect, startSize: CGFloat) -> Visual {
+        /// 揭示起始态：壳从球矩形开始、内容被遮罩且隐藏
+        static func revealStart(ballRectLocal: CGRect) -> Visual {
             Visual(
-                shellScaleX: startSize / max(frame.width, 1),
-                shellScaleY: startSize / max(frame.height, 1),
-                shellOpacity: 1,
-                contentOpacity: 0,
-                anchor: anchor
+                revealRect: ballRectLocal,
+                shellVisible: true,
+                contentMasked: true,
+                contentOpacity: 0
             )
         }
     }
@@ -826,11 +823,10 @@ final class FloatingPanelController {
             PreferencesManager.shared.setWindowPosition(targetFrame)
         }
 
-        // 复刻原「窗口从球位置生长」的观感（原实现=窗口 frame 逐帧动画，在
-        // macOS 26 上与 NSHostingView 尺寸回写互相触发约束循环闪退，弃用）：
-        // 轻量壳（真描边+真阴影的圆角矩形）以球位置为锚点从球大小长到面板
-        // 大小——几何与原窗口生长完全一致、0.4s easeInOut 同时长同曲线；
-        // 重内容不参与缩放（只做末段层透明度淡入），形变期间根视图零重算。
+        // 展开形变=遮罩揭示（原版「窗口从球位置生长」的数学等价物；原实现=窗口
+        // frame 逐帧动画，在 macOS 26 上与 NSHostingView 尺寸回写互相触发约束
+        // 循环闪退，弃用）：内容以完整尺寸静止布局，壳/遮罩矩形从球大小逐帧
+        // 长到全窗把内容揭示出来——文字全程 100% 清晰、描边/圆角/阴影全真尺寸。
         focusProvider.isRestoring = true
 
         panel.setFrame(targetFrame, display: false)
@@ -839,31 +835,27 @@ final class FloatingPanelController {
         panel.isMovable = !windowLocked
         focusProvider.mode = .expanded
 
-        morphState.visual = .growingShell(
-            anchor: morphAnchor(ballCenter: ballCenter, in: targetFrame),
-            frame: targetFrame,
-            startSize: 80
+        // 球心换算到窗口本地坐标（SwiftUI 顶左原点，AppKit 全局是底左原点）
+        let localCenter = CGPoint(
+            x: ballCenter.x - targetFrame.minX,
+            y: targetFrame.maxY - ballCenter.y
         )
+        morphState.visual = .revealStart(ballRectLocal: CGRect(
+            x: localCenter.x - 40, y: localCenter.y - 40, width: 80, height: 80
+        ))
 
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            // 壳生长（先渲染一帧初值，同 runloop 连设两次会被合并导致动画失效）
+            // 壳生长 + 内容同步渐显（原版交叉淡入的等效）。
+            // 先渲染一帧初值，同 runloop 连设两次会被合并导致动画失效
             withAnimation(.easeInOut(duration: 0.4)) {
-                self.morphState.visual.shellScaleX = 1
-                self.morphState.visual.shellScaleY = 1
+                self.morphState.visual.revealRect = CGRect(origin: .zero, size: targetFrame.size)
+                self.morphState.visual.contentOpacity = 1
             }
-            // 后段：真实内容在壳上渐显（原版内容交叉淡入的等效）
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.26) { [weak self] in
-                guard let self else { return }
-                withAnimation(.easeOut(duration: 0.2)) {
-                    self.morphState.visual.contentOpacity = 1
-                    self.morphState.visual.shellOpacity = 0
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.24) { [weak self] in
-                    guard let self, self.focusProvider.mode == .expanded else { return }
-                    self.morphState.visual = .init() // 壳彻底移除
-                    self.panel.hasShadow = true
-                }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.43) { [weak self] in
+                guard let self, self.focusProvider.mode == .expanded else { return }
+                self.morphState.visual = .init() // 撤壳撤遮罩（内容已全显，瞬时无感）
+                self.panel.hasShadow = true
             }
         }
 
