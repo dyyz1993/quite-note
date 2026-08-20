@@ -688,13 +688,16 @@ struct RecordCardView: View, Equatable {
                 if let urlString = record.sourceUrl,
                    let url = FileCoordinator.shared.resolveVirtualPath(urlString),
                    isImage {
-                    // 图片大图预览
+                    // 图片大图预览（限高：大图理想尺寸在加载前后反复跳变，
+                    // 会把悬浮面板的布局约束刷进死循环 → NSGenericException 闪退）
                     AsyncImage(url: url) { phase in
                         switch phase {
                         case .success(let image):
                             image
                                 .resizable()
                                 .aspectRatio(contentMode: .fit)
+                                .frame(maxHeight: 240)
+                                .clipped()
                                 .cornerRadius(8)
                                 .onTapGesture {
                                     NSWorkspace.shared.open(url)

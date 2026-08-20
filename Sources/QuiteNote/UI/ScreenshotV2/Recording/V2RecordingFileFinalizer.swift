@@ -48,13 +48,17 @@ enum V2RecordingFileFinalizer {
 
     /// 把剪辑导出的临时文件移动到原片旁边，不覆盖原始录屏。
     /// 重名时追加 -2、-3，保证每次导出都是可恢复的独立文件。
+    /// 反复剪辑不叠后缀：先剥掉已有的「 - 剪辑版」再统一追加一个。
     static func finalizeEdited(tempURL: URL,
                                beside sourceURL: URL,
                                fileManager: FileManager = .default) throws -> URL {
         let directory = sourceURL.deletingLastPathComponent()
         try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
 
-        let sourceBase = sourceURL.deletingPathExtension().lastPathComponent
+        var sourceBase = sourceURL.deletingPathExtension().lastPathComponent
+        while let range = sourceBase.range(of: " - 剪辑版", options: .backwards) {
+            sourceBase = String(sourceBase[sourceBase.startIndex..<range.lowerBound])
+        }
         let baseName = "\(sourceBase) - 剪辑版"
         var fileURL = directory.appendingPathComponent("\(baseName).mp4")
         var counter = 2
