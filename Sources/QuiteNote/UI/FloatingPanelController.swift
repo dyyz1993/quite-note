@@ -809,7 +809,7 @@ final class FloatingPanelController {
         focusProvider.mode = .expanded // 瞬时换内容（无过渡动画）
 
         NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0.4
+            ctx.duration = 0.25
             ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             panel.animator().setFrame(targetFrame, display: true)
         } completionHandler: { [weak self] in
