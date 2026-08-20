@@ -80,6 +80,37 @@ final class WindowFocusProvider: ObservableObject {
     var ballPositionLastSet: TimeInterval = 0 // 记录 ballPosition 最后设置的时间，用于防止 windowDidMove 覆盖
 }
 
+/// 面板展开形变状态。**独立于 WindowFocusProvider 是有意的**：形变期间该状态
+/// 逐帧变化，若挂在根视图观察的对象上，整棵重内容视图树会跟着每帧重算（实测
+/// 卡顿根源）。隔离后逐帧变化只牵动 MorphShellLayer / MorphContentFade 两个
+/// 轻量子视图，根视图零重算——壳是单个圆角矩形，缩放零成本。
+final class PanelMorphState: ObservableObject {
+    struct Visual {
+        /// 壳（窗口生长观感的载体）的非等比缩放：从球比例长到面板比例，
+        /// 几何上与原窗口 frame 逐帧动画完全一致
+        var shellScaleX: CGFloat = 1
+        var shellScaleY: CGFloat = 1
+        /// 0 = 不显示壳（常态）
+        var shellOpacity: Double = 0
+        /// 重内容只做层透明度淡入（合成器开销），不参与缩放
+        var contentOpacity: Double = 1
+        var anchor: UnitPoint = .center
+
+        /// 壳从球大小（startSize）开始生长、内容隐藏的初始态
+        static func growingShell(anchor: UnitPoint, frame: NSRect, startSize: CGFloat) -> Visual {
+            Visual(
+                shellScaleX: startSize / max(frame.width, 1),
+                shellScaleY: startSize / max(frame.height, 1),
+                shellOpacity: 1,
+                contentOpacity: 0,
+                anchor: anchor
+            )
+        }
+    }
+
+    @Published var visual = Visual()
+}
+
 // MARK: - FloatingPanelController
 
 private typealias MorphVisual = WindowFocusProvider.MorphVisual
@@ -104,6 +135,7 @@ final class FloatingPanelController {
     private var previousApp: NSRunningApplication? // 记录焦点夺取前的活跃应用
     private var windowLocked: Bool = false // 窗口锁定状态（展开模式下决定 isMovable）
     private var isProgrammaticallyMovingBall: Bool = false // 区分我们的 setFrame 与系统侧移动，用于外部移动日志
+    private let morphState = PanelMorphState() // 展开形变（壳生长）状态，独立观察隔离逐帧失效
 
     var isVisible: Bool { panel.isVisible }
     
@@ -188,7 +220,7 @@ final class FloatingPanelController {
         panel.standardWindowButton(.miniaturizeButton)?.isHidden = true
         panel.standardWindowButton(.zoomButton)?.isHidden = true
 
-        hosting = NSHostingView(rootView: FloatingRootView(store: store, heatmapVM: heatmapVM, bluetooth: bluetooth, focus: focusProvider, onHoverChanged: { [weak self] hovering in
+        hosting = NSHostingView(rootView: FloatingRootView(store: store, heatmapVM: heatmapVM, bluetooth: bluetooth, focus: focusProvider, morph: morphState, onHoverChanged: { [weak self] hovering in
             guard let self else { return }
             print("[DEBUG] onHoverChanged: \(hovering), mode: \(self.focusProvider.mode)")
             if hovering {
@@ -339,6 +371,7 @@ final class FloatingPanelController {
         // 2. 重置透明度，防止动画状态残留
         panel.alphaValue = 1
         focusProvider.morph = .identity // 防御：中断的形变不得把面板卡在缩小/透明态
+        morphState.visual = .init()
         // 确保层级高于便签窗口
         panel.level = .mainMenu + 2  // 高于便签窗口的 .mainMenu + 1
 
@@ -375,6 +408,7 @@ final class FloatingPanelController {
         // 1. 基础属性重置
         panel.alphaValue = 1
         focusProvider.morph = .identity // 防御：中断的形变不得把面板卡在缩小/透明态
+        morphState.visual = .init()
         panel.isOpaque = false
         panel.level = .mainMenu + 2  // 高于便签窗口的 .mainMenu + 1
 
@@ -698,6 +732,7 @@ final class FloatingPanelController {
         panel.hasShadow = false
         panel.isBallMode = true
         panel.isMovable = false
+        morphState.visual = .init() // 防御：上次展开形变若被打断，不得残留壳/隐藏态
 
         // 收缩形变：面板内容向球所在位置缩小并淡出
         withAnimation(.easeIn(duration: 0.28)) {
@@ -791,10 +826,11 @@ final class FloatingPanelController {
             PreferencesManager.shared.setWindowPosition(targetFrame)
         }
 
-        // 复刻原「窗口从球位置生长」的观感（原实现是窗口 frame 逐帧动画，
-        // 会触发约束闪退已弃用）：内容瞬时换成面板（不可见态）+ 窗口直接落位，
-        // 然后内容以球位置为锚点从约 1/3 比例 easeInOut 长到位——起始尺度大、
-        // 曲线平缓无过冲，文字全程可辨，观感等同于窗口生长且零空拍
+        // 复刻原「窗口从球位置生长」的观感（原实现=窗口 frame 逐帧动画，在
+        // macOS 26 上与 NSHostingView 尺寸回写互相触发约束循环闪退，弃用）：
+        // 轻量壳（真描边+真阴影的圆角矩形）以球位置为锚点从球大小长到面板
+        // 大小——几何与原窗口生长完全一致、0.4s easeInOut 同时长同曲线；
+        // 重内容不参与缩放（只做末段层透明度淡入），形变期间根视图零重算。
         focusProvider.isRestoring = true
 
         panel.setFrame(targetFrame, display: false)
@@ -803,20 +839,31 @@ final class FloatingPanelController {
         panel.isMovable = !windowLocked
         focusProvider.mode = .expanded
 
-        focusProvider.morph = MorphVisual(
-            scale: 0.3,
-            opacity: 0,
-            anchor: morphAnchor(ballCenter: ballCenter, in: targetFrame)
+        morphState.visual = .growingShell(
+            anchor: morphAnchor(ballCenter: ballCenter, in: targetFrame),
+            frame: targetFrame,
+            startSize: 80
         )
 
-        // 初值先渲染一帧，下一帧再启动动画（同 runloop 连设两次会被合并失效）
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            withAnimation(.easeInOut(duration: 0.35)) {
-                self.focusProvider.morph = .identity
+            // 壳生长（先渲染一帧初值，同 runloop 连设两次会被合并导致动画失效）
+            withAnimation(.easeInOut(duration: 0.4)) {
+                self.morphState.visual.shellScaleX = 1
+                self.morphState.visual.shellScaleY = 1
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.38) { [weak self] in
-                self?.panel.hasShadow = true
+            // 后段：真实内容在壳上渐显（原版内容交叉淡入的等效）
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.26) { [weak self] in
+                guard let self else { return }
+                withAnimation(.easeOut(duration: 0.2)) {
+                    self.morphState.visual.contentOpacity = 1
+                    self.morphState.visual.shellOpacity = 0
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.24) { [weak self] in
+                    guard let self, self.focusProvider.mode == .expanded else { return }
+                    self.morphState.visual = .init() // 壳彻底移除
+                    self.panel.hasShadow = true
+                }
             }
         }
 
