@@ -64,9 +64,6 @@ final class WindowFocusProvider: ObservableObject {
     @Published var mode: WindowMode = .expanded
     @Published var ballPosition: CGPoint = .zero
     @Published var lastExpandedFrame: NSRect? = nil
-    /// 球↔面板形变中：视图树只保留轻量壳（圆角矩形底），避免窗口逐帧
-    /// resize 时重排记录列表等重内容——既是流畅度关键，也避免约束爆表
-    @Published var isMorphing: Bool = false
     var isRestoring: Bool = false // 新增：标记是否正在从浮球恢复，用于防止坐标漂移
     var ballPositionLastSet: TimeInterval = 0 // 记录 ballPosition 最后设置的时间，用于防止 windowDidMove 覆盖
 }
@@ -502,8 +499,8 @@ final class FloatingPanelController {
     @objc private func windowDidMove(_ note: Notification) {
         // 浮球模式下出现「非我们 setFrame」的移动，说明有系统侧力量在动窗口
         // （order front 约束 / 标题栏拖拽 / 空间切换）——这是边缘闪跳的元凶特征，
-        // 落盘留证便于定位。形变动画期间（animator 内部 setFrame）不告警
-        if focusProvider.mode == .floatingBall && !focusProvider.isMorphing && !isProgrammaticallyMovingBall {
+        // 落盘留证便于定位
+        if focusProvider.mode == .floatingBall && !isProgrammaticallyMovingBall {
             DiagnosticCenter.warning("Panel", "浮球窗口被外部移动: frame=\(panel.frame)")
         }
 
@@ -674,53 +671,39 @@ final class FloatingPanelController {
                                width: ballWindowSize,
                                height: ballWindowSize)
 
-        // 窗口形变时长（收缩形变）
-        let duration: TimeInterval = 0.3
-
-        // 先切换背景和阴影，避免动画过程中出现黑边或奇怪的阴影
+        // ⚠️ 形变唯一安全配方（08-21 五连闪退实锤后的结论，最新 crash-1787251170）：
+        // macOS 26 上 NSHostingView 会在内容切换/SwiftUI 过渡期间经
+        // updateAnimatedWindowSize 把窗口回写成内容的过渡期理想尺寸
+        // （sizingOptions=[] 拦不住，现场窗口被写成 296×720），与布局互相
+        // 触发约束循环 → NSGenericException。因此：禁止窗口逐帧动画、
+        // 禁止 withAnimation 过渡，只用窗口 alpha 淡出 → 瞬时换尺寸+换内容 → 淡入。
         panel.backgroundColor = NSColor.clear
         panel.hasShadow = false
-        // 进入浮球模式：系统侧摆放一律钳制回可视区；系统标题栏拖拽关闭（球有自己的手势）
         panel.isBallMode = true
         panel.isMovable = false
 
-        // 重内容（记录列表/热力图等）快速退场为形变壳：窗口逐帧缩小时
-        // SwiftUI 只需重排一层圆角矩形，不再每帧重排整棵重树——流畅度关键，
-        // 也把约束数压到最低，杜绝 "Update Constraints passes 超过视图数" 闪退
-        withAnimation(.easeIn(duration: 0.1)) {
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.15
+            ctx.timingFunction = CAMediaTimingFunction(name: .easeIn)
+            panel.animator().alphaValue = 0
+        } completionHandler: { [weak self] in
+            guard let self else { return }
+            // 窗口已不可见：瞬时落位 + 换内容（无过渡 = 无过渡期尺寸回写）
+            self.panel.setFrame(targetFrame, display: false)
             self.focusProvider.mode = .floatingBall
-            self.focusProvider.isMorphing = true
+            self.focusProvider.ballPosition = targetCenter
+            self.focusProvider.ballPositionLastSet = CFAbsoluteTimeGetCurrent()
+            self.fadeWindowIn(duration: 0.18)
         }
+    }
 
-        // 窗口收缩形变与内容退场同帧启动（旧的 0.016s 延迟为等 SwiftUI 先跑
-        // 一帧的补丁，实测同帧启动即可，且避免两头动画错拍）
+    /// 窗口 alpha 淡入（纯合成器动画，不触碰布局/约束系统）
+    private func fadeWindowIn(duration: TimeInterval) {
+        panel.alphaValue = 0
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = duration
-            ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-            self.panel.animator().setFrame(targetFrame, display: true)
-        } completionHandler: {
-            // 动画完成后，使用 targetFrame（理论值）而不是 panel.frame（实际值）
-            // 因为 macOS 窗口系统可能会有微小的位置调整，导致实际值不准确
-            let targetCenter = CGPoint(x: targetFrame.midX, y: targetFrame.midY)
-
-            // 形变结束：壳淡出为浮球
-            withAnimation(.easeOut(duration: 0.15)) {
-                self.focusProvider.isMorphing = false
-            }
-
-            // 延迟检查实际位置，用于调试
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                let actualFrame = self.panel.frame
-                let actualCenter = CGPoint(x: actualFrame.midX, y: actualFrame.midY)
-
-                if abs(actualCenter.x - targetCenter.x) > 1 || abs(actualCenter.y - targetCenter.y) > 1 {
-                    print("[DEBUG] ⚠️ minimizeToBall 位置偏差！预期(使用): \(targetCenter.x), \(targetCenter.y) | 实际(忽略): \(actualCenter.x), \(actualCenter.y)")
-                }
-
-                // 使用目标位置而不是实际位置
-                self.focusProvider.ballPosition = targetCenter
-                self.focusProvider.ballPositionLastSet = CFAbsoluteTimeGetCurrent()
-            }
+            ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            panel.animator().alphaValue = 1
         }
     }
 
@@ -782,28 +765,32 @@ final class FloatingPanelController {
             PreferencesManager.shared.setWindowPosition(targetFrame)
         }
 
-        // ⚠️ 不做窗口 frame 逐帧动画：动画期间 NSHostingView 会在中间尺寸上
-        // 反复重排、甚至把窗口回写到内容理想尺寸，约束刷新次数超过视图数时
-        // 触发 NSGenericException "Update Constraints in Window pass" 闪退
-        // （crash-1787244990 / 1787248218 / 1787248582 / 1787250599 四连实锤）。
-        // 改为瞬时 setFrame 到目标尺寸 + 纯 SwiftUI 过渡（opacity+scale，
-        // transform 不触碰约束系统），窗口服务器/合成器全程零逐帧布局。
-        panel.setFrame(targetFrame, display: true)
-        panel.backgroundColor = NSColor.clear.withAlphaComponent(0.9)
-        panel.hasShadow = true
-        panel.isBallMode = false
-        panel.isMovable = !windowLocked
+        // 与 minimizeToBall 同一配方（见那边的注释）：窗口 alpha 淡出 →
+        // 不可见期间瞬时 setFrame + 换内容 + 换 chrome → alpha 淡入。
+        focusProvider.isRestoring = true
 
-        withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
-            focusProvider.mode = .expanded
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.12
+            ctx.timingFunction = CAMediaTimingFunction(name: .easeIn)
+            panel.animator().alphaValue = 0
+        } completionHandler: { [weak self] in
+            guard let self else { return }
+            // 窗口已不可见：瞬时落位 + 换内容（无过渡 = 无过渡期尺寸回写）
+            self.panel.setFrame(targetFrame, display: false)
+            self.panel.backgroundColor = NSColor.clear.withAlphaComponent(0.9)
+            self.panel.hasShadow = true
+            self.panel.isBallMode = false
+            self.panel.isMovable = !self.windowLocked
+
+            self.focusProvider.mode = .expanded
+            // 关键：始终使用原始保存的 ballCenter，保持浮球位置不变
+            self.focusProvider.ballPosition = ballCenter
+            self.focusProvider.ballPositionLastSet = CFAbsoluteTimeGetCurrent()
+            self.focusProvider.isRestoring = false
+
+            // 恢复后强制获取一次焦点，确保搜索框等组件可用
+            self.requestRegularFocus(reason: "restore")
+            self.fadeWindowIn(duration: 0.22)
         }
-
-        // 关键：始终使用原始保存的 ballCenter，保持浮球位置不变
-        focusProvider.ballPosition = ballCenter
-        focusProvider.ballPositionLastSet = CFAbsoluteTimeGetCurrent()
-        focusProvider.isRestoring = false
-
-        // 恢复后强制获取一次焦点，确保搜索框等组件可用
-        requestRegularFocus(reason: "restore")
     }
 }
