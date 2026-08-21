@@ -51,4 +51,9 @@ ASC_ISSUER_ID="..." \
 
 ## 当前本机状态
 
-本机目前已检测到 Apple Development 和 Developer ID Application，但尚未检测到 Apple Distribution、Mac Installer Distribution 或匹配的 provisioning profile。因此脚本现在会安全地在前置检查阶段停止，不会生成不可提交的假包。
+> 2026-08-20 更新，详细进度以 [app-store-checklist.md](app-store-checklist.md) 为准。
+
+- ✅ Apple Distribution（`3rd Party Mac Developer Application`）与 Mac Installer Distribution 证书均已在本机钥匙串。
+- ✅ `QuiteNote Mac App Store` provisioning profile 已安装并被脚本自动发现。
+- ✅ `QuiteNote-1.0.0-macOS.pkg` 已于 2026-08-18 成功上传 App Store Connect，Apple 处理结果 `VALID` / `APP_STORE_ELIGIBLE`，可在版本页直接选用提审。
+- ⬜ 剩余工作：商店截图、版本页元数据、隐私问卷、年龄分级、审核联系人，填完即可提交审核。
