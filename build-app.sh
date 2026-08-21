@@ -109,6 +109,10 @@ for arg in "$@"; do
             EXECUTABLE_NAME="QuiteNoteDev"
             echo "开发变体: $APP_NAME ($BUNDLE_ID)"
             ;;
+        --install)
+            INSTALL_TO_APPLICATIONS=true
+            echo "构建后同步到 /Applications 并从那里启动（登录项指向处）..."
+            ;;
         --app-store)
             APP_STORE_MODE=true
             ENTITLEMENTS_FILE="$SCRIPT_DIR/QuiteNote-AppStore.entitlements"
@@ -341,6 +345,23 @@ echo "应用位置: $APP_PATH"
 echo "open \"$APP_PATH\""
 
 echo ""
+
+# --install：同步到 /Applications（登录项指向处，日常用这份，避免重启后版本错位）
+# 原地更新内容而非删目录重建——保住 macOS TCC 权限（屏幕录制/辅助功能）
+if [ "${INSTALL_TO_APPLICATIONS:-false}" = true ] && [ "$APP_STORE_MODE" = false ] && [ "$BUNDLE_ID" = "com.quitenote.app" ]; then
+    TARGET_APP="/Applications/$APP_NAME.app"
+    echo ""
+    echo "正在同步到 $TARGET_APP ..."
+    # 优雅退出正在运行的实例（pkill 会触发「异常退出」误报日志）
+    osascript -e "tell application id \"$BUNDLE_ID\" to quit" 2>/dev/null || true
+    sleep 2
+    # 已有目录则原地更新内容（不 rm 整个包，TCC 权限跟着目录走）
+    mkdir -p "$TARGET_APP"
+    ditto "$APP_PATH" "$TARGET_APP"
+    open "$TARGET_APP"
+    echo "已同步到 /Applications 并启动（开机登录项即此路径）。"
+    exit 0
+fi
 
 # 自动重启应用（发布模式 --no-launch 下跳过）
 if [ "${NO_LAUNCH:-false}" = false ]; then
