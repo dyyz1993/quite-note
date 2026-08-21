@@ -6,6 +6,9 @@ import UniformTypeIdentifiers
 struct FloatingBallView: View {
     @ObservedObject var store: RecordStore
     @ObservedObject var focus: WindowFocusProvider
+    /// 开发变体标识（com.quitenote.app.dev）：球用黄色，与正式版（深蓝）
+    /// 同屏运行时一眼区分，避免误把测试数据写进生产库
+    private static let isDevBuild = Bundle.main.bundleIdentifier == "com.quitenote.app.dev"
     @State private var hovering = false
     @State private var pasteSuccess = false
     @State private var aiSuccess = false
@@ -163,14 +166,14 @@ struct FloatingBallView: View {
         } else if pasteSuccess || aiSuccess {
             return .themeGreen500
         } else {
-            // 用户要求：闲置时淡蓝色且带透明度
-            return Color.themeStatusIdle
+            // 开发变体：黄球上用深色图标/描边保证对比度；正式版保持淡蓝
+            return Self.isDevBuild ? .themeDeepBlue : Color.themeStatusIdle
         }
     }
 
     private var ballBackgroundColor: Color {
-        // 浮球背景色始终使用要求的深蓝色 #0D111C
-        return .themeDeepBlue
+        // 正式版深蓝 #0D111C；开发变体黄色（一眼区分 dev/生产，两者数据隔离）
+        return Self.isDevBuild ? .themeYellow500 : .themeDeepBlue
     }
 
     private var isIdle: Bool {
