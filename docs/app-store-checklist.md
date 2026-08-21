@@ -5,7 +5,10 @@
 > [app-store-release.md](app-store-release.md)，商店文案素材见
 > [app-store-metadata-draft.md](app-store-metadata-draft.md)。
 
-**最近更新：2026-08-21**
+**最近更新：2026-08-21（API 自动提交完成）**
+
+> 🚀 **2026-08-21 经 ASC API（key 4NXJ8HL7K9）自动完成**：版本页元数据（描述/关键词/推广文本/URL）、副标题+隐私政策 URL、usesIdfa=false、年龄分级问卷（全无 → 4+）、审核备注（完整权限用途口径）、3 张 2560×1600 截图上传并处理 COMPLETE（旧的 2 张 1280×800 已删除）。构建 1.0.0 已关联。审核联系人系用户此前已填（许映洲/+8613751880018）。
+> ⛔ **API key 权限止步于提审**：`appStoreVersionSubmissions` CREATE 被拒（两把 key 同角色），剩余动作：① 网页登录 ASC → QuiteNote → 版本 1.0 → 「添加以供审核」→ 提交（出口合规选"仅 Apple 系统加密→豁免"）；② 或创建 Admin 角色新 API key 走 API 提审。JWT 工具在 `/tmp/asc/api.py`（ASC_ISSUER_ID=18f47979-…）。
 
 > 📁 **提审资料总览（含电话/版权/文案定稿/问卷答案/审核备注）**：`app-store-submission/README-提交总览.md`（目录已 gitignore，不进仓库）；商店截图在 `app-store-submission/screenshots/final/`。
 
