@@ -30,7 +30,7 @@ final class KeyboardShortcutManager {
     var onOpenClipboardHistory: (() -> Void)?
 
     /// 剪贴板历史快捷键注册失败（与系统/其他应用冲突），设置页据此提示（PRD 6）
-    private(set) var clipboardShortcutConflict = false
+    static var clipboardShortcutConflict = false
     private var cachedClipboardShortcut: String = ""
     private var cachedClipboardFlags: NSEvent.ModifierFlags = []
 
@@ -63,7 +63,7 @@ final class KeyboardShortcutManager {
         
         // 缓存当前的快捷键配置并注册全局热键
         updateCachedShortcuts()
-        clipboardShortcutConflict = registerClipboardHotkey()
+        Self.clipboardShortcutConflict = !registerClipboardHotkey()
         
         // 全局粘贴事件监听（当应用没有焦点时）
         // ⚠️ 粘贴仍然使用监视器，因为我们不需要拦截它，只是感知
@@ -109,7 +109,7 @@ final class KeyboardShortcutManager {
     /// 更新快捷键缓存
     func refresh() {
         updateCachedShortcuts()
-        clipboardShortcutConflict = registerClipboardHotkey()
+        Self.clipboardShortcutConflict = !registerClipboardHotkey()
     }
 
     private var cachedShortcut: String = ""

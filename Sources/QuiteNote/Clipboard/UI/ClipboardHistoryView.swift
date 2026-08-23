@@ -115,7 +115,7 @@ struct ClipboardHistoryView: View {
             recordingStatusBadge
 
             circleButton(icon: .settings, help: "剪贴板设置") {
-                QuiteNoteNotification.post(.showSettings)
+                QuiteNoteNotification.post(.showSettings, object: nil, userInfo: ["tab": "clipboard"])
             }
             circleButton(icon: .x, help: "关闭 (Esc)") {
                 controller.hide()

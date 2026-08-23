@@ -83,6 +83,7 @@ struct SettingsOverlayView: View {
             HStack(spacing: 6) {
                 TabButtonLucide(key: "ai", label: "AI", icon: .sparkles, current: $tab)
                 TabButtonLucide(key: "history", label: "记录", icon: .database, current: $tab)
+                TabButtonLucide(key: "clipboard", label: "剪贴板", icon: .clipboardList, current: $tab)
                 TabButtonLucide(key: "bluetooth", label: "蓝牙", icon: .bluetooth, current: $tab)
                 TabButtonLucide(key: "window", label: "悬浮窗", icon: .layout, current: $tab)
                 TabButtonLucide(key: "screenshot", label: "截图", icon: .camera, current: $tab)
@@ -106,6 +107,7 @@ struct SettingsOverlayView: View {
                 switch tab {
                 case "ai": AISettingsTab(store: store, isTestingConnection: $isTestingConnection)
                 case "history": HistorySettingsTab(store: store)
+                case "clipboard": ClipboardSettingsTab()
                 case "bluetooth": BluetoothSettingsTab(bluetooth: bluetooth)
                 case "window": WindowSettingsTab()
                 case "screenshot": ScreenshotSettingsTab()
@@ -146,6 +148,13 @@ struct SettingsOverlayView: View {
                         .font(.themeCaptionSmall)
                         .foregroundColor(.themeTextTertiary)
                     Text("AI 提炼: \(store.enableAI ? "已开启" : "已关闭")")
+                        .font(.themeCaptionSmall)
+                        .foregroundColor(.themeTextTertiary)
+                } else if tab == "clipboard" {
+                    Text("存储: 本机 ClipboardHistory 库")
+                        .font(.themeCaptionSmall)
+                        .foregroundColor(.themeTextTertiary)
+                    Text("OCR: 本地 Vision · 不联网")
                         .font(.themeCaptionSmall)
                         .foregroundColor(.themeTextTertiary)
                 } else if tab == "symbols" {

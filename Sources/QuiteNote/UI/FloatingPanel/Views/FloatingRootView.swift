@@ -205,10 +205,10 @@ struct FloatingRootView: View {
                 .onEnded { _ in onInteractionChanged?(false) }
         )
         .allowsHitTesting(true)
-        .onReceive(NotificationCenter.default.publisher(for: QuiteNoteNotification.showSettings.name)) { _ in
-            // 响应显示设置界面的通知
+        .onReceive(NotificationCenter.default.publisher(for: QuiteNoteNotification.showSettings.name)) { notification in
+            // 响应显示设置界面的通知（可携带 userInfo["tab"] 直达指定标签页）
             showSettings = true
-            settingsTab = "ai"
+            settingsTab = (notification.userInfo?["tab"] as? String) ?? "ai"
         }
         .onReceive(NotificationCenter.default.publisher(for: QuiteNoteNotification.expandRecord.name)) { notification in
             // 响应展开特定记录的通知
