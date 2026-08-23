@@ -71,13 +71,11 @@ struct ClipboardHistoryView: View {
     var body: some View {
         VStack(spacing: 0) {
             if prefs.clipboardOnboarded {
-                headerView       // 紫色标题栏
-                bigSearchField   // 大搜索框（唤起即聚焦，Alfred 式）
+                bigSearchField   // 大搜索框（唤起即聚焦，尾部内联设置图标）
                 filterBar        // 轻量筛选胶囊（←→ 切换）
                 contentArea      // 白卡列表
-                shortcutFooter   // 底部快捷键提示
+                shortcutFooter   // 底部快捷键提示 + 记录状态/保留策略
             } else {
-                headerView
                 ClipboardOnboardingView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(ClipboardPalette.background)
@@ -119,90 +117,11 @@ struct ClipboardHistoryView: View {
         }
     }
 
-    // MARK: - 顶部标题栏（参考：深紫 48px，白字图标 + 状态 + 操作钮）
-
-    private var headerView: some View {
-        HStack(spacing: 10) {
-            LucideView(name: .clipboardList, size: 15, color: .white)
-            Text("剪贴板历史")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(.white)
-
-            Spacer()
-
-            recordingStatusBadge
-
-            headerButton(icon: .settings, help: "剪贴板设置") {
-                QuiteNoteNotification.post(.showSettings, object: nil, userInfo: ["tab": "clipboard"])
-            }
-            headerButton(icon: .x, help: "关闭 (Esc)") {
-                controller.hide()
-            }
-        }
-        .padding(.horizontal, 14)
-        .frame(height: 34)
-        .background(ClipboardPalette.header)
-    }
-
-    /// 记录状态：正在记录 / 已暂停 / 未启用 / 待开启（PRD 7.1）
-    private var recordingStatusBadge: some View {
-        Group {
-            if !prefs.clipboardHistoryEnabled {
-                headerPill(text: "未启用", color: .white.opacity(0.8))
-            } else if !prefs.clipboardOnboarded {
-                headerPill(text: "待开启", color: .white.opacity(0.8))
-            } else if prefs.isClipboardPaused {
-                Button {
-                    prefs.setClipboardPausedUntil(nil)
-                    showHint("已恢复记录")
-                } label: {
-                    headerPill(text: "已暂停，点击恢复", color: ClipboardPalette.statusPaused)
-                }
-                .buttonStyle(.plain)
-            } else {
-                HStack(spacing: 4) {
-                    Circle()
-                        .fill(ClipboardPalette.statusActive)
-                        .frame(width: 7, height: 7)
-                    Text("正在记录")
-                        .font(.system(size: 11))
-                        .foregroundColor(.white.opacity(0.92))
-                }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(Color.white.opacity(0.14))
-                .cornerRadius(10)
-            }
-        }
-    }
-
-    private func headerPill(text: String, color: Color) -> some View {
-        Text(text)
-            .font(.system(size: 11))
-            .foregroundColor(color)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(Color.white.opacity(0.14))
-            .cornerRadius(10)
-    }
-
-    private func headerButton(icon: IconName, help: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            LucideView(name: icon, size: 13, color: .white.opacity(0.85))
-                .frame(width: 24, height: 24)
-                .background(Color.white.opacity(0.12))
-                .clipShape(Circle())
-        }
-        .buttonStyle(.plain)
-        .pointingHandCursor()
-        .help(help)
-    }
-
-    // MARK: - 大搜索框（顶部、醒目、唤起即聚焦——用户唤起后直接打字搜索）
+    // MARK: - 大搜索框（顶部、醒目、唤起即聚焦；尾部内联设置图标——用户要求顶部极简）
 
     private var bigSearchField: some View {
         HStack(spacing: 10) {
-            LucideView(name: .search, size: 18, color: ClipboardPalette.textTertiary)
+            LucideView(name: .search, size: 17, color: ClipboardPalette.textTertiary)
             TextField("输入以搜索剪贴板内容…", text: $vm.searchText)
                 .textFieldStyle(.plain)
                 .font(.system(size: 15))
@@ -216,15 +135,27 @@ struct ClipboardHistoryView: View {
                 }
                 .buttonStyle(.plain)
             }
+            // 唯一的设置入口：内联小图标（替代整条标题栏，面板极简）
+            Button {
+                QuiteNoteNotification.post(.showSettings, object: nil, userInfo: ["tab": "clipboard"])
+            } label: {
+                LucideView(name: .settings, size: 14, color: ClipboardPalette.textTertiary)
+                    .frame(width: 24, height: 24)
+                    .background(ClipboardPalette.background)
+                    .cornerRadius(5)
+            }
+            .buttonStyle(.plain)
+            .pointingHandCursor()
+            .help("剪贴板设置")
         }
-        .padding(.horizontal, 14)
-        .frame(height: 42)
-        .background(Color.white)
-        .cornerRadius(8)
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(searchFocused ? ClipboardPalette.accent : ClipboardPalette.inputBorder, lineWidth: searchFocused ? 1.5 : 1))
         .padding(.horizontal, 12)
-        .padding(.top, 7)
-        .padding(.bottom, 4)
+        .frame(height: 46)
+        .background(Color.white)
+        .cornerRadius(9)
+        .overlay(RoundedRectangle(cornerRadius: 9).stroke(searchFocused ? ClipboardPalette.accent : ClipboardPalette.inputBorder, lineWidth: searchFocused ? 1.5 : 1))
+        .padding(.horizontal, 12)
+        .padding(.top, 12)
+        .padding(.bottom, 6)
         .background(ClipboardPalette.background)
     }
 
@@ -399,6 +330,17 @@ struct ClipboardHistoryView: View {
             Spacer()
             if !ClipboardPasteService.canSimulatePaste {
                 Text("缺辅助功能权限：粘贴降级为复制")
+                    .foregroundColor(ClipboardPalette.statusPaused)
+            } else if prefs.isClipboardPaused {
+                Button("已暂停 · 点击恢复") {
+                    prefs.setClipboardPausedUntil(nil)
+                    showHint("已恢复记录")
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 11))
+                .foregroundColor(ClipboardPalette.statusPaused)
+            } else if !prefs.clipboardHistoryEnabled {
+                Text("记录未启用")
                     .foregroundColor(ClipboardPalette.statusPaused)
             } else {
                 // 保留策略透明化：让用户知道历史会自动清理、留多久
