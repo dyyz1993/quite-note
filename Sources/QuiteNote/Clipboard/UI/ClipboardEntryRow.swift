@@ -2,10 +2,10 @@ import SwiftUI
 import AppKit
 import ImageIO
 
-/// 剪贴板条目行（紧凑单行布局，对齐 Alfred「All Snippets」密度：一屏 9~10 条）
+/// 剪贴板条目行（紧凑单行，对齐 Alfred 密度）
 ///
-/// 结构：序号 | 28px 类型图标/缩略图 | 单行内容（截断） | 右侧时间·来源小字 | 悬停操作
-/// 键盘选中态用浅紫背景+紫边框双通道表达（不依赖颜色单一通道）。
+/// 结构：图标/缩略图/favicon | 单行内容（截断） | 来源图标 | 时间 | ⌘N 直贴序号（1–9 清晰，之后淡化）
+/// 行内不放操作按钮——操作全走底部快捷键（↩ 粘贴 / ⌘S 闪记 / ⌘P 置顶 / ⌫ 删除），单击=复制。
 struct ClipboardEntryRow: View {
     let entry: ClipboardEntry
     let index: Int
@@ -21,12 +21,6 @@ struct ClipboardEntryRow: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            // ⌘N 序号（行首，紫色，仅前 9 条）
-            Text("\(index + 1)")
-                .font(.system(size: 11, weight: .medium, design: .monospaced))
-                .foregroundColor(index < 9 ? ClipboardPalette.accent : .clear)
-                .frame(width: 14)
-
             leadingVisual
 
             // 单行内容（截断；图片条目把元信息和 OCR 摘要拼进同一行）
@@ -39,27 +33,32 @@ struct ClipboardEntryRow: View {
 
             statusBadges
 
-            // 右列：固定宽度、右对齐（时间永远贴最右，各行对齐成整齐一列）
-            // 来源应用拉得到图标就显示 14px 图标，否则回退文字名
-            HStack(spacing: 5) {
-                if let icon = ClipboardSourceAppIcon.icon(bundleID: entry.sourceBundleID) {
-                    Image(nsImage: icon)
-                        .resizable()
-                        .frame(width: 14, height: 14)
-                } else if let app = entry.sourceApp {
-                    Text(app)
-                        .font(.system(size: 10.5))
-                        .foregroundColor(ClipboardPalette.textTertiary)
-                        .lineLimit(1)
-                }
-                Text(ClipboardTimeFormatter.short(entry.createdAt))
+            // 来源应用图标（拉不到回退文字）
+            if let icon = ClipboardSourceAppIcon.icon(bundleID: entry.sourceBundleID) {
+                Image(nsImage: icon)
+                    .resizable()
+                    .frame(width: 14, height: 14)
+            } else if let app = entry.sourceApp {
+                Text(app)
                     .font(.system(size: 10.5))
                     .foregroundColor(ClipboardPalette.textTertiary)
+                    .lineLimit(1)
             }
-            .frame(minWidth: 128, alignment: .trailing)
-            .fixedSize()
 
-            actionButtons
+            // 时间：固定宽度右对齐列（各行对齐成竖列）
+            Text(ClipboardTimeFormatter.short(entry.createdAt))
+                .font(.system(size: 10.5))
+                .foregroundColor(ClipboardPalette.textTertiary)
+                .frame(minWidth: 68, alignment: .trailing)
+                .fixedSize()
+
+            // ⌘N 直贴序号：1–9 清晰紫色；之后淡化（无直贴快捷键）
+            Text(index < 9 ? "⌘\(index + 1)" : "\(index + 1)")
+                .font(.system(size: 10.5, weight: .medium, design: .monospaced))
+                .foregroundColor(index < 9 ? ClipboardPalette.accent : ClipboardPalette.textTertiary)
+                .opacity(index < 9 ? 1 : 0.4)
+                .frame(minWidth: 28, alignment: .trailing)
+                .fixedSize()
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
@@ -164,37 +163,6 @@ struct ClipboardEntryRow: View {
             .padding(2)
             .background(color.opacity(0.10))
             .cornerRadius(3)
-    }
-
-    // MARK: - 右侧操作（悬停或选中时显示）
-
-    private var actionButtons: some View {
-        HStack(spacing: 2) {
-            rowButton(icon: entry.isPinned ? .pinOff : .pin,
-                      help: entry.isPinned ? "取消置顶 (⌘P)" : "置顶 (⌘P)",
-                      color: entry.isPinned ? ClipboardPalette.accent : ClipboardPalette.textSecondary,
-                      action: onPin)
-            rowButton(icon: entry.savedRecordID != nil ? .check : .save,
-                      help: entry.savedRecordID != nil ? "打开对应闪记" : "加入闪记 (⌘S)",
-                      color: entry.savedRecordID != nil ? ClipboardPalette.statusActive : ClipboardPalette.textSecondary,
-                      action: onSaveToFlash)
-            rowButton(icon: .copy, help: "复制", color: ClipboardPalette.textSecondary, action: onCopy)
-            rowButton(icon: .trash2, help: "删除", color: ClipboardPalette.textSecondary, action: onDelete)
-        }
-        .opacity(isHovering || isSelected ? 1 : 0)
-    }
-
-    private func rowButton(icon: IconName, help: String, color: Color, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            LucideView(name: icon, size: 11, color: color)
-                .frame(width: 22, height: 22)
-                .background(Color.white)
-                .cornerRadius(4)
-                .overlay(RoundedRectangle(cornerRadius: 4).stroke(ClipboardPalette.inputBorder))
-        }
-        .buttonStyle(.plain)
-        .pointingHandCursor()
-        .help(help)
     }
 
     // MARK: - 选中/悬停态（参考：白卡 / hover #f5f5f5 / 选中 #e8eaf6）
