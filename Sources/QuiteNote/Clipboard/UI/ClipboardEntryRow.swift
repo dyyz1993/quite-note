@@ -1,10 +1,9 @@
 import SwiftUI
 import AppKit
+import ImageIO
 
-/// 剪贴板条目行（PRD 7.2）
-///
-/// 结构：类型图标/缩略图 + 内容预览（时间·来源）+ 状态标记（OCR/置顶/闪记）+ 右侧操作。
-/// 键盘选中态用背景+边框双通道表达（PRD 14：不依赖颜色单独表达）。
+/// 剪贴板条目行（视觉按 Alfred「All Snippets」参考样式：白色卡片行 + 左侧类型
+/// 图标 + 主/次两级文字 + 右侧紫色序号；键盘选中态用浅紫背景+紫边框双通道表达）
 struct ClipboardEntryRow: View {
     let entry: ClipboardEntry
     let index: Int
@@ -20,54 +19,51 @@ struct ClipboardEntryRow: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            // ⌘N 序号提示（前 9 条）
-            Text("\(index + 1)")
-                .font(.themeCaptionSmall)
-                .monospaced()
-                .foregroundColor(index < 9 ? .themeTextTertiary : .clear)
-                .frame(width: 16)
-
             leadingVisual
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 3) {
                 previewText
                 HStack(spacing: 6) {
                     Text(ClipboardTimeFormatter.short(entry.createdAt))
-                        .font(.themeCaptionSmall)
-                        .foregroundColor(.themeTextTertiary)
                     if let app = entry.sourceApp {
                         Text("· \(app)")
-                            .font(.themeCaptionSmall)
-                            .foregroundColor(.themeTextTertiary)
                     }
                     statusBadges
                 }
+                .font(.system(size: 11))
+                .foregroundColor(ClipboardPalette.textTertiary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
+            // ⌘N 序号（参考图：右侧紫色数字，仅前 9 条）
+            Text("\(index + 1)")
+                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                .foregroundColor(index < 9 ? ClipboardPalette.accent : .clear)
+                .frame(width: 16)
+
             actionButtons
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 9)
         .background(rowBackground)
-        .cornerRadius(8)
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(rowBorder, lineWidth: isSelected ? 1.5 : 0))
+        .cornerRadius(4)
+        .overlay(RoundedRectangle(cornerRadius: 4).stroke(rowBorder, lineWidth: isSelected ? 1.5 : 0))
         .onHover { hovering in
             isHovering = hovering
             if hovering { onSelect() }
         }
     }
 
-    // MARK: - 左侧视觉（类型图标或缩略图，PRD 7.4：列表不加载原图）
+    // MARK: - 左侧视觉（参考图：24px 类型图标；图片用 32px 缩略图，不加载原图）
 
     @ViewBuilder
     private var leadingVisual: some View {
         if entry.type == .image {
-            ClipboardImageThumbnail(entry: entry, side: 44)
+            ClipboardImageThumbnail(entry: entry, side: 32)
         } else {
-            LucideView(name: typeIcon, size: 18, color: typeColor)
-                .frame(width: 44, height: 44)
-                .background(typeColor.opacity(0.08))
+            LucideView(name: typeIcon, size: 20, color: ClipboardPalette.typeColor(entry.type))
+                .frame(width: 32, height: 32)
+                .background(ClipboardPalette.typeColor(entry.type).opacity(0.10))
                 .cornerRadius(6)
         }
     }
@@ -81,16 +77,7 @@ struct ClipboardEntryRow: View {
         }
     }
 
-    private var typeColor: Color {
-        switch entry.type {
-        case .text: return .themeTextSecondary
-        case .link: return .themeBlue400
-        case .file: return .themePurple400
-        case .image: return .themeGreen500
-        }
-    }
-
-    // MARK: - 内容预览（PRD 7.2 示例格式）
+    // MARK: - 内容预览（主文字 14 黑 / 次文字 11 灰，参考图层级）
 
     @ViewBuilder
     private var previewText: some View {
@@ -98,110 +85,153 @@ struct ClipboardEntryRow: View {
             switch entry.type {
             case .text:
                 Text(entry.plainText ?? "")
-                    .lineLimit(2)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(ClipboardPalette.textPrimary)
+                    .lineLimit(1)
             case .link:
                 VStack(alignment: .leading, spacing: 1) {
                     Text(ClipboardTypeDetector.domain(ofURL: entry.sourceURL ?? entry.plainText ?? "") ?? "链接")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(ClipboardPalette.textPrimary)
                         .lineLimit(1)
                     if let url = entry.sourceURL ?? entry.plainText {
                         Text(url)
-                            .font(.themeCaptionSmall)
-                            .foregroundColor(.themeTextTertiary)
+                            .font(.system(size: 11))
+                            .foregroundColor(ClipboardPalette.textTertiary)
                             .lineLimit(1)
                     }
                 }
             case .file:
                 VStack(alignment: .leading, spacing: 1) {
                     Text((entry.plainText as NSString?)?.lastPathComponent ?? "文件")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(ClipboardPalette.textPrimary)
                         .lineLimit(1)
-                    if let path = entry.plainText {
-                        Text(path)
-                            .font(.themeCaptionSmall)
-                            .foregroundColor(.themeTextTertiary)
-                            .lineLimit(1)
-                    }
+                    Text(fileMetaLine)
+                        .font(.system(size: 11))
+                        .foregroundColor(ClipboardPalette.textTertiary)
+                        .lineLimit(1)
                 }
             case .image:
-                // 图片条目：OCR 文本作为预览（PRD 7.2 示例）
-                if entry.ocrStatus == .success, let ocr = entry.ocrText, !ocr.isEmpty {
-                    Text("OCR：\(ocr)")
-                        .lineLimit(2)
-                } else if let status = entry.ocrStatus {
-                    OCRStatusBadge(status: status)
-                } else {
-                    Text("图片")
-                        .foregroundColor(.themeTextTertiary)
+                // 图片条目：参考图「Image: 720x560 (6.2 MB)」风格 + OCR 文本
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(imageMetaLine)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(ClipboardPalette.textPrimary)
+                        .lineLimit(1)
+                    if entry.ocrStatus == .success, let ocr = entry.ocrText, !ocr.isEmpty {
+                        Text("OCR：\(ocr)")
+                            .font(.system(size: 11))
+                            .foregroundColor(ClipboardPalette.textTertiary)
+                            .lineLimit(1)
+                    } else if let status = entry.ocrStatus, status != .success {
+                        OCRStatusBadge(status: status)
+                    }
                 }
             }
         }
-        .font(.themeBody)
-        .foregroundColor(.themeTextPrimary)
     }
 
-    // MARK: - 状态标记（PRD 7.2：OCR 状态 / 置顶 / 已加闪记）
+    /// 图片元信息行（参考图格式：Image: 720x560 (6.2 MB)）
+    private var imageMetaLine: String {
+        var parts: [String] = ["图片"]
+        if let size = imagePixelSize {
+            parts.append("\(Int(size.width))×\(Int(size.height))")
+        }
+        if entry.byteSize > 0 {
+            parts.append("(\(ByteCountFormatter.string(fromByteCount: entry.byteSize, countStyle: .file)))")
+        }
+        return parts.joined(separator: " ")
+    }
+
+    private var imagePixelSize: CGSize? {
+        // 只读图片头部的宽高元数据（不解码像素，不加载原图）
+        guard let virtualPath = entry.assetPath,
+              let url = FileCoordinator.shared.resolveVirtualPath(virtualPath),
+              let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              let w = props[kCGImagePropertyPixelWidth] as? Int,
+              let h = props[kCGImagePropertyPixelHeight] as? Int else { return nil }
+        return CGSize(width: w, height: h)
+    }
+
+    /// 文件元信息行（大小 + 目录）
+    private var fileMetaLine: String {
+        var parts: [String] = []
+        if entry.byteSize > 0 {
+            parts.append(ByteCountFormatter.string(fromByteCount: entry.byteSize, countStyle: .file))
+        }
+        if let path = entry.plainText {
+            let dir = (path as NSString).deletingLastPathComponent
+            if !dir.isEmpty { parts.append(dir) }
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    // MARK: - 状态标记（置顶 / 已加闪记 / 含OCR）
 
     private var statusBadges: some View {
         HStack(spacing: 4) {
             if entry.isPinned {
-                miniBadge(icon: .pin, color: .themeBlue400)
+                miniBadge(icon: .pin, color: ClipboardPalette.accent)
             }
             if entry.savedRecordID != nil {
-                miniBadge(icon: .check, color: .themeGreen500)
+                miniBadge(icon: .check, color: ClipboardPalette.statusActive)
             }
             if entry.type == .image, entry.ocrStatus == .success, entry.ocrText?.isEmpty == false {
-                miniBadge(icon: .scanText, color: .themePurple400)
+                miniBadge(icon: .scanText, color: ClipboardPalette.accent)
             }
         }
     }
 
     private func miniBadge(icon: IconName, color: Color) -> some View {
         LucideView(name: icon, size: 10, color: color)
-            .padding(3)
-            .background(color.opacity(0.12))
-            .cornerRadius(4)
+            .padding(2.5)
+            .background(color.opacity(0.10))
+            .cornerRadius(3)
     }
 
-    // MARK: - 右侧操作（PRD 7.2：置顶 / 粘贴 / 删除；悬停或选中时显示）
+    // MARK: - 右侧操作（悬停或选中时显示）
 
     private var actionButtons: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 3) {
             rowButton(icon: entry.isPinned ? .pinOff : .pin,
                       help: entry.isPinned ? "取消置顶 (⌘P)" : "置顶 (⌘P)",
-                      color: entry.isPinned ? .themeBlue400 : .themeTextSecondary,
+                      color: entry.isPinned ? ClipboardPalette.accent : ClipboardPalette.textSecondary,
                       action: onPin)
-            // 加入闪记 / 打开闪记（PRD 7.2/11：已加闪记显示绿色态，点击打开）
             rowButton(icon: entry.savedRecordID != nil ? .check : .save,
                       help: entry.savedRecordID != nil ? "打开对应闪记" : "加入闪记 (⌘S)",
-                      color: entry.savedRecordID != nil ? .themeGreen500 : .themeTextSecondary,
+                      color: entry.savedRecordID != nil ? ClipboardPalette.statusActive : ClipboardPalette.textSecondary,
                       action: onSaveToFlash)
-            rowButton(icon: .copy, help: "复制", color: .themeTextSecondary, action: onCopy)
-            rowButton(icon: .trash2, help: "删除", color: .themeTextSecondary, action: onDelete)
+            rowButton(icon: .copy, help: "复制", color: ClipboardPalette.textSecondary, action: onCopy)
+            rowButton(icon: .trash2, help: "删除", color: ClipboardPalette.textSecondary, action: onDelete)
         }
-        .opacity(isHovering || isSelected ? 1 : 0.25)
+        .opacity(isHovering || isSelected ? 1 : 0)
     }
 
     private func rowButton(icon: IconName, help: String, color: Color, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            LucideView(name: icon, size: 13, color: color)
-                .frame(width: 26, height: 26)
-                .background(Color.themeHoverMedium.opacity(0.6))
-                .cornerRadius(6)
+            LucideView(name: icon, size: 12, color: color)
+                .frame(width: 24, height: 24)
+                .background(Color.white)
+                .cornerRadius(5)
+                .overlay(RoundedRectangle(cornerRadius: 5).stroke(ClipboardPalette.inputBorder))
         }
         .buttonStyle(.plain)
         .pointingHandCursor()
         .help(help)
     }
 
-    // MARK: - 选中/悬停态
+    // MARK: - 选中/悬停态（参考图：白卡 / hover #f5f5f5 / 选中 #e8eaf6）
 
     private var rowBackground: Color {
-        if isSelected { return .themeSelected }
-        if isHovering { return .themeHoverLight }
-        return .themeGray900.opacity(0.35)
+        if isSelected { return ClipboardPalette.rowSelected }
+        if isHovering { return ClipboardPalette.rowHover }
+        return ClipboardPalette.row
     }
 
     private var rowBorder: Color {
-        isSelected ? .themeBlue500 : .clear
+        isSelected ? ClipboardPalette.accent : .clear
     }
 }
 
@@ -213,24 +243,24 @@ struct OCRStatusBadge: View {
         HStack(spacing: 4) {
             switch status {
             case .waiting:
-                LucideView(name: .clock, size: 11, color: .themeTextTertiary)
+                LucideView(name: .clock, size: 10, color: ClipboardPalette.textTertiary)
                 Text("OCR 排队中")
             case .processing:
-                LucideView(name: .refreshCw, size: 11, color: .themeBlue400)
+                LucideView(name: .refreshCw, size: 10, color: ClipboardPalette.accent)
                 Text("OCR 识别中…")
             case .success:
-                LucideView(name: .check, size: 11, color: .themeGreen500)
+                LucideView(name: .check, size: 10, color: ClipboardPalette.statusActive)
                 Text("OCR 完成")
             case .failed:
-                LucideView(name: .alertTriangle, size: 11, color: .themeStatusError)
+                LucideView(name: .alertTriangle, size: 10, color: ClipboardPalette.statusError)
                 Text("OCR 失败")
             case .disabled:
-                LucideView(name: .eyeOff, size: 11, color: .themeTextTertiary)
+                LucideView(name: .eyeOff, size: 10, color: ClipboardPalette.textTertiary)
                 Text("OCR 已关闭")
             }
         }
-        .font(.themeCaptionSmall)
-        .foregroundColor(.themeTextSecondary)
+        .font(.system(size: 11))
+        .foregroundColor(ClipboardPalette.textSecondary)
     }
 }
 
@@ -249,20 +279,20 @@ struct ClipboardImageThumbnail: View {
                     .aspectRatio(contentMode: .fill)
                     .frame(width: side, height: side)
                     .clipped()
-                    .cornerRadius(6)
+                    .cornerRadius(4)
             } else {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(Color.themeGray800)
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(ClipboardPalette.background)
                     if isFileMissing {
                         VStack(spacing: 2) {
-                            LucideView(name: .circleX, size: 14, color: .themeStatusError)
+                            LucideView(name: .circleX, size: 13, color: ClipboardPalette.statusError)
                             Text("丢失")
-                                .font(.themeCaptionTiny)
-                                .foregroundColor(.themeTextTertiary)
+                                .font(.system(size: 8))
+                                .foregroundColor(ClipboardPalette.textTertiary)
                         }
                     } else {
-                        LucideView(name: .image, size: 16, color: .themeTextTertiary)
+                        LucideView(name: .image, size: 14, color: ClipboardPalette.textTertiary)
                     }
                 }
                 .frame(width: side, height: side)
@@ -299,12 +329,12 @@ struct ClipboardImagePreviewStrip: View {
     var onRetryOCR: (() -> Void)? = nil
 
     var body: some View {
-        HStack(spacing: 14) {
-            ClipboardImageThumbnail(entry: entry, side: 96)
-            VStack(alignment: .leading, spacing: 6) {
+        HStack(spacing: 12) {
+            ClipboardImageThumbnail(entry: entry, side: 64)
+            VStack(alignment: .leading, spacing: 4) {
                 Text("图片预览")
-                    .font(.themeH3)
-                    .foregroundColor(.themeTextPrimary)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(ClipboardPalette.textPrimary)
                 if entry.ocrStatus == .failed {
                     HStack(spacing: 8) {
                         OCRStatusBadge(status: .failed)
@@ -317,18 +347,18 @@ struct ClipboardImagePreviewStrip: View {
                 }
                 if entry.ocrStatus == .success, let ocr = entry.ocrText, !ocr.isEmpty {
                     Text(ocr)
-                        .font(.themeCaption)
-                        .foregroundColor(.themeTextSecondary)
-                        .lineLimit(4)
+                        .font(.system(size: 11))
+                        .foregroundColor(ClipboardPalette.textSecondary)
+                        .lineLimit(3)
                 }
                 Text("粘贴时复制原图（非 OCR 文本）")
-                    .font(.themeCaptionSmall)
-                    .foregroundColor(.themeTextTertiary)
+                    .font(.system(size: 10))
+                    .foregroundColor(ClipboardPalette.textTertiary)
             }
             Spacer()
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
     }
 }
 

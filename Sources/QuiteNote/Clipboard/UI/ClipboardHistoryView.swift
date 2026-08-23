@@ -43,7 +43,8 @@ enum ClipboardFilter: String, CaseIterable {
     }
 }
 
-/// 剪贴板历史主面板（PRD 7：搜索 + 筛选 + 列表 + 快捷键提示）
+/// 剪贴板历史主面板（视觉按用户指定的 Alfred「All Snippets」参考样式复刻：
+/// 浅色 + 紫色标题栏 + 白色卡片行 + 底部过滤输入行）
 ///
 /// 崩溃红线遵守：本窗口由 NSHostingView 承载且内容较重——内容切换一律瞬时
 /// （不用 withAnimation/transition），不持窗口 frame 做逐帧动画。
@@ -69,18 +70,19 @@ struct ClipboardHistoryView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            headerView
-            filterBar
-            divider
             if prefs.clipboardOnboarded {
-                contentArea
-                footerBar
+                headerView       // 紫色标题栏
+                filterBar        // 轻量筛选胶囊
+                contentArea      // 白卡列表
+                filterFooter     // 底部过滤输入行（参考图布局）
             } else {
+                headerView
                 ClipboardOnboardingView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(ClipboardPalette.background)
             }
         }
-        .background(Color.themeBackground)
+        .background(ClipboardPalette.background)
         .overlay(alignment: .top) {
             if let hint {
                 ClipboardHintBanner(text: hint)
@@ -109,99 +111,78 @@ struct ClipboardHistoryView: View {
         }
     }
 
-    // MARK: - 顶部（PRD 7.1：标题 / 搜索 / 记录状态 / 设置 / 关闭）
+    // MARK: - 顶部标题栏（参考：深紫 48px，白字图标 + 状态 + 操作钮）
 
     private var headerView: some View {
-        HStack(spacing: 12) {
-            LucideView(name: .clipboardList, size: 18, color: .themeBlue400)
+        HStack(spacing: 10) {
+            LucideView(name: .clipboardList, size: 18, color: .white)
             Text("剪贴板历史")
-                .font(.themeH2)
-                .foregroundColor(.themeTextPrimary)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundColor(.white)
 
-            searchField
-                .frame(maxWidth: .infinity)
+            Spacer()
 
             recordingStatusBadge
 
-            circleButton(icon: .settings, help: "剪贴板设置") {
+            headerButton(icon: .settings, help: "剪贴板设置") {
                 QuiteNoteNotification.post(.showSettings, object: nil, userInfo: ["tab": "clipboard"])
             }
-            circleButton(icon: .x, help: "关闭 (Esc)") {
+            headerButton(icon: .x, help: "关闭 (Esc)") {
                 controller.hide()
             }
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-    }
-
-    private var searchField: some View {
-        HStack(spacing: 8) {
-            LucideView(name: .search, size: 13, color: .themeTextTertiary)
-            TextField("搜索文本、链接、图片文字、来源应用…", text: $vm.searchText)
-                .textFieldStyle(.plain)
-                .font(.themeBody)
-                .foregroundColor(.themeTextPrimary)
-                .focused($searchFocused)
-            if !vm.searchText.isEmpty {
-                Button {
-                    vm.searchText = ""
-                } label: {
-                    LucideView(name: .circleX, size: 12, color: .themeTextTertiary)
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
-        .background(Color.themeInput)
-        .cornerRadius(8)
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.themeBorderSubtle))
+        .frame(height: 48)
+        .background(ClipboardPalette.header)
     }
 
     /// 记录状态：正在记录 / 已暂停 / 未启用 / 待开启（PRD 7.1）
     private var recordingStatusBadge: some View {
         Group {
             if !prefs.clipboardHistoryEnabled {
-                statusPill(text: "未启用", color: .themeTextTertiary, icon: .circleX)
+                headerPill(text: "未启用", color: .white.opacity(0.8))
             } else if !prefs.clipboardOnboarded {
-                statusPill(text: "待开启", color: .themeTextTertiary, icon: .clock)
+                headerPill(text: "待开启", color: .white.opacity(0.8))
             } else if prefs.isClipboardPaused {
                 Button {
                     prefs.setClipboardPausedUntil(nil)
                     showHint("已恢复记录")
                 } label: {
-                    HStack(spacing: 4) {
-                        LucideView(name: .play, size: 11, color: .themeYellow500)
-                        Text("已暂停，点击恢复")
-                            .font(.themeCaption)
-                            .foregroundColor(.themeYellow500)
-                    }
+                    headerPill(text: "已暂停，点击恢复", color: ClipboardPalette.statusPaused)
                 }
                 .buttonStyle(.plain)
             } else {
-                statusPill(text: "正在记录", color: .themeStatusSuccess, icon: .circle)
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(ClipboardPalette.statusActive)
+                        .frame(width: 7, height: 7)
+                    Text("正在记录")
+                        .font(.system(size: 11))
+                        .foregroundColor(.white.opacity(0.92))
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Color.white.opacity(0.14))
+                .cornerRadius(10)
             }
         }
     }
 
-    private func statusPill(text: String, color: Color, icon: IconName) -> some View {
-        HStack(spacing: 4) {
-            LucideView(name: icon, size: 10, color: color)
-            Text(text)
-                .font(.themeCaption)
-                .foregroundColor(color)
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(color.opacity(0.1))
-        .cornerRadius(10)
+    private func headerPill(text: String, color: Color) -> some View {
+        Text(text)
+            .font(.system(size: 11))
+            .foregroundColor(color)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Color.white.opacity(0.14))
+            .cornerRadius(10)
     }
 
-    private func circleButton(icon: IconName, help: String, action: @escaping () -> Void) -> some View {
+    private func headerButton(icon: IconName, help: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            LucideView(name: icon, size: 14, color: .themeTextSecondary)
+            LucideView(name: icon, size: 14, color: .white.opacity(0.85))
                 .frame(width: 28, height: 28)
-                .background(Color.themeHoverLight)
+                .background(Color.white.opacity(0.12))
                 .clipShape(Circle())
         }
         .buttonStyle(.plain)
@@ -209,7 +190,7 @@ struct ClipboardHistoryView: View {
         .help(help)
     }
 
-    // MARK: - 筛选栏
+    // MARK: - 筛选栏（浅色小胶囊，浅紫选中）
 
     private var filterBar: some View {
         HStack(spacing: 6) {
@@ -219,33 +200,27 @@ struct ClipboardHistoryView: View {
                     vm.filter = item
                 } label: {
                     HStack(spacing: 4) {
-                        LucideView(name: item.icon, size: 11, color: isSelected ? .white : .themeTextSecondary)
+                        LucideView(name: item.icon, size: 11, color: isSelected ? ClipboardPalette.accent : ClipboardPalette.textTertiary)
                         Text(item.label)
-                            .font(.themeCaption)
+                            .font(.system(size: 11))
                     }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .foregroundColor(isSelected ? .white : .themeTextSecondary)
-                    .background(isSelected ? Color.themeSelected : Color.themeHoverLight)
-                    .cornerRadius(12)
-                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(isSelected ? Color.clear : Color.themeBorderSubtle))
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 4)
+                    .foregroundColor(isSelected ? ClipboardPalette.accent : ClipboardPalette.textSecondary)
+                    .background(isSelected ? ClipboardPalette.rowSelected : Color.white)
+                    .cornerRadius(11)
+                    .overlay(RoundedRectangle(cornerRadius: 11).stroke(isSelected ? ClipboardPalette.accent.opacity(0.35) : ClipboardPalette.inputBorder))
                 }
                 .buttonStyle(.plain)
             }
             Spacer()
             Text("\(visibleEntries.count) 条")
-                .font(.themeCaptionSmall)
-                .foregroundColor(.themeTextTertiary)
+                .font(.system(size: 11))
+                .foregroundColor(ClipboardPalette.textTertiary)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .background(Color.themeGray900.opacity(0.5))
-    }
-
-    private var divider: some View {
-        Rectangle()
-            .fill(Color.themeBorder)
-            .frame(height: 1)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+        .background(ClipboardPalette.background)
     }
 
     // MARK: - 内容区
@@ -264,8 +239,10 @@ struct ClipboardHistoryView: View {
                             showHint("OCR 重试中…")
                         }
                     }
-                    .background(Color.themeGray900.opacity(0.5))
-                    .overlay(alignment: .top) { divider }
+                    .background(Color.white)
+                    .overlay(alignment: .top) {
+                        Rectangle().fill(ClipboardPalette.inputBorder).frame(height: 1)
+                    }
                 }
             }
         }
@@ -275,7 +252,7 @@ struct ClipboardHistoryView: View {
     private var entryList: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(spacing: 4) {
+                LazyVStack(spacing: 8) {
                     ForEach(Array(visibleEntries.enumerated()), id: \.element.id) { index, entry in
                         ClipboardEntryRow(
                             entry: entry,
@@ -315,57 +292,66 @@ struct ClipboardHistoryView: View {
     private var emptyStateView: some View {
         VStack(spacing: 12) {
             if !vm.debouncedQuery.isEmpty {
-                LucideView(name: .search, size: 36, color: .themeTextTertiary)
+                LucideView(name: .search, size: 34, color: ClipboardPalette.textTertiary)
                 Text("没有匹配「\(vm.debouncedQuery)」的结果")
-                    .font(.themeBody)
-                    .foregroundColor(.themeTextSecondary)
+                    .font(.system(size: 13))
+                    .foregroundColor(ClipboardPalette.textSecondary)
             } else if prefs.clipboardHistoryEnabled && prefs.isClipboardPaused {
-                LucideView(name: .pause, size: 36, color: .themeYellow500)
+                LucideView(name: .pause, size: 34, color: ClipboardPalette.statusPaused)
                 Text("剪贴板记录已暂停")
-                    .font(.themeBody)
-                    .foregroundColor(.themeTextSecondary)
+                    .font(.system(size: 13))
+                    .foregroundColor(ClipboardPalette.textSecondary)
                 Button("恢复记录") { prefs.setClipboardPausedUntil(nil) }
                     .buttonStyle(.borderedProminent)
             } else if !ClipboardPasteService.canSimulatePaste {
-                LucideView(name: .keyboard, size: 36, color: .themeTextTertiary)
+                LucideView(name: .keyboard, size: 34, color: ClipboardPalette.textTertiary)
                 Text("没有历史记录")
-                    .font(.themeBody)
-                    .foregroundColor(.themeTextSecondary)
+                    .font(.system(size: 13))
+                    .foregroundColor(ClipboardPalette.textSecondary)
                 ClipboardPermissionHint()
             } else {
-                LucideView(name: .clipboard, size: 36, color: .themeTextTertiary)
+                LucideView(name: .clipboard, size: 34, color: ClipboardPalette.textTertiary)
                 Text("没有历史记录")
-                    .font(.themeBody)
-                    .foregroundColor(.themeTextSecondary)
+                    .font(.system(size: 13))
+                    .foregroundColor(ClipboardPalette.textSecondary)
                 Text("复制的内容会自动出现在这里")
-                    .font(.themeCaption)
-                    .foregroundColor(.themeTextTertiary)
+                    .font(.system(size: 11))
+                    .foregroundColor(ClipboardPalette.textTertiary)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    // MARK: - 底部快捷键提示（PRD 7.3）
+    // MARK: - 底部过滤输入行（参考图：搜索在底部，右侧快捷键提示）
 
-    private var footerBar: some View {
-        HStack(spacing: 16) {
-            Text("↑↓ 选择")
-            Text("Return 粘贴")
-            Text("⌘1–9 直接粘贴")
-            Text("⌘S 加入闪记")
-            Text("⌘P 置顶")
-            Text("Esc 关闭")
-            Spacer()
-            if !ClipboardPasteService.canSimulatePaste {
-                Text("缺少辅助功能权限：粘贴将降级为复制")
-                    .foregroundColor(.themeYellow500)
+    private var filterFooter: some View {
+        HStack(spacing: 8) {
+            LucideView(name: .search, size: 13, color: ClipboardPalette.textTertiary)
+            TextField("输入以过滤剪贴板内容…", text: $vm.searchText)
+                .textFieldStyle(.plain)
+                .font(.system(size: 12))
+                .foregroundColor(ClipboardPalette.textPrimary)
+                .focused($searchFocused)
+            if !vm.searchText.isEmpty {
+                Button {
+                    vm.searchText = ""
+                } label: {
+                    LucideView(name: .circleX, size: 11, color: ClipboardPalette.textTertiary)
+                }
+                .buttonStyle(.plain)
             }
+            Rectangle().fill(ClipboardPalette.inputBorder).frame(width: 1, height: 14)
+            Text("↩ 粘贴 · ⌘1–9 直贴 · Esc 关闭")
+                .font(.system(size: 11))
+                .foregroundColor(ClipboardPalette.textTertiary)
+                .fixedSize()
         }
-        .font(.themeCaptionSmall)
-        .foregroundColor(.themeTextTertiary)
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(Color.themeGray900.opacity(0.6))
+        .background(Color.white)
+        .overlay(alignment: .top) {
+            Rectangle().fill(ClipboardPalette.inputBorder).frame(height: 1)
+        }
     }
 
     // MARK: - 行为
@@ -460,18 +446,18 @@ struct ClipboardHintBanner: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            LucideView(name: .alertTriangle, size: 12, color: .themeYellow500)
+            LucideView(name: .alertTriangle, size: 12, color: ClipboardPalette.statusPaused)
             Text(text)
-                .font(.themeCaption)
-                .foregroundColor(.themeTextPrimary)
+                .font(.system(size: 12))
+                .foregroundColor(ClipboardPalette.textPrimary)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 7)
-        .background(Color.themeGray800)
+        .background(Color.white)
         .cornerRadius(8)
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.themeBorder))
-        .shadow(color: Color.themeShadowMedium, radius: 8, y: 4)
-        .padding(.top, 52)
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(ClipboardPalette.inputBorder))
+        .shadow(color: Color.black.opacity(0.12), radius: 8, y: 4)
+        .padding(.top, 56)
     }
 }
 
@@ -480,8 +466,8 @@ struct ClipboardPermissionHint: View {
     var body: some View {
         VStack(spacing: 6) {
             Text("未检测到辅助功能权限")
-                .font(.themeCaption)
-                .foregroundColor(.themeYellow500)
+                .font(.system(size: 12))
+                .foregroundColor(ClipboardPalette.statusPaused)
             Button("打开系统设置授权") {
                 if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
                     NSWorkspace.shared.open(url)
@@ -498,14 +484,14 @@ struct ClipboardOnboardingView: View {
     @ObservedObject private var prefs = PreferencesManager.shared
 
     var body: some View {
-        VStack(spacing: 20) {
-            LucideView(name: .clipboardList, size: 44, color: .themeBlue400)
+        VStack(spacing: 18) {
+            LucideView(name: .clipboardList, size: 40, color: ClipboardPalette.accent)
             Text("开启剪贴板历史")
-                .font(.themeH1)
-                .foregroundColor(.themeTextPrimary)
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundColor(ClipboardPalette.textPrimary)
             Text("复制过的文本、链接、图片和文件会自动保存在这里，\n随时用 \(shortcutLabel) 找回和快速粘贴。")
-                .font(.themeBody)
-                .foregroundColor(.themeTextSecondary)
+                .font(.system(size: 13))
+                .foregroundColor(ClipboardPalette.textSecondary)
                 .multilineTextAlignment(.center)
                 .lineSpacing(4)
 
@@ -517,9 +503,9 @@ struct ClipboardOnboardingView: View {
                 privacyRow(icon: .timer, text: "历史默认保留 30 天 / 500 条，置顶条目不清理")
             }
             .padding(14)
-            .background(Color.themeCard)
-            .cornerRadius(10)
-            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.themeBorderSubtle))
+            .background(Color.white)
+            .cornerRadius(8)
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(ClipboardPalette.inputBorder))
 
             HStack(spacing: 12) {
                 Button("暂不启用") {
@@ -543,20 +529,20 @@ struct ClipboardOnboardingView: View {
                 .controlSize(.large)
             }
 
-            Text("已启用本功能的老用户升级后也会看到此说明；可随时在 设置 → 剪贴板 中调整或关闭")
-                .font(.themeCaptionSmall)
-                .foregroundColor(.themeTextTertiary)
+            Text("可随时在 设置 → 剪贴板 中调整或关闭")
+                .font(.system(size: 11))
+                .foregroundColor(ClipboardPalette.textTertiary)
         }
-        .padding(32)
+        .padding(28)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func privacyRow(icon: IconName, text: String) -> some View {
         HStack(spacing: 8) {
-            LucideView(name: icon, size: 13, color: .themeBlue400)
+            LucideView(name: icon, size: 13, color: ClipboardPalette.accent)
             Text(text)
-                .font(.themeCaption)
-                .foregroundColor(.themeTextSecondary)
+                .font(.system(size: 12))
+                .foregroundColor(ClipboardPalette.textSecondary)
         }
     }
 

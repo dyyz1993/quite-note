@@ -69,7 +69,8 @@ final class ClipboardHistoryPanelController {
     private func ensurePanel() -> ClipboardHistoryPanel {
         if let panel { return panel }
 
-        let rect = NSRect(x: 0, y: 0, width: 720, height: 560)
+        // 尺寸/外观按用户指定的 Alfred「All Snippets」参考样式复刻（浅色主题，紧凑 3:2 比例）
+        let rect = NSRect(x: 0, y: 0, width: 640, height: 440)
         let panel = ClipboardHistoryPanel(contentRect: rect, styleMask: [.titled, .fullSizeContentView], backing: .buffered, defer: false)
         panel.level = .floating
         panel.isFloatingPanel = true
@@ -83,10 +84,10 @@ final class ClipboardHistoryPanelController {
         panel.isMovableByWindowBackground = true
         panel.animationBehavior = .utilityWindow
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        panel.appearance = NSAppearance(named: .darkAqua) // UI 规范：强制深色外观
-        panel.backgroundColor = NSColor(calibratedWhite: 0.12, alpha: 1.0)
-        panel.minSize = NSSize(width: 560, height: 420)
-        panel.maxSize = NSSize(width: 980, height: 800)
+        panel.appearance = NSAppearance(named: .aqua)
+        panel.backgroundColor = NSColor(red: 0.941, green: 0.949, blue: 0.961, alpha: 1.0) // #f0f2f5
+        panel.minSize = NSSize(width: 520, height: 360)
+        panel.maxSize = NSSize(width: 860, height: 720)
 
         // 崩溃红线：NSHostingView 禁止反向驱动窗口尺寸
         let hosting = NSHostingView(rootView: ClipboardHistoryView(controller: self))
