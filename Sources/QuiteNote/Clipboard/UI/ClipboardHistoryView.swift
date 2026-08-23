@@ -309,7 +309,12 @@ struct ClipboardHistoryView: View {
                         .id(entry.id)
                         .contentShape(Rectangle())
                         .onTapGesture(count: 2) { paste(entry) }
-                        .onTapGesture { vm.selectedIndex = index }
+                        .onTapGesture {
+                            // 单击 = 选中并复制（用户约定：点击默认复制，回车/双击才粘贴）
+                            vm.selectedIndex = index
+                            ClipboardPasteService.shared.copy(entry)
+                            showHint("已复制到剪贴板")
+                        }
                     }
                 }
                 .padding(.horizontal, 10)
@@ -318,6 +323,18 @@ struct ClipboardHistoryView: View {
             .onChange(of: vm.selectedIndex) { newValue in
                 guard visibleEntries.indices.contains(newValue) else { return }
                 proxy.scrollTo(visibleEntries[newValue].id, anchor: .center)
+            }
+            // ↑↓ 的 SwiftUI 层兜底：焦点在搜索框且输入法/field editor 吞掉方向键时，
+            // moveCommand 仍会冒泡到这里（NSEvent monitor 与此双路径，不重复触发）
+            .onMoveCommand { direction in
+                switch direction {
+                case .up:
+                    vm.handle(.moveUp, entries: visibleEntries) { paste($0) }
+                case .down:
+                    vm.handle(.moveDown, entries: visibleEntries) { paste($0) }
+                default:
+                    break
+                }
             }
         }
     }
