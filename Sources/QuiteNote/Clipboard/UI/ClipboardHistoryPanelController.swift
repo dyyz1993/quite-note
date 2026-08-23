@@ -14,6 +14,7 @@ enum ClipboardPanelKeyAction {
     case togglePin       // ⌘P
     case deleteSelected
     case focusSearch     // ⌘F
+    case escape          // Esc：有搜索词先清空，否则关闭面板
 }
 
 /// 剪贴板历史快捷面板控制器（PRD 7.1：720×560，打开后搜索自动聚焦）
@@ -147,6 +148,7 @@ final class ClipboardHistoryPanelController {
             case 124: return .switchFilterRight // →
             case 36, 76: return .pasteSelected // Return / 小键盘 Enter
             case 117: return .deleteSelected // fn+Delete（向前删除）
+            case 53: return .escape         // Esc（焦点在搜索框时 field editor 会吞 cancelOperation，这里直接拦）
             default: break
             }
         }

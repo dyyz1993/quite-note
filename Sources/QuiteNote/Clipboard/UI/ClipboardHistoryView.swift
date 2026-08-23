@@ -97,6 +97,13 @@ struct ClipboardHistoryView: View {
                     if let entry = selectedEntry { saveToFlash(entry) }
                 case .focusSearch:
                     searchFocused = true
+                case .escape:
+                    // Alfred 式：有搜索词先清空，再按才关闭（快速退出）
+                    if !vm.searchText.isEmpty || vm.filter != .all {
+                        vm.resetInput()
+                    } else {
+                        controller.hide()
+                    }
                 default:
                     vm.handle(action, entries: visibleEntries) { paste($0) }
                 }
@@ -484,7 +491,7 @@ extension ClipboardHistoryViewModel {
                 ClipboardHistoryStore.shared.delete(id: entry.id)
                 if selectedIndex >= entries.count - 1 { selectedIndex = max(0, entries.count - 2) }
             }
-        case .saveToFlash, .focusSearch:
+        case .saveToFlash, .focusSearch, .escape:
             break // 视图层处理
         }
     }
