@@ -39,12 +39,25 @@ struct ClipboardEntryRow: View {
 
             statusBadges
 
-            // 右侧元信息：时间 · 来源（灰色小字，一行）
-            Text(metaLine)
-                .font(.system(size: 10.5))
-                .foregroundColor(ClipboardPalette.textTertiary)
-                .lineLimit(1)
-                .fixedSize()
+            // 右列：固定宽度、右对齐（时间永远贴最右，各行对齐成整齐一列）
+            // 来源应用拉得到图标就显示 14px 图标，否则回退文字名
+            HStack(spacing: 5) {
+                if let icon = ClipboardSourceAppIcon.icon(bundleID: entry.sourceBundleID) {
+                    Image(nsImage: icon)
+                        .resizable()
+                        .frame(width: 14, height: 14)
+                } else if let app = entry.sourceApp {
+                    Text(app)
+                        .font(.system(size: 10.5))
+                        .foregroundColor(ClipboardPalette.textTertiary)
+                        .lineLimit(1)
+                }
+                Text(ClipboardTimeFormatter.short(entry.createdAt))
+                    .font(.system(size: 10.5))
+                    .foregroundColor(ClipboardPalette.textTertiary)
+            }
+            .frame(minWidth: 128, alignment: .trailing)
+            .fixedSize()
 
             actionButtons
         }
@@ -90,14 +103,6 @@ struct ClipboardEntryRow: View {
             parts.append("(\(ByteCountFormatter.string(fromByteCount: entry.byteSize, countStyle: .file)))")
         }
         return parts.joined(separator: " ")
-    }
-
-    private var metaLine: String {
-        var parts = [ClipboardTimeFormatter.short(entry.createdAt)]
-        if let app = entry.sourceApp {
-            parts.append(app)
-        }
-        return parts.joined(separator: " · ")
     }
 
     // MARK: - 左侧视觉（28px：类型图标 / 图片缩略图 / 站点 favicon）
@@ -202,6 +207,21 @@ struct ClipboardEntryRow: View {
 
     private var rowBorder: Color {
         isSelected ? ClipboardPalette.accent : .clear
+    }
+}
+
+/// 来源应用图标（按 bundleID 经 NSWorkspace 解析 app 路径取真实图标，带缓存）
+enum ClipboardSourceAppIcon {
+    private static var cache: [String: NSImage?] = [:]
+
+    static func icon(bundleID: String?) -> NSImage? {
+        guard let bundleID, !bundleID.isEmpty else { return nil }
+        if let hit = cache[bundleID] { return hit }
+        let resolved: NSImage? = NSWorkspace.shared
+            .urlForApplication(withBundleIdentifier: bundleID)
+            .map { NSWorkspace.shared.icon(forFile: $0.path) }
+        cache[bundleID] = resolved
+        return resolved
     }
 }
 
