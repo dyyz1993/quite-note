@@ -230,6 +230,7 @@ struct ClipboardHistoryView: View {
                         ClipboardEntryRow(
                             entry: entry,
                             index: index,
+                            pageSlot: vm.displayNumber(forIndex: index),
                             isSelected: index == vm.selectedIndex
                         ) {
                             vm.selectedIndex = index
@@ -261,10 +262,15 @@ struct ClipboardHistoryView: View {
             }
             .coordinateSpace(name: "clipScroll")
             .onChange(of: vm.selectedIndex, perform: { newValue in
-                // anchor: nil = 最小滚动量让选中行可见：已可见则不动，移出视口则滚回。
-                // （自定义 GeometryReader 跟踪方案已废弃：滚动不触发行内 onChange，数据必过期）
                 guard visibleEntries.indices.contains(newValue) else { return }
-                proxy.scrollTo(visibleEntries[newValue].id, anchor: nil)
+                // 分页模型：跨页时翻页（页首对齐视口顶），页内则最小滚动保证选中可见
+                let oldAnchor = vm.pageAnchor
+                vm.normalizePage()
+                if vm.pageAnchor != oldAnchor {
+                    proxy.scrollTo(visibleEntries[vm.pageAnchor].id, anchor: .top)
+                } else {
+                    proxy.scrollTo(visibleEntries[newValue].id, anchor: nil)
+                }
             })
             // ↑↓ 的 SwiftUI 层兜底：焦点在搜索框且输入法/field editor 吞掉方向键时，
             // moveCommand 仍会冒泡到这里（NSEvent monitor 与此双路径，不重复触发）
@@ -437,7 +443,9 @@ extension ClipboardHistoryViewModel {
         case .pasteSelected:
             if entries.indices.contains(selectedIndex) { paste(entries[selectedIndex]) }
         case .pasteIndex(let n):
-            if entries.indices.contains(n - 1) { paste(entries[n - 1]) }
+            // ⌘N 作用于当前页的第 N 条（Alfred 分页模型：序号锚定视口）
+            let idx = dataIndex(forCommandDigit: n)
+            if entries.indices.contains(idx) { paste(entries[idx]) }
         case .togglePin:
             if entries.indices.contains(selectedIndex) {
                 ClipboardHistoryStore.shared.togglePin(id: entries[selectedIndex].id)

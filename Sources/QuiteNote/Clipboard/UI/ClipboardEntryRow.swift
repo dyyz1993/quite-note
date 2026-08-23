@@ -9,6 +9,8 @@ import ImageIO
 struct ClipboardEntryRow: View {
     let entry: ClipboardEntry
     let index: Int
+    /// 页内序号（1–9，Alfred 分页模型：⌘1 永远是当前视口顶行）；nil = 页外淡化
+    let pageSlot: Int?
     let isSelected: Bool
     let onSelect: () -> Void
     let onPaste: () -> Void
@@ -52,18 +54,24 @@ struct ClipboardEntryRow: View {
                 .frame(minWidth: 68, alignment: .trailing)
                 .fixedSize()
 
-            // 尾标：选中行显示 ⏎（回车粘贴），其余显示 ⌘N（1–9 清晰，之后淡化）
+            // 尾标：选中行显示 ⏎（回车粘贴）；未选中显示 ⌘N（页内 1–9 清晰，页外淡化）
             if isSelected {
                 Text("⏎")
                     .font(.system(size: 12, weight: .medium, design: .monospaced))
                     .foregroundColor(.white)
                     .frame(minWidth: 28, alignment: .trailing)
                     .fixedSize()
-            } else {
-                Text(index < 9 ? "⌘\(index + 1)" : "\(index + 1)")
+            } else if let slot = pageSlot {
+                Text("⌘\(slot)")
                     .font(.system(size: 10.5, weight: .medium, design: .monospaced))
-                    .foregroundColor(index < 9 ? ClipboardPalette.accent : ClipboardPalette.textTertiary)
-                    .opacity(index < 9 ? 1 : 0.4)
+                    .foregroundColor(ClipboardPalette.accent)
+                    .frame(minWidth: 28, alignment: .trailing)
+                    .fixedSize()
+            } else {
+                Text("\(index + 1)")
+                    .font(.system(size: 10.5, weight: .medium, design: .monospaced))
+                    .foregroundColor(ClipboardPalette.textTertiary)
+                    .opacity(0.4)
                     .frame(minWidth: 28, alignment: .trailing)
                     .fixedSize()
             }
