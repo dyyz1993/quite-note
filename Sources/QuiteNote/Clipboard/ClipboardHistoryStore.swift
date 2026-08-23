@@ -18,6 +18,8 @@ final class ClipboardHistoryStore: ObservableObject {
     private let persistence: ClipboardHistoryPersistence
     /// 防止图片文件删除与批量清理重入
     private var isApplyingRetention = false
+    /// 周期自动清理（每 6 小时；捕获/启动时也会即时触发）
+    private var retentionTimer: Timer?
 
     init(persistence: ClipboardHistoryPersistence = .shared) {
         self.persistence = persistence
@@ -29,6 +31,19 @@ final class ClipboardHistoryStore: ObservableObject {
         guard !isLoaded else { return }
         isLoaded = true
         reload()
+        applyRetentionIfNeeded()
+        startRetentionTimer()
+    }
+
+    /// 定期清理：应用长时间运行且用户一直没复制时，过期条目也能被清掉
+    private func startRetentionTimer() {
+        guard retentionTimer == nil else { return }
+        let t = Timer(timeInterval: 6 * 3600, target: self, selector: #selector(retentionTick), userInfo: nil, repeats: true)
+        RunLoop.main.add(t, forMode: .common)
+        retentionTimer = t
+    }
+
+    @objc private func retentionTick() {
         applyRetentionIfNeeded()
     }
 

@@ -417,7 +417,7 @@ struct ClipboardImagePreviewStrip: View {
     }
 }
 
-/// 时间展示：今天 HH:mm / 昨天 HH:mm / MM-dd（与 PRD 7.2 示例一致）
+/// 时间展示：刚刚 / N 分钟前 / 今天 HH:mm / 昨天 HH:mm / N 天前（7 天内）/ yyyy-MM-dd
 enum ClipboardTimeFormatter {
     private static let timeFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -429,15 +429,32 @@ enum ClipboardTimeFormatter {
         f.dateFormat = "MM-dd"
         return f
     }()
+    private static let fullDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
 
     static func short(_ date: Date) -> String {
         let calendar = Calendar.current
         if calendar.isDateInToday(date) {
+            let minutes = Int(-date.timeIntervalSinceNow / 60)
+            if minutes < 1 { return "刚刚" }
+            if minutes < 60 { return "\(minutes) 分钟前" }
             return "今天 \(timeFormatter.string(from: date))"
         }
         if calendar.isDateInYesterday(date) {
             return "昨天 \(timeFormatter.string(from: date))"
         }
-        return dateFormatter.string(from: date)
+        // 7 天内显示「N 天前」（用户要求：右侧能看出多久之前复制的）
+        let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: date),
+                                           to: calendar.startOfDay(for: Date())).day ?? 0
+        if (2...7).contains(days) {
+            return "\(days) 天前"
+        }
+        if calendar.isDate(date, equalTo: Date(), toGranularity: .year) {
+            return dateFormatter.string(from: date)
+        }
+        return fullDateFormatter.string(from: date)
     }
 }

@@ -395,6 +395,10 @@ struct ClipboardHistoryView: View {
             if !ClipboardPasteService.canSimulatePaste {
                 Text("缺辅助功能权限：粘贴降级为复制")
                     .foregroundColor(ClipboardPalette.statusPaused)
+            } else {
+                // 保留策略透明化：让用户知道历史会自动清理、留多久
+                Text("已记录 \(store.entries.count) 条 · 自动保留\(retentionLabel)")
+                    .foregroundColor(ClipboardPalette.textTertiary)
             }
         }
         .font(.system(size: 11))
@@ -411,6 +415,13 @@ struct ClipboardHistoryView: View {
 
     private var selectedEntry: ClipboardEntry? {
         visibleEntries.indices.contains(vm.selectedIndex) ? visibleEntries[vm.selectedIndex] : nil
+    }
+
+    /// 保留策略文案（footer 右侧）：30 天 / 500 条 / 永不过期
+    private var retentionLabel: String {
+        let prefs = PreferencesManager.shared
+        let days = prefs.clipboardRetentionDays > 0 ? "\(prefs.clipboardRetentionDays) 天" : "永久"
+        return " \(days)·上限 \(prefs.clipboardMaxEntries) 条"
     }
 
     private func paste(_ entry: ClipboardEntry) {
