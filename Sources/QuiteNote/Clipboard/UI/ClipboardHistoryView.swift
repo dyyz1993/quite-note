@@ -245,6 +245,8 @@ struct ClipboardHistoryView: View {
                             saveToFlash(entry)
                         } onDelete: {
                             deleteAt(index)
+                        } onFrameChange: { minY, maxY in
+                            vm.updateRowFrame(index: index, minY: minY, maxY: maxY)
                         }
                         .id(entry.id)
                         .contentShape(Rectangle())
@@ -261,13 +263,17 @@ struct ClipboardHistoryView: View {
                 .padding(.vertical, 5)
             }
             .coordinateSpace(name: "clipScroll")
+            .background(
+                // 视口高度（ScrollView 可视区域）
+                GeometryReader { geo in
+                    Color.clear
+                        .onAppear { vm.updateViewportHeight(geo.size.height) }
+                        .onChange(of: geo.size.height) { vm.updateViewportHeight($0) }
+                }
+            )
             .onChange(of: vm.selectedIndex, perform: { newValue in
-                // 统一最小滚动（anchor nil）：选中行移出视口才滚、自然贴边缘停住，
-                // 到底后再按 ↓ 保持停在最后一条（handle 已 clamp），不回跳。
-                // 跨页时序号照常重编（normalizePage）但不强制页首对齐——
-                // 一屏可见行数(~12) > 页大小(9)，页内 ⌘1–⌘9 始终全在视口里。
+                // 最小滚动保证选中行可见；序号与选中无关（视口锚定，见 ViewModel）
                 guard visibleEntries.indices.contains(newValue) else { return }
-                vm.normalizePage()
                 proxy.scrollTo(visibleEntries[newValue].id, anchor: nil)
             })
             // ↑↓ 的 SwiftUI 层兜底：焦点在搜索框且输入法/field editor 吞掉方向键时，

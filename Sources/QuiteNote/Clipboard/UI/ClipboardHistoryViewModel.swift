@@ -22,7 +22,7 @@ final class ClipboardHistoryViewModel: ObservableObject {
     @Published var filter: ClipboardFilter = .all {
         didSet {
             selectedIndex = 0
-            pageAnchor = 0
+            resetViewport()
         }
     }
     @Published var selectedIndex = 0
@@ -45,7 +45,7 @@ final class ClipboardHistoryViewModel: ObservableObject {
         debouncedQuery = ""
         filter = .all
         selectedIndex = 0
-        pageAnchor = 0
+        resetViewport()
     }
 
     private func scheduleSearchDebounce() {
@@ -54,33 +54,62 @@ final class ClipboardHistoryViewModel: ObservableObject {
         let item = DispatchWorkItem { [weak self] in
             self?.debouncedQuery = text
             self?.selectedIndex = 0
-            self?.pageAnchor = 0
+            self?.resetViewport()
         }
         workItem = item
         DispatchQueue.main.asyncAfter(deadline: .now() + debounceInterval, execute: item)
     }
 
-    // MARK: - 分页序号模型（Alfred 式：⌘1–⌘9 永远锚定当前视口的前 9 行）
+    // MARK: - 视口锚定序号（用户模型）：⌘1 永远是视口最顶行，与选中态无关
+    //
+    // 滚动（滚轮/键盘引发的滚动都一样）时序号跟随视口：新顶上来的行继承 ⌘1，
+    // ⌘1–⌘9 永远在可视范围内、永远可直接粘贴当前看到的前 9 条。
 
     /// 每页行数 = ⌘N 快捷键数
     static let pageSize = 9
-    /// 当前页首的数据索引（序号 1 = visibleEntries[pageAnchor]）
-    @Published var pageAnchor = 0
+    /// 当前视口顶部第一个可见行的数据索引（序号 1 对应它）
+    @Published private(set) var viewportTopIndex = 0
+    /// 各行在视口坐标里的位置（index → (minY, maxY)，由行上报）
+    private var rowFrames: [Int: (minY: CGFloat, maxY: CGFloat)] = [:]
+    private var viewportHeight: CGFloat = 0
 
-    /// 选中/搜索/筛选变化后归一化页：跨页时更新 pageAnchor（视图监听后 scrollTo 翻页）
-    func normalizePage() {
-        let anchor = max(0, selectedIndex / Self.pageSize * Self.pageSize)
-        if anchor != pageAnchor { pageAnchor = anchor }
+    /// 行位置上报（onAppear + onChange 双通道；滚动会更新 GeometryReader 读数）
+    func updateRowFrame(index: Int, minY: CGFloat, maxY: CGFloat) {
+        rowFrames[index] = (minY, maxY)
+        recomputeTopIndex()
     }
 
-    /// ⌘N → 数据索引（页内第 N 条）
+    func updateViewportHeight(_ height: CGFloat) {
+        viewportHeight = height
+        recomputeTopIndex()
+    }
+
+    /// 顶行 = minY ≥ -15（容差）中最靠上的可见行
+    private func recomputeTopIndex() {
+        guard !rowFrames.isEmpty else { return }
+        let top = rowFrames
+            .filter { $0.value.minY > -15 && $0.value.maxY > 0 }
+            .min { $0.key < $1.key }?
+            .key ?? viewportTopIndex
+        if top != viewportTopIndex {
+            viewportTopIndex = top
+        }
+    }
+
+    /// 视口重置（面板重开/搜索/筛选变化后视口回顶）
+    func resetViewport() {
+        rowFrames.removeAll()
+        viewportTopIndex = 0
+    }
+
+    /// ⌘N → 数据索引（视口顶 + N - 1）
     func dataIndex(forCommandDigit digit: Int) -> Int {
-        pageAnchor + digit - 1
+        viewportTopIndex + digit - 1
     }
 
-    /// 行显示序号：页内 1–9 返回 n；否则 nil（调用方淡化显示数据序号）
+    /// 行显示序号：视口内第 1–9 个返回 n；第 10 个及以后（一屏 >9 行时）返回 nil（淡化）
     func displayNumber(forIndex index: Int) -> Int? {
-        let n = index - pageAnchor + 1
+        let n = index - viewportTopIndex + 1
         return (1...Self.pageSize).contains(n) ? n : nil
     }
 }

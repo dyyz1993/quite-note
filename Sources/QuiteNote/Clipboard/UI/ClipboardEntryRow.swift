@@ -18,6 +18,8 @@ struct ClipboardEntryRow: View {
     let onPin: () -> Void
     let onSaveToFlash: () -> Void
     let onDelete: () -> Void
+    /// 行位置上报（视口坐标，onAppear+onChange 双通道——序号锚定视口用）
+    var onFrameChange: ((CGFloat, CGFloat) -> Void)? = nil
 
     @State private var isHovering = false
 
@@ -80,6 +82,17 @@ struct ClipboardEntryRow: View {
         .padding(.vertical, 5)
         .background(rowBackground)
         .cornerRadius(4)
+        .background(
+            // 上报本行在滚动视口坐标中的位置（onAppear 首报 + 滚动时 onChange 续报）
+            GeometryReader { geo in
+                Color.clear
+                    .onAppear { onFrameChange?(geo.frame(in: .named("clipScroll")).minY,
+                                               geo.frame(in: .named("clipScroll")).maxY) }
+                    .onChange(of: geo.frame(in: .named("clipScroll"))) { frame in
+                        onFrameChange?(frame.minY, frame.maxY)
+                    }
+            }
+        )
         .onHover { hovering in
             isHovering = hovering
             if hovering { onSelect() }

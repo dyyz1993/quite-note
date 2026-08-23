@@ -45,7 +45,16 @@ final class ClipboardHistoryPanelController {
         ClipboardPasteService.shared.rememberTargetApp()
 
         let panel = ensurePanel()
-        panel.center()
+        // 居中到鼠标所在的屏幕（panel.center() 会用窗口当前所在屏，多屏时可能跑到副屏）
+        let mouseLocation = NSEvent.mouseLocation
+        let screen = NSScreen.screens.first { NSMouseInRect(mouseLocation, $0.frame, false) } ?? NSScreen.main
+        if let screen {
+            let x = screen.visibleFrame.midX - panel.frame.width / 2
+            let y = screen.visibleFrame.midY - panel.frame.height / 2
+            panel.setFrameOrigin(NSPoint(x: x, y: y))
+        } else {
+            panel.center()
+        }
         NSApp.activate(ignoringOtherApps: true)
         panel.makeKeyAndOrderFront(nil)
         // macOS 14+ 对 accessory 应用的 activate 不总是生效，makeKey 之后再补一次，
