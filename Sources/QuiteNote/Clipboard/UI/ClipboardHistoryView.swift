@@ -244,8 +244,6 @@ struct ClipboardHistoryView: View {
                             saveToFlash(entry)
                         } onDelete: {
                             deleteAt(index)
-                        } onFrameChange: { minY, maxY in
-                            vm.rowFrames[index] = (minY, maxY)
                         }
                         .id(entry.id)
                         .contentShape(Rectangle())
@@ -262,19 +260,11 @@ struct ClipboardHistoryView: View {
                 .padding(.vertical, 5)
             }
             .coordinateSpace(name: "clipScroll")
-            .background(
-                // 视口高度（ScrollView 自身可视区域）
-                GeometryReader { geo in
-                    Color.clear.onAppear { vm.viewportHeight = geo.size.height }
-                        .onChange(of: geo.size.height) { vm.viewportHeight = $0 }
-                }
-            )
             .onChange(of: vm.selectedIndex, perform: { newValue in
-                // 精确可见性：选中行已在视口内 → 不滚（列表稳定）；
-                // 移出视口 → 最小对齐滚动（超出底部对齐底 / 超出顶对齐顶）
-                guard visibleEntries.indices.contains(newValue),
-                      let anchor = vm.visibilityAnchor(for: newValue) else { return }
-                proxy.scrollTo(visibleEntries[newValue].id, anchor: anchor)
+                // anchor: nil = 最小滚动量让选中行可见：已可见则不动，移出视口则滚回。
+                // （自定义 GeometryReader 跟踪方案已废弃：滚动不触发行内 onChange，数据必过期）
+                guard visibleEntries.indices.contains(newValue) else { return }
+                proxy.scrollTo(visibleEntries[newValue].id, anchor: nil)
             })
             // ↑↓ 的 SwiftUI 层兜底：焦点在搜索框且输入法/field editor 吞掉方向键时，
             // moveCommand 仍会冒泡到这里（NSEvent monitor 与此双路径，不重复触发）

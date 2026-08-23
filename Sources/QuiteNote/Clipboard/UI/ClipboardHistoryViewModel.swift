@@ -32,21 +32,6 @@ final class ClipboardHistoryViewModel: ObservableObject {
         filter = all[next]
     }
 
-    // MARK: - 行可见性跟踪（↑↓ 时选中行必须可见，但已可见则不滚动）
-
-    /// 各行在滚动视口坐标里的位置（index → (minY, maxY)），由行的 GeometryReader 上报
-    var rowFrames: [Int: (minY: CGFloat, maxY: CGFloat)] = [:]
-    /// 列表视口高度
-    var viewportHeight: CGFloat = 0
-
-    /// 选中行是否移出了视口；移出则返回应滚动对齐的 anchor，可见返回 nil（不滚）
-    func visibilityAnchor(for index: Int) -> UnitPoint? {
-        guard viewportHeight > 0, let frame = rowFrames[index] else { return nil }
-        if frame.maxY > viewportHeight { return .bottom }  // 超出底部 → 对齐到底
-        if frame.minY < 0 { return .top }                   // 超出顶部 → 对齐到顶
-        return nil
-    }
-
     private var workItem: DispatchWorkItem?
     /// PRD 9.2：搜索输入 150–300ms 防抖
     private let debounceInterval: TimeInterval = 0.2
