@@ -272,18 +272,21 @@ struct ClipboardHistoryView: View {
                 emptyStateView
             } else {
                 entryList
-                // 选中图片时的更大预览（PRD 7.4），OCR 失败可在此重试
-                if selectedEntry?.type == .image {
-                    ClipboardImagePreviewStrip(entry: selectedEntry!) {
-                        if let id = selectedEntry?.id {
-                            ClipboardOCRQueue.shared.retry(entryID: id)
-                            showHint("OCR 重试中…")
+                // 底部预览区：固定高度、常驻占位（避免选中图片条目时高度突变导致列表抖动）
+                ZStack(alignment: .leading) {
+                    Color.white
+                    if let selected = selectedEntry, selected.type == .image {
+                        ClipboardImagePreviewStrip(entry: selected) {
+                            if let id = selectedEntry?.id {
+                                ClipboardOCRQueue.shared.retry(entryID: id)
+                                showHint("OCR 重试中…")
+                            }
                         }
                     }
-                    .background(Color.white)
-                    .overlay(alignment: .top) {
-                        Rectangle().fill(ClipboardPalette.inputBorder).frame(height: 1)
-                    }
+                }
+                .frame(height: 76)
+                .overlay(alignment: .top) {
+                    Rectangle().fill(ClipboardPalette.inputBorder).frame(height: 1)
                 }
             }
         }
@@ -327,10 +330,12 @@ struct ClipboardHistoryView: View {
                 .padding(.horizontal, 10)
                 .padding(.vertical, 7)
             }
-            .onChange(of: vm.selectedIndex) { newValue in
+            .onChange(of: vm.selectedIndex, perform: { newValue in
                 guard visibleEntries.indices.contains(newValue) else { return }
-                proxy.scrollTo(visibleEntries[newValue].id, anchor: .center)
-            }
+                // anchor: nil = 最小滚动量让条目可见——已可见时基本不动，
+                // 不与用户手动滚轮/触控板打架（.center 会每次强拉到中央）
+                proxy.scrollTo(visibleEntries[newValue].id, anchor: nil)
+            })
             // ↑↓ 的 SwiftUI 层兜底：焦点在搜索框且输入法/field editor 吞掉方向键时，
             // moveCommand 仍会冒泡到这里（NSEvent monitor 与此双路径，不重复触发）
             .onMoveCommand { direction in

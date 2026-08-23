@@ -402,6 +402,12 @@ final class FloatingPanelController {
                     let screenFrame = screen.visibleFrame
                     var adjustedFrame = savedFrame
 
+                    // 尺寸下限钳制（与 restoreFromBall 的 max(default, saved) 口径
+                    // 一致）：历史 bug 曾把 80×80 浮球帧存进 windowPosition，此处
+                    // 若只钳位置不钳尺寸，面板会以浮球尺寸启动且无法自愈
+                    adjustedFrame.size.width = max(FloatingPanelConstants.defaultWidth, adjustedFrame.size.width)
+                    adjustedFrame.size.height = max(FloatingPanelConstants.defaultHeight, adjustedFrame.size.height)
+
                     // 确保窗口不完全超出屏幕范围
                     if adjustedFrame.maxX < screenFrame.minX + 100 {
                         adjustedFrame.origin.x = screenFrame.minX + 100
@@ -713,8 +719,15 @@ final class FloatingPanelController {
         // 收缩动画结束后（内容已透明不可见）：瞬时落位换内容，球从小放大出现
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.31) { [weak self] in
             guard let self, self.focusProvider.mode == .expanded else { return }
-            self.panel.setFrame(targetFrame, display: false)
+            // 顺序红线：必须先切 .floatingBall 再缩窗。setFrame 会同步触发
+            // windowDidResize，若此刻 mode 仍是 .expanded（且 minimizeToBall 不设
+            // isAnimatingWindowFrame），80×80 浮球帧会被当面板尺寸写进
+            // UserDefaults（08-23 实锤：dev 域 windowPosition=80×80），下次启动
+            // 面板缩成小窗
             self.focusProvider.mode = .floatingBall
+            self.isProgrammaticallyMovingBall = true
+            self.panel.setFrame(targetFrame, display: false)
+            DispatchQueue.main.async { [weak self] in self?.isProgrammaticallyMovingBall = false }
             self.focusProvider.ballPosition = targetCenter
             self.focusProvider.ballPositionLastSet = CFAbsoluteTimeGetCurrent()
             // 球淡入（transform 动画；窗口 alpha 保持 1，透明窗口无残影）
