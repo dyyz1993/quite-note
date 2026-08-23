@@ -13,3 +13,6 @@ icons.xcassets/
 AGENTS.md
 output/
 .playwright-cli/
+
+# App Store 提交资料（含电话等个人信息，不进仓库）
+app-store-submission/
