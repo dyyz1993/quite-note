@@ -60,13 +60,13 @@ final class ClipboardHistoryStore: ObservableObject {
             touched.lastUsedAt = entry.lastUsedAt
             // 类型可能升级（比如先复制了文本后来同 hash 不可能变化，仅保守处理）
             entries[index] = touched
-            persistAsync(touched)
+            persist(touched)
             moveToFront(index)
             return entries.first { $0.id == touched.id } ?? touched
         }
 
         entries.insert(entry, at: 0)
-        persistAsync(entry)
+        persist(entry)
 
         QuiteNoteNotification.post(.clipboardEntryAdded, object: nil, userInfo: ["id": entry.id])
         DiagnosticCenter.info("Clipboard", "捕获 \(entry.type.rawValue)：hash \(String(entry.contentHash.prefix(8)))… 来源 \(entry.sourceApp ?? "未知")")
@@ -80,7 +80,7 @@ final class ClipboardHistoryStore: ObservableObject {
         guard let index = entries.firstIndex(where: { $0.id == id }) else { return }
         entries[index].pasteCount += 1
         entries[index].lastUsedAt = Date()
-        persistAsync(entries[index])
+        persist(entries[index])
     }
 
     /// 置顶 / 取消置顶（PRD 3.2：置顶条目不自动清理）
@@ -88,7 +88,7 @@ final class ClipboardHistoryStore: ObservableObject {
         guard let index = entries.firstIndex(where: { $0.id == id }) else { return }
         entries[index].isPinned.toggle()
         let entry = entries[index]
-        persistAsync(entry)
+        persist(entry)
         resortInPlace()
     }
 
@@ -97,14 +97,14 @@ final class ClipboardHistoryStore: ObservableObject {
         guard let index = entries.firstIndex(where: { $0.id == id }) else { return }
         entries[index].ocrText = text
         entries[index].ocrStatus = status
-        persistAsync(entries[index])
+        persist(entries[index])
     }
 
     /// 加入闪记后记录关联
     func linkRecord(entryID: UUID, recordID: UUID?) {
         guard let index = entries.firstIndex(where: { $0.id == entryID }) else { return }
         entries[index].savedRecordID = recordID
-        persistAsync(entries[index])
+        persist(entries[index])
     }
 
     // MARK: - 删除与清理
@@ -217,14 +217,20 @@ final class ClipboardHistoryStore: ObservableObject {
         }
     }
 
-    private func persistAsync(_ entry: ClipboardEntry) {
-        let snapshot = entry
-        persistence.performBackgroundTask { context in
+    /// 同步持久化单条（viewContext upsert）
+    ///
+    /// 之前用 performBackgroundTask + fetch-by-id：后台 context 看不到 viewContext
+    /// 未保存的行 → fetch 落空 → 重复插入（实测同一 hash 被写成多行，OCR 队列被
+    /// 僵尸 waiting 条目喂成死循环）。剪贴板条目写入频率低、单行小，主线程
+    /// viewContext 同步 upsert 微秒级完成，正确性优先于后台化。
+    private func persist(_ entry: ClipboardEntry) {
+        let context = persistence.context
+        context.performAndWait {
             let request = NSFetchRequest<CDClipboardEntry>(entityName: "CDClipboardEntry")
-            request.predicate = NSPredicate(format: "id == %@", snapshot.id as CVarArg)
+            request.predicate = NSPredicate(format: "id == %@", entry.id as CVarArg)
             request.fetchLimit = 1
             let object = (try? context.fetch(request))?.first ?? CDClipboardEntry(context: context)
-            object.apply(snapshot)
+            object.apply(entry)
             try? context.save()
         }
     }

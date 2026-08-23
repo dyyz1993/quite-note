@@ -14,6 +14,8 @@ final class ClipboardOCRQueue {
     private var isProcessing = false
     /// 自动重试已花费次数（按条目记，手动重试重置）
     private var autoRetriedIDs = Set<UUID>()
+    /// 每条目累计处理次数（死循环止损用；成功后清除）
+    private var processedCount: [UUID: Int] = [:]
     private var observer: NSObjectProtocol?
 
     private init() {
@@ -39,6 +41,7 @@ final class ClipboardOCRQueue {
         guard let entry = ClipboardHistoryStore.shared.entry(id: entryID),
               entry.type == .image else { return }
         autoRetriedIDs.remove(entryID)
+        processedCount[entryID] = nil
         ClipboardHistoryStore.shared.updateOCR(id: entryID, text: nil, status: .waiting)
         processNextIfIdle()
     }
@@ -51,7 +54,17 @@ final class ClipboardOCRQueue {
         guard let entry = ClipboardHistoryStore.shared.entries
             .last(where: { $0.type == .image && $0.ocrStatus == .waiting }) else { return }
 
+        // 止损：同一条目连续处理超过 3 次仍回到 waiting → 强制 failed，防止异常状态下死循环
+        if processedCount[entry.id, default: 0] >= 3 {
+            DiagnosticCenter.error("Clipboard", "OCR 止损：条目 \(entry.id) 反复排队，强制标记失败")
+            ClipboardHistoryStore.shared.updateOCR(id: entry.id, text: nil, status: .failed)
+            processNextIfIdle()
+            return
+        }
+        processedCount[entry.id, default: 0] += 1
+
         isProcessing = true
+        DiagnosticCenter.info("Clipboard", "OCR 开始：条目 \(String(entry.id.uuidString.prefix(8)))（第 \(processedCount[entry.id] ?? 0) 次）")
         ClipboardHistoryStore.shared.updateOCR(id: entry.id, text: nil, status: .processing)
 
         // 读取原图（后台）→ 主线程发起 Vision 识别
@@ -72,6 +85,7 @@ final class ClipboardOCRQueue {
         isProcessing = false
 
         if success {
+            processedCount[entryID] = nil
             ClipboardHistoryStore.shared.updateOCR(id: entryID, text: text, status: .success)
             QuiteNoteNotification.post(.clipboardOCRCompleted, object: nil, userInfo: ["id": entryID])
             DiagnosticCenter.info("Clipboard", "OCR 完成（\(text?.count ?? 0) 字）")

@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import Combine
 
 /// 剪贴板历史筛选（PRD 7.1 筛选栏）
 enum ClipboardFilter: String, CaseIterable {
@@ -46,27 +47,24 @@ enum ClipboardFilter: String, CaseIterable {
 ///
 /// 崩溃红线遵守：本窗口由 NSHostingView 承载且内容较重——内容切换一律瞬时
 /// （不用 withAnimation/transition），不持窗口 frame 做逐帧动画。
+/// 输入状态由 ClipboardHistoryViewModel（class）承载，规避 struct 捕获副本写 @State 不可靠的问题。
 struct ClipboardHistoryView: View {
     let controller: ClipboardHistoryPanelController
     @ObservedObject private var store = ClipboardHistoryStore.shared
     @ObservedObject private var prefs = PreferencesManager.shared
+    @StateObject private var vm = ClipboardHistoryViewModel()
 
-    @State private var searchText = ""
-    @State private var debouncedQuery = ""
-    @State private var filter: ClipboardFilter = .all
-    @State private var selectedIndex = 0
     @State private var hint: String?
     @FocusState private var searchFocused: Bool
 
-    init(controller: ClipboardHistoryPanelController) {
-        self.controller = controller
-    }
-
     /// 当前可见条目：类型筛选 → 防抖搜索（PRD 9.2）
     private var visibleEntries: [ClipboardEntry] {
-        var list = store.entries.filter { filter.matches($0) }
-        list = ClipboardSearchService.search(debouncedQuery, in: list)
-        return list
+        let filtered = store.entries.filter { vm.filter.matches($0) }
+        return ClipboardSearchService.search(vm.debouncedQuery, in: filtered)
+    }
+
+    init(controller: ClipboardHistoryPanelController) {
+        self.controller = controller
     }
 
     var body: some View {
@@ -90,13 +88,24 @@ struct ClipboardHistoryView: View {
         }
         .onAppear {
             searchFocused = true
-            controller.onKeyAction = { [self] action in handleKey(action) }
+            controller.onKeyAction = { action in
+                switch action {
+                case .saveToFlash:
+                    if let entry = selectedEntry { saveToFlash(entry) }
+                case .focusSearch:
+                    searchFocused = true
+                default:
+                    vm.handle(action, entries: visibleEntries) { paste($0) }
+                }
+            }
         }
         .onDisappear {
             controller.onKeyAction = nil
         }
-        .onChange(of: searchText) { newValue in
-            scheduleSearchDebounce(newValue)
+        .onReceive(NotificationCenter.default.publisher(for: QuiteNoteNotification.clipboardPanelDidShow.name)) { _ in
+            // 每次面板唤起：清空搜索 + 聚焦（Alfred 式体验，PRD 7.1）
+            vm.resetInput()
+            searchFocused = true
         }
     }
 
@@ -128,14 +137,14 @@ struct ClipboardHistoryView: View {
     private var searchField: some View {
         HStack(spacing: 8) {
             LucideView(name: .search, size: 13, color: .themeTextTertiary)
-            TextField("搜索文本、链接、图片文字、来源应用…", text: $searchText)
+            TextField("搜索文本、链接、图片文字、来源应用…", text: $vm.searchText)
                 .textFieldStyle(.plain)
                 .font(.themeBody)
                 .foregroundColor(.themeTextPrimary)
                 .focused($searchFocused)
-            if !searchText.isEmpty {
+            if !vm.searchText.isEmpty {
                 Button {
-                    searchText = ""
+                    vm.searchText = ""
                 } label: {
                     LucideView(name: .circleX, size: 12, color: .themeTextTertiary)
                 }
@@ -149,11 +158,13 @@ struct ClipboardHistoryView: View {
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.themeBorderSubtle))
     }
 
-    /// 记录状态：正在记录 / 已暂停 / 未启用（PRD 7.1）
+    /// 记录状态：正在记录 / 已暂停 / 未启用 / 待开启（PRD 7.1）
     private var recordingStatusBadge: some View {
         Group {
             if !prefs.clipboardHistoryEnabled {
                 statusPill(text: "未启用", color: .themeTextTertiary, icon: .circleX)
+            } else if !prefs.clipboardOnboarded {
+                statusPill(text: "待开启", color: .themeTextTertiary, icon: .clock)
             } else if prefs.isClipboardPaused {
                 Button {
                     prefs.setClipboardPausedUntil(nil)
@@ -203,10 +214,9 @@ struct ClipboardHistoryView: View {
     private var filterBar: some View {
         HStack(spacing: 6) {
             ForEach(ClipboardFilter.allCases, id: \.self) { item in
-                let isSelected = filter == item
+                let isSelected = vm.filter == item
                 Button {
-                    filter = item
-                    selectedIndex = 0
+                    vm.filter = item
                 } label: {
                     HStack(spacing: 4) {
                         LucideView(name: item.icon, size: 11, color: isSelected ? .white : .themeTextSecondary)
@@ -270,9 +280,9 @@ struct ClipboardHistoryView: View {
                         ClipboardEntryRow(
                             entry: entry,
                             index: index,
-                            isSelected: index == selectedIndex
+                            isSelected: index == vm.selectedIndex
                         ) {
-                            selectedIndex = index
+                            vm.selectedIndex = index
                         } onPaste: {
                             paste(entry)
                         } onCopy: {
@@ -288,13 +298,13 @@ struct ClipboardHistoryView: View {
                         .id(entry.id)
                         .contentShape(Rectangle())
                         .onTapGesture(count: 2) { paste(entry) }
-                        .onTapGesture { selectedIndex = index }
+                        .onTapGesture { vm.selectedIndex = index }
                     }
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 10)
             }
-            .onChange(of: selectedIndex) { newValue in
+            .onChange(of: vm.selectedIndex) { newValue in
                 guard visibleEntries.indices.contains(newValue) else { return }
                 proxy.scrollTo(visibleEntries[newValue].id, anchor: .center)
             }
@@ -304,9 +314,9 @@ struct ClipboardHistoryView: View {
     /// 空态区分：无历史 / 搜索无结果 / 暂停（PRD 7.5）
     private var emptyStateView: some View {
         VStack(spacing: 12) {
-            if !debouncedQuery.isEmpty {
+            if !vm.debouncedQuery.isEmpty {
                 LucideView(name: .search, size: 36, color: .themeTextTertiary)
-                Text("没有匹配「\(debouncedQuery)」的结果")
+                Text("没有匹配「\(vm.debouncedQuery)」的结果")
                     .font(.themeBody)
                     .foregroundColor(.themeTextSecondary)
             } else if prefs.clipboardHistoryEnabled && prefs.isClipboardPaused {
@@ -361,45 +371,13 @@ struct ClipboardHistoryView: View {
     // MARK: - 行为
 
     private var selectedEntry: ClipboardEntry? {
-        visibleEntries.indices.contains(selectedIndex) ? visibleEntries[selectedIndex] : nil
-    }
-
-    private func scheduleSearchDebounce(_ newValue: String) {
-        // PRD 9.2：150–300ms 防抖（model 里没法存 workItem，用静态 holder）
-        ClipboardSearchDebounce.schedule(newValue) { query in
-            debouncedQuery = query
-            selectedIndex = 0
-        }
-    }
-
-    private func handleKey(_ action: ClipboardPanelKeyAction) {
-        switch action {
-        case .moveUp:
-            if selectedIndex > 0 { selectedIndex -= 1 }
-        case .moveDown:
-            if selectedIndex < visibleEntries.count - 1 { selectedIndex += 1 }
-        case .pasteSelected:
-            if let entry = selectedEntry { paste(entry) }
-        case .pasteIndex(let n):
-            // ⌘1–9 作用于当前可见列表
-            if visibleEntries.indices.contains(n - 1) {
-                paste(visibleEntries[n - 1])
-            }
-        case .saveToFlash:
-            if let entry = selectedEntry { saveToFlash(entry) }
-        case .togglePin:
-            if let entry = selectedEntry { store.togglePin(id: entry.id) }
-        case .deleteSelected:
-            deleteAt(selectedIndex)
-        case .focusSearch:
-            searchFocused = true
-        }
+        visibleEntries.indices.contains(vm.selectedIndex) ? visibleEntries[vm.selectedIndex] : nil
     }
 
     private func paste(_ entry: ClipboardEntry) {
         ClipboardPasteService.shared.paste(entry) {
             controller.hide()
-        } completion: { [self] outcome in
+        } completion: { outcome in
             switch outcome {
             case .pasted:
                 store.markPasted(id: entry.id)
@@ -428,34 +406,51 @@ struct ClipboardHistoryView: View {
         guard visibleEntries.indices.contains(index) else { return }
         let entry = visibleEntries[index]
         store.delete(id: entry.id)
-        if selectedIndex >= visibleEntries.count - 1 {
-            selectedIndex = max(0, visibleEntries.count - 2)
+        if vm.selectedIndex >= visibleEntries.count - 1 {
+            vm.selectedIndex = max(0, visibleEntries.count - 2)
         }
         showHint("已删除")
     }
 
     private func showHint(_ text: String) {
         hint = text
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { [self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
             if hint == text { hint = nil }
         }
     }
 }
 
-/// 搜索防抖（150–300ms，PRD 9.2）：独立 holder 规避 struct View 无法持有 mutable workItem
-@MainActor
-enum ClipboardSearchDebounce {
-    private static var workItem: DispatchWorkItem?
-    private static let interval: TimeInterval = 0.2
+// MARK: - ViewModel 行为扩展
 
-    static func schedule(_ query: String, fire: @escaping (String) -> Void) {
-        workItem?.cancel()
-        let item = DispatchWorkItem {
-            let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-            fire(trimmed)
+extension ClipboardHistoryViewModel {
+    /// 窗口按键动作（PRD 6）：纯状态部分（saveToFlash/focusSearch 由视图层处理）
+    func handle(
+        _ action: ClipboardPanelKeyAction,
+        entries: [ClipboardEntry],
+        paste: (ClipboardEntry) -> Void
+    ) {
+        switch action {
+        case .moveUp:
+            if selectedIndex > 0 { selectedIndex -= 1 }
+        case .moveDown:
+            if selectedIndex < entries.count - 1 { selectedIndex += 1 }
+        case .pasteSelected:
+            if entries.indices.contains(selectedIndex) { paste(entries[selectedIndex]) }
+        case .pasteIndex(let n):
+            if entries.indices.contains(n - 1) { paste(entries[n - 1]) }
+        case .togglePin:
+            if entries.indices.contains(selectedIndex) {
+                ClipboardHistoryStore.shared.togglePin(id: entries[selectedIndex].id)
+            }
+        case .deleteSelected:
+            if entries.indices.contains(selectedIndex) {
+                let entry = entries[selectedIndex]
+                ClipboardHistoryStore.shared.delete(id: entry.id)
+                if selectedIndex >= entries.count - 1 { selectedIndex = max(0, entries.count - 2) }
+            }
+        case .saveToFlash, .focusSearch:
+            break // 视图层处理
         }
-        workItem = item
-        DispatchQueue.main.asyncAfter(deadline: .now() + interval, execute: item)
     }
 }
 
@@ -477,7 +472,6 @@ struct ClipboardHintBanner: View {
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.themeBorder))
         .shadow(color: Color.themeShadowMedium, radius: 8, y: 4)
         .padding(.top, 52)
-        .transition(.opacity) // 纯渲染层透明度，不触发布局约束（窗口内容切换仍瞬时）
     }
 }
 

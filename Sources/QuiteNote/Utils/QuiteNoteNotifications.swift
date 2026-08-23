@@ -77,6 +77,9 @@ enum QuiteNoteNotification {
     /// 打开/切换剪贴板历史面板
     case toggleClipboardHistoryPanel
 
+    /// 剪贴板历史面板已显示（视图据此重置搜索并聚焦）
+    case clipboardPanelDidShow
+
     /// 剪贴板条目 OCR 完成（userInfo: id）
     case clipboardOCRCompleted
 
@@ -128,6 +131,8 @@ enum QuiteNoteNotification {
             return Notification.Name("qn.clipboard.entry.added")
         case .toggleClipboardHistoryPanel:
             return Notification.Name("qn.clipboard.toggle.panel")
+        case .clipboardPanelDidShow:
+            return Notification.Name("qn.clipboard.panel.didShow")
         case .clipboardOCRCompleted:
             return Notification.Name("qn.clipboard.ocr.completed")
         case .memoryOptimizationNeeded:

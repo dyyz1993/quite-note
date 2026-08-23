@@ -45,12 +45,16 @@ final class ClipboardHistoryPanelController {
         panel.center()
         NSApp.activate(ignoringOtherApps: true)
         panel.makeKeyAndOrderFront(nil)
+        // macOS 14+ 对 accessory 应用的 activate 不总是生效，makeKey 之后再补一次，
+        // 尽量确保用户随后打字直接进搜索框（PRD 7.1：打开后搜索框自动获得焦点）
+        NSApp.activate(ignoringOtherApps: true)
 
         installKeyMonitor()
 
         // 首次打开加载历史
         ClipboardHistoryStore.shared.loadIfNeeded()
         ClipboardMonitor.shared.syncWithPreferences()
+        QuiteNoteNotification.post(.clipboardPanelDidShow)
         DiagnosticCenter.info("Clipboard", "历史面板打开")
     }
 
