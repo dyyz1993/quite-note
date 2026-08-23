@@ -198,8 +198,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         shortcuts?.start()
 
-        // 剪贴板历史：加载已有历史 + 按设置同步监控（首次引导未确认前不启动捕获）
+        // 剪贴板历史：接入闪记 + 加载历史 + 启动 OCR 队列 + 按设置同步监控
+        ClipboardFlashNoteService.shared.recordStore = store
+        ClipboardHistoryPanelController.shared.onOpenFlashNote = { [weak self] recordID in
+            self?.floatingPanelController?.showWithoutCentering()
+            QuiteNoteNotification.post(.expandRecord, object: recordID)
+        }
         ClipboardHistoryStore.shared.loadIfNeeded()
+        _ = ClipboardOCRQueue.shared
         ClipboardMonitor.shared.syncWithPreferences()
 
         // 观察配置变化，更新快捷键缓存

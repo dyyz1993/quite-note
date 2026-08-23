@@ -8,9 +8,10 @@ enum ClipboardPanelKeyAction {
     case moveDown
     case pasteSelected
     case pasteIndex(Int) // ⌘1–⌘9
-    case togglePin
+    case saveToFlash     // ⌘S
+    case togglePin       // ⌘P
     case deleteSelected
-    case focusSearch
+    case focusSearch     // ⌘F
 }
 
 /// 剪贴板历史快捷面板控制器（PRD 7.1：720×560，打开后搜索自动聚焦）
@@ -25,6 +26,8 @@ final class ClipboardHistoryPanelController {
     private var keyMonitor: Any?
     /// SwiftUI 视图注册的按键处理器（视图 onAppear 注册、onDisappear 置空）
     var onKeyAction: ((ClipboardPanelKeyAction) -> Void)?
+    /// 从剪贴板条目打开对应闪记（MainApp 接线：唤起主悬浮面板并展开记录）
+    var onOpenFlashNote: ((UUID) -> Void)?
 
     private init() {}
 
@@ -121,7 +124,8 @@ final class ClipboardHistoryPanelController {
                 return .pasteIndex(idx + 1)
             }
             switch keyCode {
-            case 1: return .togglePin       // ⌘S
+            case 1: return .saveToFlash     // ⌘S
+            case 35: return .togglePin      // ⌘P
             case 3: return .focusSearch     // ⌘F
             default: break
             }

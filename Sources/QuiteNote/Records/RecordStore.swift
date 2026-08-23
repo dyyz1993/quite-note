@@ -396,6 +396,8 @@ final class RecordStore: ObservableObject {
     // MARK: - 核心操作：添加记录
 
     /// 添加新记录到 Store 和数据库
+    /// - Returns: 新建或已存在的记录（hash 命中去重时返回已有记录；保存失败返回 nil）
+    @discardableResult
     func addRecord(
         content: String,
         hash: String,
@@ -406,14 +408,14 @@ final class RecordStore: ObservableObject {
         fileName: String? = nil,
         fileCount: Int? = nil,
         noteFrame: NSRect? = nil
-    ) {
+    ) -> Record? {
         print("[DEBUG] RecordStore.addRecord 被调用，内容长度: \(content.count), hash: \(hash), type: \(type)")
         // 1. 检查是否已存在相同哈希的记录
-        if records.contains(where: { $0.hash == hash }) {
+        if let existing = records.first(where: { $0.hash == hash }) {
             print("[DEBUG] 记录已存在，仅更新时间戳")
             updateTimestampForHash(hash)
             notifier.postToast("记录已去重，更新了时间戳", type: "info")
-            return
+            return existing
         }
 
         // 2. 创建并保存到数据库
@@ -555,6 +557,8 @@ final class RecordStore: ObservableObject {
                 }
             }
         }
+
+        return record
     }
 
     /// 添加现有记录（用于便签保存等场景）

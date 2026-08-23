@@ -246,11 +246,16 @@ struct ClipboardHistoryView: View {
                 emptyStateView
             } else {
                 entryList
-                // 选中图片时的更大预览（PRD 7.4）
+                // 选中图片时的更大预览（PRD 7.4），OCR 失败可在此重试
                 if selectedEntry?.type == .image {
-                    ClipboardImagePreviewStrip(entry: selectedEntry!)
-                        .background(Color.themeGray900.opacity(0.5))
-                        .overlay(alignment: .top) { divider }
+                    ClipboardImagePreviewStrip(entry: selectedEntry!) {
+                        if let id = selectedEntry?.id {
+                            ClipboardOCRQueue.shared.retry(entryID: id)
+                            showHint("OCR 重试中…")
+                        }
+                    }
+                    .background(Color.themeGray900.opacity(0.5))
+                    .overlay(alignment: .top) { divider }
                 }
             }
         }
@@ -275,6 +280,8 @@ struct ClipboardHistoryView: View {
                             showHint("已复制到剪贴板")
                         } onPin: {
                             store.togglePin(id: entry.id)
+                        } onSaveToFlash: {
+                            saveToFlash(entry)
                         } onDelete: {
                             deleteAt(index)
                         }
@@ -378,6 +385,8 @@ struct ClipboardHistoryView: View {
             if visibleEntries.indices.contains(n - 1) {
                 paste(visibleEntries[n - 1])
             }
+        case .saveToFlash:
+            if let entry = selectedEntry { saveToFlash(entry) }
         case .togglePin:
             if let entry = selectedEntry { store.togglePin(id: entry.id) }
         case .deleteSelected:
@@ -399,6 +408,19 @@ struct ClipboardHistoryView: View {
             case .noTarget:
                 showHint("已复制到剪贴板（原应用已退出）")
             }
+        }
+    }
+
+    /// 加入闪记 / 打开对应闪记（PRD 11：已加闪记再点 = 打开；正式记录删除由闪记界面处理）
+    private func saveToFlash(_ entry: ClipboardEntry) {
+        if let recordID = entry.savedRecordID {
+            controller.onOpenFlashNote?(recordID)
+            return
+        }
+        if ClipboardFlashNoteService.shared.save(entry) != nil {
+            showHint("已加入闪记")
+        } else {
+            showHint("加入闪记失败")
         }
     }
 

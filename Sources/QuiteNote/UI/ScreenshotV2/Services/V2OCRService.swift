@@ -17,8 +17,9 @@ final class V2OCRService {
         let text: String
     }
 
-    /// 对图片执行 OCR（中文简体 + 英文），结果在主线程回调；无文字时回调空字符串
-    func recognizeText(in image: NSImage, completion: @escaping (String?) -> Void) {
+    /// 对图片执行 OCR，结果在主线程回调；无文字时回调空字符串，失败回调 nil
+    /// - Parameter languages: 识别语言（默认中简+英；传空数组时回落默认值）
+    func recognizeText(in image: NSImage, languages: [String]? = nil, completion: @escaping (String?) -> Void) {
         guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
             completion(nil)
             return
@@ -39,7 +40,8 @@ final class V2OCRService {
             DispatchQueue.main.async { completion(text) }
         }
         request.recognitionLevel = .accurate
-        request.recognitionLanguages = ["zh-Hans", "en-US"]
+        let resolvedLanguages = (languages?.isEmpty == false) ? languages! : ["zh-Hans", "en-US"]
+        request.recognitionLanguages = resolvedLanguages
         request.usesLanguageCorrection = true
 
         DispatchQueue.global(qos: .userInitiated).async {

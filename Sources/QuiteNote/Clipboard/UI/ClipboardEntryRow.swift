@@ -13,6 +13,7 @@ struct ClipboardEntryRow: View {
     let onPaste: () -> Void
     let onCopy: () -> Void
     let onPin: () -> Void
+    let onSaveToFlash: () -> Void
     let onDelete: () -> Void
 
     @State private var isHovering = false
@@ -168,6 +169,11 @@ struct ClipboardEntryRow: View {
                       help: entry.isPinned ? "取消置顶 (⌘P)" : "置顶 (⌘P)",
                       color: entry.isPinned ? .themeBlue400 : .themeTextSecondary,
                       action: onPin)
+            // 加入闪记 / 打开闪记（PRD 7.2/11：已加闪记显示绿色态，点击打开）
+            rowButton(icon: entry.savedRecordID != nil ? .check : .save,
+                      help: entry.savedRecordID != nil ? "打开对应闪记" : "加入闪记 (⌘S)",
+                      color: entry.savedRecordID != nil ? .themeGreen500 : .themeTextSecondary,
+                      action: onSaveToFlash)
             rowButton(icon: .copy, help: "复制", color: .themeTextSecondary, action: onCopy)
             rowButton(icon: .trash2, help: "删除", color: .themeTextSecondary, action: onDelete)
         }
@@ -287,9 +293,10 @@ struct ClipboardImageThumbnail: View {
     }
 }
 
-/// 选中图片时的更大预览条（PRD 7.4：选中显示更大预览；复制原图而非 OCR 文本）
+/// 选中图片时的更大预览条（PRD 7.4：选中显示更大预览；复制原图而非 OCR 文本；失败可重试）
 struct ClipboardImagePreviewStrip: View {
     let entry: ClipboardEntry
+    var onRetryOCR: (() -> Void)? = nil
 
     var body: some View {
         HStack(spacing: 14) {
@@ -298,7 +305,14 @@ struct ClipboardImagePreviewStrip: View {
                 Text("图片预览")
                     .font(.themeH3)
                     .foregroundColor(.themeTextPrimary)
-                if let status = entry.ocrStatus {
+                if entry.ocrStatus == .failed {
+                    HStack(spacing: 8) {
+                        OCRStatusBadge(status: .failed)
+                        Button("重试 OCR") { onRetryOCR?() }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                    }
+                } else if let status = entry.ocrStatus {
                     OCRStatusBadge(status: status)
                 }
                 if entry.ocrStatus == .success, let ocr = entry.ocrText, !ocr.isEmpty {
