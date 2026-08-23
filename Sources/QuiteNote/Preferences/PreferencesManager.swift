@@ -176,6 +176,85 @@ final class PreferencesManager: ObservableObject {
     // 保存截图文件后自动复制绝对路径到剪贴板
     var screenshotCopyPathAfterSave: Bool { d.object(forKey: "screenshotCopyPathAfterSave") == nil ? true : d.bool(forKey: "screenshotCopyPathAfterSave") }
 
+    // MARK: - 剪贴板历史（PRD：本地 Alfred 式剪贴板历史）
+
+    /// 总开关（默认开，但首次引导未确认前不捕获——见 clipboardOnboarded）
+    var clipboardHistoryEnabled: Bool { d.object(forKey: "clipboardHistoryEnabled") == nil ? true : d.bool(forKey: "clipboardHistoryEnabled") }
+    /// 首次引导是否已确认（确认前监控不启动，PRD 4.1）
+    var clipboardOnboarded: Bool { d.bool(forKey: "clipboardOnboarded") }
+    /// 暂停截止时间（"暂停 1 小时/到明天"用；nil = 未暂停）
+    var clipboardPausedUntil: Date? { d.object(forKey: "clipboardPausedUntil") as? Date }
+    /// 是否处于暂停中
+    var isClipboardPaused: Bool {
+        if let until = clipboardPausedUntil { return Date() < until }
+        return false
+    }
+
+    // 记录内容开关（PRD 8.2）
+    var clipboardRecordText: Bool { d.object(forKey: "clipboardRecordText") == nil ? true : d.bool(forKey: "clipboardRecordText") }
+    var clipboardRecordImage: Bool { d.object(forKey: "clipboardRecordImage") == nil ? true : d.bool(forKey: "clipboardRecordImage") }
+    var clipboardRecordLink: Bool { d.object(forKey: "clipboardRecordLink") == nil ? true : d.bool(forKey: "clipboardRecordLink") }
+    var clipboardRecordFile: Bool { d.object(forKey: "clipboardRecordFile") == nil ? true : d.bool(forKey: "clipboardRecordFile") }
+    var clipboardRecordSourceApp: Bool { d.object(forKey: "clipboardRecordSourceApp") == nil ? true : d.bool(forKey: "clipboardRecordSourceApp") }
+
+    // 图片 OCR（PRD 8.3）
+    var clipboardEnableOCR: Bool { d.object(forKey: "clipboardEnableOCR") == nil ? true : d.bool(forKey: "clipboardEnableOCR") }
+    var clipboardOCRChinese: Bool { d.object(forKey: "clipboardOCRChinese") == nil ? true : d.bool(forKey: "clipboardOCRChinese") }
+    var clipboardOCREnglish: Bool { d.object(forKey: "clipboardOCREnglish") == nil ? true : d.bool(forKey: "clipboardOCREnglish") }
+    var clipboardOCRAutoRetry: Bool { d.object(forKey: "clipboardOCRAutoRetry") == nil ? true : d.bool(forKey: "clipboardOCRAutoRetry") }
+
+    // 打开历史面板快捷键（PRD 6：默认 ⇧⌘V，可配置）
+    var clipboardOpenShortcut: String { d.string(forKey: "clipboardOpenShortcut") ?? "v" }
+    var clipboardOpenShortcutFlags: Int { d.object(forKey: "clipboardOpenShortcutFlags") == nil ? Int(NSEvent.ModifierFlags([.command, .shift]).rawValue) : d.integer(forKey: "clipboardOpenShortcutFlags") }
+
+    // 历史保留策略（PRD 4.3 / 8.5）
+    var clipboardMaxEntries: Int { let v = d.integer(forKey: "clipboardMaxEntries"); return v == 0 ? 500 : v }
+    /// 保留天数；0 = 永不过期
+    var clipboardRetentionDays: Int { let v = d.integer(forKey: "clipboardRetentionDays"); return v == 0 ? 30 : v }
+
+    /// 排除应用列表（bundleID 前缀匹配；默认覆盖常见密码管理器，PRD 8.6/15）
+    var clipboardExcludedBundleIDs: [String] {
+        d.stringArray(forKey: "clipboardExcludedBundleIDs") ?? [
+            "com.agilebits.onepassword-osx",  // 1Password 7
+            "com.1password.1password",        // 1Password 8+
+            "com.bitwarden.desktop",          // Bitwarden
+            "com.dashlane.Dashlane",          // Dashlane
+            "com.apple.keychainaccess",       // 钥匙串访问
+        ]
+    }
+
+    func setClipboardHistoryEnabled(_ v: Bool) {
+        objectWillChange.send()
+        d.set(v, forKey: "clipboardHistoryEnabled")
+        ClipboardMonitor.shared.syncWithPreferences()
+    }
+    func setClipboardOnboarded(_ v: Bool) { d.set(v, forKey: "clipboardOnboarded") }
+    func setClipboardPausedUntil(_ v: Date?) {
+        objectWillChange.send()
+        d.set(v, forKey: "clipboardPausedUntil")
+        ClipboardMonitor.shared.syncWithPreferences()
+    }
+    func setClipboardRecordText(_ v: Bool) { d.set(v, forKey: "clipboardRecordText") }
+    func setClipboardRecordImage(_ v: Bool) { d.set(v, forKey: "clipboardRecordImage") }
+    func setClipboardRecordLink(_ v: Bool) { d.set(v, forKey: "clipboardRecordLink") }
+    func setClipboardRecordFile(_ v: Bool) { d.set(v, forKey: "clipboardRecordFile") }
+    func setClipboardRecordSourceApp(_ v: Bool) { d.set(v, forKey: "clipboardRecordSourceApp") }
+    func setClipboardEnableOCR(_ v: Bool) { d.set(v, forKey: "clipboardEnableOCR") }
+    func setClipboardOCRChinese(_ v: Bool) { d.set(v, forKey: "clipboardOCRChinese") }
+    func setClipboardOCREnglish(_ v: Bool) { d.set(v, forKey: "clipboardOCREnglish") }
+    func setClipboardOCRAutoRetry(_ v: Bool) { d.set(v, forKey: "clipboardOCRAutoRetry") }
+    func setClipboardOpenShortcut(_ v: String) {
+        objectWillChange.send()
+        d.set(v, forKey: "clipboardOpenShortcut")
+    }
+    func setClipboardOpenShortcutFlags(_ v: Int) {
+        objectWillChange.send()
+        d.set(v, forKey: "clipboardOpenShortcutFlags")
+    }
+    func setClipboardMaxEntries(_ v: Int) { d.set(v, forKey: "clipboardMaxEntries") }
+    func setClipboardRetentionDays(_ v: Int) { d.set(v, forKey: "clipboardRetentionDays") }
+    func setClipboardExcludedBundleIDs(_ v: [String]) { d.set(v, forKey: "clipboardExcludedBundleIDs") }
+
     // 录屏设置：两路音频独立开关（都关 = 无声录制；都开 = 带解说的会议场景）
     var recordingSystemAudio: Bool { d.object(forKey: "recordingSystemAudio") == nil ? true : d.bool(forKey: "recordingSystemAudio") }
     var recordingMicrophone: Bool { d.object(forKey: "recordingMicrophone") == nil ? false : d.bool(forKey: "recordingMicrophone") }
@@ -300,7 +379,11 @@ final class PreferencesManager: ObservableObject {
             "attachmentsDirectoryBookmark", "screenshotSaveDirectoryBookmark",
             "screenshotSaveDirectory", "openAIBaseURL", "openAIModel", "aiSystemPrompt", "aiUserPrompt",
             "preferredEditor", "recordingSystemAudio", "recordingMicrophone", "recordingCursorMode",
-            "recordingCountdownSeconds", "lastRecordingSelection"
+            "recordingCountdownSeconds", "lastRecordingSelection",
+            "clipboardHistoryEnabled", "clipboardRecordText", "clipboardRecordImage", "clipboardRecordLink",
+            "clipboardRecordFile", "clipboardRecordSourceApp", "clipboardEnableOCR", "clipboardOCRChinese",
+            "clipboardOCREnglish", "clipboardOCRAutoRetry", "clipboardOpenShortcut", "clipboardOpenShortcutFlags",
+            "clipboardMaxEntries", "clipboardRetentionDays", "clipboardExcludedBundleIDs", "clipboardPausedUntil"
         ]
         for key in keys {
             d.removeObject(forKey: key)

@@ -85,6 +85,20 @@ enum IconName: String {
     case zoomIn = "zoom-in"
     case list = "list"
     case listOrdered = "list-ordered"
+    // 剪贴板历史
+    case pin = "pin"
+    case pinOff = "pin-off"
+    case history = "history"
+    case scanText = "scan-text"
+    case pause = "pause"
+    case play = "play"
+    case clipboardList = "clipboard-list"
+    case inbox = "inbox"
+    case magnet = "magnet"
+    case textCursorInput = "text-cursor-input"
+    case folderOpen = "folder-open"
+    case shieldCheck = "shield-check"
+    case timer = "timer"
 }
 
 /// SwiftUI 包装，渲染 Lucide 图标（不使用 SF Symbols 回退）

@@ -8,6 +8,7 @@ enum ResourceType: String {
     case screenshot = "Screenshots"
     case syncedFolder = "SyncedFolders"
     case file = "Files"
+    case clipboard = "Clipboard"
     case thumbnail = "Cache/Thumbnails"
 }
 
@@ -36,7 +37,7 @@ final class FileCoordinator {
     
     /// 初始化目录结构
     private func setupDirectoryStructure() {
-        let directories: [ResourceType] = [.image, .screenshot, .syncedFolder, .file, .thumbnail]
+        let directories: [ResourceType] = [.image, .screenshot, .syncedFolder, .file, .clipboard, .thumbnail]
         
         for dir in directories {
             let url = getDirectoryURL(for: dir)

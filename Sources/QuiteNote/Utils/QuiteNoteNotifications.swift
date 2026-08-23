@@ -69,6 +69,17 @@ enum QuiteNoteNotification {
     /// AI 处理失败
     case aiProcessingFailed
 
+    // MARK: - 剪贴板历史相关
+
+    /// 新的剪贴板条目被捕获（userInfo: id）
+    case clipboardEntryAdded
+
+    /// 打开/切换剪贴板历史面板
+    case toggleClipboardHistoryPanel
+
+    /// 剪贴板条目 OCR 完成（userInfo: id）
+    case clipboardOCRCompleted
+
     // MARK: - 系统相关
 
     /// 需要内存优化
@@ -113,6 +124,12 @@ enum QuiteNoteNotification {
             return Notification.Name("qn.ai.completed")
         case .aiProcessingFailed:
             return Notification.Name("qn.ai.failed")
+        case .clipboardEntryAdded:
+            return Notification.Name("qn.clipboard.entry.added")
+        case .toggleClipboardHistoryPanel:
+            return Notification.Name("qn.clipboard.toggle.panel")
+        case .clipboardOCRCompleted:
+            return Notification.Name("qn.clipboard.ocr.completed")
         case .memoryOptimizationNeeded:
             return Notification.Name("qn.system.memory.optimization")
         }
