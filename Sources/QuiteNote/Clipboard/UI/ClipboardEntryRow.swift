@@ -26,7 +26,7 @@ struct ClipboardEntryRow: View {
             // 单行内容（截断；图片条目把元信息和 OCR 摘要拼进同一行）
             Text(singleLineContent)
                 .font(.system(size: 12.5, weight: .medium))
-                .foregroundColor(ClipboardPalette.textPrimary)
+                .foregroundColor(isSelected ? .white : ClipboardPalette.textPrimary)
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -41,30 +41,37 @@ struct ClipboardEntryRow: View {
             } else if let app = entry.sourceApp {
                 Text(app)
                     .font(.system(size: 10.5))
-                    .foregroundColor(ClipboardPalette.textTertiary)
+                    .foregroundColor(isSelected ? .white.opacity(0.75) : ClipboardPalette.textTertiary)
                     .lineLimit(1)
             }
 
             // 时间：固定宽度右对齐列（各行对齐成竖列）
             Text(ClipboardTimeFormatter.short(entry.createdAt))
                 .font(.system(size: 10.5))
-                .foregroundColor(ClipboardPalette.textTertiary)
+                .foregroundColor(isSelected ? .white.opacity(0.75) : ClipboardPalette.textTertiary)
                 .frame(minWidth: 68, alignment: .trailing)
                 .fixedSize()
 
-            // ⌘N 直贴序号：1–9 清晰紫色；之后淡化（无直贴快捷键）
-            Text(index < 9 ? "⌘\(index + 1)" : "\(index + 1)")
-                .font(.system(size: 10.5, weight: .medium, design: .monospaced))
-                .foregroundColor(index < 9 ? ClipboardPalette.accent : ClipboardPalette.textTertiary)
-                .opacity(index < 9 ? 1 : 0.4)
-                .frame(minWidth: 28, alignment: .trailing)
-                .fixedSize()
+            // 尾标：选中行显示 ⏎（回车粘贴），其余显示 ⌘N（1–9 清晰，之后淡化）
+            if isSelected {
+                Text("⏎")
+                    .font(.system(size: 12, weight: .medium, design: .monospaced))
+                    .foregroundColor(.white)
+                    .frame(minWidth: 28, alignment: .trailing)
+                    .fixedSize()
+            } else {
+                Text(index < 9 ? "⌘\(index + 1)" : "\(index + 1)")
+                    .font(.system(size: 10.5, weight: .medium, design: .monospaced))
+                    .foregroundColor(index < 9 ? ClipboardPalette.accent : ClipboardPalette.textTertiary)
+                    .opacity(index < 9 ? 1 : 0.4)
+                    .frame(minWidth: 28, alignment: .trailing)
+                    .fixedSize()
+            }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
         .background(rowBackground)
         .cornerRadius(4)
-        .overlay(RoundedRectangle(cornerRadius: 4).stroke(rowBorder, lineWidth: isSelected ? 1.5 : 0))
         .onHover { hovering in
             isHovering = hovering
             if hovering { onSelect() }
@@ -165,16 +172,12 @@ struct ClipboardEntryRow: View {
             .cornerRadius(3)
     }
 
-    // MARK: - 选中/悬停态（参考：白卡 / hover #f5f5f5 / 选中 #e8eaf6）
+    // MARK: - 选中/悬停态（参考图：选中行紫底白字，hover #f5f5f5）
 
     private var rowBackground: Color {
-        if isSelected { return ClipboardPalette.rowSelected }
+        if isSelected { return ClipboardPalette.header } // 深紫 + 白字
         if isHovering { return ClipboardPalette.rowHover }
         return ClipboardPalette.row
-    }
-
-    private var rowBorder: Color {
-        isSelected ? ClipboardPalette.accent : .clear
     }
 }
 

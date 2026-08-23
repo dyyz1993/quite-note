@@ -198,26 +198,24 @@ struct ClipboardHistoryView: View {
     // MARK: - 内容区
 
     private var contentArea: some View {
-        VStack(spacing: 0) {
+        Group {
             if visibleEntries.isEmpty {
                 emptyStateView
             } else {
-                entryList
-                // 底部预览区：固定高度、常驻占位（避免选中图片条目时高度突变导致列表抖动）
-                ZStack(alignment: .leading) {
-                    Color.white
-                    if let selected = selectedEntry, selected.type == .image {
-                        ClipboardImagePreviewStrip(entry: selected) {
-                            if let id = selectedEntry?.id {
-                                ClipboardOCRQueue.shared.retry(entryID: id)
-                                showHint("OCR 重试中…")
-                            }
+                // 双栏布局（参考图）：左列表 + 右选中条目详情
+                HStack(spacing: 0) {
+                    entryList
+                        .frame(width: 300)
+                    Rectangle()
+                        .fill(ClipboardPalette.inputBorder)
+                        .frame(width: 1)
+                    ClipboardDetailPane(entry: selectedEntry) {
+                        if let id = selectedEntry?.id {
+                            ClipboardOCRQueue.shared.retry(entryID: id)
+                            showHint("OCR 重试中…")
                         }
                     }
-                }
-                .frame(height: 64)
-                .overlay(alignment: .top) {
-                    Rectangle().fill(ClipboardPalette.inputBorder).frame(height: 1)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
         }
