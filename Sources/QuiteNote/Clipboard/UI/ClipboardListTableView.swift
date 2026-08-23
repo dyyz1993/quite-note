@@ -19,7 +19,7 @@ struct ClipboardListTableView: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> NSScrollView {
-        let table = NSTableView()
+        let table = ClipTableView()
         table.headerView = nil
         table.backgroundColor = .clear
         table.rowHeight = 38
@@ -314,3 +314,20 @@ enum ClipRowContent {
 }
 
 import ImageIO
+
+/// 表格子类：焦点在列表时 ESC 由 responder chain 到此（NSTableView 会先收到
+/// cancelOperation 且默认不冒泡到窗口），直接转发关闭面板
+final class ClipTableView: NSTableView {
+    override func cancelOperation(_ sender: Any?) {
+        ClipboardHistoryPanelController.shared.hide()
+    }
+
+    override func keyDown(with event: NSEvent) {
+        // 兜底：cancelOperation 之外的路径（某些输入法状态）
+        if event.keyCode == 53 {
+            ClipboardHistoryPanelController.shared.hide()
+            return
+        }
+        super.keyDown(with: event)
+    }
+}
