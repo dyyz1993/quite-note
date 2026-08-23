@@ -116,10 +116,12 @@ struct ClipboardDetailPane: View {
                let url = FileCoordinator.shared.resolveVirtualPath(virtualPath),
                FileManager.default.fileExists(atPath: url.path),
                let image = NSImage(contentsOf: url) {
+                // 宽高双向约束：保持比例完整适配（宽图贴宽、长图贴高，不裁切不溢出）
                 Image(nsImage: image)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     .frame(maxWidth: .infinity)
+                    .frame(maxHeight: 340)
                     .cornerRadius(6)
                     .overlay(RoundedRectangle(cornerRadius: 6).stroke(ClipboardPalette.inputBorder))
             } else {

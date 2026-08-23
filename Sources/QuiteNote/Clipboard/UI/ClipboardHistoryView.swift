@@ -244,6 +244,8 @@ struct ClipboardHistoryView: View {
                             saveToFlash(entry)
                         } onDelete: {
                             deleteAt(index)
+                        } onFrameChange: { minY, maxY in
+                            vm.rowFrames[index] = (minY, maxY)
                         }
                         .id(entry.id)
                         .contentShape(Rectangle())
@@ -259,16 +261,20 @@ struct ClipboardHistoryView: View {
                 .padding(.horizontal, 8)
                 .padding(.vertical, 5)
             }
-            .onChange(of: vm.selectedIndex, perform: { newValue in
-                // Alfred 模型：↑↓ 时列表固定不动、只有高亮移动——序号 1–9 永远对应
-                // 屏幕上的行，⌘N 稳定；仅在选中到达列表首/尾边界时才滚动一屏
-                let count = visibleEntries.count
-                guard count > 0, visibleEntries.indices.contains(newValue) else { return }
-                if newValue == 0 {
-                    proxy.scrollTo(visibleEntries[0].id, anchor: .top)
-                } else if newValue == count - 1 {
-                    proxy.scrollTo(visibleEntries[count - 1].id, anchor: .bottom)
+            .coordinateSpace(name: "clipScroll")
+            .background(
+                // 视口高度（ScrollView 自身可视区域）
+                GeometryReader { geo in
+                    Color.clear.onAppear { vm.viewportHeight = geo.size.height }
+                        .onChange(of: geo.size.height) { vm.viewportHeight = $0 }
                 }
+            )
+            .onChange(of: vm.selectedIndex, perform: { newValue in
+                // 精确可见性：选中行已在视口内 → 不滚（列表稳定）；
+                // 移出视口 → 最小对齐滚动（超出底部对齐底 / 超出顶对齐顶）
+                guard visibleEntries.indices.contains(newValue),
+                      let anchor = vm.visibilityAnchor(for: newValue) else { return }
+                proxy.scrollTo(visibleEntries[newValue].id, anchor: anchor)
             })
             // ↑↓ 的 SwiftUI 层兜底：焦点在搜索框且输入法/field editor 吞掉方向键时，
             // moveCommand 仍会冒泡到这里（NSEvent monitor 与此双路径，不重复触发）

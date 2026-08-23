@@ -16,6 +16,8 @@ struct ClipboardEntryRow: View {
     let onPin: () -> Void
     let onSaveToFlash: () -> Void
     let onDelete: () -> Void
+    /// 行位置上报（滚动视口坐标 minY/maxY，供选中可见性判断）
+    var onFrameChange: ((CGFloat, CGFloat) -> Void)? = nil
 
     @State private var isHovering = false
 
@@ -72,6 +74,15 @@ struct ClipboardEntryRow: View {
         .padding(.vertical, 5)
         .background(rowBackground)
         .cornerRadius(4)
+        .background(
+            // 向列表上报本行在视口坐标中的位置（含滚动时的持续更新）
+            GeometryReader { geo in
+                Color.clear
+                    .onChange(of: geo.frame(in: .named("clipScroll"))) { frame in
+                        onFrameChange?(frame.minY, frame.maxY)
+                    }
+            }
+        )
         .onHover { hovering in
             isHovering = hovering
             if hovering { onSelect() }
