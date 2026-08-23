@@ -54,18 +54,25 @@ struct ClipboardEntryRow: View {
         }
     }
 
-    // MARK: - 左侧视觉（参考图：24px 类型图标；图片用 32px 缩略图，不加载原图）
+    // MARK: - 左侧视觉（参考图：24px 类型图标；图片用 32px 缩略图；链接用站点 favicon）
 
     @ViewBuilder
     private var leadingVisual: some View {
         if entry.type == .image {
             ClipboardImageThumbnail(entry: entry, side: 32)
+        } else if entry.type == .link, let domain = linkDomain {
+            ClipboardFaviconView(domain: domain)
         } else {
             LucideView(name: typeIcon, size: 20, color: ClipboardPalette.typeColor(entry.type))
                 .frame(width: 32, height: 32)
                 .background(ClipboardPalette.typeColor(entry.type).opacity(0.10))
                 .cornerRadius(6)
         }
+    }
+
+    private var linkDomain: String? {
+        guard let url = entry.sourceURL ?? entry.plainText else { return nil }
+        return ClipboardTypeDetector.domain(ofURL: url)
     }
 
     private var typeIcon: IconName {
@@ -232,6 +239,54 @@ struct ClipboardEntryRow: View {
 
     private var rowBorder: Color {
         isSelected ? ClipboardPalette.accent : .clear
+    }
+}
+
+/// 链接条目的站点 favicon（https://<domain>/favicon.ico，缓存优先，失败回退通用链接图标）
+struct ClipboardFaviconView: View {
+    let domain: String
+
+    @State private var image: NSImage?
+    @State private var failed = false
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(nsImage: image)
+                    .resizable()
+                    .interpolation(.high)
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 20, height: 20)
+                    .frame(width: 32, height: 32)
+                    .background(ClipboardPalette.typeColor(.link).opacity(0.08))
+                    .cornerRadius(6)
+            } else if failed {
+                LucideView(name: .link, size: 20, color: ClipboardPalette.typeColor(.link))
+                    .frame(width: 32, height: 32)
+                    .background(ClipboardPalette.typeColor(.link).opacity(0.10))
+                    .cornerRadius(6)
+            } else {
+                LucideView(name: .link, size: 20, color: ClipboardPalette.textTertiary)
+                    .frame(width: 32, height: 32)
+                    .background(ClipboardPalette.typeColor(.link).opacity(0.06))
+                    .cornerRadius(6)
+            }
+        }
+        .onAppear(perform: load)
+    }
+
+    private func load() {
+        if let hit = ClipboardFaviconService.shared.cachedFavicon(for: domain) {
+            image = hit
+            return
+        }
+        ClipboardFaviconService.shared.loadFavicon(for: domain) { result in
+            if let result {
+                image = result
+            } else {
+                failed = true
+            }
+        }
     }
 }
 
