@@ -2,8 +2,10 @@ import SwiftUI
 import AppKit
 import ImageIO
 
-/// 剪贴板条目行（视觉按 Alfred「All Snippets」参考样式：白色卡片行 + 左侧类型
-/// 图标 + 主/次两级文字 + 右侧紫色序号；键盘选中态用浅紫背景+紫边框双通道表达）
+/// 剪贴板条目行（紧凑单行布局，对齐 Alfred「All Snippets」密度：一屏 9~10 条）
+///
+/// 结构：序号 | 28px 类型图标/缩略图 | 单行内容（截断） | 右侧时间·来源小字 | 悬停操作
+/// 键盘选中态用浅紫背景+紫边框双通道表达（不依赖颜色单一通道）。
 struct ClipboardEntryRow: View {
     let entry: ClipboardEntry
     let index: Int
@@ -18,33 +20,36 @@ struct ClipboardEntryRow: View {
     @State private var isHovering = false
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             // ⌘N 序号（行首，紫色，仅前 9 条）
             Text("\(index + 1)")
-                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
                 .foregroundColor(index < 9 ? ClipboardPalette.accent : .clear)
-                .frame(width: 16)
+                .frame(width: 14)
 
             leadingVisual
 
-            VStack(alignment: .leading, spacing: 3) {
-                previewText
-                HStack(spacing: 6) {
-                    Text(ClipboardTimeFormatter.short(entry.createdAt))
-                    if let app = entry.sourceApp {
-                        Text("· \(app)")
-                    }
-                    statusBadges
-                }
-                .font(.system(size: 11))
+            // 单行内容（截断；图片条目把元信息和 OCR 摘要拼进同一行）
+            Text(singleLineContent)
+                .font(.system(size: 12.5, weight: .medium))
+                .foregroundColor(ClipboardPalette.textPrimary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            statusBadges
+
+            // 右侧元信息：时间 · 来源（灰色小字，一行）
+            Text(metaLine)
+                .font(.system(size: 10.5))
                 .foregroundColor(ClipboardPalette.textTertiary)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+                .lineLimit(1)
+                .fixedSize()
 
             actionButtons
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 7)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
         .background(rowBackground)
         .cornerRadius(4)
         .overlay(RoundedRectangle(cornerRadius: 4).stroke(rowBorder, lineWidth: isSelected ? 1.5 : 0))
@@ -54,25 +59,61 @@ struct ClipboardEntryRow: View {
         }
     }
 
-    // MARK: - 左侧视觉（参考图：24px 类型图标；图片用 32px 缩略图；链接用站点 favicon）
+    // MARK: - 单行内容
+
+    private var singleLineContent: String {
+        switch entry.type {
+        case .text:
+            return (entry.plainText ?? "")
+                .replacingOccurrences(of: "\n", with: " ")
+        case .link:
+            let domain = ClipboardTypeDetector.domain(ofURL: entry.sourceURL ?? entry.plainText ?? "") ?? "链接"
+            return domain
+        case .file:
+            return (entry.plainText as NSString?)?.lastPathComponent ?? "文件"
+        case .image:
+            var parts = [imageMetaTitle]
+            if entry.ocrStatus == .success, let ocr = entry.ocrText, !ocr.isEmpty {
+                parts.append("OCR：\(ocr.replacingOccurrences(of: "\n", with: " "))")
+            }
+            return parts.joined(separator: " · ")
+        }
+    }
+
+    /// 图片元信息（参考图「Image: 720x560 (6.2 MB)」风格）
+    private var imageMetaTitle: String {
+        var parts: [String] = ["图片"]
+        if let size = imagePixelSize {
+            parts.append("\(Int(size.width))×\(Int(size.height))")
+        }
+        if entry.byteSize > 0 {
+            parts.append("(\(ByteCountFormatter.string(fromByteCount: entry.byteSize, countStyle: .file)))")
+        }
+        return parts.joined(separator: " ")
+    }
+
+    private var metaLine: String {
+        var parts = [ClipboardTimeFormatter.short(entry.createdAt)]
+        if let app = entry.sourceApp {
+            parts.append(app)
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    // MARK: - 左侧视觉（28px：类型图标 / 图片缩略图 / 站点 favicon）
 
     @ViewBuilder
     private var leadingVisual: some View {
         if entry.type == .image {
-            ClipboardImageThumbnail(entry: entry, side: 32)
+            ClipboardImageThumbnail(entry: entry, side: 26)
         } else if entry.type == .link, let domain = linkDomain {
-            ClipboardFaviconView(domain: domain)
+            ClipboardFaviconView(domain: domain, side: 26)
         } else {
-            LucideView(name: typeIcon, size: 20, color: ClipboardPalette.typeColor(entry.type))
-                .frame(width: 32, height: 32)
+            LucideView(name: typeIcon, size: 16, color: ClipboardPalette.typeColor(entry.type))
+                .frame(width: 26, height: 26)
                 .background(ClipboardPalette.typeColor(entry.type).opacity(0.10))
-                .cornerRadius(6)
+                .cornerRadius(5)
         }
-    }
-
-    private var linkDomain: String? {
-        guard let url = entry.sourceURL ?? entry.plainText else { return nil }
-        return ClipboardTypeDetector.domain(ofURL: url)
     }
 
     private var typeIcon: IconName {
@@ -84,71 +125,9 @@ struct ClipboardEntryRow: View {
         }
     }
 
-    // MARK: - 内容预览（主文字 14 黑 / 次文字 11 灰，参考图层级）
-
-    @ViewBuilder
-    private var previewText: some View {
-        Group {
-            switch entry.type {
-            case .text:
-                Text(entry.plainText ?? "")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(ClipboardPalette.textPrimary)
-                    .lineLimit(1)
-            case .link:
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(ClipboardTypeDetector.domain(ofURL: entry.sourceURL ?? entry.plainText ?? "") ?? "链接")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(ClipboardPalette.textPrimary)
-                        .lineLimit(1)
-                    if let url = entry.sourceURL ?? entry.plainText {
-                        Text(url)
-                            .font(.system(size: 11))
-                            .foregroundColor(ClipboardPalette.textTertiary)
-                            .lineLimit(1)
-                    }
-                }
-            case .file:
-                VStack(alignment: .leading, spacing: 1) {
-                    Text((entry.plainText as NSString?)?.lastPathComponent ?? "文件")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(ClipboardPalette.textPrimary)
-                        .lineLimit(1)
-                    Text(fileMetaLine)
-                        .font(.system(size: 11))
-                        .foregroundColor(ClipboardPalette.textTertiary)
-                        .lineLimit(1)
-                }
-            case .image:
-                // 图片条目：参考图「Image: 720x560 (6.2 MB)」风格 + OCR 文本
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(imageMetaLine)
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(ClipboardPalette.textPrimary)
-                        .lineLimit(1)
-                    if entry.ocrStatus == .success, let ocr = entry.ocrText, !ocr.isEmpty {
-                        Text("OCR：\(ocr)")
-                            .font(.system(size: 11))
-                            .foregroundColor(ClipboardPalette.textTertiary)
-                            .lineLimit(1)
-                    } else if let status = entry.ocrStatus, status != .success {
-                        OCRStatusBadge(status: status)
-                    }
-                }
-            }
-        }
-    }
-
-    /// 图片元信息行（参考图格式：Image: 720x560 (6.2 MB)）
-    private var imageMetaLine: String {
-        var parts: [String] = ["图片"]
-        if let size = imagePixelSize {
-            parts.append("\(Int(size.width))×\(Int(size.height))")
-        }
-        if entry.byteSize > 0 {
-            parts.append("(\(ByteCountFormatter.string(fromByteCount: entry.byteSize, countStyle: .file)))")
-        }
-        return parts.joined(separator: " ")
+    private var linkDomain: String? {
+        guard let url = entry.sourceURL ?? entry.plainText else { return nil }
+        return ClipboardTypeDetector.domain(ofURL: url)
     }
 
     private var imagePixelSize: CGSize? {
@@ -162,38 +141,22 @@ struct ClipboardEntryRow: View {
         return CGSize(width: w, height: h)
     }
 
-    /// 文件元信息行（大小 + 目录）
-    private var fileMetaLine: String {
-        var parts: [String] = []
-        if entry.byteSize > 0 {
-            parts.append(ByteCountFormatter.string(fromByteCount: entry.byteSize, countStyle: .file))
-        }
-        if let path = entry.plainText {
-            let dir = (path as NSString).deletingLastPathComponent
-            if !dir.isEmpty { parts.append(dir) }
-        }
-        return parts.joined(separator: " · ")
-    }
-
-    // MARK: - 状态标记（置顶 / 已加闪记 / 含OCR）
+    // MARK: - 状态标记（置顶 / 已加闪记）
 
     private var statusBadges: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 3) {
             if entry.isPinned {
                 miniBadge(icon: .pin, color: ClipboardPalette.accent)
             }
             if entry.savedRecordID != nil {
                 miniBadge(icon: .check, color: ClipboardPalette.statusActive)
             }
-            if entry.type == .image, entry.ocrStatus == .success, entry.ocrText?.isEmpty == false {
-                miniBadge(icon: .scanText, color: ClipboardPalette.accent)
-            }
         }
     }
 
     private func miniBadge(icon: IconName, color: Color) -> some View {
-        LucideView(name: icon, size: 10, color: color)
-            .padding(2.5)
+        LucideView(name: icon, size: 9, color: color)
+            .padding(2)
             .background(color.opacity(0.10))
             .cornerRadius(3)
     }
@@ -201,7 +164,7 @@ struct ClipboardEntryRow: View {
     // MARK: - 右侧操作（悬停或选中时显示）
 
     private var actionButtons: some View {
-        HStack(spacing: 3) {
+        HStack(spacing: 2) {
             rowButton(icon: entry.isPinned ? .pinOff : .pin,
                       help: entry.isPinned ? "取消置顶 (⌘P)" : "置顶 (⌘P)",
                       color: entry.isPinned ? ClipboardPalette.accent : ClipboardPalette.textSecondary,
@@ -218,18 +181,18 @@ struct ClipboardEntryRow: View {
 
     private func rowButton(icon: IconName, help: String, color: Color, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            LucideView(name: icon, size: 12, color: color)
-                .frame(width: 24, height: 24)
+            LucideView(name: icon, size: 11, color: color)
+                .frame(width: 22, height: 22)
                 .background(Color.white)
-                .cornerRadius(5)
-                .overlay(RoundedRectangle(cornerRadius: 5).stroke(ClipboardPalette.inputBorder))
+                .cornerRadius(4)
+                .overlay(RoundedRectangle(cornerRadius: 4).stroke(ClipboardPalette.inputBorder))
         }
         .buttonStyle(.plain)
         .pointingHandCursor()
         .help(help)
     }
 
-    // MARK: - 选中/悬停态（参考图：白卡 / hover #f5f5f5 / 选中 #e8eaf6）
+    // MARK: - 选中/悬停态（参考：白卡 / hover #f5f5f5 / 选中 #e8eaf6）
 
     private var rowBackground: Color {
         if isSelected { return ClipboardPalette.rowSelected }
@@ -242,55 +205,7 @@ struct ClipboardEntryRow: View {
     }
 }
 
-/// 链接条目的站点 favicon（https://<domain>/favicon.ico，缓存优先，失败回退通用链接图标）
-struct ClipboardFaviconView: View {
-    let domain: String
-
-    @State private var image: NSImage?
-    @State private var failed = false
-
-    var body: some View {
-        Group {
-            if let image {
-                Image(nsImage: image)
-                    .resizable()
-                    .interpolation(.high)
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: 20, height: 20)
-                    .frame(width: 32, height: 32)
-                    .background(ClipboardPalette.typeColor(.link).opacity(0.08))
-                    .cornerRadius(6)
-            } else if failed {
-                LucideView(name: .link, size: 20, color: ClipboardPalette.typeColor(.link))
-                    .frame(width: 32, height: 32)
-                    .background(ClipboardPalette.typeColor(.link).opacity(0.10))
-                    .cornerRadius(6)
-            } else {
-                LucideView(name: .link, size: 20, color: ClipboardPalette.textTertiary)
-                    .frame(width: 32, height: 32)
-                    .background(ClipboardPalette.typeColor(.link).opacity(0.06))
-                    .cornerRadius(6)
-            }
-        }
-        .onAppear(perform: load)
-    }
-
-    private func load() {
-        if let hit = ClipboardFaviconService.shared.cachedFavicon(for: domain) {
-            image = hit
-            return
-        }
-        ClipboardFaviconService.shared.loadFavicon(for: domain) { result in
-            if let result {
-                image = result
-            } else {
-                failed = true
-            }
-        }
-    }
-}
-
-/// OCR 状态徽章（PRD 7.5：等待/处理中/成功/失败可重试）
+/// OCR 状态徽章（预览条用；列表行内不展示）
 struct OCRStatusBadge: View {
     let status: ClipboardOCRStatus
 
@@ -367,7 +282,6 @@ struct ClipboardImageThumbnail: View {
               let url = FileCoordinator.shared.resolveVirtualPath(virtualPath) else { return }
         ThumbnailGenerator.shared.getThumbnailURLAsync(for: url) { thumbnailURL in
             guard let thumbnailURL else {
-                // 缩略图没有就直接读原图（小图可接受），大图交给失败态
                 if let original = NSImage(contentsOf: url) {
                     image = original
                 }
@@ -378,46 +292,92 @@ struct ClipboardImageThumbnail: View {
     }
 }
 
-/// 选中图片时的更大预览条（PRD 7.4：选中显示更大预览；复制原图而非 OCR 文本；失败可重试）
+/// 链接条目的站点 favicon（https://<domain>/favicon.ico，缓存优先，失败回退通用链接图标）
+struct ClipboardFaviconView: View {
+    let domain: String
+    var side: CGFloat = 32
+
+    @State private var image: NSImage?
+    @State private var failed = false
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(nsImage: image)
+                    .resizable()
+                    .interpolation(.high)
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: side - 10, height: side - 10)
+                    .frame(width: side, height: side)
+                    .background(ClipboardPalette.typeColor(.link).opacity(0.08))
+                    .cornerRadius(5)
+            } else if failed {
+                LucideView(name: .link, size: 16, color: ClipboardPalette.typeColor(.link))
+                    .frame(width: side, height: side)
+                    .background(ClipboardPalette.typeColor(.link).opacity(0.10))
+                    .cornerRadius(5)
+            } else {
+                LucideView(name: .link, size: 16, color: ClipboardPalette.textTertiary)
+                    .frame(width: side, height: side)
+                    .background(ClipboardPalette.typeColor(.link).opacity(0.06))
+                    .cornerRadius(5)
+            }
+        }
+        .onAppear(perform: load)
+    }
+
+    private func load() {
+        if let hit = ClipboardFaviconService.shared.cachedFavicon(for: domain) {
+            image = hit
+            return
+        }
+        ClipboardFaviconService.shared.loadFavicon(for: domain) { result in
+            if let result {
+                image = result
+            } else {
+                failed = true
+            }
+        }
+    }
+}
+
+/// 选中图片时的底部预览条（PRD 7.4；常驻固定高度防列表抖动）
 struct ClipboardImagePreviewStrip: View {
     let entry: ClipboardEntry
     var onRetryOCR: (() -> Void)? = nil
 
     var body: some View {
-        HStack(spacing: 12) {
-            ClipboardImageThumbnail(entry: entry, side: 64)
-            VStack(alignment: .leading, spacing: 4) {
-                Text("图片预览")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(ClipboardPalette.textPrimary)
+        HStack(spacing: 10) {
+            ClipboardImageThumbnail(entry: entry, side: 52)
+            VStack(alignment: .leading, spacing: 3) {
                 if entry.ocrStatus == .failed {
                     HStack(spacing: 8) {
                         OCRStatusBadge(status: .failed)
                         Button("重试 OCR") { onRetryOCR?() }
                             .buttonStyle(.bordered)
-                            .controlSize(.small)
+                            .controlSize(.mini)
                     }
                 } else if let status = entry.ocrStatus {
                     OCRStatusBadge(status: status)
                 }
                 if entry.ocrStatus == .success, let ocr = entry.ocrText, !ocr.isEmpty {
                     Text(ocr)
-                        .font(.system(size: 11))
+                        .font(.system(size: 10.5))
                         .foregroundColor(ClipboardPalette.textSecondary)
-                        .lineLimit(3)
+                        .lineLimit(2)
                 }
                 Text("粘贴时复制原图（非 OCR 文本）")
-                    .font(.system(size: 10))
+                    .font(.system(size: 9.5))
                     .foregroundColor(ClipboardPalette.textTertiary)
             }
             Spacer()
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
     }
 }
 
-/// 时间展示：刚刚 / N 分钟前 / 今天 HH:mm / 昨天 HH:mm / N 天前（7 天内）/ yyyy-MM-dd
+/// 时间展示：刚刚 / N 分钟前 / 今天 HH:mm / 昨天 HH:mm / N 天前（7 天内）/ MM-dd / yyyy-MM-dd
 enum ClipboardTimeFormatter {
     private static let timeFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -446,7 +406,6 @@ enum ClipboardTimeFormatter {
         if calendar.isDateInYesterday(date) {
             return "昨天 \(timeFormatter.string(from: date))"
         }
-        // 7 天内显示「N 天前」（用户要求：右侧能看出多久之前复制的）
         let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: date),
                                            to: calendar.startOfDay(for: Date())).day ?? 0
         if (2...7).contains(days) {

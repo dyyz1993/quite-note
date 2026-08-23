@@ -73,8 +73,8 @@ final class ClipboardHistoryPanelController {
         if let panel { return panel }
 
         // 尺寸/外观按用户指定的 Alfred「All Snippets」参考样式复刻（浅色主题）；
-        // 高度优先保证列表可见条数（头部压缩后 480 高可完整显示 ~7 条）
-        let rect = NSRect(x: 0, y: 0, width: 640, height: 480)
+        // 单行紧凑行高下 600 高可完整显示 ~10 条
+        let rect = NSRect(x: 0, y: 0, width: 640, height: 600)
         let panel = ClipboardHistoryPanel(contentRect: rect, styleMask: [.titled, .fullSizeContentView], backing: .buffered, defer: false)
         panel.level = .floating
         panel.isFloatingPanel = true

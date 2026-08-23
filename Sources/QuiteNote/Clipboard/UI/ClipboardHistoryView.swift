@@ -215,7 +215,7 @@ struct ClipboardHistoryView: View {
                         }
                     }
                 }
-                .frame(height: 76)
+                .frame(height: 64)
                 .overlay(alignment: .top) {
                     Rectangle().fill(ClipboardPalette.inputBorder).frame(height: 1)
                 }
@@ -227,7 +227,7 @@ struct ClipboardHistoryView: View {
     private var entryList: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(spacing: 6) {
+                LazyVStack(spacing: 4) {
                     ForEach(Array(visibleEntries.enumerated()), id: \.element.id) { index, entry in
                         ClipboardEntryRow(
                             entry: entry,
@@ -258,8 +258,8 @@ struct ClipboardHistoryView: View {
                         }
                     }
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 7)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
             }
             .onChange(of: vm.selectedIndex, perform: { newValue in
                 guard visibleEntries.indices.contains(newValue) else { return }
