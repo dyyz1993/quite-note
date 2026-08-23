@@ -222,73 +222,24 @@ struct ClipboardHistoryView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    /// 列表：AppKit 原生 NSTableView（键盘导航/逐行滚动跟随/可见行检测全部原生，
+    /// 对齐 Alfred 手感；SwiftUI ScrollView 方案已废弃）
     private var entryList: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(spacing: 4) {
-                    ForEach(Array(visibleEntries.enumerated()), id: \.element.id) { index, entry in
-                        ClipboardEntryRow(
-                            entry: entry,
-                            index: index,
-                            pageSlot: vm.displayNumber(forIndex: index),
-                            isSelected: index == vm.selectedIndex
-                        ) {
-                            vm.selectedIndex = index
-                        } onPaste: {
-                            paste(entry)
-                        } onCopy: {
-                            ClipboardPasteService.shared.copy(entry)
-                            showHint("已复制到剪贴板")
-                        } onPin: {
-                            store.togglePin(id: entry.id)
-                        } onSaveToFlash: {
-                            saveToFlash(entry)
-                        } onDelete: {
-                            deleteAt(index)
-                        } onFrameChange: { minY, maxY in
-                            vm.updateRowFrame(index: index, minY: minY, maxY: maxY)
-                        }
-                        .id(entry.id)
-                        .contentShape(Rectangle())
-                        .onTapGesture(count: 2) { paste(entry) }
-                        .onTapGesture {
-                            // 单击 = 选中并复制（用户约定：点击默认复制，回车/双击才粘贴）
-                            vm.selectedIndex = index
-                            ClipboardPasteService.shared.copy(entry)
-                            showHint("已复制到剪贴板")
-                        }
-                    }
-                }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 5)
+        ClipboardListTableView(
+            entries: visibleEntries,
+            selectedIndex: $vm.selectedIndex,
+            onSingleClick: { index in
+                // 单击 = 选中并复制（用户约定）
+                ClipboardPasteService.shared.copy(visibleEntries[index])
+                showHint("已复制到剪贴板")
+            },
+            onDoubleClick: { index in
+                paste(visibleEntries[index])
+            },
+            onVisibleTopChanged: { top in
+                vm.viewportTopChanged(top)
             }
-            .coordinateSpace(name: "clipScroll")
-            .background(
-                // 视口高度（ScrollView 可视区域）
-                GeometryReader { geo in
-                    Color.clear
-                        .onAppear { vm.updateViewportHeight(geo.size.height) }
-                        .onChange(of: geo.size.height) { vm.updateViewportHeight($0) }
-                }
-            )
-            .onChange(of: vm.selectedIndex, perform: { newValue in
-                // 最小滚动保证选中行可见；序号与选中无关（视口锚定，见 ViewModel）
-                guard visibleEntries.indices.contains(newValue) else { return }
-                proxy.scrollTo(visibleEntries[newValue].id, anchor: nil)
-            })
-            // ↑↓ 的 SwiftUI 层兜底：焦点在搜索框且输入法/field editor 吞掉方向键时，
-            // moveCommand 仍会冒泡到这里（NSEvent monitor 与此双路径，不重复触发）
-            .onMoveCommand { direction in
-                switch direction {
-                case .up:
-                    vm.handle(.moveUp, entries: visibleEntries) { paste($0) }
-                case .down:
-                    vm.handle(.moveDown, entries: visibleEntries) { paste($0) }
-                default:
-                    break
-                }
-            }
-        }
+        )
     }
 
     /// 空态区分：无历史 / 搜索无结果 / 暂停（PRD 7.5）

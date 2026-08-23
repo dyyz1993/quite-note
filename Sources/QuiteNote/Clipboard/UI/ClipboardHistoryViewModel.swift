@@ -84,6 +84,13 @@ final class ClipboardHistoryViewModel: ObservableObject {
         recomputeTopIndex()
     }
 
+    /// 可见首行变化（NSTableView 原生检测上报）
+    func viewportTopChanged(_ top: Int) {
+        if top != viewportTopIndex {
+            viewportTopIndex = top
+        }
+    }
+
     /// 顶行 = minY ≥ -15（容差）中最靠上的可见行
     private func recomputeTopIndex() {
         guard !rowFrames.isEmpty else { return }
