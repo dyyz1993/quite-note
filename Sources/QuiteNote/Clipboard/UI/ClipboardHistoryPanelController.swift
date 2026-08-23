@@ -67,6 +67,24 @@ final class ClipboardHistoryPanelController {
         onKeyAction = nil
     }
 
+    // MARK: - 失焦自动关闭（用户约定：点别处即退出，不留常驻窗口）
+
+    private var resignObserver: NSObjectProtocol?
+
+    private func installResignObserver() {
+        guard resignObserver == nil, let panel else { return }
+        resignObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didResignKeyNotification, object: panel, queue: .main
+        ) { [weak self] note in
+            guard let self, let window = note.object as? NSWindow, window === self.panel else { return }
+            // 新 key window 不是本面板（点到了其他 app / 主悬浮面板 / 浮球）→ 自动收起；
+            // hide() 幂等，粘贴流程主动 orderOut 触发的同名通知无害
+            if NSApp.keyWindow !== window {
+                self.hide()
+            }
+        }
+    }
+
     // MARK: - 窗口
 
     private func ensurePanel() -> ClipboardHistoryPanel {
@@ -99,6 +117,7 @@ final class ClipboardHistoryPanelController {
         panel.contentView = hosting
 
         self.panel = panel
+        installResignObserver()
         return panel
     }
 
