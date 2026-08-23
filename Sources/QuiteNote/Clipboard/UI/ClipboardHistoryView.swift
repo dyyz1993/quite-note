@@ -116,9 +116,9 @@ struct ClipboardHistoryView: View {
 
     private var headerView: some View {
         HStack(spacing: 10) {
-            LucideView(name: .clipboardList, size: 18, color: .white)
+            LucideView(name: .clipboardList, size: 15, color: .white)
             Text("剪贴板历史")
-                .font(.system(size: 16, weight: .semibold))
+                .font(.system(size: 14, weight: .semibold))
                 .foregroundColor(.white)
 
             Spacer()
@@ -132,8 +132,8 @@ struct ClipboardHistoryView: View {
                 controller.hide()
             }
         }
-        .padding(.horizontal, 16)
-        .frame(height: 48)
+        .padding(.horizontal, 14)
+        .frame(height: 34)
         .background(ClipboardPalette.header)
     }
 
@@ -181,8 +181,8 @@ struct ClipboardHistoryView: View {
 
     private func headerButton(icon: IconName, help: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            LucideView(name: icon, size: 14, color: .white.opacity(0.85))
-                .frame(width: 28, height: 28)
+            LucideView(name: icon, size: 13, color: .white.opacity(0.85))
+                .frame(width: 24, height: 24)
                 .background(Color.white.opacity(0.12))
                 .clipShape(Circle())
         }
@@ -211,12 +211,13 @@ struct ClipboardHistoryView: View {
             }
         }
         .padding(.horizontal, 14)
-        .frame(height: 44)
+        .frame(height: 42)
         .background(Color.white)
         .cornerRadius(8)
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(searchFocused ? ClipboardPalette.accent : ClipboardPalette.inputBorder, lineWidth: searchFocused ? 1.5 : 1))
         .padding(.horizontal, 12)
-        .padding(.top, 10)
+        .padding(.top, 7)
+        .padding(.bottom, 4)
         .background(ClipboardPalette.background)
     }
 
@@ -249,7 +250,7 @@ struct ClipboardHistoryView: View {
                 .foregroundColor(ClipboardPalette.textTertiary)
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 7)
+        .padding(.vertical, 5)
         .background(ClipboardPalette.background)
         .overlay(alignment: .bottom) {
             Rectangle().fill(ClipboardPalette.inputBorder).frame(height: 1)
@@ -285,7 +286,7 @@ struct ClipboardHistoryView: View {
     private var entryList: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(spacing: 8) {
+                LazyVStack(spacing: 6) {
                     ForEach(Array(visibleEntries.enumerated()), id: \.element.id) { index, entry in
                         ClipboardEntryRow(
                             entry: entry,
@@ -311,8 +312,8 @@ struct ClipboardHistoryView: View {
                         .onTapGesture { vm.selectedIndex = index }
                     }
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
             }
             .onChange(of: vm.selectedIndex) { newValue in
                 guard visibleEntries.indices.contains(newValue) else { return }
@@ -375,7 +376,7 @@ struct ClipboardHistoryView: View {
         .font(.system(size: 11))
         .foregroundColor(ClipboardPalette.textTertiary)
         .padding(.horizontal, 14)
-        .padding(.vertical, 8)
+        .padding(.vertical, 6)
         .background(Color.white)
         .overlay(alignment: .top) {
             Rectangle().fill(ClipboardPalette.inputBorder).frame(height: 1)

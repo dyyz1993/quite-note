@@ -43,8 +43,8 @@ struct ClipboardEntryRow: View {
 
             actionButtons
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 9)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
         .background(rowBackground)
         .cornerRadius(4)
         .overlay(RoundedRectangle(cornerRadius: 4).stroke(rowBorder, lineWidth: isSelected ? 1.5 : 0))
