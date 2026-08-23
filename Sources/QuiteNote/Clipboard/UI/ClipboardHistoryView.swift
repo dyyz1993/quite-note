@@ -89,31 +89,38 @@ struct ClipboardHistoryView: View {
         }
         .onAppear {
             searchFocused = true
-            controller.onKeyAction = { action in
-                switch action {
-                case .saveToFlash:
-                    if let entry = selectedEntry { saveToFlash(entry) }
-                case .focusSearch:
-                    searchFocused = true
-                case .escape:
-                    // Alfred 式：有搜索词先清空，再按才关闭（快速退出）
-                    if !vm.searchText.isEmpty || vm.filter != .all {
-                        vm.resetInput()
-                    } else {
-                        controller.hide()
-                    }
-                default:
-                    vm.handle(action, entries: visibleEntries) { paste($0) }
-                }
-            }
+            wireKeyHandler()
         }
         .onDisappear {
             controller.onKeyAction = nil
         }
         .onReceive(NotificationCenter.default.publisher(for: QuiteNoteNotification.clipboardPanelDidShow.name)) { _ in
-            // 每次面板唤起：清空搜索 + 聚焦（Alfred 式体验，PRD 7.1）
+            // 每次面板唤起：清空搜索 + 聚焦 + 重新接键盘处理器
+            // （视图随面板常驻不销毁，onAppear 只触发一次，第二次唤起必须在此重接）
             vm.resetInput()
             searchFocused = true
+            wireKeyHandler()
+        }
+    }
+
+    /// 把窗口按键动作接到视图（onAppear 与每次 didShow 都调用）
+    private func wireKeyHandler() {
+        controller.onKeyAction = { action in
+            switch action {
+            case .saveToFlash:
+                if let entry = selectedEntry { saveToFlash(entry) }
+            case .focusSearch:
+                searchFocused = true
+            case .escape:
+                // Alfred 式：有搜索词先清空，再按才关闭（快速退出）
+                if !vm.searchText.isEmpty || vm.filter != .all {
+                    vm.resetInput()
+                } else {
+                    controller.hide()
+                }
+            default:
+                vm.handle(action, entries: visibleEntries) { paste($0) }
+            }
         }
     }
 
