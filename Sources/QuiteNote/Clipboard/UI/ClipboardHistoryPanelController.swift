@@ -1,0 +1,151 @@
+import Foundation
+import AppKit
+import SwiftUI
+
+/// 剪贴板历史面板窗口按键动作（窗口内快捷键，PRD 6）
+enum ClipboardPanelKeyAction {
+    case moveUp
+    case moveDown
+    case pasteSelected
+    case pasteIndex(Int) // ⌘1–⌘9
+    case togglePin
+    case deleteSelected
+    case focusSearch
+}
+
+/// 剪贴板历史快捷面板控制器（PRD 7.1：720×560，打开后搜索自动聚焦）
+///
+/// 单例 + 惰性建窗（参考 V2OCRResultPanelController 模式）。
+/// 窗口内键盘操作通过 NSEvent localMonitor 拦截（比 SwiftUI onKeyPress 兼容 macOS 13）。
+@MainActor
+final class ClipboardHistoryPanelController {
+    static let shared = ClipboardHistoryPanelController()
+
+    private var panel: ClipboardHistoryPanel?
+    private var keyMonitor: Any?
+    /// SwiftUI 视图注册的按键处理器（视图 onAppear 注册、onDisappear 置空）
+    var onKeyAction: ((ClipboardPanelKeyAction) -> Void)?
+
+    private init() {}
+
+    var isVisible: Bool { panel?.isVisible ?? false }
+
+    func toggle() {
+        if isVisible { hide() } else { show() }
+    }
+
+    func show() {
+        // 打开前记住用户当前所在应用 = 粘贴目标（PRD 6：自动粘贴前保存当前前台 App）
+        ClipboardPasteService.shared.rememberTargetApp()
+
+        let panel = ensurePanel()
+        panel.center()
+        NSApp.activate(ignoringOtherApps: true)
+        panel.makeKeyAndOrderFront(nil)
+
+        installKeyMonitor()
+
+        // 首次打开加载历史
+        ClipboardHistoryStore.shared.loadIfNeeded()
+        ClipboardMonitor.shared.syncWithPreferences()
+        DiagnosticCenter.info("Clipboard", "历史面板打开")
+    }
+
+    func hide() {
+        panel?.orderOut(nil)
+        removeKeyMonitor()
+        onKeyAction = nil
+    }
+
+    // MARK: - 窗口
+
+    private func ensurePanel() -> ClipboardHistoryPanel {
+        if let panel { return panel }
+
+        let rect = NSRect(x: 0, y: 0, width: 720, height: 560)
+        let panel = ClipboardHistoryPanel(contentRect: rect, styleMask: [.titled, .fullSizeContentView], backing: .buffered, defer: false)
+        panel.level = .floating
+        panel.isFloatingPanel = true
+        panel.hidesOnDeactivate = false
+        panel.isReleasedWhenClosed = false
+        panel.titlebarAppearsTransparent = true
+        panel.titleVisibility = .hidden
+        panel.standardWindowButton(.closeButton)?.isHidden = true
+        panel.standardWindowButton(.miniaturizeButton)?.isHidden = true
+        panel.standardWindowButton(.zoomButton)?.isHidden = true
+        panel.isMovableByWindowBackground = true
+        panel.animationBehavior = .utilityWindow
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        panel.appearance = NSAppearance(named: .darkAqua) // UI 规范：强制深色外观
+        panel.backgroundColor = NSColor(calibratedWhite: 0.12, alpha: 1.0)
+        panel.minSize = NSSize(width: 560, height: 420)
+        panel.maxSize = NSSize(width: 980, height: 800)
+
+        // 崩溃红线：NSHostingView 禁止反向驱动窗口尺寸
+        let hosting = NSHostingView(rootView: ClipboardHistoryView(controller: self))
+        hosting.sizingOptions = []
+        panel.contentView = hosting
+
+        self.panel = panel
+        return panel
+    }
+
+    // MARK: - 键盘监听（窗口内快捷键）
+
+    private func installKeyMonitor() {
+        removeKeyMonitor()
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self, let window = event.window, window === self.panel, window.isKeyWindow else { return event }
+            guard let action = Self.mapKey(event) else { return event }
+            self.onKeyAction?(action)
+            return nil // 消费事件
+        }
+    }
+
+    private func removeKeyMonitor() {
+        if let monitor = keyMonitor {
+            NSEvent.removeMonitor(monitor)
+            keyMonitor = nil
+        }
+    }
+
+    /// 按键映射（仅窗口聚焦时生效；⌘1–9 不注册全局，PRD 6）
+    private static func mapKey(_ event: NSEvent) -> ClipboardPanelKeyAction? {
+        let flags = event.modifierFlags.intersection([.command, .option, .shift, .control])
+        let keyCode = event.keyCode
+
+        // ⌘1–⌘9：直接粘贴第 N 项（keycode 18,19,20,21,23,22,26,28,25 → 1...9）
+        if flags == .command {
+            let digitKeys: [UInt16] = [18, 19, 20, 21, 23, 22, 26, 28, 25]
+            if let idx = digitKeys.firstIndex(of: keyCode) {
+                return .pasteIndex(idx + 1)
+            }
+            switch keyCode {
+            case 1: return .togglePin       // ⌘S
+            case 3: return .focusSearch     // ⌘F
+            default: break
+            }
+        }
+
+        if flags.isEmpty {
+            switch keyCode {
+            case 125: return .moveDown      // ↓
+            case 126: return .moveUp        // ↑
+            case 36, 76: return .pasteSelected // Return / 小键盘 Enter
+            case 117: return .deleteSelected // fn+Delete（向前删除）
+            default: break
+            }
+        }
+
+        return nil
+    }
+}
+
+/// 面板窗口：ESC 关闭（PRD 6）
+final class ClipboardHistoryPanel: NSPanel {
+    override var canBecomeKey: Bool { true }
+
+    override func cancelOperation(_ sender: Any?) {
+        ClipboardHistoryPanelController.shared.hide()
+    }
+}

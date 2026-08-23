@@ -110,6 +110,15 @@ final class StatusBarController {
         capture.isEnabled = true
         menu.addItem(capture)
 
+        // 剪贴板历史（快捷键动态读取，与设置页共用同一 UserDefaults 键）
+        let clipboardKey = PreferencesManager.shared.clipboardOpenShortcut
+        let clipboardFlags = NSEvent.ModifierFlags(rawValue: UInt(PreferencesManager.shared.clipboardOpenShortcutFlags))
+        let clipboardHistory = NSMenuItem(title: "剪贴板历史", action: #selector(onOpenClipboardHistory), keyEquivalent: clipboardKey)
+        clipboardHistory.keyEquivalentModifierMask = clipboardFlags
+        clipboardHistory.target = self
+        clipboardHistory.isEnabled = true
+        menu.addItem(clipboardHistory)
+
         // 动态读取截图快捷键
         let screenshotShortcut = PreferencesManager.shared.screenshotShortcut
         let screenshotFlags = NSEvent.ModifierFlags(rawValue: UInt(PreferencesManager.shared.screenshotShortcutFlags))
@@ -258,6 +267,13 @@ final class StatusBarController {
 
     /// 菜单：采集剪贴板（触发与硬件按钮一致的逻辑）
     @objc private func onCapture() { QuiteNoteNotification.post(.bluetoothCaptureClipboard) }
+
+    /// 菜单：打开剪贴板历史面板
+    @objc private func onOpenClipboardHistory() {
+        Task { @MainActor in
+            ClipboardHistoryPanelController.shared.toggle()
+        }
+    }
 
     @objc private func onToggleAI() {
         store.enableAI.toggle()

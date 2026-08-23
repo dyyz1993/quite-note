@@ -193,8 +193,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             DiagnosticCenter.info("Recording", "全局停止快捷键触发（⌥⌘.）")
             V2RecordingController.shared.stop()
         }
+        shortcuts?.onOpenClipboardHistory = {
+            ClipboardHistoryPanelController.shared.toggle()
+        }
         shortcuts?.start()
-        
+
+        // 剪贴板历史：加载已有历史 + 按设置同步监控（首次引导未确认前不启动捕获）
+        ClipboardHistoryStore.shared.loadIfNeeded()
+        ClipboardMonitor.shared.syncWithPreferences()
+
         // 观察配置变化，更新快捷键缓存
         PreferencesManager.shared.objectWillChange
             .receive(on: RunLoop.main)
@@ -202,6 +209,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // 延迟一小段时间等待 UserDefaults 更新完成
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                     self?.shortcuts?.refresh()
+                    ClipboardMonitor.shared.syncWithPreferences()
                 }
             }
             .store(in: &cancellables)

@@ -27,6 +27,12 @@ final class KeyboardShortcutManager {
     var onGlobalPaste: (() -> Void)?
     var onScreenshot: (() -> Void)?
     var onStopRecording: (() -> Void)?
+    var onOpenClipboardHistory: (() -> Void)?
+
+    /// 剪贴板历史快捷键注册失败（与系统/其他应用冲突），设置页据此提示（PRD 6）
+    private(set) var clipboardShortcutConflict = false
+    private var cachedClipboardShortcut: String = ""
+    private var cachedClipboardFlags: NSEvent.ModifierFlags = []
 
     /// ⚠️ 防抖触发截图回调
     /// 防止全局监听和应用内监听同时触发导致的重复调用
@@ -57,6 +63,7 @@ final class KeyboardShortcutManager {
         
         // 缓存当前的快捷键配置并注册全局热键
         updateCachedShortcuts()
+        clipboardShortcutConflict = registerClipboardHotkey()
         
         // 全局粘贴事件监听（当应用没有焦点时）
         // ⚠️ 粘贴仍然使用监视器，因为我们不需要拦截它，只是感知
@@ -102,6 +109,7 @@ final class KeyboardShortcutManager {
     /// 更新快捷键缓存
     func refresh() {
         updateCachedShortcuts()
+        clipboardShortcutConflict = registerClipboardHotkey()
     }
 
     private var cachedShortcut: String = ""
@@ -111,9 +119,9 @@ final class KeyboardShortcutManager {
         cachedShortcut = PreferencesManager.shared.screenshotShortcut.lowercased()
         let rawFlags = UInt(PreferencesManager.shared.screenshotShortcutFlags)
         cachedFlags = NSEvent.ModifierFlags(rawValue: rawFlags).intersection([.command, .option, .shift, .control])
-        
+
         logger.info("已更新快捷键缓存: \(self.cachedShortcut), flags: \(self.cachedFlags.rawValue)")
-        
+
         // 注册全局热键 (Carbon API)
         if !cachedShortcut.isEmpty {
             GlobalHotkeyManager.shared.register(
@@ -127,9 +135,26 @@ final class KeyboardShortcutManager {
         } else {
             GlobalHotkeyManager.shared.unregister(id: 1001)
         }
-        
+
         // 注册其他全局功能热键
         registerOtherGlobalHotkeys()
+    }
+
+    /// 剪贴板历史面板热键（PRD 6：默认 ⇧⌘V，可配置；冲突时记录并暴露给设置页）
+    private func registerClipboardHotkey() -> Bool {
+        let key = PreferencesManager.shared.clipboardOpenShortcut.lowercased()
+        let flags = NSEvent.ModifierFlags(rawValue: UInt(PreferencesManager.shared.clipboardOpenShortcutFlags))
+            .intersection([.command, .option, .shift, .control])
+        cachedClipboardShortcut = key
+        cachedClipboardFlags = flags
+
+        guard !key.isEmpty else {
+            GlobalHotkeyManager.shared.unregister(id: 2007)
+            return true
+        }
+        return GlobalHotkeyManager.shared.register(key: key, modifiers: flags, id: 2007) { [weak self] in
+            self?.onOpenClipboardHistory?()
+        }
     }
     
     private func registerOtherGlobalHotkeys() {
@@ -272,6 +297,7 @@ final class KeyboardShortcutManager {
         GlobalHotkeyManager.shared.unregister(id: 2006)
         GlobalHotkeyManager.shared.unregister(id: 3001)
         GlobalHotkeyManager.shared.unregister(id: 3002)
+        GlobalHotkeyManager.shared.unregister(id: 2007)
     }
     
     deinit { 

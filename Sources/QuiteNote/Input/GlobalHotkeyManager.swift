@@ -60,18 +60,20 @@ final class GlobalHotkeyManager {
     ///   - modifiers: 修饰键 (NSEvent.ModifierFlags)
     ///   - id: 唯一标识符
     ///   - handler: 触发时的回调
-    func register(key: String, modifiers: NSEvent.ModifierFlags, id: UInt32, handler: @escaping () -> Void) {
+    /// - Returns: 是否注册成功（false = 按键非法或与其他应用/系统热键冲突）
+    @discardableResult
+    func register(key: String, modifiers: NSEvent.ModifierFlags, id: UInt32, handler: @escaping () -> Void) -> Bool {
         // 先注销旧的
         unregister(id: id)
-        
+
         guard let keyCode = keyCode(for: key) else {
             print("[DEBUG] Invalid key for hotkey: \(key)")
-            return
+            return false
         }
-        
+
         let carbonModifiers = self.carbonModifiers(from: modifiers)
         let hotkeyID = EventHotKeyID(signature: OSType(0x514E5445), id: id) // "QNTE"
-        
+
         var carbonHotkey: EventHotKeyRef?
         let status = RegisterEventHotKey(UInt32(keyCode),
                                         UInt32(carbonModifiers),
@@ -79,15 +81,17 @@ final class GlobalHotkeyManager {
                                         GetApplicationEventTarget(),
                                         0,
                                         &carbonHotkey)
-        
+
         if status == noErr, let ref = carbonHotkey {
             hotkeys[id] = HotkeyInfo(id: id, handler: handler, carbonHotkey: ref)
             print("[DEBUG] Successfully registered global hotkey: \(key) (keyCode: \(keyCode)) with modifiers: \(modifiers), id: \(id)")
+            return true
         } else {
             print("[DEBUG] FAILED to register global hotkey: \(key), status: \(status), id: \(id)")
             if status == -9868 { // eventHotKeyExistsErr
                 print("[DEBUG] Error: Hotkey already exists or is reserved by system/another app")
             }
+            return false
         }
     }
     
