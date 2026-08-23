@@ -6,6 +6,8 @@ import SwiftUI
 enum ClipboardPanelKeyAction {
     case moveUp
     case moveDown
+    case switchFilterLeft   // ← 切换筛选类型
+    case switchFilterRight  // → 切换筛选类型
     case pasteSelected
     case pasteIndex(Int) // ⌘1–⌘9
     case saveToFlash     // ⌘S
@@ -140,6 +142,8 @@ final class ClipboardHistoryPanelController {
             switch keyCode {
             case 125: return .moveDown      // ↓
             case 126: return .moveUp        // ↑
+            case 123: return .switchFilterLeft  // ←
+            case 124: return .switchFilterRight // →
             case 36, 76: return .pasteSelected // Return / 小键盘 Enter
             case 117: return .deleteSelected // fn+Delete（向前删除）
             default: break

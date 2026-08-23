@@ -72,9 +72,10 @@ struct ClipboardHistoryView: View {
         VStack(spacing: 0) {
             if prefs.clipboardOnboarded {
                 headerView       // 紫色标题栏
-                filterBar        // 轻量筛选胶囊
+                bigSearchField   // 大搜索框（唤起即聚焦，Alfred 式）
+                filterBar        // 轻量筛选胶囊（←→ 切换）
                 contentArea      // 白卡列表
-                filterFooter     // 底部过滤输入行（参考图布局）
+                shortcutFooter   // 底部快捷键提示
             } else {
                 headerView
                 ClipboardOnboardingView()
@@ -190,7 +191,36 @@ struct ClipboardHistoryView: View {
         .help(help)
     }
 
-    // MARK: - 筛选栏（浅色小胶囊，浅紫选中）
+    // MARK: - 大搜索框（顶部、醒目、唤起即聚焦——用户唤起后直接打字搜索）
+
+    private var bigSearchField: some View {
+        HStack(spacing: 10) {
+            LucideView(name: .search, size: 18, color: ClipboardPalette.textTertiary)
+            TextField("输入以搜索剪贴板内容…", text: $vm.searchText)
+                .textFieldStyle(.plain)
+                .font(.system(size: 15))
+                .foregroundColor(ClipboardPalette.textPrimary)
+                .focused($searchFocused)
+            if !vm.searchText.isEmpty {
+                Button {
+                    vm.searchText = ""
+                } label: {
+                    LucideView(name: .circleX, size: 14, color: ClipboardPalette.textTertiary)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 14)
+        .frame(height: 44)
+        .background(Color.white)
+        .cornerRadius(8)
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(searchFocused ? ClipboardPalette.accent : ClipboardPalette.inputBorder, lineWidth: searchFocused ? 1.5 : 1))
+        .padding(.horizontal, 12)
+        .padding(.top, 10)
+        .background(ClipboardPalette.background)
+    }
+
+    // MARK: - 筛选栏（浅色小胶囊，浅紫选中，←→ 键循环切换）
 
     private var filterBar: some View {
         HStack(spacing: 6) {
@@ -221,6 +251,9 @@ struct ClipboardHistoryView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 7)
         .background(ClipboardPalette.background)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(ClipboardPalette.inputBorder).frame(height: 1)
+        }
     }
 
     // MARK: - 内容区
@@ -322,31 +355,26 @@ struct ClipboardHistoryView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    // MARK: - 底部过滤输入行（参考图：搜索在底部，右侧快捷键提示）
+    // MARK: - 底部快捷键提示（←→ 切类型 · ↑↓ 选条 · ↩ 粘贴）
 
-    private var filterFooter: some View {
-        HStack(spacing: 8) {
-            LucideView(name: .search, size: 13, color: ClipboardPalette.textTertiary)
-            TextField("输入以过滤剪贴板内容…", text: $vm.searchText)
-                .textFieldStyle(.plain)
-                .font(.system(size: 12))
-                .foregroundColor(ClipboardPalette.textPrimary)
-                .focused($searchFocused)
-            if !vm.searchText.isEmpty {
-                Button {
-                    vm.searchText = ""
-                } label: {
-                    LucideView(name: .circleX, size: 11, color: ClipboardPalette.textTertiary)
-                }
-                .buttonStyle(.plain)
+    private var shortcutFooter: some View {
+        HStack(spacing: 14) {
+            Text("←→ 切换类型")
+            Text("↑↓ 选择")
+            Text("↩ 粘贴")
+            Text("⌘1–9 直贴")
+            Text("⌘S 闪记")
+            Text("⌘P 置顶")
+            Text("Esc 关闭")
+            Spacer()
+            if !ClipboardPasteService.canSimulatePaste {
+                Text("缺辅助功能权限：粘贴降级为复制")
+                    .foregroundColor(ClipboardPalette.statusPaused)
             }
-            Rectangle().fill(ClipboardPalette.inputBorder).frame(width: 1, height: 14)
-            Text("↩ 粘贴 · ⌘1–9 直贴 · Esc 关闭")
-                .font(.system(size: 11))
-                .foregroundColor(ClipboardPalette.textTertiary)
-                .fixedSize()
         }
-        .padding(.horizontal, 12)
+        .font(.system(size: 11))
+        .foregroundColor(ClipboardPalette.textTertiary)
+        .padding(.horizontal, 14)
         .padding(.vertical, 8)
         .background(Color.white)
         .overlay(alignment: .top) {
@@ -420,6 +448,10 @@ extension ClipboardHistoryViewModel {
             if selectedIndex > 0 { selectedIndex -= 1 }
         case .moveDown:
             if selectedIndex < entries.count - 1 { selectedIndex += 1 }
+        case .switchFilterLeft:
+            switchFilter(false)
+        case .switchFilterRight:
+            switchFilter(true)
         case .pasteSelected:
             if entries.indices.contains(selectedIndex) { paste(entries[selectedIndex]) }
         case .pasteIndex(let n):

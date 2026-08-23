@@ -19,6 +19,12 @@ struct ClipboardEntryRow: View {
 
     var body: some View {
         HStack(spacing: 10) {
+            // ⌘N 序号（行首，紫色，仅前 9 条）
+            Text("\(index + 1)")
+                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                .foregroundColor(index < 9 ? ClipboardPalette.accent : .clear)
+                .frame(width: 16)
+
             leadingVisual
 
             VStack(alignment: .leading, spacing: 3) {
@@ -34,12 +40,6 @@ struct ClipboardEntryRow: View {
                 .foregroundColor(ClipboardPalette.textTertiary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-
-            // ⌘N 序号（参考图：右侧紫色数字，仅前 9 条）
-            Text("\(index + 1)")
-                .font(.system(size: 12, weight: .medium, design: .monospaced))
-                .foregroundColor(index < 9 ? ClipboardPalette.accent : .clear)
-                .frame(width: 16)
 
             actionButtons
         }

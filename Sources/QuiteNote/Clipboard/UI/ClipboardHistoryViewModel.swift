@@ -24,6 +24,14 @@ final class ClipboardHistoryViewModel: ObservableObject {
     }
     @Published var selectedIndex = 0
 
+    /// ←→ 循环切换筛选类型
+    func switchFilter(_ forward: Bool) {
+        let all = ClipboardFilter.allCases
+        guard let idx = all.firstIndex(of: filter) else { return }
+        let next = (idx + (forward ? 1 : -1) + all.count) % all.count
+        filter = all[next]
+    }
+
     private var workItem: DispatchWorkItem?
     /// PRD 9.2：搜索输入 150–300ms 防抖
     private let debounceInterval: TimeInterval = 0.2
