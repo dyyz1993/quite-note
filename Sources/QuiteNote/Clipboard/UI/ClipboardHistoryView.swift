@@ -262,10 +262,15 @@ struct ClipboardHistoryView: View {
                 .padding(.vertical, 5)
             }
             .onChange(of: vm.selectedIndex, perform: { newValue in
-                guard visibleEntries.indices.contains(newValue) else { return }
-                // anchor: nil = 最小滚动量让条目可见——已可见时基本不动，
-                // 不与用户手动滚轮/触控板打架（.center 会每次强拉到中央）
-                proxy.scrollTo(visibleEntries[newValue].id, anchor: nil)
+                // Alfred 模型：↑↓ 时列表固定不动、只有高亮移动——序号 1–9 永远对应
+                // 屏幕上的行，⌘N 稳定；仅在选中到达列表首/尾边界时才滚动一屏
+                let count = visibleEntries.count
+                guard count > 0, visibleEntries.indices.contains(newValue) else { return }
+                if newValue == 0 {
+                    proxy.scrollTo(visibleEntries[0].id, anchor: .top)
+                } else if newValue == count - 1 {
+                    proxy.scrollTo(visibleEntries[count - 1].id, anchor: .bottom)
+                }
             })
             // ↑↓ 的 SwiftUI 层兜底：焦点在搜索框且输入法/field editor 吞掉方向键时，
             // moveCommand 仍会冒泡到这里（NSEvent monitor 与此双路径，不重复触发）
