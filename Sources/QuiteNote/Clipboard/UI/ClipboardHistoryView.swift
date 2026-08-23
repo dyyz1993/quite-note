@@ -262,15 +262,13 @@ struct ClipboardHistoryView: View {
             }
             .coordinateSpace(name: "clipScroll")
             .onChange(of: vm.selectedIndex, perform: { newValue in
+                // 统一最小滚动（anchor nil）：选中行移出视口才滚、自然贴边缘停住，
+                // 到底后再按 ↓ 保持停在最后一条（handle 已 clamp），不回跳。
+                // 跨页时序号照常重编（normalizePage）但不强制页首对齐——
+                // 一屏可见行数(~12) > 页大小(9)，页内 ⌘1–⌘9 始终全在视口里。
                 guard visibleEntries.indices.contains(newValue) else { return }
-                // 分页模型：跨页时翻页（页首对齐视口顶），页内则最小滚动保证选中可见
-                let oldAnchor = vm.pageAnchor
                 vm.normalizePage()
-                if vm.pageAnchor != oldAnchor {
-                    proxy.scrollTo(visibleEntries[vm.pageAnchor].id, anchor: .top)
-                } else {
-                    proxy.scrollTo(visibleEntries[newValue].id, anchor: nil)
-                }
+                proxy.scrollTo(visibleEntries[newValue].id, anchor: nil)
             })
             // ↑↓ 的 SwiftUI 层兜底：焦点在搜索框且输入法/field editor 吞掉方向键时，
             // moveCommand 仍会冒泡到这里（NSEvent monitor 与此双路径，不重复触发）
