@@ -24,8 +24,12 @@ struct ClipboardSettingsTab: View {
             retentionSection
             privacySection
         }
+        .onAppear {
+            store.refreshDiskUsage()
+        }
         .onReceive(timer) { _ in
             accessibilityGranted = ClipboardPasteService.canSimulatePaste
+            store.refreshDiskUsage() // 占用随捕获/清理动态变化
         }
     }
 
@@ -241,6 +245,17 @@ struct ClipboardSettingsTab: View {
                 Text("置顶条目和已加入闪记的条目不会自动清理；图片原图随条目一起清理")
                     .font(.themeCaption)
                     .foregroundColor(.themeTextTertiary)
+
+                // 当前占用（附件图片 + 数据库），随捕获/清理动态刷新
+                HStack(spacing: 6) {
+                    LucideView(name: .hardDrive, size: 12, color: .themeBlue400)
+                    Text("当前占用 \(ByteCountFormatter.string(fromByteCount: store.diskUsageBytes, countStyle: .file))")
+                        .font(.themeCaption)
+                        .foregroundColor(.themeTextSecondary)
+                    Text("（含图片附件与数据库）")
+                        .font(.themeCaptionSmall)
+                        .foregroundColor(.themeTextTertiary)
+                }
 
                 HStack(spacing: 8) {
                     Button("立即清理过期记录") { store.cleanExpiredNow() }

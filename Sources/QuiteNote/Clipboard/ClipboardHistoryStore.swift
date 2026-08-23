@@ -157,6 +157,32 @@ final class ClipboardHistoryStore: ObservableObject {
         applyRetentionIfNeeded(force: true)
     }
 
+    // MARK: - 磁盘占用统计（设置页展示）
+
+    @Published private(set) var diskUsageBytes: Int64 = 0
+
+    /// 后台统计剪贴板历史占用：附件图片目录 + 数据库文件（含 -wal/-shm）
+    func refreshDiskUsage() {
+        let clipDir = FileCoordinator.shared.getDirectoryURL(for: .clipboard)
+        let dbPath = persistence.storeURL.path
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let fm = FileManager.default
+            var total: Int64 = 0
+            if let enumerator = fm.enumerator(at: clipDir, includingPropertiesForKeys: [.fileSizeKey]) {
+                for case let url as URL in enumerator {
+                    total += Int64((try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+                }
+            }
+            for suffix in ["", "-wal", "-shm"] {
+                let url = URL(fileURLWithPath: dbPath + suffix)
+                total += Int64((try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+            }
+            DispatchQueue.main.async {
+                self?.diskUsageBytes = total
+            }
+        }
+    }
+
     /// 保留策略（纯函数计算 + 应用，PRD 4.3）：
     /// 1. 未置顶且超过保留天数的条目过期；2. 超过数量上限时按最旧清理未置顶条目。
     private func applyRetentionIfNeeded(force: Bool = false) {

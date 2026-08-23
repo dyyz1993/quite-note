@@ -11,6 +11,8 @@ final class ClipboardHistoryPersistence {
     static let shared = ClipboardHistoryPersistence()
 
     let container: NSPersistentContainer
+    /// 剪贴板库文件位置（占用统计用，含 -wal/-shm）
+    let storeURL: URL
 
     init() {
         let model = Self.makeModel()
@@ -31,6 +33,7 @@ final class ClipboardHistoryPersistence {
                 .appendingPathComponent(directoryName, isDirectory: true)
                 .appendingPathComponent(dbName)
         }
+        storeURL = databaseURL
 
         try? FileManager.default.createDirectory(at: databaseURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         let desc = NSPersistentStoreDescription(url: databaseURL)
