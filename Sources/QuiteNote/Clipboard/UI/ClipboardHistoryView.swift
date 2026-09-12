@@ -74,6 +74,21 @@ struct ClipboardHistoryView: View {
         self.controller = controller
     }
 
+    /// 聚焦补拉：@FocusState 在面板未成 key window 时设值会被丢弃，
+    /// 按固定间隔先 false 再 true 重新断言（key 是本面板才动）
+    private func refocusRetries() {
+        for delay in [0.25, 0.55, 1.0] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                guard NSApp.keyWindow === controller.panelIfVisible else {
+                    DiagnosticCenter.warning("ClipboardUI", "聚焦补拉@\(delay)s：key 不在本面板（\(NSApp.keyWindow.map { String(describing: type(of: $0)) } ?? "nil")）")
+                    return
+                }
+                searchFocused = false
+                searchFocused = true
+            }
+        }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             if prefs.clipboardOnboarded {
@@ -98,6 +113,7 @@ struct ClipboardHistoryView: View {
         .onAppear {
             searchFocused = true
             wireKeyHandler()
+            refocusRetries()
         }
         .onDisappear {
             controller.onKeyAction = nil
@@ -108,6 +124,10 @@ struct ClipboardHistoryView: View {
             vm.resetInput()
             searchFocused = true
             wireKeyHandler()
+            // 聚焦补拉：didShow 时面板可能还没成为 key window（accessory 应用
+            // activate 异步生效），@FocusState 设一次会被丢弃——先 false 再 true
+            // 重新断言（实测用户遇到"唤起后输入框没聚焦"的根因）
+            refocusRetries()
         }
         .alert("启用直接粘贴？", isPresented: $showDirectPastePermissionDialog) {
             Button("仅复制", role: .cancel) {}

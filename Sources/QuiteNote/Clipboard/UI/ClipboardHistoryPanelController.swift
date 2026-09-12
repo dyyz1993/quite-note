@@ -36,6 +36,11 @@ final class ClipboardHistoryPanelController {
 
     var isVisible: Bool { panel?.isVisible ?? false }
 
+    /// 面板 NSPanel（可见时；视图聚焦补拉用于校验当前 key window 是本面板）
+    var panelIfVisible: NSPanel? {
+        panel?.isVisible == true ? panel : nil
+    }
+
     func toggle() {
         if isVisible { hide() } else { show() }
     }
@@ -61,6 +66,22 @@ final class ClipboardHistoryPanelController {
         // 尽量确保用户随后打字直接进搜索框（PRD 7.1：打开后搜索框自动获得焦点）
         NSApp.activate(ignoringOtherApps: true)
 
+        // 面板互斥：唤起剪贴板时收起启动器（两个浮板同屏会 key 转移竞态）
+        if AppLauncherPanelController.shared.isVisible {
+            AppLauncherPanelController.shared.hide()
+        }
+
+        // key 就位补拉（同启动器面板实测有效的方案）：makeKey 异步生效，且失焦
+        // 收起的 orderOut 会打断转移——按固定间隔补拉直到就位，否则搜索框聚焦失败
+        for delay in [0.15, 0.4, 0.9] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                guard let self, let panel = self.panel, panel.isVisible, !panel.isKeyWindow else { return }
+                NSApp.activate(ignoringOtherApps: true)
+                panel.orderFrontRegardless()
+                panel.makeKey()
+            }
+        }
+
         installKeyMonitor()
 
         // ESC Carbon 拦截（面板打开期间）：搜狗中文模式会吞裸 ESC，同启动器面板
@@ -71,11 +92,17 @@ final class ClipboardHistoryPanelController {
         // 首次打开加载历史
         ClipboardHistoryStore.shared.loadIfNeeded()
         ClipboardMonitor.shared.syncWithPreferences()
-        QuiteNoteNotification.post(.clipboardPanelDidShow)
-        DiagnosticCenter.info("Clipboard", "历史面板打开")
+        // didShow 延一拍发：SwiftUI 首帧渲染是异步的，同步 post 时视图的
+        // onReceive 订阅还没建立（首开必丢——实测聚焦补拉日志零输出定位）
+        DispatchQueue.main.async {
+            QuiteNoteNotification.post(.clipboardPanelDidShow)
+        }
+        let keyInfo = panel.isKeyWindow ? "key✓" : "key✗（当前 key: \(NSApp.keyWindow.map { String(describing: type(of: $0)) } ?? "nil")）"
+        DiagnosticCenter.info("Clipboard", "历史面板打开（\(keyInfo)）")
     }
 
     func hide() {
+        DiagnosticCenter.info("Clipboard", "面板收起（当前 key: \(NSApp.keyWindow.map { String(describing: type(of: $0)) } ?? "nil")）")
         panel?.orderOut(nil)
         removeKeyMonitor()
         GlobalHotkeyManager.shared.unregister(id: 5004)
