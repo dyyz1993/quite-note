@@ -25,7 +25,7 @@ final class LauncherFileSearch {
     private var indexLoaded = false
     private var indexScanning = false
     private var lastIndexDate: Date?
-    private let indexStaleInterval: TimeInterval = 600   // 10 分钟
+    private let indexStaleInterval: TimeInterval = 30    // 扫描亚秒级，30s 即刷新保实时
 
     /// 缓存文件位置（同应用目录缓存：按 Bundle ID 分目录，测试进程重定向）
     nonisolated static var indexCacheURL: URL {
@@ -109,9 +109,12 @@ final class LauncherFileSearch {
         let fm = FileManager.default
         let home = NSHomeDirectory()
         let roots = [home + "/Desktop", home + "/Documents", home + "/Downloads"]
-        // ⚠️ 本 SDK（macOS 26）两个 API 的 key 参数类型：enumerator 要 Array，resourceValues 要 Set
-        let enumKeys: [URLResourceKey] = [.isDirectoryKey, .contentModificationDateKey, .isPackageKey]
-        let statKeys: Set<URLResourceKey> = [.isDirectoryKey, .contentModificationDateKey, .isPackageKey]
+        // ⚠️ 本 SDK（macOS 26）两个 API 的 key 参数类型：enumerator 要 Array，resourceValues 要 Set。
+        // 索引阶段只取 isDirectory/isPackage（纯本地 stat）——不取修改时间：
+        // 1.9 万次日期 stat 在 iCloud 占位文件上会走网络（首扫 6.5 分钟的元凶），
+        // 日期延后到 filterIndex 只对命中的 ~150 个候选现取
+        let enumKeys: [URLResourceKey] = [.isDirectoryKey, .isPackageKey]
+        let statKeys: Set<URLResourceKey> = [.isDirectoryKey, .isPackageKey]
         let options: FileManager.DirectoryEnumerationOptions = [.skipsHiddenFiles, .skipsSubdirectoryDescendants, .skipsPackageDescendants]
         let deadline = Date().addingTimeInterval(4)
         var results: [LauncherFile] = []
@@ -138,18 +141,20 @@ final class LauncherFileSearch {
         return results
     }
 
-    /// 内存过滤（索引就绪后的搜索路径，<10ms）：文件夹排前（用户要求区分），
-    /// 同类内按修改时间倒序
+    /// 内存过滤（索引就绪后的搜索路径）：名字过滤 → 前 150 候选补齐修改时间
+    /// （索引阶段刻意不取，见 scanAllForIndex 注释）→ 文件夹优先 + 时间倒序 → 取 50
     nonisolated static func filterIndex(_ term: String, in files: [LauncherFile]) -> [LauncherFile] {
         let lower = term.lowercased()
-        return files
-            .filter { $0.name.lowercased().contains(lower) }
-            .sorted {
-                if $0.isDirectory != $1.isDirectory { return $0.isDirectory }   // 文件夹优先
-                return ($0.modifiedDate ?? .distantPast) > ($1.modifiedDate ?? .distantPast)
-            }
-            .prefix(50)
-            .map { $0 }
+        var candidates = files.filter { $0.name.lowercased().contains(lower) }
+        for i in candidates.indices where candidates[i].modifiedDate == nil {
+            candidates[i].modifiedDate = (try? candidates[i].url
+                .resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+        }
+        candidates.sort {
+            if $0.isDirectory != $1.isDirectory { return $0.isDirectory }   // 文件夹优先
+            return ($0.modifiedDate ?? .distantPast) > ($1.modifiedDate ?? .distantPast)
+        }
+        return Array(candidates.prefix(50))
     }
 
     // MARK: - 搜索入口

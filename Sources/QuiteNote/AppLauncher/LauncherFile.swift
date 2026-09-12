@@ -6,7 +6,7 @@ struct LauncherFile: Identifiable, Equatable, Codable {
     let url: URL
     /// 系统 Kind 描述（"PNG 图像"/"PDF 文档"，Spotlight 本地化）
     let kindDescription: String
-    let modifiedDate: Date?
+    var modifiedDate: Date?
     let isDirectory: Bool
 
     var id: String { url.path }

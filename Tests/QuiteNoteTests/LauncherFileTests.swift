@@ -54,16 +54,19 @@ final class LauncherFileTests: XCTestCase {
 
     // MARK: - 兜底扫描集成（只读真实家目录，不写任何存储）
 
-    func test兜底扫描_家目录Applications必命中() {
-        // 本机家目录必有 ~/Applications 或 ~/Documents 等结构；搜 "applications" 至少命中家目录同名项
-        let results = LauncherFileSearch.scanCommonDirectories(term: "applications")
-        XCTAssertFalse(results.isEmpty, "家目录兜底扫描应命中 Applications（若此断言在 CI 失败，说明兜底逻辑退化）")
-        XCTAssertTrue(results.contains { $0.url.path == NSHomeDirectory() + "/Applications" })
-    }
+    func test兜底扫描_家目录Applications必命中() throws {
+        // 确定性夹具（不依赖真机家目录状态——真机的扫描上限可能被大目录吃掉，
+        // 曾导致本用例随机红）
+        let home = NSTemporaryDirectory() + "qn-fallback-test-\(UUID().uuidString)"
+        try FileManager.default.createDirectory(atPath: home + "/Applications", withIntermediateDirectories: true)
+        try Data("x".utf8).write(to: URL(fileURLWithPath: home + "/普通文件.txt"))
+        defer { try? FileManager.default.removeItem(atPath: home) }
 
-    func test兜底扫描_大小写不敏感与隐藏文件排除() {
-        let results = LauncherFileSearch.scanCommonDirectories(term: "APPLICATIONS")
-        XCTAssertFalse(results.isEmpty)
-        XCTAssertFalse(results.contains { $0.name.hasPrefix(".") })
+        let results = LauncherFileSearch.scanCommonDirectories(term: "applications", homePath: home)
+        XCTAssertTrue(results.contains { $0.url.path == home + "/Applications" })
+        // 大小写不敏感 + 隐藏排除同场验证
+        let upper = LauncherFileSearch.scanCommonDirectories(term: "APPLICATIONS", homePath: home)
+        XCTAssertFalse(upper.isEmpty)
+        XCTAssertFalse(upper.contains { $0.name.hasPrefix(".") })
     }
 }
