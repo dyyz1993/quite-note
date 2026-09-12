@@ -96,7 +96,6 @@ struct ClipboardHistoryView: View {
             }
         }
         .onAppear {
-            searchFocused = true
             wireKeyHandler()
         }
         .onDisappear {
@@ -106,7 +105,6 @@ struct ClipboardHistoryView: View {
             // 每次面板唤起：清空搜索 + 聚焦 + 重新接键盘处理器
             // （视图随面板常驻不销毁，onAppear 只触发一次，第二次唤起必须在此重接）
             vm.resetInput()
-            searchFocused = true
             wireKeyHandler()
         }
         .alert("启用直接粘贴？", isPresented: $showDirectPastePermissionDialog) {
@@ -128,7 +126,7 @@ struct ClipboardHistoryView: View {
             case .saveToFlash:
                 if let entry = selectedEntry { saveToFlash(entry) }
             case .focusSearch:
-                searchFocused = true
+                controller.focusSearchFieldNow()
             case .escape:
                 // Alfred 式：有搜索词先清空，再按才关闭（快速退出）
                 if !vm.searchText.isEmpty || vm.filter != .all {
@@ -147,11 +145,9 @@ struct ClipboardHistoryView: View {
     private var bigSearchField: some View {
         HStack(spacing: 10) {
             LucideView(name: .search, size: 17, color: ClipboardPalette.textTertiary)
-            TextField("输入以搜索剪贴板内容…", text: $vm.searchText)
-                .textFieldStyle(.plain)
-                .font(.system(size: 15))
-                .foregroundColor(ClipboardPalette.textPrimary)
-                .focused($searchFocused)
+            ClipSearchField(text: $vm.searchText, onFocusChange: { focused in
+                searchFocused = focused   // 仅驱动边框高亮；聚焦本身由控制器 makeFirstResponder 管理
+            })
             if !vm.searchText.isEmpty {
                 LucideView(name: .circleX, size: 14, color: ClipboardPalette.textTertiary)
                     .contentShape(Rectangle())

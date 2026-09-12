@@ -36,9 +36,24 @@ final class ClipboardHistoryPanelController {
 
     var isVisible: Bool { panel?.isVisible ?? false }
 
-    /// 面板 NSPanel（可见时；视图聚焦补拉用于校验当前 key window 是本面板）
+    /// 面板 NSPanel（可见时）
     var panelIfVisible: NSPanel? {
         panel?.isVisible == true ? panel : nil
+    }
+
+    /// 搜索框的 AppKit 句柄（ClipSearchField 注册；makeFirstResponder 用）
+    weak var searchFieldHandle: NSTextField?
+
+    /// 确定性聚焦：面板已 key 则直接生效；未 key 则由 key 补拉/成为 key 后调用
+    func focusSearchFieldNow() {
+        guard let panel, panel.isVisible, let field = searchFieldHandle else { return }
+        if panel.isKeyWindow {
+            let ok = panel.makeFirstResponder(field)
+            if !ok {
+                DiagnosticCenter.warning("Clipboard", "聚焦失败：makeFirstResponder 返回 false")
+            }
+        }
+        // 非 key 时静默跳过（key 补拉成功后的下一拍会再调）
     }
 
     func toggle() {
@@ -65,6 +80,7 @@ final class ClipboardHistoryPanelController {
         // macOS 14+ 对 accessory 应用的 activate 不总是生效，makeKey 之后再补一次，
         // 尽量确保用户随后打字直接进搜索框（PRD 7.1：打开后搜索框自动获得焦点）
         NSApp.activate(ignoringOtherApps: true)
+        focusSearchFieldNow()
 
         // 面板互斥：唤起剪贴板时收起启动器（两个浮板同屏会 key 转移竞态）
         if AppLauncherPanelController.shared.isVisible {
@@ -79,6 +95,10 @@ final class ClipboardHistoryPanelController {
                 NSApp.activate(ignoringOtherApps: true)
                 panel.orderFrontRegardless()
                 panel.makeKey()
+                // 拿到 key 的下一拍聚焦（makeKey 同拍内 makeFirstResponder 可能被覆盖）
+                DispatchQueue.main.async {
+                    self.focusSearchFieldNow()
+                }
             }
         }
 
