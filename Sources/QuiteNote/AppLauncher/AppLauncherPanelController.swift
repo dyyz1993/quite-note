@@ -63,12 +63,25 @@ final class AppLauncherPanelController {
 
         // key 就位补拉：makeKey 是异步的。用浮球验证过的激进方式（orderFrontRegardless
         // + makeKey 直调），按固定间隔补拉直到就位
-        for delay in [0.15, 0.4, 0.9] {
+        // 前密后疏重试（同剪贴板面板，macOS 26 激活归因窗口约束）+ 激活重锤兜底
+        for delay in [0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.55, 0.7] {
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
                 guard let self, let panel = self.panel, panel.isVisible, !panel.isKeyWindow else { return }
                 NSApp.activate(ignoringOtherApps: true)
                 panel.orderFrontRegardless()
                 panel.makeKey()
+            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+            guard let self, let panel = self.panel, panel.isVisible, !panel.isKeyWindow else { return }
+            DiagnosticCenter.warning("Launcher", "激活被拒（accessory 策略），启用 .regular 重锤")
+            NSApp.setActivationPolicy(.regular)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                NSApp.activate(ignoringOtherApps: true)
+                panel.makeKeyAndOrderFront(nil)
+                if panel.isKeyWindow {
+                    NSApp.setActivationPolicy(.accessory)
+                }
             }
         }
 

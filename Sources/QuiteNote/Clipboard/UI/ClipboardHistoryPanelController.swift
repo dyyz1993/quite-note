@@ -49,11 +49,12 @@ final class ClipboardHistoryPanelController {
         guard let panel, panel.isVisible, let field = searchFieldHandle else { return }
         if panel.isKeyWindow {
             let ok = panel.makeFirstResponder(field)
-            if !ok {
+            if ok {
+                DiagnosticCenter.info("Clipboard", "聚焦成功：makeFirstResponder → true")
+            } else {
                 DiagnosticCenter.warning("Clipboard", "聚焦失败：makeFirstResponder 返回 false")
             }
         }
-        // 非 key 时静默跳过（key 补拉成功后的下一拍会再调）
     }
 
     func toggle() {
@@ -87,17 +88,40 @@ final class ClipboardHistoryPanelController {
             AppLauncherPanelController.shared.hide()
         }
 
-        // key 就位补拉（同启动器面板实测有效的方案）：makeKey 异步生效，且失焦
-        // 收起的 orderOut 会打断转移——按固定间隔补拉直到就位，否则搜索框聚焦失败
-        for delay in [0.15, 0.3, 0.5, 0.8, 1.2, 1.8] {
+        // key 就位补拉：前密后疏（0.05~0.7s，深度审计建议——长间隔重试落在
+        // 激活归因窗口之外全部无效）。每次重试后**无条件**补焦一拍（旧行为只在
+        // 本轮 makeKey 成功才补焦，系统异步完成 key 时无人聚焦 = "key✓ 但打不了字"）
+        for delay in [0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.55, 0.7] {
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-                guard let self, let panel = self.panel, panel.isVisible, !panel.isKeyWindow else { return }
-                NSApp.activate(ignoringOtherApps: true)
-                panel.orderFrontRegardless()
-                panel.makeKey()
-                // 拿到 key 的下一拍聚焦（makeKey 同拍内 makeFirstResponder 可能被覆盖）
+                guard let self, let panel = self.panel, panel.isVisible else { return }
+                if !panel.isKeyWindow {
+                    NSApp.activate(ignoringOtherApps: true)
+                    panel.orderFrontRegardless()
+                    panel.makeKey()
+                }
                 DispatchQueue.main.async {
                     self.focusSearchFieldNow()
+                }
+            }
+        }
+        // 激活重锤（Steinberger 2025 / macOS 26 文档方案）：全部重试失败说明
+        // accessory 激活被系统拒绝——临时切 .regular（有 Dock 图标的应用激活可靠），
+        // 面板收起时切回。代价是 Dock 图标闪现 <1 秒
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+            guard let self, let panel = self.panel, panel.isVisible, !panel.isKeyWindow else { return }
+            DiagnosticCenter.warning("Clipboard", "激活被拒（accessory 策略），启用 .regular 重锤")
+            self.policyDanced = true
+            NSApp.setActivationPolicy(.regular)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                NSApp.activate(ignoringOtherApps: true)
+                panel.makeKeyAndOrderFront(nil)
+                DispatchQueue.main.async {
+                    self.focusSearchFieldNow()
+                    // 聚焦完成后立刻切回（缩短 Dock 图标闪现）
+                    if panel.isKeyWindow, self.policyDanced {
+                        NSApp.setActivationPolicy(.accessory)
+                        self.policyDanced = false
+                    }
                 }
             }
         }
@@ -117,7 +141,13 @@ final class ClipboardHistoryPanelController {
         DiagnosticCenter.info("Clipboard", "历史面板打开（\(keyInfo)）")
     }
 
+    private var policyDanced = false
+
     func hide() {
+        if policyDanced {
+            NSApp.setActivationPolicy(.accessory)
+            policyDanced = false
+        }
         DiagnosticCenter.info("Clipboard", "面板收起（当前 key: \(NSApp.keyWindow.map { String(describing: type(of: $0)) } ?? "nil")）")
         panel?.orderOut(nil)
         removeKeyMonitor()
@@ -128,6 +158,21 @@ final class ClipboardHistoryPanelController {
     // MARK: - 失焦自动关闭（用户约定：点别处即退出，不留常驻窗口）
 
     private var resignObserver: NSObjectProtocol?
+
+    /// 面板成为 key window → 确定性补焦（系统异步完成激活/key 时的兜底——
+    /// 深度审计 R2：重试循环的 early-return 会让"晚到的 key"无人聚焦）
+    private var becomeKeyFocusObserver: NSObjectProtocol?
+
+    private func installBecomeKeyFocusObserver() {
+        guard becomeKeyFocusObserver == nil, let panel else { return }
+        becomeKeyFocusObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didBecomeKeyNotification, object: panel, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.focusSearchFieldNow()
+            }
+        }
+    }
 
     private func installResignObserver() {
         guard resignObserver == nil, let panel else { return }
@@ -181,6 +226,7 @@ final class ClipboardHistoryPanelController {
 
         self.panel = panel
         installResignObserver()
+        installBecomeKeyFocusObserver()
         return panel
     }
 

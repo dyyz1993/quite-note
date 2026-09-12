@@ -41,9 +41,10 @@ final class GlobalHotkeyManager {
             
             if status == noErr {
                 if let info = manager.hotkeys[hotkeyID.id] {
-                    DispatchQueue.main.async {
-                        manager.dispatchHotkey(info)
-                    }
+                    // 同步分发（Carbon 事件本就在主线程）：macOS 26 的激活归因看
+                    // "用户事件上下文"，经 DispatchQueue.main.async 跳一拍可能丢失
+                    // 该上下文 → NSApp.activate 被拒（深度审计 R1 元凶之一）
+                    manager.dispatchHotkey(info)
                     return OSStatus(noErr)
                 }
             }
