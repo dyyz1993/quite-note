@@ -1,7 +1,7 @@
 import Foundation
 
 /// 启动器文件搜索条目（`f ` 前缀模式的结果）
-struct LauncherFile: Identifiable, Equatable {
+struct LauncherFile: Identifiable, Equatable, Codable {
     let name: String
     let url: URL
     /// 系统 Kind 描述（"PNG 图像"/"PDF 文档"，Spotlight 本地化）
@@ -61,8 +61,9 @@ enum LauncherScopeParser {
         let term: String
     }
 
-    /// 范围关键词表（小写）。后续加范围（如网页搜索）在此扩行
-    static let fileKeywords = ["文件", "搜文件", "文件搜索", "file", "files", "wj"]
+    /// 范围关键词表（小写）。**只用英文词**——中文词在输入法下打不出来（拼音会被
+    /// 当候选上屏），英文词/拼音首字母直通。后续加范围（如网页搜索）在此扩行
+    static let fileKeywords = ["file", "files", "fj", "wj"]
 
     /// 解析输入；nil = 未命中范围词
     static func parse(_ rawText: String) -> Match? {

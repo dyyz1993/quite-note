@@ -7,16 +7,17 @@ final class LauncherScopeTests: XCTestCase {
     // MARK: - 范围解析
 
     func test单独范围词_只亮行不进入() {
-        let m = LauncherScopeParser.parse("文件")
-        XCTAssertEqual(m?.entered, false)
-        XCTAssertEqual(m?.term, "")
+        XCTAssertEqual(LauncherScopeParser.parse("file")?.entered, false)
+        XCTAssertEqual(LauncherScopeParser.parse("file")?.term, "")
+        // 中文词已从关键词表移除（IME 打不出来）：不触发范围，走应用搜索
+        XCTAssertNil(LauncherScopeParser.parse("文件"))
     }
 
     func test范围词加空格加词_直接进入() {
-        let m = LauncherScopeParser.parse("文件 报告")
+        let m = LauncherScopeParser.parse("file 报告")
         XCTAssertEqual(m?.entered, true)
         XCTAssertEqual(m?.term, "报告")
-        let m2 = LauncherScopeParser.parse("文件 ")
+        let m2 = LauncherScopeParser.parse("file ")
         XCTAssertEqual(m2?.entered, true)
         XCTAssertEqual(m2?.term, "")
     }
@@ -25,11 +26,12 @@ final class LauncherScopeTests: XCTestCase {
         XCTAssertEqual(LauncherScopeParser.parse("file 合同")?.term, "合同")
         XCTAssertEqual(LauncherScopeParser.parse("FILES")?.entered, false)
         XCTAssertEqual(LauncherScopeParser.parse("wj 报告")?.entered, true)
-        XCTAssertEqual(LauncherScopeParser.parse("搜文件")?.entered, false)
+        XCTAssertNil(LauncherScopeParser.parse("搜文件"), "中文词已移除")
     }
 
     func test非范围词不误触() {
-        XCTAssertNil(LauncherScopeParser.parse("文件管理器"))      // 前缀但不带空格 → 应用搜索
+        XCTAssertNil(LauncherScopeParser.parse("文件管理器"))      // 中文词已移除
+        XCTAssertNil(LauncherScopeParser.parse("filesystem"))     // 前缀但不带空格 → 应用搜索
         XCTAssertNil(LauncherScopeParser.parse("wx"))
         XCTAssertNil(LauncherScopeParser.parse("文"))             // 单字不触发
         XCTAssertNil(LauncherScopeParser.parse("f 报告"))          // 字母前缀已被 IME 废掉，不收
@@ -38,7 +40,7 @@ final class LauncherScopeTests: XCTestCase {
 
     func test进入后term可转文件前缀() {
         // ↵ 进入时 VM 把 searchText 换成 "' " + term，走既有 FileModeParser
-        let term = LauncherScopeParser.parse("文件 合同")?.term ?? ""
+        let term = LauncherScopeParser.parse("file 合同")?.term ?? ""
         let prefixed = "' " + term
         XCTAssertTrue(FileModeParser.isFileMode(prefixed))
         XCTAssertEqual(FileModeParser.fileTerm(prefixed), "合同")
@@ -70,5 +72,25 @@ final class LauncherScopeTests: XCTestCase {
 
         let results = LauncherFileSearch.scanCommonDirectories(term: "超深层", homePath: home)
         XCTAssertFalse(results.contains { $0.name == "超深层文件.txt" }, "过深的层级不无限递归（3000 项上限 + 层级限制，要全量请开 Spotlight）")
+    }
+
+    func test索引编解码往返与内存过滤_文件夹优先() throws {
+        let files = [
+            LauncherFile(name: "报告v3.pdf", url: URL(fileURLWithPath: "/tmp/报告v3.pdf"),
+                         kindDescription: "PDF 文档", modifiedDate: Date(), isDirectory: false),
+            LauncherFile(name: "报告归档", url: URL(fileURLWithPath: "/tmp/报告归档"),
+                         kindDescription: "", modifiedDate: Date().addingTimeInterval(-60), isDirectory: true),
+        ]
+        let data = try XCTUnwrap(LauncherFileSearch.encodeIndex(files, at: Date()))
+        let decoded = try XCTUnwrap(LauncherFileSearch.decodeIndex(data))
+        XCTAssertEqual(decoded.files.count, 2)
+        XCTAssertEqual(decoded.files[1].isDirectory, true)
+
+        let hits = LauncherFileSearch.filterIndex("报告", in: decoded.files)
+        XCTAssertEqual(hits.first?.isDirectory, true, "文件夹必须排在文件前")
+    }
+
+    func test索引_损坏数据返回nil() {
+        XCTAssertNil(LauncherFileSearch.decodeIndex(Data("garbage".utf8)))
     }
 }

@@ -329,13 +329,13 @@ struct AppLauncherView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            Text(file.badgeText)
+            Text(file.isDirectory ? "📁 文件夹" : file.badgeText)
                 .font(.system(size: 10))
                 .foregroundColor(.themeBlue300)
                 .padding(.horizontal, 7)
                 .padding(.vertical, 2)
-                .background(Capsule().fill(Color.themeBlue600.opacity(0.14)))
-                .overlay(Capsule().stroke(Color.themeBlue600.opacity(0.35), lineWidth: 1))
+                .background(Capsule().fill(file.isDirectory ? Color.themeBlue600.opacity(0.28) : Color.themeBlue600.opacity(0.14)))
+                .overlay(Capsule().stroke(Color.themeBlue600.opacity(file.isDirectory ? 0.6 : 0.35), lineWidth: 1))
                 .lineLimit(1)
 
             if let date = file.modifiedDate {
