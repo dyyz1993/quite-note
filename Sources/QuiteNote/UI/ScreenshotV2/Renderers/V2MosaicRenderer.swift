@@ -8,11 +8,10 @@ struct MosaicRenderer: ElementRenderer {
         in context: inout GraphicsContext,
         config: RendererConfig
     ) {
-        guard element.points.count >= 2 else { return }
+        guard let start = element.points.first,
+              let end = element.points.last,
+              element.points.count >= 2 else { return }
         guard let image = config.baseImage else { return }
-
-        let start = element.points.first!
-        let end = element.points.last!
         let rect = CGRect(x: min(start.x, end.x), y: min(start.y, end.y), width: abs(start.x - end.x), height: abs(start.y - end.y))
 
         drawMosaic(in: rect, in: &context, size: config.canvasSize, image: image, intensity: element.fontSize)

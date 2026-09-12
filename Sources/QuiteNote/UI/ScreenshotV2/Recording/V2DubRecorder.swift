@@ -59,9 +59,28 @@ final class V2DubRecorder {
 
     /// 停止并收尾；- Returns: 已完成文件的 URL（时长过短由调用方判断丢弃）
     func stop() async -> URL? {
+        guard let stopState = prepareToStop() else { return nil }
+
+        mic.stop()
+        guard stopState.hadSession, let writer = stopState.writer, let url = stopState.url else {
+            if let url = stopState.url {
+                try? FileManager.default.removeItem(at: url)
+            }
+            return nil
+        }
+        await writer.finishWriting()
+        guard writer.status == .completed else {
+            try? FileManager.default.removeItem(at: url)
+            return nil
+        }
+        return url
+    }
+
+    /// NSLock 的获取必须留在同步上下文；Swift 6 禁止在 async 函数里直接 lock/unlock。
+    private func prepareToStop() -> (writer: AVAssetWriter?, url: URL?, hadSession: Bool)? {
         lock.lock()
+        defer { lock.unlock() }
         guard isRecording else {
-            lock.unlock()
             return nil
         }
         isRecording = false
@@ -73,21 +92,7 @@ final class V2DubRecorder {
         }
         writer = nil
         input = nil
-        lock.unlock()
-
-        mic.stop()
-        guard hadSession, let writer = writerRef, let url = urlRef else {
-            if let url = urlRef {
-                try? FileManager.default.removeItem(at: url)
-            }
-            return nil
-        }
-        await writer.finishWriting()
-        guard writer.status == .completed else {
-            try? FileManager.default.removeItem(at: url)
-            return nil
-        }
-        return url
+        return (writerRef, urlRef, hadSession)
     }
 
     /// 取消（丢弃本段）

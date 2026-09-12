@@ -307,6 +307,7 @@ class V2PrimaryScreenStateManager: ObservableObject {
 
     /// 添加标注元素
     func addElement(_ element: DrawingElement) {
+        guard element.tool != .cursor, !element.points.isEmpty else { return }
         elements.append(element)
         selectedElementId = element.id
     }

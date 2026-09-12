@@ -1,6 +1,6 @@
 import Foundation
 import AppKit
-import Vision
+@preconcurrency import Vision
 
 /// 截图 OCR 服务：基于苹果原生 Vision 框架，完全本地、免费、离线
 ///
@@ -26,8 +26,8 @@ final class V2OCRService {
         }
 
         let request = VNRecognizeTextRequest { request, error in
-            if error != nil {
-                DiagnosticCenter.error("OCR", "Vision 请求失败: \(error!.localizedDescription)")
+            if let error {
+                DiagnosticCenter.error("OCR", "Vision 请求失败: \(error.localizedDescription)")
                 DispatchQueue.main.async { completion(nil) }
                 return
             }
@@ -40,7 +40,7 @@ final class V2OCRService {
             DispatchQueue.main.async { completion(text) }
         }
         request.recognitionLevel = .accurate
-        let resolvedLanguages = (languages?.isEmpty == false) ? languages! : ["zh-Hans", "en-US"]
+        let resolvedLanguages = languages.flatMap { $0.isEmpty ? nil : $0 } ?? ["zh-Hans", "en-US"]
         request.recognitionLanguages = resolvedLanguages
         request.usesLanguageCorrection = true
 

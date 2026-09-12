@@ -125,7 +125,7 @@ struct EnhancedSearchBar: View {
             // 会忽略 foregroundColor 渲染成黑色），显式使用淡白辅助色
             ZStack(alignment: .leading) {
                 if searchTerm.isEmpty {
-                    Text("搜索标题或内容...")
+                    Text(L("panel.searchPlaceholder", fallback: "Search titles or content..."))
                         .font(Font.system(size: 13))
                         .foregroundColor(.themeTextSecondary)
                         .allowsHitTesting(false)

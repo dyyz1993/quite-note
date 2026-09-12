@@ -8,9 +8,9 @@ struct ArrowRenderer: ElementRenderer {
         in context: inout GraphicsContext,
         config: RendererConfig
     ) {
-        guard element.points.count >= 2 else { return }
-        let start = element.points.first!
-        let end = element.points.last!
+        guard let start = element.points.first,
+              let end = element.points.last,
+              element.points.count >= 2 else { return }
 
         var path = Path()
         path.move(to: start)

@@ -3,6 +3,12 @@ import CoreBluetooth
 
 /// 管理 BLE 连接、订阅按钮事件并回写 ACK
 final class BluetoothManager: NSObject, ObservableObject {
+    /// Bluetooth hardware integration is intentionally disabled in the
+    /// current App Store release until the companion button workflow is
+    /// ready. Keeping the implementation behind this switch lets us restore
+    /// it later without changing the rest of the clipboard pipeline.
+    static let featureEnabled = false
+
     @Published var state: CBManagerState = .unknown
     @Published var connectedDeviceName: String? = nil
     @Published var discoveredPeripherals: [CBPeripheral] = []
@@ -17,17 +23,23 @@ final class BluetoothManager: NSObject, ObservableObject {
     /// 初始化 CoreBluetooth 中心管理器
     override init() {
         super.init()
-        central = CBCentralManager(delegate: self, queue: .main)
+        if Self.featureEnabled {
+            central = CBCentralManager(delegate: self, queue: .main)
+        } else {
+            central = nil
+        }
     }
 
     /// 开始扫描并发现自定义服务设备
     func startScanning() {
+        guard Self.featureEnabled, let central else { return }
         discoveredPeripherals.removeAll()
         central.scanForPeripherals(withServices: [CBUUID(string: "12345678-1234-5678-1234-567812345678")], options: nil)
     }
     
     /// 连接指定的外围设备
     func connect(to peripheral: CBPeripheral) {
+        guard Self.featureEnabled, let central else { return }
         self.peripheral = peripheral
         peripheral.delegate = self
         central.connect(peripheral, options: nil)
@@ -35,8 +47,8 @@ final class BluetoothManager: NSObject, ObservableObject {
 
     /// 断开当前连接并停止扫描
     func disconnect() {
-        if let p = peripheral { central.cancelPeripheralConnection(p) }
-        central.stopScan()
+        if let p = peripheral { central?.cancelPeripheralConnection(p) }
+        central?.stopScan()
         connectedDeviceName = nil
     }
 

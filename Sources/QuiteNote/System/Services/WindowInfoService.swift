@@ -171,7 +171,9 @@ class WindowInfoService {
         }
 
         // 获取屏幕的 displayID
-        let displayID = targetScreen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as! CGDirectDisplayID
+        guard let displayID = targetScreen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID else {
+            return nil
+        }
 
         // 创建截图
         guard let cgImage = CGDisplayCreateImage(displayID, rect: rect) else {

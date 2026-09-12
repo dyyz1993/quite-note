@@ -89,7 +89,9 @@ struct StickyNoteEditor: NSViewRepresentable {
         context.coordinator.setupSymbolDetectionDirectly(for: textView)
 
         // 强制布局刷新
-        textView.layoutManager?.ensureLayout(for: textView.textContainer!)
+        if let textContainer = textView.textContainer {
+            textView.layoutManager?.ensureLayout(for: textContainer)
+        }
         
         scrollView.documentView = textView
         return scrollView
@@ -103,7 +105,7 @@ struct StickyNoteEditor: NSViewRepresentable {
             // 获取当前文本的 Markdown，并进行简单的内容比较（忽略格式差异导致的微小变化）
             let currentMarkdown = context.coordinator.attributedToMarkdown(textView.attributedString())
 
-            print("[DEBUG] updateNSView - currentMarkdown: \(currentMarkdown.prefix(50)), text: \(text.prefix(50))")
+            print("[DEBUG] updateNSView - current length: \(currentMarkdown.count), incoming length: \(text.count)")
 
             // 如果内容确实不一致，才进行全量更新
             if currentMarkdown != text {
@@ -201,7 +203,6 @@ struct StickyNoteEditor: NSViewRepresentable {
                     // 检查通知的目标窗口 UUID 是否匹配当前窗口
                     guard let targetUUIDString = notification.userInfo?["windowUUID"] as? String else {
                         print("[StickyNoteEditor.Coordinator] ⚠️ InsertSymbolFromBrowser 通知缺少 windowUUID")
-                        print("[StickyNoteEditor.Coordinator] userInfo: \(notification.userInfo ?? [:])")
                         return
                     }
 
@@ -214,18 +215,13 @@ struct StickyNoteEditor: NSViewRepresentable {
 
                     let currentUUIDString = currentWindow.uuid.uuidString
 
-                    print("[StickyNoteEditor.Coordinator] 🔍 UUID 比较:")
-                    print("  - 目标 UUID: \(targetUUIDString)")
-                    print("  - 当前 UUID: \(currentUUIDString)")
-                    print("  - 匹配: \(currentUUIDString == targetUUIDString)")
-
                     // 比较 UUID
                     if currentUUIDString != targetUUIDString {
                         print("[StickyNoteEditor.Coordinator] ⏭️ 跳过，通知不是针对当前窗口的")
                         return
                     }
 
-                    print("[StickyNoteEditor.Coordinator] ✅ 收到 InsertSymbolFromBrowser 通知（针对当前窗口）: \(symbolContent)")
+                    print("[StickyNoteEditor.Coordinator] ✅ 收到针对当前窗口的符号插入通知（长度 \(symbolContent.count)）")
                     self.insertSymbolIntoTextView(symbolContent, into: textView)
                 }
                 .store(in: &cancellables)
@@ -451,7 +447,7 @@ struct StickyNoteEditor: NSViewRepresentable {
             if let last = lastProcessedSymbol,
                last.symbol == symbolContent,
                now.timeIntervalSince(last.timestamp) < 0.5 {
-                print("[StickyNoteEditor.Coordinator] ⚠️ 跳过重复插入: \(symbolContent)")
+                print("[StickyNoteEditor.Coordinator] ⚠️ 跳过重复符号插入（长度 \(symbolContent.count)）")
                 return
             }
             lastProcessedSymbol = (symbolContent, now)
@@ -459,7 +455,7 @@ struct StickyNoteEditor: NSViewRepresentable {
             let text = textView.string
             let cursorPosition = textView.selectedRange().location
 
-            print("[StickyNoteEditor.Coordinator] insertSymbolIntoTextView: symbolContent=\(symbolContent), cursorPosition=\(cursorPosition)")
+            print("[StickyNoteEditor.Coordinator] insertSymbolIntoTextView: symbolLength=\(symbolContent.count), cursorPosition=\(cursorPosition)")
 
             // 直接在光标位置插入符号内容
             let nsString = text as NSString
@@ -771,7 +767,7 @@ struct StickyNoteEditor: NSViewRepresentable {
         // MARK: - Markdown Conversion
         
         func markdownToAttributed(_ markdown: String) -> NSAttributedString {
-               print("[DEBUG] markdownToAttributed called, input: \(markdown.prefix(100))")
+               print("[DEBUG] markdownToAttributed called, length: \(markdown.count)")
                let attributedString = NSMutableAttributedString(string: markdown)
                let fullRange = NSRange(location: 0, length: (markdown as NSString).length)
                
@@ -977,7 +973,7 @@ struct StickyNoteEditor: NSViewRepresentable {
             }
 
             let markdown = result.string
-            print("[DEBUG] attributedToMarkdown output: \(markdown.prefix(100))")
+            print("[DEBUG] attributedToMarkdown output length: \(markdown.count)")
             return markdown
         }
     }
@@ -1002,7 +998,6 @@ class StickyNoteTextView: NSTextView {
         // 转换纯文本为带样式的 NSAttributedString，处理颜色标记
         let baseFontSize: CGFloat = 12
         let font = NSFont.systemFont(ofSize: baseFontSize)
-        let textColor = NSColor.white
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.lineSpacing = 4
         paragraphStyle.minimumLineHeight = 18

@@ -538,7 +538,7 @@ struct LongScreenshotToolbarContentView: View {
             ToolbarButton(icon: "xmark.circle", color: .white, label: "取消") {
                 Task {
                     if stateManager.isCapturing {
-                        await LongScreenshotFlowController.shared.cancelCapture()
+                        LongScreenshotFlowController.shared.cancelCapture()
                     }
                     coordinator.closeAllWindows()
                     V2PrimaryScreenStateManager.shared.setLongScreenshotMode(false)

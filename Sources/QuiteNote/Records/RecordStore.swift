@@ -188,7 +188,7 @@ final class RecordStore: ObservableObject {
                     
                     // 生成缩略图
                     ThumbnailGenerator.shared.getThumbnailURLAsync(for: storedURL) { _ in }
-                    print("[DEBUG] 网页拖拽图片已持久化: \(virtualPath)")
+                    print("[DEBUG] 网页拖拽图片已持久化")
                 }
             } catch {
                 print("[DEBUG] 网页拖拽图片持久化失败: \(error.localizedDescription)")
@@ -241,7 +241,7 @@ final class RecordStore: ObservableObject {
                     if recordType == .image {
                         ThumbnailGenerator.shared.getThumbnailURLAsync(for: storedURL) { _ in }
                     }
-                    print("[DEBUG] 文件已持久化: \(sourceUrlStr)")
+                    print("[DEBUG] 文件已持久化: \(fileName)")
                 } catch {
                     print("[DEBUG] 文件持久化失败: \(error.localizedDescription)")
                 }
@@ -286,7 +286,7 @@ final class RecordStore: ObservableObject {
 
             // P4.2: 检查是否已存在相同路径的记录，直接更新
             if let existingRecord = records.first(where: { $0.sourceUrl == sourceUrlStr }) {
-                print("[DEBUG] 文件路径已存在: \(sourceUrlStr), 更新现有记录")
+                print("[DEBUG] 文件路径已存在，更新现有记录")
                 updateContent(
                     id: existingRecord.id,
                     content: content,
@@ -690,7 +690,7 @@ final class RecordStore: ObservableObject {
                     // 使用 trashItem 代替 removeItem，更安全
                     do {
                         try FileManager.default.trashItem(at: url, resultingItemURL: nil)
-                        print("[DEBUG] 已将物理文件移至废纸篓: \(url.path)")
+                        print("[DEBUG] 已将关联附件移至废纸篓")
                     } catch {
                         print("[DEBUG] 移至废纸篓失败: \(error.localizedDescription)")
                     }
@@ -925,7 +925,7 @@ final class RecordStore: ObservableObject {
         
         // 如果已经是同步过的虚拟路径，则不再重复同步
         if sourceUrl.hasPrefix("app://attachments/SyncedFolders") {
-            Self.logger.info("文件夹已同步: \(sourceUrl)")
+            Self.logger.info("文件夹已同步")
             return
         }
         

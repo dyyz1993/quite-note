@@ -32,8 +32,8 @@ enum V2CaptionTranscriber {
         }
 
         let audioFile = try AVAudioFile(forReading: fileURL)
-        let transcriber = try SpeechTranscriber(locale: Locale(identifier: "zh-CN"),
-                                                preset: .transcription)
+        let transcriber = SpeechTranscriber(locale: Locale(identifier: "zh-CN"),
+                                            preset: .transcription)
         let analyzer = try await SpeechAnalyzer(inputAudioFile: audioFile,
                                                 modules: [transcriber],
                                                 finishAfterFile: true)
@@ -64,11 +64,11 @@ final class V2CaptionCompositor: NSObject, AVVideoCompositing {
     /// [(时间窗（成片时间轴）, 文本)]，导出前装载、完成后清空
     static var activeCaptions: [(CMTimeRange, String)] = []
 
-    let requiredPixelBufferAttributesForRenderContext: [String: Any] = [
+    let requiredPixelBufferAttributesForRenderContext: [String: any Sendable] = [
         kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
     ]
 
-    let sourcePixelBufferAttributes: [String: Any]? = [
+    let sourcePixelBufferAttributes: [String: any Sendable]? = [
         kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
     ]
 

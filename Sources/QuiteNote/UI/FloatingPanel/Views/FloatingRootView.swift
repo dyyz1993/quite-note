@@ -161,7 +161,7 @@ struct FloatingRootView: View {
                 let noteId = userInfo["noteId"] as? UUID
                 let hash = ClipboardService.sha1(content + UUID().uuidString)
 
-                print("[DEBUG] Saving sticky note to store, title: \(title ?? "nil"), frame: \(noteFrame)")
+                print("[DEBUG] Saving sticky note to store, title length: \(title?.count ?? 0), has frame: \(noteFrame != nil)")
 
                 // 保存记录（注意：需要先获取当前记录数来找到新添加的记录）
                 let beforeCount = store.records.count
@@ -349,14 +349,17 @@ struct FloatingRootView: View {
 
                 Spacer()
 
-                Text(showSettings ? "偏好设置" : "闪记")
+                Text(showSettings ? "偏好设置" : L("panel.title", fallback: "Notes"))
                     .font(.themeH2) // 使用主题文件中的字体定义
                     .foregroundColor(.themeTextPrimary) // 使用主题文件中的文本颜色
 
                 Spacer()
 
-                // Bluetooth Icon (Lucide)
-                bluetoothView
+                HoverButton(icon: .settings, size: 16, isActive: showSettings) {
+                    settingsTab = "ai"
+                    withAnimation(.easeInOut(duration: ThemeDuration._300.rawValue)) { showSettings.toggle() }
+                }
+                .padding(.trailing, ThemeSpacing.px4.rawValue)
             }
             .frame(height: ThemeSpacing.h12.rawValue) // 使用主题文件中的高度定义
             .background(Color.themeBackground.opacity(0.5)) // bg-gray-900/50
@@ -369,38 +372,6 @@ struct FloatingRootView: View {
                 .background(WindowDragHandler())
                 .allowsHitTesting(true)
         }
-    }
-
-    /// 蓝牙视图
-    private var bluetoothView: some View {
-        HStack(spacing: ThemeSpacing.px3.rawValue) {
-            Group {
-                if let name = bluetooth.connectedDeviceName {
-                    LucideView(name: .bluetoothConnected, size: 14, color: .themeBlue400)
-                        .help("已连接: \(name)")
-                } else if bluetooth.state == .poweredOn {
-                    LucideView(name: .bluetooth, size: 14, color: .themeYellow500)
-                        .help("蓝牙已开启，未连接")
-                } else {
-                    LucideView(name: .bluetoothOff, size: 14, color: .themeTextTertiary)
-                        .help("蓝牙未开启")
-                }
-            }
-            .font(.themeBody)
-            .frame(width: ThemeSpacing.px4.rawValue, height: ThemeSpacing.px4.rawValue) // Ensure it has size
-            .contentShape(Rectangle()) // Make sure it's clickable/hoverable
-            .onTapGesture {
-                settingsTab = "bluetooth"
-                withAnimation(.easeInOut(duration: ThemeDuration._300.rawValue)) { showSettings = true }
-            }
-            .pointingHandCursor()
-
-            HoverButton(icon: .settings, size: 16, isActive: showSettings) {
-                settingsTab = "ai"
-                withAnimation(.easeInOut(duration: ThemeDuration._300.rawValue)) { showSettings.toggle() }
-            }
-        }
-        .padding(.trailing, ThemeSpacing.px4.rawValue)
     }
 
     /// 内容视图
@@ -669,7 +640,9 @@ struct FloatingRootView: View {
     /// 其他部分 Header
     private var otherSectionHeader: some View {
         HStack {
-            Text(store.filterType == nil ? "所有记录" : "所有\(store.filterType!.localizedName)")
+            Text(store.filterType == nil
+                ? L("panel.allRecords", fallback: "All Records")
+                : String(format: L("panel.allRecordsOfType", fallback: "All %@"), store.filterType!.localizedName))
                 .font(.system(size: 12, weight: .bold))
                 .foregroundColor(.themeGray400)
             Spacer()
@@ -685,7 +658,7 @@ struct FloatingRootView: View {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 48))
                 .opacity(0.2)
-            Text("没有找到匹配的记录。")
+            Text(L("panel.empty", fallback: "No matching records found."))
                 .font(.system(size: 14)) // text-sm
                 .foregroundColor(.themeTextSecondary)
         }
@@ -829,9 +802,20 @@ struct FloatingRootView: View {
         let items = searchTerm.isEmpty ? base : searchResults
 
         return HStack {
-            Text("记录条数: \(store.records.count) 条 (已过滤: \(store.records.count - items.count))")
+            Text(String(
+                format: L("panel.recordCount", fallback: "Records: %ld (%ld filtered)"),
+                locale: Locale.current,
+                store.records.count,
+                store.records.count - items.count
+            ))
             Spacer()
-            Text("AI: \(store.enableAI ? "ON (阈值 > \(store.summaryTrigger) 字符)" : "OFF")")
+            Text(store.enableAI
+                ? String(
+                    format: L("panel.aiOn", fallback: "AI: ON (threshold > %ld characters)"),
+                    locale: Locale.current,
+                    store.summaryTrigger
+                )
+                : L("panel.aiOff", fallback: "AI: OFF"))
         }
         .font(.system(size: 10))
         .foregroundColor(.themeTextSecondary)

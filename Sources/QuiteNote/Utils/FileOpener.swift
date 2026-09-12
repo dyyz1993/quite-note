@@ -57,7 +57,8 @@ struct FileOpener {
             }
         } else {
             // 处理自定义路径
-            let customUrl = URL(fileURLWithPath: preferredEditor)
+            let customUrl = SecurityScopedBookmarkStore.shared.resolve(forKey: "preferredEditorBookmark")
+                ?? URL(fileURLWithPath: preferredEditor)
             if FileManager.default.fileExists(atPath: customUrl.path) {
                 appUrl = customUrl
             }

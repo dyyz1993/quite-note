@@ -214,8 +214,8 @@ final class AIService: AIServiceProtocol {
         req.httpMethod = "POST"
         req.addValue("application/json", forHTTPHeaderField: "Content-Type")
         req.addValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        // 诊断只记录目标端点，不记录 API Key 的任何片段或长度。
-        DiagnosticCenter.info("OCR", "AI 请求 → \(url.absoluteString) | API key configured")
+        // 不记录用户配置的完整端点，避免查询参数或私有网关地址进入诊断日志。
+        DiagnosticCenter.info("OCR", "AI 请求已发起 | API key configured")
 
         let body: [String: Any] = [
             "model": openAIModel,
@@ -248,10 +248,8 @@ final class AIService: AIServiceProtocol {
                 safeCompletion(.failure(error)); return
             }
             if let http = response as? HTTPURLResponse, http.statusCode != 200 {
-                // 诊断：失败响应体落日志——401 是代理拒的还是上游拒的，一看便知
-                if let data, let body = String(data: data, encoding: .utf8) {
-                    DiagnosticCenter.error("OCR", "AI HTTP \(http.statusCode) 响应体: \(String(body.prefix(200)))")
-                }
+                // 响应体可能包含用户输入或服务端敏感详情，仅记录状态码。
+                DiagnosticCenter.error("OCR", "AI HTTP 请求失败，状态码: \(http.statusCode)")
                 if remainingRetries > 0 && (http.statusCode == 401 || http.statusCode >= 500) {
                     scheduleRetry(reason: " HTTP \(http.statusCode)"); return
                 }
@@ -299,7 +297,7 @@ final class AIService: AIServiceProtocol {
         }
         
         guard let url = URL(string: "\(openAIBaseURL)/chat/completions") else {
-            print("[AI] 错误: 无效的 OpenAI Base URL: \(openAIBaseURL)")
+            print("[AI] 错误: 无效的 OpenAI Base URL")
             let baseTitle = String(content.prefix(max(0, min(titleLimit, 15))))
             let result = SummaryResult(title: baseTitle, summary: "", confidence: 0.0, tags: [], keywords: [])
             completion(.success(result))

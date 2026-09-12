@@ -19,3 +19,7 @@ app-store-submission/
 
 # 反馈 Worker 管理令牌（本地保存，云端在 wrangler secrets）
 cloud/feedback-worker/.admin-token
+
+# AI 工具工作目录（不进仓库）
+.brainstorm/
+.zcode/

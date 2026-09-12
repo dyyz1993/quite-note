@@ -364,8 +364,11 @@ struct FileSettingsTab: View {
         openPanel.begin { response in
             if response == .OK, let url = openPanel.url {
                 DispatchQueue.main.async {
-                    preferredEditor = url.path
-                    PreferencesManager.shared.setPreferredEditor(url.path)
+                    if PreferencesManager.shared.setPreferredEditor(url) {
+                        preferredEditor = url.path
+                    } else {
+                        store.postToast("无法保存该编辑器的访问授权，请重新选择", type: "error")
+                    }
                 }
             }
         }

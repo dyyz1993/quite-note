@@ -348,11 +348,11 @@ final class RecordRepository {
         }
 
         return Record(
-            id: cd.id ?? UUID(),
+            id: cd.id,
             title: cd.title,
-            content: cd.content ?? "",
-            createdAt: cd.createdAt ?? Date(),
-            hash: cd.digest ?? "",
+            content: cd.content,
+            createdAt: cd.createdAt,
+            hash: cd.digest,
             aiStatus: aiStatus,
             summary: cd.summary,
             summaryConfidence: cd.summaryConfidence,

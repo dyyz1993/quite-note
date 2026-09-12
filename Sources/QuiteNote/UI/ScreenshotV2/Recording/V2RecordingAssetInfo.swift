@@ -74,7 +74,7 @@ final class V2RecordingAssetInfo: ObservableObject {
             if let audioTracks = try? await asset.loadTracks(withMediaType: .audio) {
                 for track in audioTracks {
                     if Task.isCancelled { break }
-                    let channels = Self.channelCount(of: track)
+                    let channels = await Self.channelCount(of: track)
                     let label: String
                     if audioTracks.count > 1 {
                         label = channels == 1 ? "麦克风" : "系统声音"
@@ -82,9 +82,11 @@ final class V2RecordingAssetInfo: ObservableObject {
                         label = channels == 1 ? "麦克风" : "音频"
                     }
                     let color = channels == 1 ? Color.themePurple400 : Color.themeBlue400
-                    let trackDuration = track.timeRange.duration.seconds
+                    let trackDuration = (try? await track.load(.timeRange).duration.seconds) ?? duration
+                    let sampleRate = await Self.sampleRate(of: track)
                     let values = Self.rmsEnvelope(asset: asset, track: track,
-                                                  duration: trackDuration, buckets: 240)
+                                                  duration: trackDuration, buckets: 240,
+                                                  sampleRate: sampleRate)
                     // 波形解析失败时仍保留音轨，避免“有录音但时间线没有轨道、导出时也丢音频”。
                     waves.append(WaveformTrack(
                         label: label,
@@ -100,17 +102,26 @@ final class V2RecordingAssetInfo: ObservableObject {
                 cuts = Self.detectSceneCuts(asset: asset, track: videoTrack)
             }
 
+            // 冻结后台计算结果，避免把仍可变的局部变量跨到 MainActor。
+            let loadedDuration = duration
+            let loadedPixelText = pixelText
+            let loadedSizeText = sizeText
+            let loadedThumbs = thumbs
+            let loadedWaves = waves
+            let loadedSources = sources
+            let loadedCuts = cuts
+
             await MainActor.run { [weak self] in
                 guard let self else { return }
-                self.duration = duration
-                self.pixelText = pixelText
-                self.fileSizeText = sizeText
-                self.thumbnails = thumbs
-                self.waveforms = waves
-                self.audioTracks = sources
-                self.sceneCuts = cuts
-                let trackDesc = waves.map { $0.label }.joined(separator: "+")
-                DiagnosticCenter.info("Recording", "分析完成：缩略图 \(thumbs.count)，音轨 \(waves.count)（\(trackDesc.isEmpty ? "无声" : trackDesc)），转场 \(cuts.count)")
+                self.duration = loadedDuration
+                self.pixelText = loadedPixelText
+                self.fileSizeText = loadedSizeText
+                self.thumbnails = loadedThumbs
+                self.waveforms = loadedWaves
+                self.audioTracks = loadedSources
+                self.sceneCuts = loadedCuts
+                let trackDesc = loadedWaves.map { $0.label }.joined(separator: "+")
+                DiagnosticCenter.info("Recording", "分析完成：缩略图 \(loadedThumbs.count)，音轨 \(loadedWaves.count)（\(trackDesc.isEmpty ? "无声" : trackDesc)），转场 \(loadedCuts.count)")
             }
         }
     }
@@ -176,25 +187,29 @@ final class V2RecordingAssetInfo: ObservableObject {
     }
 
     /// 从音频格式描述读取声道数（区分麦克风/系统声的依据）。
-    private static func channelCount(of track: AVAssetTrack) -> Int {
-        guard let descs = try? track.formatDescriptions,
-              let anyDesc = descs.first else { return 0 }
-        let desc = anyDesc as! CMAudioFormatDescription
-        guard let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(desc)?.pointee else { return 0 }
+    private static func channelCount(of track: AVAssetTrack) async -> Int {
+        guard let desc = (try? await track.load(.formatDescriptions))?.first,
+              CMFormatDescriptionGetMediaType(desc) == kCMMediaType_Audio,
+              let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(desc)?.pointee else { return 0 }
         return Int(asbd.mChannelsPerFrame)
     }
 
-    private static func sampleRate(of track: AVAssetTrack) -> Double {
-        guard let descs = try? track.formatDescriptions,
-              let anyDesc = descs.first else { return 48_000 }
-        let desc = anyDesc as! CMAudioFormatDescription
-        guard let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(desc)?.pointee,
+    private static func sampleRate(of track: AVAssetTrack) async -> Double {
+        guard let desc = (try? await track.load(.formatDescriptions))?.first,
+              CMFormatDescriptionGetMediaType(desc) == kCMMediaType_Audio,
+              let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(desc)?.pointee,
               asbd.mSampleRate > 0 else { return 48_000 }
         return asbd.mSampleRate
     }
 
     /// PCM 能量包络：AVAssetReader 顺序读取 → 分桶 RMS → 归一化
-    private static func rmsEnvelope(asset: AVAsset, track: AVAssetTrack, duration: Double, buckets: Int) -> [Float] {
+    private static func rmsEnvelope(
+        asset: AVAsset,
+        track: AVAssetTrack,
+        duration: Double,
+        buckets: Int,
+        sampleRate: Double
+    ) -> [Float] {
         guard duration > 0, buckets > 0,
               let reader = try? AVAssetReader(asset: asset) else { return [] }
 
@@ -212,8 +227,6 @@ final class V2RecordingAssetInfo: ObservableObject {
 
         var sums = [Double](repeating: 0, count: buckets)
         var counts = [Int](repeating: 0, count: buckets)
-        let sampleRate = Self.sampleRate(of: track)
-
         while let sample = output.copyNextSampleBuffer() {
             guard let block = CMSampleBufferGetDataBuffer(sample) else { continue }
             let length = CMBlockBufferGetDataLength(block)

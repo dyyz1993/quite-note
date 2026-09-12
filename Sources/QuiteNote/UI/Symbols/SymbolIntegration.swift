@@ -10,7 +10,6 @@ class ClickableNSPanel: NSPanel {
     override var acceptsFirstResponder: Bool { true }
 
     override func mouseDown(with event: NSEvent) {
-        print("[ClickableNSPanel] ✅ mouseDown event received: \(event)")
         super.mouseDown(with: event)
     }
 }
@@ -20,7 +19,6 @@ class ClickableNSPanel: NSPanel {
 /// 自定义 NSHostingView，确保能正确传递点击事件到 SwiftUI
 class ClickableNSHostingView<Content: View>: NSHostingView<Content> {
     override func mouseDown(with event: NSEvent) {
-        print("[ClickableNSHostingView] ✅ mouseDown event received: \(event)")
         super.mouseDown(with: event)
     }
 
@@ -49,15 +47,15 @@ private func appendLog(_ message: String, toPath path: String) {
 // MARK: - Associated Keys
 
 private struct AssociatedKeys {
-    static var symbolDetector = "symbolDetector"
-    static var symbolSuggestionPanelHost = "symbolSuggestionPanelHost"
-    static var symbolPanelWindow = "symbolPanelWindow"
-    static var symbolTextView = "symbolTextView"
-    static var symbolSelectedIndex = "symbolSelectedIndex"
-    static var symbolKeyMonitor = "symbolKeyMonitor"
-    static var symbolSelectionState = "symbolSelectionState"
-    static var symbolPanelAboveCursor = "symbolPanelAboveCursor" // 跟踪面板是否在光标上方
-    static var symbolPanelAnchorPoint = "symbolPanelAnchorPoint" // 固定参考点（用于面板高度变化时保持位置稳定）
+    static var symbolDetector: UInt8 = 0
+    static var symbolSuggestionPanelHost: UInt8 = 0
+    static var symbolPanelWindow: UInt8 = 0
+    static var symbolTextView: UInt8 = 0
+    static var symbolSelectedIndex: UInt8 = 0
+    static var symbolKeyMonitor: UInt8 = 0
+    static var symbolSelectionState: UInt8 = 0
+    static var symbolPanelAboveCursor: UInt8 = 0 // 跟踪面板是否在光标上方
+    static var symbolPanelAnchorPoint: UInt8 = 0 // 固定参考点（用于面板高度变化时保持位置稳定）
 }
 
 /// 符号选择状态管理器 - 使用 ObservableObject 确保 SwiftUI 能正确更新
@@ -134,7 +132,7 @@ extension StickyNoteEditor.Coordinator {
     // MARK: - Setup Symbol Detection
 
     func setupSymbolDetection(for textView: NSTextView) {
-        print("[SymbolIntegration] 设置符号检测，textView: \(textView)")
+        print("[SymbolIntegration] 设置符号检测")
         // Store reference to textView for later use
         symbolTextView = textView
 
@@ -186,7 +184,7 @@ extension StickyNoteEditor.Coordinator {
 
         // 调试输出
         if let trigger = symbolDetector.detectedTrigger {
-            print("[SymbolIntegration] 检测到触发词: ':/\(trigger)' (长度: \(trigger.count)), 建议: \(symbolDetector.suggestions.count) 个")
+            print("[SymbolIntegration] 检测到触发词（长度: \(trigger.count)），建议: \(symbolDetector.suggestions.count) 个")
         } else {
             print("[SymbolIntegration] 未检测到触发词")
         }
@@ -439,8 +437,7 @@ extension StickyNoteEditor.Coordinator {
 
         // 验证焦点设置
         if let textView = symbolTextView, let window = textView.window {
-            let firstResponderDesc = window.firstResponder.map { String(describing: $0) } ?? "nil"
-            print("[SymbolIntegration] 当前 firstResponder: \(firstResponderDesc), 文本视图: \(textView)")
+            print("[SymbolIntegration] 文本视图焦点状态: \(window.firstResponder === textView)")
         }
     }
 
@@ -611,7 +608,7 @@ extension StickyNoteEditor.Coordinator {
             appendLog("[SymbolIntegration] ✅ Enter - suggestions.count=\(suggestions.count), currentIndex=\(currentIndex)\n", toPath: "/tmp/quitenote-symbol-debug.log")
             if !suggestions.isEmpty && currentIndex < suggestions.count {
                 let selectedSymbol = suggestions[currentIndex]
-                appendLog("[SymbolIntegration] ✅ Enter - 插入符号: \(selectedSymbol.content)\n", toPath: "/tmp/quitenote-symbol-debug.log")
+                appendLog("[SymbolIntegration] ✅ Enter - 插入符号，长度: \(selectedSymbol.content.count)\n", toPath: "/tmp/quitenote-symbol-debug.log")
                 insertSelectedSymbol(selectedSymbol)
             } else {
                 appendLog("[SymbolIntegration] ⚠️ Enter - 条件不满足，无法插入\n", toPath: "/tmp/quitenote-symbol-debug.log")
@@ -686,7 +683,7 @@ extension StickyNoteEditor.Coordinator {
         let logPath = "/tmp/quitenote-symbol-debug.log"
 
         let symbol = item.symbol
-        appendLog("[SymbolIntegration] insertSelectedSymbol - symbol.content=\(symbol.content), cursorPosition=\(cursorPosition)\n", toPath: logPath)
+        appendLog("[SymbolIntegration] insertSelectedSymbol - symbolLength=\(symbol.content.count), cursorPosition=\(cursorPosition)\n", toPath: logPath)
 
         // 获取替换后的文本和新光标位置
         if let result = symbolDetector.insertSymbol(symbol, into: text, cursorPosition: cursorPosition) {
@@ -809,8 +806,7 @@ extension NSTextView {
     /// 获取光标位置信息（用于定位浮层面板）
     /// 返回包含光标位置和文本行矩形的信息，确保面板不会遮挡输入文本
     func cursorLocationInfo() -> CursorLocationInfo? {
-        guard let layoutManager = layoutManager,
-              let textContainer = textContainer else {
+        guard let layoutManager = layoutManager, textContainer != nil else {
             print("[NSTextView] ⚠️ 无法获取 layoutManager 或 textContainer")
             return nil
         }

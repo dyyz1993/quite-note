@@ -61,8 +61,21 @@ struct ElementRendererFactory {
         case .text:
             return V2TextRenderer()
         case .cursor:
-            fatalError("Cursor tool should not be rendered")
+            return SelectionRenderer()
         }
+    }
+}
+
+/// 选择工具不产生绘制内容。返回空渲染器可容忍旧数据或异常状态，避免截图进程崩溃。
+private struct SelectionRenderer: ElementRenderer {
+    func render(
+        element: DrawingElement,
+        in context: inout GraphicsContext,
+        config: RendererConfig
+    ) {}
+
+    static func supports(_ tool: AnnotationTool) -> Bool {
+        tool == .cursor
     }
 }
 

@@ -371,7 +371,7 @@ struct V2OCRResultView: View {
                 pasteboard.setString(path, forType: .string)
             }
             savedFeedback = "已保存 ✅ \( ((path as NSString).lastPathComponent) )"
-            DiagnosticCenter.info("OCR", "图片已保存: \(path)")
+            DiagnosticCenter.info("OCR", "图片已保存: \((path as NSString).lastPathComponent)")
         } else {
             savedFeedback = "保存失败"
         }

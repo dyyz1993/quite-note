@@ -254,9 +254,17 @@ final class V2RecordingController: ObservableObject {
             do {
                 if let tempURL = try await engine.stop() {
                     // 停止即落盘（文件安全），随后直接进入预览工作台
+                    let directory: URL
+                    switch UserExportDirectory.resolveForUserInitiatedExport() {
+                    case .success(let resolved):
+                        directory = resolved
+                    case .failure(let error):
+                        try? FileManager.default.removeItem(at: tempURL)
+                        throw error
+                    }
                     let finalURL = try V2RecordingFileFinalizer.finalize(
                         tempURL: tempURL,
-                        directory: V2RecordingFileFinalizer.defaultDirectory())
+                        directory: directory)
                     ScreenshotService.shared.announceRecordingSaved(path: finalURL.path)
                     V2RecordingPreviewController.shared.show(fileURL: finalURL)
                 } else {

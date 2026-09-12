@@ -15,14 +15,14 @@ enum RecordType: String, Codable, CaseIterable {
 
     var localizedName: String {
         switch self {
-        case .text: return "纯文本"
-        case .url: return "链接"
-        case .file: return "文件"
-        case .folder: return "文件夹"
-        case .image: return "照片" // 修改为 "照片" 以保持一致
-        case .video: return "视频"
-        case .screenshot: return "截图"
-        case .note: return "便签"
+        case .text: return L("filter.text", fallback: "Text")
+        case .url: return L("filter.link", fallback: "Links")
+        case .file: return L("filter.file", fallback: "Files")
+        case .folder: return L("filter.folder", fallback: "Folders")
+        case .image: return L("filter.image", fallback: "Images")
+        case .video: return L("recordType.video", fallback: "Videos")
+        case .screenshot: return L("filter.screenshot", fallback: "Screenshots")
+        case .note: return L("filter.sticky", fallback: "Sticky Notes")
         }
     }
 

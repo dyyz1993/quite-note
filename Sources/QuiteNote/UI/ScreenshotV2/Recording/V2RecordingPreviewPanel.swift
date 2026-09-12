@@ -1431,8 +1431,15 @@ struct V2RecordingEditorView: View {
             videoComposition: burn)
 
         do {
+            let directory: URL
+            switch UserExportDirectory.resolveForUserInitiatedExport() {
+            case .success(let resolved):
+                directory = resolved
+            case .failure(let error):
+                throw error
+            }
             return try V2RecordingFileFinalizer.finalizeEdited(
-                tempURL: trimmedURL, beside: fileURL)
+                tempURL: trimmedURL, sourceURL: fileURL, directory: directory)
         } catch {
             try? FileManager.default.removeItem(at: trimmedURL)
             throw error

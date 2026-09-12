@@ -41,7 +41,10 @@ class LongScreenshotFlowController {
         V2PrimaryScreenStateManager.shared.globalHoveredRect = nil
         logger.info("已清除普通截图模式的状态（防止双工具栏）")
 
-        let screen = targetScreen ?? sourceScreen ?? NSScreen.screens.first ?? NSScreen.main!
+        guard let screen = targetScreen ?? sourceScreen ?? NSScreen.screens.first ?? NSScreen.main else {
+            completion(.failure(LongScreenshotError.screenUnavailable))
+            return
+        }
 
         logger.info("选区所在屏幕: \(screen.localizedName)")
         logger.info("选区坐标（局部）: \(selection.debugDescription, privacy: .public)")
@@ -139,7 +142,7 @@ class LongScreenshotFlowController {
         }
 
         // 3. 检查是否有足够的帧
-        guard !capturedFrames.isEmpty else {
+        guard let finalFrame = capturedFrames.last else {
             logger.error("没有捕获到任何帧")
             completion?(.failure(LongScreenshotError.noFrames))
             cleanupTempDirectory()
@@ -154,7 +157,7 @@ class LongScreenshotFlowController {
         }
 
         // 返回最后一帧作为结果
-        completion?(.success(capturedFrames.last!))
+        completion?(.success(finalFrame))
 
         // 清理临时文件夹（延迟清理，给用户时间查看）
         DispatchQueue.main.asyncAfter(deadline: .now() + 60) {
@@ -355,7 +358,7 @@ class LongScreenshotFlowController {
         do {
             try FileManager.default.createDirectory(at: sessionDir, withIntermediateDirectories: true)
             self.tempDirectory = sessionDir
-            logger.info("创建临时文件夹: \(sessionDir.path)")
+            logger.info("已创建长截图临时目录")
         } catch {
             logger.error("创建临时文件夹失败: \(error.localizedDescription)")
         }
@@ -382,7 +385,7 @@ class LongScreenshotFlowController {
         do {
             try pngData.write(to: fileURL)
             capturedFramePaths.append(fileURL)
-            logger.info("已保存第 \(index) 帧到: \(fileURL.path)")
+            logger.info("已保存第 \(index) 帧")
         } catch {
             logger.error("保存帧失败: \(error.localizedDescription)")
         }
@@ -395,7 +398,7 @@ class LongScreenshotFlowController {
 
         do {
             try FileManager.default.removeItem(at: tempDir)
-            logger.info("已清理临时文件夹: \(tempDir.path)")
+            logger.info("已清理长截图临时目录")
         } catch {
             logger.warning("清理临时文件夹失败: \(error.localizedDescription)")
         }
@@ -409,6 +412,7 @@ class LongScreenshotFlowController {
 enum LongScreenshotError: LocalizedError {
     case noFrames
     case cancelled
+    case screenUnavailable
     case stitchFailed(String)
 
     var errorDescription: String? {
@@ -417,6 +421,8 @@ enum LongScreenshotError: LocalizedError {
             return "没有捕获到任何帧"
         case .cancelled:
             return "用户取消操作"
+        case .screenUnavailable:
+            return "没有可用的显示器"
         case .stitchFailed(let message):
             return "拼接失败: \(message)"
         }

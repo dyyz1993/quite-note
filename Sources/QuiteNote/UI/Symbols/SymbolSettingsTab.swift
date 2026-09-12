@@ -157,7 +157,7 @@ struct SymbolSettingsTab: View {
                         .foregroundColor(Color.themeGreen500)
                     Spacer()
 
-                    if let url = newConfigURL {
+                    if newConfigURL != nil {
                         Button(action: { loadNewConfig() }) {
                             Text("加载配置")
                                 .font(.themeCaption)

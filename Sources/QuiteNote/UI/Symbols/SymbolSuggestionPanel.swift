@@ -23,8 +23,6 @@ struct SymbolSuggestionPanel: View {
                 VStack(spacing: 0) {
                     ForEach(Array(suggestions.enumerated()), id: \.offset) { index, item in
                         Button(action: {
-                            // ⭐ 调试日志：验证点击事件是否触发
-                            print("[SymbolSuggestionPanel] ✅ Button clicked: \(item.content) - \(item.desc)")
                             onSelect(item)
                         }) {
                             SuggestionRow(
@@ -145,18 +143,16 @@ struct SuggestionRow: View {
     private var highlightedDesc: AttributedString {
         var desc = AttributedString(item.desc)
 
-        if let range = desc.range(of: item.desc, options: .caseInsensitive) {
-            if let matchRange = item.desc.range(
-                of: triggerText,
-                options: .caseInsensitive,
-                range: nil,
-                locale: nil
-            ) {
-                let nsRange = NSRange(matchRange, in: item.desc)
-                if let attributedRange = Range(nsRange, in: desc) {
-                    desc[attributedRange].foregroundColor = Color.themeBlue500
-                    desc[attributedRange].font = Font.system(size: 11, weight: .semibold)
-                }
+        if let matchRange = item.desc.range(
+            of: triggerText,
+            options: .caseInsensitive,
+            range: nil,
+            locale: nil
+        ) {
+            let nsRange = NSRange(matchRange, in: item.desc)
+            if let attributedRange = Range(nsRange, in: desc) {
+                desc[attributedRange].foregroundColor = Color.themeBlue500
+                desc[attributedRange].font = Font.system(size: 11, weight: .semibold)
             }
         }
 

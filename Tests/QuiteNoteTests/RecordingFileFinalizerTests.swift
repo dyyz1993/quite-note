@@ -71,12 +71,16 @@ final class RecordingFileFinalizerTests: XCTestCase {
         try Data("source".utf8).write(to: source)
         let edited = try makeTempRecording()
 
+        let exportDirectory = tempDir.appendingPathComponent("导出目录")
         let result = try V2RecordingFileFinalizer.finalizeEdited(
-            tempURL: edited, beside: source)
+            tempURL: edited, sourceURL: source, directory: exportDirectory)
 
         XCTAssertTrue(FileManager.default.fileExists(atPath: source.path),
                       "剪辑导出不能删除原始录屏")
         XCTAssertTrue(FileManager.default.fileExists(atPath: result.path))
+        XCTAssertEqual(result.deletingLastPathComponent().path.trimmingCharacters(in: CharacterSet(charactersIn: "/")),
+                       exportDirectory.path.trimmingCharacters(in: CharacterSet(charactersIn: "/")),
+                       "快剪导出必须使用当前配置的导出目录")
         XCTAssertTrue(result.lastPathComponent.contains("剪辑版"))
         XCTAssertFalse(FileManager.default.fileExists(atPath: edited.path))
     }
@@ -85,10 +89,11 @@ final class RecordingFileFinalizerTests: XCTestCase {
         let source = tempDir.appendingPathComponent("录屏 2026-08-18 13.00.00.mp4")
         try Data("source".utf8).write(to: source)
 
+        let exportDirectory = tempDir.appendingPathComponent("导出目录")
         let first = try V2RecordingFileFinalizer.finalizeEdited(
-            tempURL: try makeTempRecording(), beside: source)
+            tempURL: try makeTempRecording(), sourceURL: source, directory: exportDirectory)
         let second = try V2RecordingFileFinalizer.finalizeEdited(
-            tempURL: try makeTempRecording(), beside: source)
+            tempURL: try makeTempRecording(), sourceURL: source, directory: exportDirectory)
 
         XCTAssertNotEqual(first.path, second.path)
         XCTAssertTrue(second.lastPathComponent.contains("剪辑版-2"))

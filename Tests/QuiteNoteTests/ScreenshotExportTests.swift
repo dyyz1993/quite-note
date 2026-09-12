@@ -8,23 +8,31 @@ final class ScreenshotExportTests: XCTestCase {
 
     private var tempDir: String!
     private var savedOldPreference: Any?
+    private var savedOldBookmark: Any?
 
     override func setUp() {
         super.setUp()
         // 保存旧偏好，测试结束后恢复，不污染用户真实设置
         savedOldPreference = UserDefaults.standard.object(forKey: "screenshotSaveDirectory")
+        savedOldBookmark = UserDefaults.standard.object(forKey: UserExportDirectory.bookmarkKey)
 
         tempDir = NSTemporaryDirectory() + "qn-export-tests-\(UUID().uuidString)"
         try? FileManager.default.createDirectory(atPath: tempDir, withIntermediateDirectories: true)
-        PreferencesManager.shared.setScreenshotSaveDirectory(tempDir)
+        XCTAssertTrue(PreferencesManager.shared.setScreenshotSaveDirectory(
+            URL(fileURLWithPath: tempDir, isDirectory: true)))
     }
 
     override func tearDown() {
-        PreferencesManager.shared.setScreenshotSaveDirectory("")
+        _ = PreferencesManager.shared.setScreenshotSaveDirectory(nil)
         if let old = savedOldPreference {
             UserDefaults.standard.set(old, forKey: "screenshotSaveDirectory")
         } else {
             UserDefaults.standard.removeObject(forKey: "screenshotSaveDirectory")
+        }
+        if let old = savedOldBookmark {
+            UserDefaults.standard.set(old, forKey: UserExportDirectory.bookmarkKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: UserExportDirectory.bookmarkKey)
         }
         try? FileManager.default.removeItem(atPath: tempDir)
         super.tearDown()
@@ -52,7 +60,10 @@ final class ScreenshotExportTests: XCTestCase {
         let fileName = (path as NSString).lastPathComponent
         XCTAssertTrue(fileName.hasPrefix("QuiteNote_"), "文件名应以 QuiteNote_ 开头，实际: \(fileName)")
         XCTAssertTrue(fileName.hasSuffix(".png"), "文件名应为 .png，实际: \(fileName)")
-        XCTAssertTrue(path.hasPrefix(tempDir), "文件必须落在配置的保存目录内")
+        guard case .success(let configuredDirectory) = UserExportDirectory.configuredDirectory() else {
+            return XCTFail("测试配置的导出目录应保持可访问")
+        }
+        XCTAssertTrue(path.hasPrefix(configuredDirectory.path), "文件必须落在配置的保存目录内")
     }
 
     /// 同一秒内连续导出两个文件：不能互相覆盖，两个都要在
@@ -77,5 +88,17 @@ final class ScreenshotExportTests: XCTestCase {
         }
         let image = NSImage(contentsOfFile: path)
         XCTAssertNotNil(image, "导出的 PNG 必须能被 NSImage 读回")
+    }
+
+    /// 旧版本仅保存字符串路径时，不能绕过沙盒授权而把文件写到一个猜测路径。
+    func testLegacyPathWithoutBookmarkIsRejectedInsteadOfFallingBack() {
+        UserDefaults.standard.set(tempDir, forKey: "screenshotSaveDirectory")
+        UserDefaults.standard.removeObject(forKey: UserExportDirectory.bookmarkKey)
+
+        XCTAssertEqual(
+            UserExportDirectory.configuredDirectory(),
+            .failure(.authorizationUnavailable),
+            "没有安全作用域书签的旧路径必须要求用户重新选择，不能悄悄写入容器或原始路径"
+        )
     }
 }

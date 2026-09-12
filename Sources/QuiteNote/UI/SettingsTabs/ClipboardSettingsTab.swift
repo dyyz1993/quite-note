@@ -8,7 +8,6 @@ struct ClipboardSettingsTab: View {
     @State private var showClearAllConfirm = false
     @State private var showDeleteDataConfirm = false
     @State private var newExcludedApp = ""
-    @State private var accessibilityGranted = ClipboardPasteService.canSimulatePaste
 
     /// 冲突状态轮询（偏好变化 → MainApp 延迟 0.1s refresh 后更新）
     private let timer = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
@@ -28,7 +27,6 @@ struct ClipboardSettingsTab: View {
             store.refreshDiskUsage()
         }
         .onReceive(timer) { _ in
-            accessibilityGranted = ClipboardPasteService.canSimulatePaste
             store.refreshDiskUsage() // 占用随捕获/清理动态变化
         }
     }
@@ -77,22 +75,6 @@ struct ClipboardSettingsTab: View {
                             .buttonStyle(.borderedProminent)
                     }
                     Spacer()
-                }
-
-                if !accessibilityGranted {
-                    HStack(spacing: 6) {
-                        LucideView(name: .alertTriangle, size: 12, color: .themeYellow500)
-                        Text("缺少辅助功能权限：粘贴将降级为仅复制")
-                            .font(.themeCaption)
-                            .foregroundColor(.themeYellow500)
-                        Button("去授权") {
-                            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
-                                NSWorkspace.shared.open(url)
-                            }
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.mini)
-                    }
                 }
             }
         }
@@ -295,6 +277,23 @@ struct ClipboardSettingsTab: View {
                     Text("所有剪贴板内容仅保存在本机；OCR 使用系统本地 Vision，不上传任何服务器")
                         .font(.themeCaption)
                         .foregroundColor(.themeTextSecondary)
+                }
+
+                HStack(spacing: 8) {
+                    Link(destination: URL(string: "https://quitenote-privacy.pages.dev/")!) {
+                        Label("查看隐私政策", systemImage: "hand.raised")
+                    }
+                    .buttonStyle(.bordered)
+
+                    Link(destination: URL(string: "https://github.com/dyyz1993/quite-note/issues")!) {
+                        Label("反馈问题", systemImage: "exclamationmark.bubble")
+                    }
+                    .buttonStyle(.bordered)
+
+                    Text("反馈页面支持附加截图和日志文件")
+                        .font(.themeCaptionSmall)
+                        .foregroundColor(.themeTextTertiary)
+                    Spacer()
                 }
 
                 VStack(alignment: .leading, spacing: 8) {

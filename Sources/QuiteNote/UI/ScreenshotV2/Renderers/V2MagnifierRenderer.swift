@@ -13,8 +13,7 @@ struct MagnifierRenderer: ElementRenderer {
         in context: inout GraphicsContext,
         config: RendererConfig
     ) {
-        guard element.points.count >= 1 else { return }
-        let start = element.points.first!  // 视觉源点（圆点位置）
+        guard let start = element.points.first else { return } // 视觉源点（圆点位置）
         let contentSource = element.magnifierSourcePoint ?? start // 实际放大内容源点
 
         // 计算放大镜中心位置（右上角固定 + 用户自定义偏移）

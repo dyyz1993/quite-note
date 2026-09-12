@@ -369,7 +369,7 @@ class SymbolBrowserPanelManager: ObservableObject {
 
     /// 插入符号
     private func insertSymbol(_ symbol: SymbolItem) {
-        print("[SymbolBrowserPanelManager] Inserting symbol: \(symbol.content)")
+        print("[SymbolBrowserPanelManager] Inserting symbol (length: \(symbol.content.count))")
 
         // 只向触发面板的窗口发送通知
         guard let uuid = targetWindowUUID else {

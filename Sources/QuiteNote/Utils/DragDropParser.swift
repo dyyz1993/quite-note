@@ -115,7 +115,7 @@ enum DragDropParser {
                     }
 
                     if let url = url {
-                        print("[DEBUG DragDropParser] provider[\(index)] 成功解析为 URL: \(url.absoluteString)")
+                        print("[DEBUG DragDropParser] provider[\(index)] 成功解析为 URL")
                         urlsLock?.lock()
                         urls.append(url)
                         urlsLock?.unlock()
@@ -142,12 +142,12 @@ enum DragDropParser {
                         return
                     }
 
-                    print("[DEBUG DragDropParser] provider[\(index)] 成功解析为 String: \(str)")
+                    print("[DEBUG DragDropParser] provider[\(index)] 成功解析为 String，长度: \(str.count)")
 
                     // 处理本地路径
                     if str.starts(with: "/") {
                         let url = URL(fileURLWithPath: str)
-                        print("[DEBUG DragDropParser] provider[\(index)] String 转本地路径 URL: \(url.path)")
+                        print("[DEBUG DragDropParser] provider[\(index)] String 转本地路径 URL 成功")
                         urlsLock?.lock()
                         urls.append(url)
                         urlsLock?.unlock()
@@ -155,7 +155,7 @@ enum DragDropParser {
                     // 处理 HTTP/HTTPS URL
                     else if str.starts(with: "http") {
                         if let url = URL(string: str) {
-                            print("[DEBUG DragDropParser] provider[\(index)] String 转 HTTP URL: \(url.absoluteString)")
+                            print("[DEBUG DragDropParser] provider[\(index)] String 转 HTTP URL 成功")
                             urlsLock?.lock()
                             urls.append(url)
                             urlsLock?.unlock()
@@ -182,7 +182,7 @@ enum DragDropParser {
 
                     // 尝试转换为 URL
                     if let url = item as? URL {
-                        print("[DEBUG DragDropParser] provider[\(index)] loadItem 成功获取 URL: \(url.path)")
+                        print("[DEBUG DragDropParser] provider[\(index)] loadItem 成功获取 URL")
                         urlsLock?.lock()
                         urls.append(url)
                         urlsLock?.unlock()
@@ -190,7 +190,7 @@ enum DragDropParser {
                     // 尝试从 Data 创建 URL
                     else if let data = item as? Data,
                             let url = URL(dataRepresentation: data, relativeTo: nil) {
-                        print("[DEBUG DragDropParser] provider[\(index)] loadItem 从 Data 获取到 URL: \(url.path)")
+                        print("[DEBUG DragDropParser] provider[\(index)] loadItem 从 Data 获取到 URL")
                         urlsLock?.lock()
                         urls.append(url)
                         urlsLock?.unlock()

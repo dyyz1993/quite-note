@@ -39,13 +39,14 @@ struct LucideDiagnostics {
     /// 使用与 Icon.swift 相同的加载逻辑检查图标可用性
     private static func checkIconAvailability(_ lucideId: String) -> Bool {
         #if canImport(AppKit)
-        // 1) 首选 Lucide 扩展按 id 访问
-        if NSImage.image(lucideId: lucideId) != nil { return true }
-        
-        // 2) 直接从已知的 LucideIcons bundle 路径加载图标
+        // Avoid Lucide's NSImage.image(lucideId:) convenience API here.
+        // It resolves Bundle.module and may trap in a manually assembled
+        // App Store .app when SwiftPM's generated resource bundle is absent.
+        // Check the resources that the packaging script actually ships.
+        // 1) 直接从已知的 LucideIcons bundle 路径加载图标
         if loadFromKnownBundle(lucideId) != nil { return true }
         
-        // 3) swift run 场景：手动扫描 .build 目录下的 Lucide 资源 bundle
+        // 2) swift run 场景：手动扫描 .build 目录下的 Lucide 资源 bundle
         return searchLucideImageInBuild(lucideId) != nil
         #else
         return false
@@ -91,4 +92,3 @@ struct LucideDiagnostics {
         return nil
     }
 }
-

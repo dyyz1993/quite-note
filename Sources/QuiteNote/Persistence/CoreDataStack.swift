@@ -137,9 +137,9 @@ final class CoreDataStack {
         let url = databaseURL
 
         #if DEBUG
-        print("[CoreDataStack] 使用数据库路径: \(url.path)")
+        print("[CoreDataStack] 数据库已配置: \(url.lastPathComponent)")
         print("[CoreDataStack] Bundle ID: \(bundleID), isDebug: \(isDebug)")
-        print("[CoreDataStack] 可执行文件路径: \(executablePath)")
+        print("[CoreDataStack] 调试存储隔离: \(isDebug ? "启用" : "关闭")")
         #endif
 
         try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)

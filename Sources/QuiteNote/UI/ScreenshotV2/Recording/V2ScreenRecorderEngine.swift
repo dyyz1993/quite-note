@@ -88,12 +88,17 @@ final class V2ScreenRecorderEngine: NSObject, SCStreamOutput, SCStreamDelegate {
     private(set) var isRecording = false
     private(set) var isPaused = false
 
+    /// 把锁的获取限制在同步函数内；Swift 6 不允许 async 函数直接调用 lock/unlock。
+    private func withStateLock<T>(_ body: () throws -> T) rethrows -> T {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return try body()
+    }
+
     // MARK: - 生命周期
 
     func start(parameters: Parameters) async throws {
-        stateLock.lock()
-        let alreadyRunning = isRecording
-        stateLock.unlock()
+        let alreadyRunning = withStateLock { isRecording }
         guard !alreadyRunning else { return }
 
         let filter = SCContentFilter(
@@ -159,23 +164,23 @@ final class V2ScreenRecorderEngine: NSObject, SCStreamOutput, SCStreamDelegate {
             mic = input
         }
 
-        stateLock.lock()
-        self.writer = writer
-        self.videoInput = video
-        self.systemAudioInput = systemAudio
-        self.micInput = mic
-        self.outputURL = parameters.outputURL
-        self.sessionStarted = false
-        self.firstPTS = .invalid
-        self.lastVideoPTS = .invalid
-        self.lastSystemAudioPTS = .invalid
-        self.lastMicPTS = .invalid
-        self.lastVideoFrame = nil
-        self.paused = false
-        self.isPaused = false
-        self.pauseStartedAt = .invalid
-        self.pausedDuration = .zero
-        stateLock.unlock()
+        withStateLock {
+            self.writer = writer
+            self.videoInput = video
+            self.systemAudioInput = systemAudio
+            self.micInput = mic
+            self.outputURL = parameters.outputURL
+            self.sessionStarted = false
+            self.firstPTS = .invalid
+            self.lastVideoPTS = .invalid
+            self.lastSystemAudioPTS = .invalid
+            self.lastMicPTS = .invalid
+            self.lastVideoFrame = nil
+            self.paused = false
+            self.isPaused = false
+            self.pauseStartedAt = .invalid
+            self.pausedDuration = .zero
+        }
 
         let stream = SCStream(filter: filter, configuration: config, delegate: self)
         do {
@@ -185,20 +190,20 @@ final class V2ScreenRecorderEngine: NSObject, SCStreamOutput, SCStreamDelegate {
             }
             try await stream.startCapture()
         } catch {
-            stateLock.lock()
-            self.writer = nil
-            self.videoInput = nil
-            self.systemAudioInput = nil
-            self.micInput = nil
-            self.outputURL = nil
-            stateLock.unlock()
+            withStateLock {
+                self.writer = nil
+                self.videoInput = nil
+                self.systemAudioInput = nil
+                self.micInput = nil
+                self.outputURL = nil
+            }
             throw error
         }
 
-        stateLock.lock()
-        self.stream = stream
-        self.isRecording = true
-        stateLock.unlock()
+        withStateLock {
+            self.stream = stream
+            self.isRecording = true
+        }
     }
 
     // MARK: - 暂停 / 恢复（PTS 前移法，见 V2RecordingTiming）
@@ -256,73 +261,15 @@ final class V2ScreenRecorderEngine: NSObject, SCStreamOutput, SCStreamDelegate {
     /// 停止并收尾：补静止尾帧 → 结束会话 → finishWriting
     /// - Returns: 已完成文件的 URL；一帧都没录到（立即停止）返回 nil
     func stop() async throws -> URL? {
-        var targetStream: SCStream?
-        var writerRef: AVAssetWriter?
-        var urlRef: URL?
-        var hadSession = false
-        var recordedSeconds: Double = 0
+        guard let preparation = prepareToStop() else { return nil }
 
-        stateLock.lock()
-        guard isRecording else {
-            stateLock.unlock()
-            return nil
-        }
-        isRecording = false
-        targetStream = stream
-        writerRef = writer
-        urlRef = outputURL
-        hadSession = sessionStarted
-
-        // 结算未闭合的暂停（停止前还处于暂停态）
-        if paused, pauseStartedAt.isValid {
-            let now = CMClockGetTime(CMClock.hostTimeClock)
-            pausedDuration = V2RecordingTiming.accumulatedPause(
-                previous: pausedDuration, pauseStartedAt: pauseStartedAt, resumedAt: now)
-            paused = false
-        }
-
-        if hadSession, let writer = writerRef {
-            // 补静止尾帧：PTS = 当前时刻 − 暂停累计（静止/暂停段都正确计入成片时长）
-            let pad = V2RecordingTiming.padPTS(
-                now: CMClockGetTime(CMClock.hostTimeClock), pausedDuration: pausedDuration)
-            var sessionEnd = CMTime.invalid
-            if let last = lastVideoFrame, pad > lastVideoPTS,
-               let input = videoInput,
-               let padded = Self.retimedCopy(of: last, presentationTimeStamp: pad),
-               input.isReadyForMoreMediaData {
-                input.append(padded)
-                sessionEnd = pad
-            } else if lastVideoPTS.isValid {
-                sessionEnd = lastVideoPTS
-            }
-            if sessionEnd.isValid {
-                writer.endSession(atSourceTime: sessionEnd)
-            }
-            videoInput?.markAsFinished()
-            systemAudioInput?.markAsFinished()
-            micInput?.markAsFinished()
-
-            if firstPTS.isValid, sessionEnd.isValid {
-                recordedSeconds = sessionEnd.seconds - firstPTS.seconds
-            }
-        }
-
-        // 清引用：此后迟到的帧回调会在锁内看到 isRecording=false 直接返回
-        stream = nil
-        writer = nil
-        videoInput = nil
-        systemAudioInput = nil
-        micInput = nil
-        lastVideoFrame = nil
-        stateLock.unlock()
-
-        if let s = targetStream {
+        if let s = preparation.stream {
             try? await s.stopCapture()
         }
 
-        guard hadSession, let writer = writerRef, let url = urlRef else {
+        guard preparation.hadSession, let writer = preparation.writer, let url = preparation.url else {
             // 一帧都没录到：清掉 writer 建立的空文件
-            if let url = urlRef {
+            if let url = preparation.url {
                 try? FileManager.default.removeItem(at: url)
             }
             DiagnosticCenter.info("Recording", "录制过短，未产生任何帧，已丢弃")
@@ -339,44 +286,115 @@ final class V2ScreenRecorderEngine: NSObject, SCStreamOutput, SCStreamDelegate {
                                    userInfo: [NSLocalizedDescriptionKey: "录屏文件写入失败"])
         }
 
-        DiagnosticCenter.info("Recording", String(format: "录制收尾完成：%.1f 秒 → %@", recordedSeconds, url.lastPathComponent))
+        DiagnosticCenter.info("Recording", String(format: "录制收尾完成：%.1f 秒 → %@", preparation.recordedSeconds, url.lastPathComponent))
         return url
+    }
+
+    private struct StopPreparation {
+        let stream: SCStream?
+        let writer: AVAssetWriter?
+        let url: URL?
+        let hadSession: Bool
+        let recordedSeconds: Double
+    }
+
+    /// 在同步锁域内结算暂停、补尾帧、结束输入，并摘走异步收尾所需对象。
+    private func prepareToStop() -> StopPreparation? {
+        withStateLock {
+            guard isRecording else { return nil }
+            isRecording = false
+            let targetStream = stream
+            let writerRef = writer
+            let urlRef = outputURL
+            let hadSession = sessionStarted
+            var recordedSeconds = 0.0
+
+            if paused, pauseStartedAt.isValid {
+                let now = CMClockGetTime(CMClock.hostTimeClock)
+                pausedDuration = V2RecordingTiming.accumulatedPause(
+                    previous: pausedDuration, pauseStartedAt: pauseStartedAt, resumedAt: now)
+                paused = false
+            }
+
+            if hadSession, let writer = writerRef {
+                let pad = V2RecordingTiming.padPTS(
+                    now: CMClockGetTime(CMClock.hostTimeClock), pausedDuration: pausedDuration)
+                var sessionEnd = CMTime.invalid
+                if let last = lastVideoFrame, pad > lastVideoPTS,
+                   let input = videoInput,
+                   let padded = Self.retimedCopy(of: last, presentationTimeStamp: pad),
+                   input.isReadyForMoreMediaData {
+                    input.append(padded)
+                    sessionEnd = pad
+                } else if lastVideoPTS.isValid {
+                    sessionEnd = lastVideoPTS
+                }
+                if sessionEnd.isValid {
+                    writer.endSession(atSourceTime: sessionEnd)
+                }
+                videoInput?.markAsFinished()
+                systemAudioInput?.markAsFinished()
+                micInput?.markAsFinished()
+
+                if firstPTS.isValid, sessionEnd.isValid {
+                    recordedSeconds = sessionEnd.seconds - firstPTS.seconds
+                }
+            }
+
+            // 此后迟到的帧回调会在锁内看到 isRecording=false 直接返回。
+            stream = nil
+            writer = nil
+            videoInput = nil
+            systemAudioInput = nil
+            micInput = nil
+            lastVideoFrame = nil
+
+            return StopPreparation(
+                stream: targetStream,
+                writer: writerRef,
+                url: urlRef,
+                hadSession: hadSession,
+                recordedSeconds: recordedSeconds
+            )
+        }
     }
 
     /// 取消：丢弃临时文件，不产生任何产物
     func cancel() async {
-        stateLock.lock()
-        guard isRecording else {
-            stateLock.unlock()
-            return
-        }
-        isRecording = false
-        let targetStream = stream
-        let writerRef = writer
-        let urlRef = outputURL
-        if sessionStarted {
-            videoInput?.markAsFinished()
-            systemAudioInput?.markAsFinished()
-            micInput?.markAsFinished()
-        }
-        stream = nil
-        writer = nil
-        videoInput = nil
-        systemAudioInput = nil
-        micInput = nil
-        lastVideoFrame = nil
-        stateLock.unlock()
+        guard let preparation = prepareToCancel() else { return }
 
-        if let s = targetStream {
+        if let s = preparation.stream {
             try? await s.stopCapture()
         }
-        if let w = writerRef {
+        if let w = preparation.writer {
             await w.finishWriting()
         }
-        if let url = urlRef {
+        if let url = preparation.url {
             try? FileManager.default.removeItem(at: url)
         }
         DiagnosticCenter.info("Recording", "录制已取消，临时文件已删除")
+    }
+
+    private func prepareToCancel() -> (stream: SCStream?, writer: AVAssetWriter?, url: URL?)? {
+        withStateLock {
+            guard isRecording else { return nil }
+            isRecording = false
+            let targetStream = stream
+            let writerRef = writer
+            let urlRef = outputURL
+            if sessionStarted {
+                videoInput?.markAsFinished()
+                systemAudioInput?.markAsFinished()
+                micInput?.markAsFinished()
+            }
+            stream = nil
+            writer = nil
+            videoInput = nil
+            systemAudioInput = nil
+            micInput = nil
+            lastVideoFrame = nil
+            return (targetStream, writerRef, urlRef)
+        }
     }
 
     // MARK: - SCStreamOutput（frameQueue 上调用）
@@ -387,6 +405,9 @@ final class V2ScreenRecorderEngine: NSObject, SCStreamOutput, SCStreamDelegate {
             ingestVideo(sampleBuffer)
         case .audio:
             ingestSystemAudio(sampleBuffer)
+        case .microphone:
+            // 麦克风由 V2MicrophoneRecorder/AVAudioEngine 独立采集，避免重复写入。
+            break
         @unknown default:
             break
         }
