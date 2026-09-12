@@ -28,9 +28,12 @@ final class KeyboardShortcutManager {
     var onScreenshot: (() -> Void)?
     var onStopRecording: (() -> Void)?
     var onOpenClipboardHistory: (() -> Void)?
+    var onOpenAppLauncher: (() -> Void)?
 
     /// 剪贴板历史快捷键注册失败（与系统/其他应用冲突），设置页据此提示（PRD 6）
     static var clipboardShortcutConflict = false
+    /// 应用启动器快捷键注册失败（默认 ⌥空格，常与 Alfred/Raycast 冲突），设置页据此提示
+    static var launcherShortcutConflict = false
     private var cachedClipboardShortcut: String = ""
     private var cachedClipboardFlags: NSEvent.ModifierFlags = []
 
@@ -58,12 +61,10 @@ final class KeyboardShortcutManager {
     func start() {
         logger.info("启动键盘快捷键监听")
         
-        // 检查辅助功能权限
-        checkAccessibilityPermissions()
-        
         // 缓存当前的快捷键配置并注册全局热键
         updateCachedShortcuts()
         Self.clipboardShortcutConflict = !registerClipboardHotkey()
+        Self.launcherShortcutConflict = !registerLauncherHotkey()
         
         // 全局粘贴事件监听（当应用没有焦点时）
         // ⚠️ 粘贴仍然使用监视器，因为我们不需要拦截它，只是感知
@@ -95,21 +96,17 @@ final class KeyboardShortcutManager {
         }
     }
 
-    /// 检查并提示辅助功能权限
-    private func checkAccessibilityPermissions() {
-        let options: [String: Any] = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true]
-        let accessEnabled = AXIsProcessTrustedWithOptions(options as CFDictionary)
-        if !accessEnabled {
-            logger.warning("未授予辅助功能权限，全局快捷键可能无法生效。")
-        } else {
-            logger.info("已确认辅助功能权限。")
-        }
-    }
-
     /// 更新快捷键缓存
     func refresh() {
+        // 录制快捷键期间跳过：refresh 会注销+重注册热键，录制期间的按键可能落进
+        // 这个空窗（2s 冲突轮询曾踩雷）。捕获路径的 setter 随后触发正常 refresh
+        guard !GlobalHotkeyManager.shared.isRecordingCaptureActive else {
+            logger.info("录制快捷键进行中，跳过 refresh")
+            return
+        }
         updateCachedShortcuts()
         Self.clipboardShortcutConflict = !registerClipboardHotkey()
+        Self.launcherShortcutConflict = !registerLauncherHotkey()
     }
 
     private var cachedShortcut: String = ""
@@ -155,6 +152,32 @@ final class KeyboardShortcutManager {
         return GlobalHotkeyManager.shared.register(key: key, modifiers: flags, id: 2007) { [weak self] in
             self?.onOpenClipboardHistory?()
         }
+    }
+
+    /// 应用启动器热键（默认 ⌥空格，可配置；空字符串 = 禁用）
+    /// 失败自动重试一次：录制探针注销后立即重注册同一组合，窗口服务器热键表
+    /// 可能短暂未同步（实测捕获 ⌥空格 后紧接的注册失败、热键失活）
+    private func registerLauncherHotkey(retry: Bool = true) -> Bool {
+        let key = PreferencesManager.shared.launcherOpenShortcut.lowercased()
+        let flags = NSEvent.ModifierFlags(rawValue: UInt(PreferencesManager.shared.launcherOpenShortcutFlags))
+            .intersection([.command, .option, .shift, .control])
+
+        guard !key.isEmpty else {
+            GlobalHotkeyManager.shared.unregister(id: 4001)
+            return true
+        }
+        let ok = GlobalHotkeyManager.shared.register(key: key, modifiers: flags, id: 4001) { [weak self] in
+            self?.onOpenAppLauncher?()
+        }
+        if !ok && retry {
+            logger.info("启动器热键注册失败，1.5s 后重试")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+                if self?.registerLauncherHotkey(retry: false) == true {
+                    Self.launcherShortcutConflict = false
+                }
+            }
+        }
+        return ok
     }
     
     private func registerOtherGlobalHotkeys() {
@@ -224,7 +247,19 @@ final class KeyboardShortcutManager {
         if !isGlobal {
             // Cmd+V 粘贴快捷键（应用内无输入框聚焦时）
             if flags == .command && char == "v" {
-                if let focusedView = NSApp.keyWindow?.firstResponder,
+                let responder = NSApp.keyWindow?.firstResponder
+                // 反馈表单可见时：焦点在文本框 → 放行贴文字；否则 → 直接通知表单粘贴截图附件。
+                // （不能只 return false：主菜单"编辑→粘贴"(disabled) 会在 keyEquivalent 阶段吞掉 ⌘V，
+                //  SwiftUI onCommand 收不到，所以必须用通知直连）
+                if FeedbackSettingsTab.isFeedbackFormVisible {
+                    if responder is NSTextView || responder is NSTextField {
+                        return false
+                    }
+                    NotificationCenter.default.post(name: .feedbackPasteShortcut, object: nil)
+                    return true
+                }
+                DiagnosticCenter.info("Shortcut", "⌘V 事件到达（反馈表单可见: false，焦点: \( responder.map { String(describing: type(of: $0)) } ?? "nil" )）")
+                if let focusedView = responder,
                    focusedView is NSTextView || focusedView is NSTextField {
                     return false
                 } else {
@@ -298,6 +333,7 @@ final class KeyboardShortcutManager {
         GlobalHotkeyManager.shared.unregister(id: 3001)
         GlobalHotkeyManager.shared.unregister(id: 3002)
         GlobalHotkeyManager.shared.unregister(id: 2007)
+        GlobalHotkeyManager.shared.unregister(id: 4001)
     }
     
     deinit { 

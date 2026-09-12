@@ -25,7 +25,8 @@ struct ShortcutRecorderView: View {
                         if flags.contains(.control) { shortcutBadge("⌃") }
                         
                         if !shortcut.isEmpty {
-                            shortcutBadge(shortcut.uppercased())
+                            // 空格渲染成「空格」字样，否则徽标里是看不见的空白（⌥空格 场景）
+                            shortcutBadge(shortcut == " " ? "空格" : shortcut.uppercased())
                         } else {
                             Text("无")
                                 .font(.themeCaption)
@@ -77,14 +78,22 @@ struct ShortcutCaptureView: NSViewRepresentable {
     
     func makeNSView(context: Context) -> NSView {
         let view = ShortcutNSView()
+        // 录制开始：① 已注册热键触发路由给录制器；② 注册空格×修饰键探针热键
+        //（未注册状态下 ⌥空格 被搜狗、⌃空格 被系统输入源切换在 app 之前消费，
+        // 探针保证空格类组合键始终可采）。非热键组合（字母等）走 localMonitor
+        GlobalHotkeyManager.shared.beginRecordingCapture { [weak view] key, modifiers in
+            view?.onCaptured?(key.lowercased(), Int(modifiers.rawValue))
+        }
         view.onCaptured = { newShortcut, newModifiers in
-            print("[DEBUG ShortcutRecorderView] 回调 onCaptured: \(newShortcut)")
+            DiagnosticCenter.info("Shortcut", "录制捕获：key=[\(newShortcut)] flags=\(newModifiers)")
+            GlobalHotkeyManager.shared.endRecordingCapture()
             self.shortcut = newShortcut
             self.modifiers = newModifiers
             self.isRecording = false
         }
         view.onCancel = {
-            print("[DEBUG ShortcutRecorderView] 回调 onCancel")
+            DiagnosticCenter.info("Shortcut", "录制取消（Esc 或失焦）")
+            GlobalHotkeyManager.shared.endRecordingCapture()
             self.isRecording = false
         }
         // 确保视图创建后立即尝试获取焦点
@@ -138,16 +147,19 @@ struct ShortcutCaptureView: NSViewRepresentable {
             }
         }
         
-        private func setupMonitor() {
-            removeMonitor()
-            // 使用 LocalMonitor 捕获所有按键，比 keyDown 更可靠
-            localMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { [weak self] (event: NSEvent) -> NSEvent? in
-                guard let self = self else { return event }
-                
-                // ⚠️ 关键：如果当前不是第一响应者，不处理事件，防止干扰其他输入框
-                guard self.window?.firstResponder == self else {
-                    return event
-                }
+    private func setupMonitor() {
+        removeMonitor()
+        // 使用 LocalMonitor 捕获所有按键，比 keyDown 更可靠
+        localMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { [weak self] (event: NSEvent) -> NSEvent? in
+            guard let self = self else { return event }
+
+            // ⚠️ 不校验 firstResponder：本 monitor 只在录制态挂载于视图层级
+            //（isRecording 才有 overlay，移除时 viewDidMoveToWindow(nil) 注销 monitor），
+            // 生命周期本身就是"录制中"的准确信号。曾用 firstResponder 守卫防误捕获，
+            // 但悬浮面板宿主下 makeFirstResponder 竞态失败（实测录制器永远收不到键）
+            guard self.window != nil else {
+                return event
+            }
                 
                 if event.type == .flagsChanged {
                     // 仅记录修饰键变化不触发保存

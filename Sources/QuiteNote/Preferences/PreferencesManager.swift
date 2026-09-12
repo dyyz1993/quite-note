@@ -141,7 +141,21 @@ final class PreferencesManager: ObservableObject {
             SecurityScopedBookmarkStore.shared.remove(forKey: "attachmentsDirectoryBookmark")
         }
     }
-    func setPreferredEditor(_ v: String) { d.set(v, forKey: "preferredEditor") }
+    func setPreferredEditor(_ v: String) {
+        d.set(v, forKey: "preferredEditor")
+        if !v.hasPrefix("/") {
+            SecurityScopedBookmarkStore.shared.remove(forKey: "preferredEditorBookmark")
+        }
+    }
+
+    @discardableResult
+    func setPreferredEditor(_ url: URL) -> Bool {
+        guard SecurityScopedBookmarkStore.shared.save(url, forKey: "preferredEditorBookmark") else {
+            return false
+        }
+        d.set(url.path, forKey: "preferredEditor")
+        return true
+    }
 
     func setScreenshotShortcut(_ v: String) { 
         objectWillChange.send()
@@ -153,24 +167,26 @@ final class PreferencesManager: ObservableObject {
     }
     func setScreenshotSaveToClipboard(_ v: Bool) { d.set(v, forKey: "screenshotSaveToClipboard") }
 
-    // 截图文件保存目录（空字符串 = 使用下载目录）
+    // 截图、录屏和快剪成片共用的导出目录。空字符串表示首次导出时必须让用户选择目录。
     var screenshotSaveDirectory: String { d.string(forKey: "screenshotSaveDirectory") ?? "" }
-    func setScreenshotSaveDirectory(_ v: String) {
-        objectWillChange.send()
-        d.set(v, forKey: "screenshotSaveDirectory")
-        if v.isEmpty {
-            SecurityScopedBookmarkStore.shared.remove(forKey: "screenshotSaveDirectoryBookmark")
-        }
+    @discardableResult
+    func setScreenshotSaveDirectory(_ v: String) -> Bool {
+        guard !v.isEmpty else { return setScreenshotSaveDirectory(nil) }
+        return setScreenshotSaveDirectory(URL(fileURLWithPath: (v as NSString).expandingTildeInPath,
+                                              isDirectory: true))
     }
 
-    func setScreenshotSaveDirectory(_ url: URL?) {
+    /// 同时持久化安全作用域书签，确保下次启动仍能按用户所选目录导出。
+    @discardableResult
+    func setScreenshotSaveDirectory(_ url: URL?) -> Bool {
+        if let url, !SecurityScopedBookmarkStore.shared.save(url, forKey: UserExportDirectory.bookmarkKey) {
+            DiagnosticCenter.error("Save", "保存导出目录授权失败")
+            return false
+        }
         objectWillChange.send()
         d.set(url?.path ?? "", forKey: "screenshotSaveDirectory")
-        if let url {
-            _ = SecurityScopedBookmarkStore.shared.save(url, forKey: "screenshotSaveDirectoryBookmark")
-        } else {
-            SecurityScopedBookmarkStore.shared.remove(forKey: "screenshotSaveDirectoryBookmark")
-        }
+        if url == nil { SecurityScopedBookmarkStore.shared.remove(forKey: UserExportDirectory.bookmarkKey) }
+        return true
     }
 
     // 保存截图文件后自动复制绝对路径到剪贴板
@@ -206,6 +222,10 @@ final class PreferencesManager: ObservableObject {
     // 打开历史面板快捷键（PRD 6：默认 ⇧⌘V，可配置）
     var clipboardOpenShortcut: String { d.string(forKey: "clipboardOpenShortcut") ?? "v" }
     var clipboardOpenShortcutFlags: Int { d.object(forKey: "clipboardOpenShortcutFlags") == nil ? Int(NSEvent.ModifierFlags([.command, .shift]).rawValue) : d.integer(forKey: "clipboardOpenShortcutFlags") }
+
+    // 打开应用启动器快捷键（默认 ⌥空格，可配置；与 Alfred/Raycast 同键位会注册失败并在设置页提示）
+    var launcherOpenShortcut: String { d.string(forKey: "launcherOpenShortcut") ?? " " }
+    var launcherOpenShortcutFlags: Int { d.object(forKey: "launcherOpenShortcutFlags") == nil ? Int(NSEvent.ModifierFlags([.option]).rawValue) : d.integer(forKey: "launcherOpenShortcutFlags") }
 
     // 历史保留策略（PRD 4.3 / 8.5）
     var clipboardMaxEntries: Int { let v = d.integer(forKey: "clipboardMaxEntries"); return v == 0 ? 500 : v }
@@ -250,6 +270,14 @@ final class PreferencesManager: ObservableObject {
     func setClipboardOpenShortcutFlags(_ v: Int) {
         objectWillChange.send()
         d.set(v, forKey: "clipboardOpenShortcutFlags")
+    }
+    func setLauncherOpenShortcut(_ v: String) {
+        objectWillChange.send()
+        d.set(v, forKey: "launcherOpenShortcut")
+    }
+    func setLauncherOpenShortcutFlags(_ v: Int) {
+        objectWillChange.send()
+        d.set(v, forKey: "launcherOpenShortcutFlags")
     }
     func setClipboardMaxEntries(_ v: Int) { d.set(v, forKey: "clipboardMaxEntries") }
     func setClipboardRetentionDays(_ v: Int) { d.set(v, forKey: "clipboardRetentionDays") }
@@ -378,12 +406,13 @@ final class PreferencesManager: ObservableObject {
             "animationsEnabled", "rememberWindowPosition", "attachmentsPath",
             "attachmentsDirectoryBookmark", "screenshotSaveDirectoryBookmark",
             "screenshotSaveDirectory", "openAIBaseURL", "openAIModel", "aiSystemPrompt", "aiUserPrompt",
-            "preferredEditor", "recordingSystemAudio", "recordingMicrophone", "recordingCursorMode",
+            "preferredEditor", "preferredEditorBookmark", "recordingSystemAudio", "recordingMicrophone", "recordingCursorMode",
             "recordingCountdownSeconds", "lastRecordingSelection",
             "clipboardHistoryEnabled", "clipboardRecordText", "clipboardRecordImage", "clipboardRecordLink",
             "clipboardRecordFile", "clipboardRecordSourceApp", "clipboardEnableOCR", "clipboardOCRChinese",
             "clipboardOCREnglish", "clipboardOCRAutoRetry", "clipboardOpenShortcut", "clipboardOpenShortcutFlags",
-            "clipboardMaxEntries", "clipboardRetentionDays", "clipboardExcludedBundleIDs", "clipboardPausedUntil"
+            "clipboardMaxEntries", "clipboardRetentionDays", "clipboardExcludedBundleIDs", "clipboardPausedUntil",
+            "launcherOpenShortcut", "launcherOpenShortcutFlags"
         ]
         for key in keys {
             d.removeObject(forKey: key)

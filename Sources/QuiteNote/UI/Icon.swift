@@ -19,6 +19,10 @@ enum IconName: String {
     case upload = "upload"
     case rss = "rss"
     case trash2 = "trash-2"
+    case lock = "lock"
+    case moon = "moon"
+    case power = "power"
+    case sun = "sun"
     case star = "star"
     case starOff = "star-off"
     case search = "search"
@@ -171,20 +175,23 @@ struct LucideView: View {
     /// 根据 lucideId 加载 NSImage
     private func nsImage(for lucideId: String) -> NSImage? {
         #if canImport(AppKit)
-        // 1) 首选 Lucide 扩展按 id 访问
-        if let img = NSImage.image(lucideId: lucideId) { return img }
-        
-        // 2) 尝试从已发现的 bundle 中加载
+        // Do not call Lucide's NSImage.image(lucideId:) here. That helper
+        // resolves Bundle.module internally and can trap when a manually
+        // assembled .app does not contain SwiftPM's generated resource
+        // bundle. The release packaging script copies the PDFs into the
+        // app's Resources directory, so use those resources directly.
+        //
+        // 1) 尝试从已发现的 bundle 中加载
         for bundle in Self.foundBundles {
             if let img = bundle.image(forResource: NSImage.Name(lucideId)) {
                 return img
             }
         }
 
-        // 3) 直接从已知的 LucideIcons bundle 路径加载图标
+        // 2) 直接从已知的 LucideIcons bundle/Resources 路径加载图标
         if let img = loadFromKnownBundle(lucideId) { return img }
         
-        // 4) 只有在没有扫描过的情况下才执行全盘扫描（非常耗时）
+        // 3) 只有在没有扫描过的情况下才执行全盘扫描（非常耗时）
         if !Self.hasScannedBundles {
             Self.hasScannedBundles = true
             return searchLucideImageInBuild(lucideId)

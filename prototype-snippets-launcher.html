@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>启动器 × 收藏片段 × 备忘录 · 交互原型</title>
+<style>
+  :root {
+    --panel-bg: rgba(28, 28, 30, 0.92);
+    --border: rgba(255, 255, 255, 0.09);
+    --blue: #3B82F6; --blue-strong: #2563EB;
+    --purple: #A855F7;
+    --text-1: #F3F4F6; --text-2: #9CA3AF; --text-3: #6B7280;
+    --green: #34D399;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    font-family: -apple-system, "SF Pro Text", "PingFang SC", sans-serif;
+    background: linear-gradient(160deg, #101318, #0b0d12 55%, #0e1016);
+    color: var(--text-1); user-select: none;
+  }
+
+  /* ── 目标应用窗口（演示粘贴目的地）────────── */
+  .target-app {
+    position: fixed; right: 6%; top: 14%; width: 420px; height: 440px;
+    background: rgba(38, 38, 42, 0.96); border: 1px solid var(--border);
+    border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  .target-app .titlebar {
+    height: 38px; display: flex; align-items: center; gap: 8px;
+    padding: 0 14px; border-bottom: 1px solid var(--border);
+    font-size: 12.5px; color: var(--text-2);
+  }
+  .dot { width: 11px; height: 11px; border-radius: 50%; }
+  .target-app .editor {
+    flex: 1; padding: 16px; font-size: 14px; line-height: 1.7; color: #D1D5DB;
+    overflow-y: auto; white-space: pre-wrap; user-select: text;
+  }
+  .target-app .editor .caret {
+    display: inline-block; width: 2px; height: 16px; background: var(--blue);
+    vertical-align: text-bottom; animation: blink 1s infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+  .target-app .statusbar {
+    padding: 6px 14px; font-size: 11px; color: var(--text-3);
+    border-top: 1px solid var(--border);
+  }
+  .target-app.flash { border-color: var(--blue); box-shadow: 0 0 0 2px rgba(59,130,246,0.3), 0 20px 60px rgba(0,0,0,0.5); }
+
+  /* ── 启动器面板 ─────────────────────────── */
+  .launcher {
+    position: fixed; left: 8%; top: 18%; width: 560px;
+    background: var(--panel-bg); border: 1px solid var(--border);
+    border-radius: 14px; backdrop-filter: blur(30px);
+    box-shadow: 0 24px 60px rgba(0,0,0,0.55);
+    z-index: 100; overflow: hidden;
+    transition: opacity 160ms, transform 160ms;
+  }
+  .launcher.hidden { opacity: 0; transform: scale(0.97) translateY(-6px); pointer-events: none; }
+  .search-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 15px 18px; border-bottom: 1px solid var(--border);
+  }
+  .search-row svg { width: 20px; height: 20px; color: var(--text-3); flex-shrink: 0; }
+  #query {
+    flex: 1; background: none; border: none; outline: none;
+    font-size: 19px; font-weight: 500; color: var(--text-1); font-family: inherit;
+  }
+  #query::placeholder { color: var(--text-3); font-weight: 400; }
+  .esc-tag { font-size: 11px; color: var(--text-3); border: 1px solid var(--border); border-radius: 5px; padding: 2px 6px; }
+
+  .list { max-height: 360px; overflow-y: auto; }
+  .list::-webkit-scrollbar { width: 8px; }
+  .list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 4px; }
+  .sec {
+    font-size: 11px; font-weight: 600; color: var(--text-3);
+    padding: 10px 18px 5px; letter-spacing: 0.5px;
+    display: flex; justify-content: space-between;
+  }
+  .item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 8px 18px; cursor: pointer; position: relative;
+    border-left: 2px solid transparent;
+  }
+  .item.sel { background: rgba(37,99,235,0.22); border-left-color: var(--blue); }
+  .item .num { width: 14px; font-size: 11px; color: var(--text-3); text-align: center; flex-shrink: 0; }
+  .item.sel .num { color: var(--blue); font-weight: 600; }
+  .glyph {
+    width: 32px; height: 32px; border-radius: 7px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 15px; font-weight: 700;
+  }
+  .glyph.snippet { background: rgba(52,211,153,0.15); color: var(--green); border: 1px solid rgba(52,211,153,0.35); }
+  .glyph.memo { background: rgba(251,191,36,0.14); color: #FBBF24; border: 1px solid rgba(251,191,36,0.35); }
+  .glyph.app { background: rgba(255,255,255,0.06); }
+  .glyph.cmd { background: rgba(168,85,247,0.15); color: var(--purple); border: 1px solid rgba(168,85,247,0.35); }
+  .main { flex: 1; min-width: 0; }
+  .name { font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .name .hl { color: var(--blue); font-weight: 600; }
+  .sub { font-size: 11px; color: var(--text-3); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .badge {
+    font-size: 10px; padding: 2px 7px; border-radius: 20px; flex-shrink: 0;
+    background: rgba(255,255,255,0.05); border: 1px solid var(--border); color: var(--text-2);
+  }
+  .badge.snippet { color: var(--green); background: rgba(52,211,153,0.1); border-color: rgba(52,211,153,0.3); }
+  .badge.memo { color: #FBBF24; background: rgba(251,191,36,0.1); border-color: rgba(251,191,36,0.3); }
+  .badge.cmd { color: var(--purple); background: rgba(168,85,247,0.12); border-color: rgba(168,85,247,0.3); }
+  .enter-hint { display: none; align-items: center; gap: 4px; font-size: 11px; color: var(--blue); flex-shrink: 0; }
+  .item.sel .enter-hint { display: flex; }
+  .enter-hint kbd { font-size: 10px; border: 1px solid rgba(59,130,246,0.5); border-radius: 4px; padding: 1px 5px; background: rgba(59,130,246,0.1); }
+  .empty { padding: 40px 0; text-align: center; color: var(--text-3); font-size: 13px; }
+
+  .footer {
+    display: flex; gap: 14px; padding: 9px 18px;
+    border-top: 1px solid var(--border); background: rgba(0,0,0,0.25);
+    font-size: 11px; color: var(--text-3);
+  }
+  .footer .right { margin-left: auto; }
+
+  /* toast */
+  .toast {
+    position: fixed; bottom: 26px; left: 50%; transform: translateX(-50%) translateY(10px);
+    background: rgba(24,24,26,0.94); border: 1px solid var(--border); border-radius: 10px;
+    padding: 10px 18px; font-size: 13px; opacity: 0; pointer-events: none;
+    transition: all 200ms; z-index: 300; display: flex; gap: 8px; align-items: center;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .toast .ok { color: var(--green); }
+
+  .tip {
+    position: fixed; left: 8%; bottom: 24px; width: 560px;
+    font-size: 12px; color: var(--text-2); line-height: 1.8;
+  }
+  .tip kbd { font-size: 10.5px; border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; background: rgba(255,255,255,0.05); }
+  .tip b { color: var(--text-1); }
+</style>
+</head>
+<body>
+
+  <!-- 目标应用：演示"↵ 粘贴到这里" -->
+  <div class="target-app" id="targetApp">
+    <div class="titlebar">
+      <span class="dot" style="background:#FF5F57"></span>
+      <span class="dot" style="background:#FEBC2E"></span>
+      <span class="dot" style="background:#28C840"></span>
+      <span style="margin-left:6px">笔记.md — 文本编辑器（粘贴目标应用）</span>
+    </div>
+    <div class="editor" id="editor">会议记录<span class="caret"></span></div>
+    <div class="statusbar">光标在文档末尾 · 按下 ↵ 后内容将粘贴到这里</div>
+  </div>
+
+  <!-- 启动器 -->
+  <div class="launcher" id="launcher">
+    <div class="search-row">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="20" y1="20" x2="16.5" y2="16.5"/></svg>
+      <input id="query" placeholder="搜索应用、收藏片段、备忘录…" autocomplete="off">
+      <span class="esc-tag">esc 关闭</span>
+    </div>
+    <div class="list" id="list"></div>
+    <div class="footer">
+      <span>↑↓ 选择</span><span>↵ 打开/粘贴</span><span>⌘1–9 直达</span><span>esc 关闭</span>
+      <span class="right">启动器 · 统一检索原型</span>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"><span class="ok">●</span><span id="toastText"></span></div>
+
+  <div class="tip">
+    <b>试试这些</b>：输入 <kbd>地址</kbd> 或 <kbd>dz</kbd> → 收藏片段「家庭地址」→ 按 <kbd>↵</kbd> 观察右侧文档被粘贴<br>
+    输入 <kbd>会议</kbd> 或 <kbd>hy</kbd> → 备忘录条目；输入 <kbd>wx</kbd> → 应用照常检索<br>
+    <b>设计要点</b>：收藏/备忘录是新的结果类型（绿「收藏」/ 黄「备忘」徽标），排在应用之前；↵ = 粘贴到唤起前的目标应用（复用剪贴板面板的目标记录机制）
+  </div>
+
+<script>
+  // ── mock 数据（对应真实数据结构：收藏=置顶剪贴板条目 isPinned；备忘录=StickyNoteModel）──
+  const ITEMS = [
+    { kind: 'snippet', name: '家庭地址', sub: '收藏片段 · 上海市浦东新区XX路XX号…', glyph: '⌂', g: 'snippet', badge: '收藏',
+      paste: '上海市浦东新区世纪大道100号环球金融中心 32F（收件人：张三 13800138000）', pinyin: 'dz jtdz dizhi' },
+    { kind: 'snippet', name: '邮箱签名', sub: '收藏片段 · Best regards, Zhang San…', glyph: '✉', g: 'snippet', badge: '收藏',
+      paste: 'Best regards,\nZhang San\nProduct Manager | QuiteNote\nzhangsan@example.com', pinyin: 'yxqm youxiang qianming qm' },
+    { kind: 'snippet', name: '常用回复：已收到', sub: '收藏片段 · 收到，正在处理，预计今天内回复…', glyph: '↩', g: 'snippet', badge: '收藏',
+      paste: '收到，正在处理，预计今天内回复你。如有急事请电话联系。', pinyin: 'cyhf changyong huifu yishoudao ysd' },
+    { kind: 'memo', name: '周三会议要点', sub: '备忘录 · 3 页 · 更新于 2 小时前', glyph: '📝', g: 'memo', badge: '备忘',
+      paste: '周三会议要点：\n1. Q4 路线图评审\n2. 剪贴板 Snippets 上线时间\n3. App Store 提审材料确认', pinyin: 'hy huiyao yaoDian zhou三 huiyi' },
+    { kind: 'memo', name: 'WiFi 密码', sub: '备忘录 · 1 页 · 更新于 昨天', glyph: '📝', g: 'memo', badge: '备忘',
+      paste: 'Office-5G 密码：QuiteNote2026!', pinyin: 'wifi mima ma' },
+    { kind: 'app', name: '微信', sub: 'com.tencent.xinWeChat', glyph: '💬', g: 'app', badge: '应用', launch: true, pinyin: 'wx weixin' },
+    { kind: 'app', name: 'Google Chrome', sub: 'com.google.Chrome', glyph: '🌐', g: 'app', badge: '应用', launch: true, pinyin: 'chrome gc' },
+    { kind: 'cmd', name: '锁屏', sub: '系统命令 · 立即锁定屏幕', glyph: '🔒', g: 'cmd', badge: '命令', cmd: true, pinyin: 'sp suoping lock' },
+  ];
+
+  const KIND_ORDER = { snippet: 0, memo: 1, cmd: 2, app: 3 };  // 收藏/备忘/命令 排应用之前
+  let results = [], sel = 0;
+
+  function score(it, q) {
+    const name = it.name.toLowerCase();
+    if (name === q) return 120;
+    if (name.startsWith(q)) return 100;
+    if (it.pinyin.split(' ').some(p => p.startsWith(q))) return 90;
+    if (name.includes(q)) return 60;
+    if (it.pinyin.replace(/ /g,'').includes(q)) return 50;
+    if (it.sub.toLowerCase().includes(q)) return 40;
+    return -1;
+  }
+
+  function render() {
+    const q = document.getElementById('query').value.trim().toLowerCase();
+    const el = document.getElementById('list');
+    if (!q) {
+      results = ITEMS;  // 原型简化：空搜索显示全部
+    } else {
+      results = ITEMS.map(it => [it, score(it, q)]).filter(x => x[1] >= 0)
+        .sort((a, b) => (KIND_ORDER[a[0].kind] - KIND_ORDER[b[0].kind]) || (b[1] - a[1]))
+        .map(x => x[0]);
+    }
+    sel = 0;
+    if (!results.length) { el.innerHTML = '<div class="empty">没有匹配的结果</div>'; return; }
+    let html = `<div class="sec"><span>${q ? '搜索结果' : '收藏与常用'}</span><span>${results.length} 项</span></div>`;
+    results.forEach((it, i) => {
+      html += `<div class="item ${i===0?'sel':''}" data-i="${i}">
+        <span class="num">${i < 9 ? i+1 : '·'}</span>
+        <span class="glyph ${it.g}">${it.glyph}</span>
+        <span class="main"><div class="name">${hl(it.name, q)}</div><div class="sub">${it.sub}</div></span>
+        <span class="badge ${it.g}">${it.badge}</span>
+        <span class="enter-hint"><kbd>↵</kbd> ${it.kind==='app'?'打开':(it.kind==='cmd'?'执行':'粘贴')}</span>
+      </div>`;
+    });
+    el.innerHTML = html;
+    el.querySelectorAll('.item').forEach(n => {
+      n.onmouseenter = () => { sel = +n.dataset.i; paint(); };
+      n.onclick = () => activate(sel);
+    });
+  }
+  function hl(name, q) {
+    if (!q) return name;
+    const i = name.toLowerCase().indexOf(q);
+    if (i < 0) return name;
+    return name.slice(0,i) + `<span class="hl">${name.slice(i,i+q.length)}</span>` + name.slice(i+q.length);
+  }
+  function paint() {
+    document.querySelectorAll('.item').forEach(n => n.classList.toggle('sel', +n.dataset.i === sel));
+    document.querySelectorAll('.item')[sel]?.scrollIntoView({ block: 'nearest' });
+  }
+
+  function activate(i) {
+    const it = results[i]; if (!it) return;
+    if (it.kind === 'app') { showToast(`打开应用 ${it.name}（演示）`); close(); return; }
+    if (it.kind === 'cmd') { showToast(`执行「${it.name}」（演示）`); close(); return; }
+    // 片段/备忘录：粘贴到目标应用
+    const editor = document.getElementById('editor');
+    editor.querySelector('.caret').insertAdjacentText('beforebegin', it.paste + '\n');
+    const app = document.getElementById('targetApp');
+    app.classList.add('flash');
+    setTimeout(() => app.classList.remove('flash'), 900);
+    app.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    close();
+    showToast(`${it.kind === 'snippet' ? '片段' : '备忘录'}「${it.name}」已粘贴到目标应用`);
+  }
+
+  function close() {
+    document.getElementById('launcher').classList.add('hidden');
+    setTimeout(() => { document.getElementById('query').value = ''; render(); }, 250);
+  }
+  function openL() {
+    document.getElementById('launcher').classList.remove('hidden');
+    document.getElementById('query').focus();
+  }
+  let t;
+  function showToast(text) {
+    const el = document.getElementById('toast');
+    document.getElementById('toastText').textContent = text;
+    el.classList.add('show');
+    clearTimeout(t); t = setTimeout(() => el.classList.remove('show'), 2000);
+  }
+
+  document.getElementById('query').addEventListener('input', render);
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') { close(); return; }
+    if (e.key === 'ArrowDown') { e.preventDefault(); if (results.length) { sel = (sel+1) % results.length; paint(); } }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); if (results.length) { sel = (sel-1+results.length) % results.length; paint(); } }
+    else if (e.key === 'Enter') { e.preventDefault(); activate(sel); }
+  });
+  render();
+</script>
+</body>
+</html>

@@ -36,20 +36,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // 诊断中心最先启动：检测上次异常退出 + 崩溃捕获 + 卡死看门狗 + 文件日志
         DiagnosticCenter.shared.start()
 
-        // 任一权限缺失时：自动打开对应设置页 + 在设置窗口底部弹出迷你拖拽引导条
-        // （轻量横条：虚线框呼吸图标，用户直接从那里拖进上方列表；大面板留给截图触发的场景）
-        let screenOK = ScreenshotService.shared.checkScreenCapturePermission()
-        let accessibilityOK = ScreenshotService.shared.checkAccessibilityPermission()
-        if !screenOK || !accessibilityOK {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                let target = !accessibilityOK ? "Privacy_Accessibility" : "Privacy_ScreenCapture"
-                if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(target)") {
-                    NSWorkspace.shared.open(url)
-                }
-                MiniPermissionBarController.shared.show()
-                DiagnosticCenter.info("Permission", "启动时检测到权限缺失（辅助功能:\(accessibilityOK ? "✓" : "✗") 录屏:\(screenOK ? "✓" : "✗")），已打开设置页并弹出迷你引导条")
-            }
-        }
+        // 权限只在用户主动使用对应功能时请求：启动不得跳转系统设置或中断首次体验。
 
         // 初始化贴纸管理器
         _ = StickyNoteManager.shared
@@ -58,10 +45,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         print("[DEBUG] 预加载符号配置...")
         _ = SymbolConfigManager.shared
 
-        let bundlePath = Bundle.main.bundlePath
         let bundleID = Bundle.main.bundleIdentifier ?? "unknown"
         print("[DEBUG] 应用启动中...")
-        print("[DEBUG] 运行路径: \(bundlePath)")
         print("[DEBUG] Bundle ID: \(bundleID)")
 
         NSApp.setActivationPolicy(.accessory)
@@ -96,7 +81,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.floatingPanelController?.show()
         }
 
-        // 在 LucideDiagnostics.run() 之前，尝试显式加载 LucideIcons 框架的 bundle
+        // 尝试显式加载已随 App 打包的 LucideIcons 资源 bundle
         // 使用 Bundle.main.bundleURL 直接构建到 Contents/Frameworks 的路径
         let lucideBundleURL = Bundle.main.bundleURL.appendingPathComponent("Contents/Frameworks/LucideIcons_LucideIcons.bundle")
         if let lucideBundle = Bundle(url: lucideBundleURL) {
@@ -106,8 +91,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             print("[DEBUG] Failed to explicitly load LucideIcons bundle from Contents/Frameworks.")
         }
 
-        // Lucide 图标可用性诊断（启动时一次性输出）
-        LucideDiagnostics.run()
+        // 不在启动关键路径运行图标诊断。Lucide 的诊断只用于开发期，
+        // 且不能因为可选资源包缺失阻断 App 启动；图标本身会从已打包资源
+        // 目录安全加载。
 
         print("[DEBUG] 创建状态栏控制器...")
         statusBarController = StatusBarController(store: store, bluetooth: bluetooth, toggleAction: { [weak self] in
@@ -140,8 +126,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if Bundle.main.bundlePath.contains(".app") {
             print("[DEBUG] 发送系统通知...")
             let content = UNMutableNotificationContent()
-            content.title = "QuiteNote 应用已启动"
-            content.body = "如果您看到这个通知，说明应用正在运行。"
+            content.title = L("notification.started.title", fallback: "Quite Note is running")
+            content.body = L("notification.started.body", fallback: "Quite Note is ready to capture and organize your notes.")
             content.sound = .default
 
             let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
@@ -196,6 +182,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         shortcuts?.onOpenClipboardHistory = {
             ClipboardHistoryPanelController.shared.toggle()
         }
+        shortcuts?.onOpenAppLauncher = {
+            AppLauncherPanelController.shared.toggle()
+        }
         shortcuts?.start()
 
         // 剪贴板历史：接入闪记 + 加载历史 + 启动 OCR 队列 + 按设置同步监控
@@ -219,13 +208,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
             .store(in: &cancellables)
-        
-        // 检查辅助功能权限（静默检查，不触发弹窗）
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            if !ScreenshotService.shared.checkAccessibilityPermission(prompt: false) {
-                print("[DEBUG] 警告：缺少辅助功能权限，全局快捷键可能无效")
-            }
-        }
         
         print("[DEBUG] 应用启动完成")
     }

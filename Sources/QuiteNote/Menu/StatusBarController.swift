@@ -71,40 +71,39 @@ final class StatusBarController {
         let menu = NSMenu()
         menu.autoenablesItems = false
         
-        // 蓝牙状态信息
-        let btTitle = bluetooth.connectedDeviceName != nil ? "蓝牙：已连接 \(bluetooth.connectedDeviceName!)" : "蓝牙：未连接"
-        let btInfo = NSMenuItem(title: btTitle, action: nil, keyEquivalent: "")
-        btInfo.isEnabled = false
-        menu.addItem(btInfo)
-        
         // 记录统计信息
         let today = Calendar.current.startOfDay(for: Date())
         let todayRecords = store.records.filter { $0.createdAt >= today }
-        let statsTitle = "记录：共 \(store.records.count) 条，今日 \(todayRecords.count) 条"
+        let statsTitle = String(
+            format: L("menu.stats", fallback: "Records: %ld total, %ld today"),
+            locale: Locale.current,
+            store.records.count,
+            todayRecords.count
+        )
         let statsInfo = NSMenuItem(title: statsTitle, action: nil, keyEquivalent: "")
         statsInfo.isEnabled = false
         menu.addItem(statsInfo)
         
         menu.addItem(NSMenuItem.separator())
-        let toggle = NSMenuItem(title: "显示/隐藏悬浮窗", action: #selector(onToggle), keyEquivalent: "r")
+        let toggle = NSMenuItem(title: L("menu.togglePanel", fallback: "Show/Hide Floating Panel"), action: #selector(onToggle), keyEquivalent: "r")
         toggle.keyEquivalentModifierMask = [.option, .command]
         toggle.target = self
         toggle.isEnabled = true
         menu.addItem(toggle)
         
-        let force = NSMenuItem(title: "强制显示并居中 (Reset)", action: #selector(onForceShow), keyEquivalent: "R")
+        let force = NSMenuItem(title: L("menu.forceCenter", fallback: "Show and Center Window"), action: #selector(onForceShow), keyEquivalent: "R")
         force.keyEquivalentModifierMask = [.option, .command, .shift]
         force.target = self
         force.isEnabled = true
         menu.addItem(force)
         
-        let newSticky = NSMenuItem(title: "新建贴纸", action: #selector(onNewStickyNote), keyEquivalent: "n")
+        let newSticky = NSMenuItem(title: L("menu.newSticky", fallback: "New Sticky Note"), action: #selector(onNewStickyNote), keyEquivalent: "n")
         newSticky.keyEquivalentModifierMask = [.command, .shift]
         newSticky.target = self
         newSticky.isEnabled = true
         menu.addItem(newSticky)
         
-        let capture = NSMenuItem(title: "采集当前剪贴板", action: #selector(onCapture), keyEquivalent: "c")
+        let capture = NSMenuItem(title: L("menu.captureClipboard", fallback: "Capture Current Clipboard"), action: #selector(onCapture), keyEquivalent: "c")
         capture.keyEquivalentModifierMask = [.option, .command]
         capture.target = self
         capture.isEnabled = true
@@ -113,33 +112,48 @@ final class StatusBarController {
         // 剪贴板历史（快捷键动态读取，与设置页共用同一 UserDefaults 键）
         let clipboardKey = PreferencesManager.shared.clipboardOpenShortcut
         let clipboardFlags = NSEvent.ModifierFlags(rawValue: UInt(PreferencesManager.shared.clipboardOpenShortcutFlags))
-        let clipboardHistory = NSMenuItem(title: "剪贴板历史", action: #selector(onOpenClipboardHistory), keyEquivalent: clipboardKey)
+        let clipboardHistory = NSMenuItem(title: L("menu.clipboardHistory", fallback: "Clipboard History"), action: #selector(onOpenClipboardHistory), keyEquivalent: clipboardKey)
         clipboardHistory.keyEquivalentModifierMask = clipboardFlags
         clipboardHistory.target = self
         clipboardHistory.isEnabled = true
         menu.addItem(clipboardHistory)
 
+        // 应用启动器（快捷键动态读取，默认 ⌥空格）
+        let launcherKey = PreferencesManager.shared.launcherOpenShortcut
+        let launcherFlags = NSEvent.ModifierFlags(rawValue: UInt(PreferencesManager.shared.launcherOpenShortcutFlags))
+        let appLauncher = NSMenuItem(title: L("menu.appLauncher", fallback: "App Launcher"), action: #selector(onOpenAppLauncher), keyEquivalent: launcherKey)
+        appLauncher.keyEquivalentModifierMask = launcherFlags
+        appLauncher.target = self
+        appLauncher.isEnabled = true
+        menu.addItem(appLauncher)
+
         // 动态读取截图快捷键
         let screenshotShortcut = PreferencesManager.shared.screenshotShortcut
         let screenshotFlags = NSEvent.ModifierFlags(rawValue: UInt(PreferencesManager.shared.screenshotShortcutFlags))
         
-        let screenshot = NSMenuItem(title: "捕获屏幕截图", action: #selector(onScreenshot), keyEquivalent: screenshotShortcut)
+        let screenshot = NSMenuItem(title: L("menu.captureScreenshot", fallback: "Capture Screenshot"), action: #selector(onScreenshot), keyEquivalent: screenshotShortcut)
         screenshot.keyEquivalentModifierMask = screenshotFlags
         screenshot.target = self
         screenshot.isEnabled = true
         menu.addItem(screenshot)
 
-        let bulk = NSMenuItem(title: "批量重新提炼（3条）", action: #selector(onBulkSummarize), keyEquivalent: "a")
+        let bulk = NSMenuItem(title: L("menu.bulkSummarize", fallback: "Summarize 3 Records"), action: #selector(onBulkSummarize), keyEquivalent: "a")
         bulk.keyEquivalentModifierMask = [.option, .command]
         bulk.target = self
         bulk.isEnabled = true
         menu.addItem(bulk)
-        let aiToggle = NSMenuItem(title: store.enableAI ? "AI 自动提炼：开启" : "AI 自动提炼：关闭", action: #selector(onToggleAI), keyEquivalent: "a")
+        let aiToggle = NSMenuItem(
+            title: store.enableAI
+                ? L("menu.aiOn", fallback: "AI Auto Summary: On")
+                : L("menu.aiOff", fallback: "AI Auto Summary: Off"),
+            action: #selector(onToggleAI),
+            keyEquivalent: "a"
+        )
         aiToggle.keyEquivalentModifierMask = [.shift, .option, .command]
         aiToggle.target = self
         aiToggle.isEnabled = true
         menu.addItem(aiToggle)
-        let export = NSMenuItem(title: "导出所有记录为 Markdown", action: #selector(onExport), keyEquivalent: "e")
+        let export = NSMenuItem(title: L("menu.exportMarkdown", fallback: "Export All Records as Markdown"), action: #selector(onExport), keyEquivalent: "e")
         export.keyEquivalentModifierMask = [.option, .command]
         export.target = self
         export.isEnabled = true
@@ -161,7 +175,7 @@ final class StatusBarController {
         // 最近记录快速访问
         let recentRecords = Array(store.records.sorted(by: { $0.createdAt > $1.createdAt }).prefix(5))
         if !recentRecords.isEmpty {
-            let recentHeader = NSMenuItem(title: "最近记录", action: nil, keyEquivalent: "")
+            let recentHeader = NSMenuItem(title: L("menu.recentRecords", fallback: "Recent Records"), action: nil, keyEquivalent: "")
             recentHeader.isEnabled = false
             menu.addItem(recentHeader)
             
@@ -178,7 +192,7 @@ final class StatusBarController {
         }
         
         // 高级功能
-        let clearAll = NSMenuItem(title: "清空所有记录", action: #selector(onClearAll), keyEquivalent: "")
+        let clearAll = NSMenuItem(title: L("menu.clearAll", fallback: "Clear All Records"), action: #selector(onClearAll), keyEquivalent: "")
         clearAll.target = self
         clearAll.isEnabled = !store.records.isEmpty
         menu.addItem(clearAll)
@@ -192,6 +206,10 @@ final class StatusBarController {
         launch.state = PreferencesManager.shared.launchAtLogin ? .on : .off
         menu.addItem(launch)
 
+        let feedback = NSMenuItem(title: "用户反馈…", action: #selector(openFeedback), keyEquivalent: "")
+        feedback.target = self
+        feedback.isEnabled = true
+        menu.addItem(feedback)
         let prefs = NSMenuItem(title: "偏好设置", action: #selector(openSettings), keyEquivalent: ",")
         prefs.target = self
         prefs.isEnabled = true
@@ -224,6 +242,12 @@ final class StatusBarController {
 
     /// 菜单：打开设置
     @objc private func openSettings() {
+        QuiteNoteNotification.post(.showSettings)
+    }
+
+    /// 菜单：用户反馈（打开设置并直接切到反馈 Tab；SettingsOverlayView onAppear 读取该 flag）
+    @objc private func openFeedback() {
+        UserDefaults.standard.set(true, forKey: "qn.openFeedbackTabOnShow")
         QuiteNoteNotification.post(.showSettings)
     }
 
@@ -272,6 +296,13 @@ final class StatusBarController {
     @objc private func onOpenClipboardHistory() {
         Task { @MainActor in
             ClipboardHistoryPanelController.shared.toggle()
+        }
+    }
+
+    /// 菜单：打开应用启动器面板
+    @objc private func onOpenAppLauncher() {
+        Task { @MainActor in
+            AppLauncherPanelController.shared.toggle()
         }
     }
 

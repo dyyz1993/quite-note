@@ -83,6 +83,14 @@ enum QuiteNoteNotification {
     /// 剪贴板条目 OCR 完成（userInfo: id）
     case clipboardOCRCompleted
 
+    // MARK: - 应用启动器相关
+
+    /// 应用启动器面板已显示（视图据此重置搜索、聚焦并重接键盘处理器）
+    case appLauncherPanelDidShow
+
+    /// 应用目录扫描完成（视图据此用最新目录重算当前查询）
+    case appLauncherCatalogDidUpdate
+
     // MARK: - 系统相关
 
     /// 需要内存优化
@@ -135,6 +143,10 @@ enum QuiteNoteNotification {
             return Notification.Name("qn.clipboard.panel.didShow")
         case .clipboardOCRCompleted:
             return Notification.Name("qn.clipboard.ocr.completed")
+        case .appLauncherPanelDidShow:
+            return Notification.Name("qn.launcher.panel.didShow")
+        case .appLauncherCatalogDidUpdate:
+            return Notification.Name("qn.launcher.catalog.didUpdate")
         case .memoryOptimizationNeeded:
             return Notification.Name("qn.system.memory.optimization")
         }

@@ -108,12 +108,12 @@ final class StickyNoteManager: ObservableObject {
     /// 保存或更新贴纸到记录
     func saveToRecords(note: StickyNoteModel) {
         print("[DEBUG] saveToRecords called - noteId: \(note.id)")
-        print("[DEBUG] note.pages: \(note.pages.map { "\"\($0.content)\"".prefix(50) })")
+        print("[DEBUG] note page count: \(note.pages.count)")
 
         // 格式化多页内容
         let content = formatPagesForSaving(note.pages)
 
-        print("[DEBUG] formatted content: \"\(content.prefix(100))\"")
+        print("[DEBUG] formatted content length: \(content.count)")
 
         guard !content.isEmpty else {
             print("[DEBUG] Content is empty, skipping save")
@@ -151,7 +151,7 @@ final class StickyNoteManager: ObservableObject {
                     "noteId": note.id
                 ]
             )
-            print("[DEBUG] Sent notification to create new record, title: \(title)")
+            print("[DEBUG] Sent notification to create new record")
         }
     }
 
@@ -169,7 +169,7 @@ final class StickyNoteManager: ObservableObject {
     /// 从记录创建便签
     func createNoteFromRecord(_ record: Record) {
         print("[DEBUG] createNoteFromRecord called, recordId: \(record.id)")
-        print("[DEBUG] record.content preview: \(record.content.prefix(100))")
+        print("[DEBUG] record content length: \(record.content.count)")
 
         // 检查是否已有对应的便签
         if let index = notes.firstIndex(where: { $0.syncRecordId == record.id }) {
@@ -178,7 +178,7 @@ final class StickyNoteManager: ObservableObject {
             let frame = record.noteFrame ?? notes[index].frame
 
             print("[DEBUG] Updating existing note at index \(index)")
-            print("[DEBUG] First page content: \(pages.first?.content.prefix(50) ?? "empty")")
+            print("[DEBUG] parsed page count: \(pages.count)")
 
             notes[index].pages = pages
             notes[index].frame = frame
@@ -202,9 +202,9 @@ final class StickyNoteManager: ObservableObject {
         let frame = record.noteFrame ?? defaultFrame()
 
         print("[DEBUG] Creating new note")
-        print("[DEBUG] First page content: \(pages.first?.content.prefix(50) ?? "empty")")
+        print("[DEBUG] parsed page count: \(pages.count)")
 
-        var note = StickyNoteModel(
+        let note = StickyNoteModel(
             pages: pages,
             frame: frame,
             syncRecordId: record.id
