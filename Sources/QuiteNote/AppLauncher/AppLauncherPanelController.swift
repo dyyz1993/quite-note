@@ -6,6 +6,7 @@ enum AppLauncherKeyAction {
     case moveUp
     case moveDown
     case launchSelected   // Return / 小键盘 Enter
+    case copyCalcFull     // ⌘↵：复制「算式 = 结果」整式（算式模式下）
     case launchIndex(Int) // ⌘1–⌘9
     case escape           // Esc：有搜索词先清空，否则关闭面板
 }
@@ -202,6 +203,7 @@ final class AppLauncherPanelController {
                 return .launchIndex(idx + 1)
             }
             if keyCode == 13 { return .escape }  // ⌘W：ESC 兜底（中文输入法会吞裸 ESC）
+            if keyCode == 36 || keyCode == 76 { return .copyCalcFull }  // ⌘↵
         }
 
         if flags.isEmpty {

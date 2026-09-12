@@ -136,7 +136,7 @@ struct AppLauncherView: View {
                     .foregroundColor(.themeTextPrimary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.6)
-                Text("计算结果 · 回车复制")
+                Text("计算结果 · ↵ 复制 · ⌘↵ 整式")
                     .font(.system(size: 11))
                     .foregroundColor(.themeTextTertiary)
             }

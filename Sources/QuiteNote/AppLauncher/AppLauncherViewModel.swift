@@ -139,6 +139,8 @@ final class AppLauncherViewModel: ObservableObject {
             guard !results.isEmpty else { return }
             pendingConfirmCommandID = nil
             selectedIndex = (selectedIndex + 1) % results.count
+        case .copyCalcFull:
+            copyCalculatorFull(controller: controller)
         case .launchSelected:
             // 算式模式下回车 = 复制结果（Alfred 同款优先级；⌘1–9 仍可直开下方应用）
             if calculatorResult != nil {
@@ -233,13 +235,23 @@ final class AppLauncherViewModel: ObservableObject {
         SystemCommandService.execute(cmd.action, title: cmd.title)
     }
 
-    /// 复制计算结果并收起面板
+    /// 复制计算结果并收起面板（↵ 默认路径，99% 场景）
     func copyCalculatorResult(controller: AppLauncherPanelController) {
         guard let result = calculatorResult else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(result, forType: .string)
         controller.hide()
         DiagnosticCenter.info("Launcher", "计算结果已复制：\(searchText) = \(result)")
+    }
+
+    /// 复制整式（⌘↵）："12+34 = 46"，用归一化算式（全角已转 ASCII）
+    func copyCalculatorFull(controller: AppLauncherPanelController) {
+        guard let result = calculatorResult else { return }
+        let full = "\(LauncherCalculator.normalizeExpression(searchText)) = \(result)"
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(full, forType: .string)
+        controller.hide()
+        DiagnosticCenter.info("Launcher", "计算整式已复制：\(full)")
     }
 
     /// 先收面板再启动（避免面板抢焦点），启动结果落日志
