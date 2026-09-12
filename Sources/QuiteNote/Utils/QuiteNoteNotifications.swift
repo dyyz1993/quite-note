@@ -80,6 +80,10 @@ enum QuiteNoteNotification {
     /// 剪贴板历史面板已显示（视图据此重置搜索并聚焦）
     case clipboardPanelDidShow
 
+    /// 剪贴板面板已成为 key window（控制器在 windowDidBecomeKey 发出——
+    /// 事件驱动聚焦的锚点，替代定时轮询补拉）
+    case clipboardPanelDidBecomeKey
+
     /// 剪贴板条目 OCR 完成（userInfo: id）
     case clipboardOCRCompleted
 
@@ -141,6 +145,8 @@ enum QuiteNoteNotification {
             return Notification.Name("qn.clipboard.toggle.panel")
         case .clipboardPanelDidShow:
             return Notification.Name("qn.clipboard.panel.didShow")
+        case .clipboardPanelDidBecomeKey:
+            return Notification.Name("qn.clipboard.panel.didBecomeKey")
         case .clipboardOCRCompleted:
             return Notification.Name("qn.clipboard.ocr.completed")
         case .appLauncherPanelDidShow:

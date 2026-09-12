@@ -73,7 +73,7 @@ final class ClipboardHistoryPanelController {
 
         // key 就位补拉（同启动器面板实测有效的方案）：makeKey 异步生效，且失焦
         // 收起的 orderOut 会打断转移——按固定间隔补拉直到就位，否则搜索框聚焦失败
-        for delay in [0.15, 0.4, 0.9] {
+        for delay in [0.15, 0.3, 0.5, 0.8, 1.2, 1.8] {
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
                 guard let self, let panel = self.panel, panel.isVisible, !panel.isKeyWindow else { return }
                 NSApp.activate(ignoringOtherApps: true)
@@ -92,11 +92,7 @@ final class ClipboardHistoryPanelController {
         // 首次打开加载历史
         ClipboardHistoryStore.shared.loadIfNeeded()
         ClipboardMonitor.shared.syncWithPreferences()
-        // didShow 延一拍发：SwiftUI 首帧渲染是异步的，同步 post 时视图的
-        // onReceive 订阅还没建立（首开必丢——实测聚焦补拉日志零输出定位）
-        DispatchQueue.main.async {
-            QuiteNoteNotification.post(.clipboardPanelDidShow)
-        }
+        QuiteNoteNotification.post(.clipboardPanelDidShow)
         let keyInfo = panel.isKeyWindow ? "key✓" : "key✗（当前 key: \(NSApp.keyWindow.map { String(describing: type(of: $0)) } ?? "nil")）"
         DiagnosticCenter.info("Clipboard", "历史面板打开（\(keyInfo)）")
     }
@@ -112,6 +108,20 @@ final class ClipboardHistoryPanelController {
     // MARK: - 失焦自动关闭（用户约定：点别处即退出，不留常驻窗口）
 
     private var resignObserver: NSObjectProtocol?
+
+    /// 面板成为 key window → 发事件（AppKit 观察者在 ensurePanel 就注册，
+    /// 不受 SwiftUI 首帧订阅竞态影响——聚焦断言挂在这个事件上，替代定时轮询）
+    private var becomeKeyObserver: NSObjectProtocol?
+
+    private func installBecomeKeyObserver() {
+        guard becomeKeyObserver == nil, let panel else { return }
+        becomeKeyObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didBecomeKeyNotification, object: panel, queue: .main
+        ) { _ in
+            DiagnosticCenter.info("Clipboard", "面板成为 key window（聚焦断言事件已发）")
+            QuiteNoteNotification.post(.clipboardPanelDidBecomeKey)
+        }
+    }
 
     private func installResignObserver() {
         guard resignObserver == nil, let panel else { return }
@@ -165,6 +175,7 @@ final class ClipboardHistoryPanelController {
 
         self.panel = panel
         installResignObserver()
+        installBecomeKeyObserver()
         return panel
     }
 

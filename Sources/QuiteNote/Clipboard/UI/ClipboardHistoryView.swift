@@ -72,18 +72,17 @@ struct ClipboardHistoryView: View {
         self.controller = controller
     }
 
-    /// 聚焦补拉：@FocusState 在面板未成 key window 时设值会被丢弃，
-    /// 按固定间隔先 false 再 true 重新断言（key 是本面板才动）
-    private func refocusRetries() {
-        for delay in [0.25, 0.55, 1.0] {
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                guard NSApp.keyWindow === controller.panelIfVisible else {
-                    DiagnosticCenter.warning("ClipboardUI", "聚焦补拉@\(delay)s：key 不在本面板（\(NSApp.keyWindow.map { String(describing: type(of: $0)) } ?? "nil")）")
-                    return
-                }
-                searchFocused = false
+    /// 聚焦搜索框（事件驱动，2026-09-12 替代轮询 hack——两组智能体对比后重构）：
+    /// force（becomeKey/行点击后）先置 false，**下一 tick** 再 true——同一事务的
+    /// false→true 会被 SwiftUI 合并成 no-op，必须拆两个更新事务
+    private func focusSearchField(force: Bool = false) {
+        if force {
+            searchFocused = false
+            DispatchQueue.main.async {
                 searchFocused = true
             }
+        } else {
+            searchFocused = true
         }
     }
 
@@ -111,10 +110,14 @@ struct ClipboardHistoryView: View {
         .onAppear {
             searchFocused = true
             wireKeyHandler()
-            refocusRetries()
         }
         .onDisappear {
             controller.onKeyAction = nil
+        }
+        .onReceive(NotificationCenter.default.publisher(for: QuiteNoteNotification.clipboardPanelDidBecomeKey.name)) { _ in
+            // 面板真正拿到 key window 的时刻（AppKit 观察者事件，不受首帧订阅竞态
+            // 影响）：FocusState 若卡在"记录 true 未生效"，跨 tick 翻转重新发起
+            focusSearchField(force: true)
         }
         .onReceive(NotificationCenter.default.publisher(for: QuiteNoteNotification.clipboardPanelDidShow.name)) { _ in
             // 每次面板唤起：清空搜索 + 聚焦 + 重新接键盘处理器
@@ -122,10 +125,6 @@ struct ClipboardHistoryView: View {
             vm.resetInput()
             searchFocused = true
             wireKeyHandler()
-            // 聚焦补拉：didShow 时面板可能还没成为 key window（accessory 应用
-            // activate 异步生效），@FocusState 设一次会被丢弃——先 false 再 true
-            // 重新断言（实测用户遇到"唤起后输入框没聚焦"的根因）
-            refocusRetries()
         }
         .alert("启用直接粘贴？", isPresented: $showDirectPastePermissionDialog) {
             Button("仅复制", role: .cancel) {}
@@ -270,9 +269,11 @@ struct ClipboardHistoryView: View {
             entriesVersion: store.entriesVersion,
             selectedIndex: $vm.selectedIndex,
             onSingleClick: { index in
-                // 单击 = 选中并复制（用户约定）
+                // 单击 = 选中并复制（用户约定）；表格点击会抢走第一响应者，
+                // 跨 tick 翻转把焦点还给搜索框（否则之后打字全进不去）
                 ClipboardPasteService.shared.copy(visibleEntries[index])
                 showHint("已复制到剪贴板")
+                focusSearchField(force: true)
             },
             onDoubleClick: { index in
                 paste(visibleEntries[index])
