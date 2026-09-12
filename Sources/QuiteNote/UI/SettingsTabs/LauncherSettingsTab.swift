@@ -120,6 +120,7 @@ struct LauncherSettingsTab: View {
                 explanationRow("搜收藏/备忘", "置顶的剪贴板文本与贴纸会出现在结果里（绿「收藏」/黄「备忘」），↵ 复制到剪贴板")
                 explanationRow("网页搜索", "搜索 词 / 百度 词 / gh 词 / so 词 / npm 词 / 知乎 词 → 回车用浏览器搜索")
                 explanationRow("退出应用", "退出 应用名（如 退出 微信）→ 回车退出该运行中应用")
+                explanationRow("搜符号", "符号库（emoji 等）按触发词混在结果里（黄「符号」徽标），↵ 复制")
             }
         }
     }

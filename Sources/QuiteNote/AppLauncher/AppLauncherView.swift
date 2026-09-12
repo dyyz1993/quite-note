@@ -176,6 +176,7 @@ struct AppLauncherView: View {
         case .scope(let match): scopeRow(index, match)
         case .web(let query): webRow(index, query)
         case .quit(let target): quitRow(index, target)
+        case .symbol(let symbol): symbolRow(index, symbol)
         }
     }
 
@@ -290,6 +291,64 @@ struct AppLauncherView: View {
         }
         .onTapGesture {
             vm.activateQuit(target, controller: controller)
+        }
+    }
+
+    /// 符号行（符号库 emoji 等）：↵ 复制符号内容
+    private func symbolRow(_ index: Int, _ symbol: SymbolItem) -> some View {
+        let selected = index == vm.selectedIndex
+        return HStack(spacing: 10) {
+            Text(index < 9 ? String(index + 1) : "·")
+                .font(.system(size: 11, weight: selected ? .semibold : .regular))
+                .foregroundColor(selected ? .themeBlue400 : .themeTextTertiary)
+                .frame(width: 14)
+
+            Text(symbol.content)
+                .font(.system(size: 22))
+                .frame(width: 28, height: 28)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(symbol.desc)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(.themeTextPrimary)
+                    .lineLimit(1)
+                Text("触发词：\(symbol.triggers.prefix(4).joined(separator: " / "))")
+                    .font(.system(size: 11))
+                    .foregroundColor(.themeTextTertiary)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text("符号")
+                .font(.system(size: 10))
+                .foregroundColor(.themeYellow400)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 2)
+                .background(Capsule().fill(Color.themeYellow400.opacity(0.12)))
+                .overlay(Capsule().stroke(Color.themeYellow400.opacity(0.35), lineWidth: 1))
+
+            if selected {
+                HStack(spacing: 4) {
+                    Text("↵").font(.system(size: 11, weight: .semibold))
+                    Text("复制").font(.system(size: 11))
+                }
+                .foregroundColor(.themeBlue400)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 6)
+        .background(selected ? Color.themeBlue600.opacity(0.20) : Color.clear)
+        .overlay(alignment: .leading) {
+            if selected {
+                Rectangle().fill(Color.themeBlue500).frame(width: 2)
+            }
+        }
+        .contentShape(Rectangle())
+        .onHover { hovering in
+            if hovering && vm.selectedIndex != index { vm.selectedIndex = index }
+        }
+        .onTapGesture {
+            vm.copySymbol(symbol, controller: controller)
         }
     }
 

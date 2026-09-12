@@ -10,6 +10,7 @@ enum LauncherItem: Identifiable {
     case scope(LauncherScopeParser.Match)
     case web(LauncherWebSearch.Query)
     case quit(LauncherQuitService.Target)
+    case symbol(SymbolItem)
 
     var id: String {
         switch self {
@@ -20,6 +21,7 @@ enum LauncherItem: Identifiable {
         case .scope: return "scope:files"
         case .web(let q): return "web:" + q.presetName + q.term
         case .quit(let t): return "quit:" + t.bundleID
+        case .symbol(let sym): return "sym:" + sym.id.uuidString
         }
     }
 }
@@ -128,6 +130,12 @@ final class AppLauncherViewModel: ObservableObject {
         items += LauncherTextSearch.matchingItems(
             tokens: queryTokens, in: LauncherTextSearch.collect()
         ).map { .text($0) }
+        // 符号库（emoji 等）：复用 SymbolConfigManager 的搜索（触发词/描述包含匹配）
+        if !queryTokens.isEmpty {
+            items += SymbolConfigManager.shared.searchSymbols(query: searchText)
+                .prefix(5)
+                .map { .symbol($0) }
+        }
         items += SystemCommandService.matchingCommands(tokens: queryTokens)
             .map { .command($0) }
         items += AppSearchService.search(searchText, in: store.apps, recentIDs: store.recentIDs)
@@ -213,6 +221,11 @@ final class AppLauncherViewModel: ObservableObject {
             controller.hide()
             let ok = target.terminate()
             DiagnosticCenter.info("Launcher", "\(ok ? "已退出" : "退出失败")「\(target.appName)」")
+        case .symbol(let symbol):
+            controller.hide()
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(symbol.content, forType: .string)
+            DiagnosticCenter.info("Launcher", "已复制符号「\(symbol.content)」")
         }
     }
 
@@ -243,6 +256,14 @@ final class AppLauncherViewModel: ObservableObject {
         controller.hide()
         let ok = target.terminate()
         DiagnosticCenter.info("Launcher", "\(ok ? "已退出" : "退出失败")「\(target.appName)」")
+    }
+
+    /// 点击符号行（与回车同语义）
+    func copySymbol(_ symbol: SymbolItem, controller: AppLauncherPanelController) {
+        controller.hide()
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(symbol.content, forType: .string)
+        DiagnosticCenter.info("Launcher", "已复制符号「\(symbol.content)」")
     }
 
     /// 点击文件行（与回车同语义）
