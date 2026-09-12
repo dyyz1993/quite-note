@@ -2,9 +2,18 @@ import SwiftUI
 import AppKit
 
 /// 右栏详情：展示选中条目的完整内容（参考图双栏布局的右半区）
-struct ClipboardDetailPane: View {
+struct ClipboardDetailPane: View, Equatable {
     let entry: ClipboardEntry?
     var onRetryOCR: (() -> Void)? = nil
+
+    /// 按身份比较而非全字段：synthesized == 会逐字段比较 plainText/ocrText
+    /// （可达 1MB），每次按键的视图 diff 都付这个成本（打字卡顿源）。
+    /// 内容变化（OCR 完成等）由 store.entriesVersion → 全表 reload 覆盖
+    static func == (lhs: ClipboardDetailPane, rhs: ClipboardDetailPane) -> Bool {
+        lhs.entry?.id == rhs.entry?.id
+            && lhs.entry?.ocrStatus == rhs.entry?.ocrStatus
+            && lhs.entry?.isPinned == rhs.entry?.isPinned
+    }
 
     var body: some View {
         Group {

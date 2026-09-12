@@ -59,15 +59,13 @@ struct ClipboardHistoryView: View {
     @State private var showDirectPastePermissionDialog = false
     @FocusState private var searchFocused: Bool
 
-    /// 当前可见条目：类型筛选 → 防抖搜索（PRD 9.2）。
-    /// 有搜索词时补齐全量历史（列表默认只加载首页；loadAllIfNeeded 幂等，
-    /// 只有第一次搜索真正付 DB 取页成本）
+    /// 当前可见条目：走 VM 记忆化（每次按键 body 重算会多次读取，全量过滤+排序
+    /// 每次重算是打字/删除卡顿的主因）。有搜索词时先补齐全量历史（幂等）
     private var visibleEntries: [ClipboardEntry] {
         if !vm.debouncedQuery.trimmingCharacters(in: .whitespaces).isEmpty {
             store.loadAllIfNeeded()
         }
-        let filtered = store.entries.filter { vm.filter.matches($0) }
-        return ClipboardSearchService.search(vm.debouncedQuery, in: filtered)
+        return vm.visibleEntries(in: store)
     }
 
     init(controller: ClipboardHistoryPanelController) {
@@ -256,6 +254,7 @@ struct ClipboardHistoryView: View {
                             showHint("OCR 重试中…")
                         }
                     }
+                    .equatable()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
@@ -268,6 +267,7 @@ struct ClipboardHistoryView: View {
     private var entryList: some View {
         ClipboardListTableView(
             entries: visibleEntries,
+            entriesVersion: store.entriesVersion,
             selectedIndex: $vm.selectedIndex,
             onSingleClick: { index in
                 // 单击 = 选中并复制（用户约定）

@@ -31,10 +31,9 @@ enum ClipboardSearchService {
     static func search(_ query: String, in entries: [ClipboardEntry]) -> [ClipboardEntry] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
-            return entries.sorted { a, b in
-                if a.isPinned != b.isPinned { return a.isPinned }
-                return a.createdAt > b.createdAt
-            }
+            // 空查询免排序：store.entries 已按（置顶优先 + 时间倒序）装载/插入，
+            // 旧实现每次按键对全量 O(n log n) 重排是打字卡顿主因之一
+            return entries
         }
 
         return entries

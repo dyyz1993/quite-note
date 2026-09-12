@@ -87,14 +87,16 @@ final class ClipboardSearchRankingTests: XCTestCase {
         XCTAssertGreaterThan(ClipboardSearchService.matchScore(query: "safari", entry: fromApp), 0)
     }
 
-    func testEmptyQueryPinsFirstThenRecency() {
+    func testEmptyQuery直通不重排() {
+        // 2026-09-12 契约变更：空查询免排序直通（每次按键 O(n log n) 重排是打字
+        // 卡顿主因）；「置顶优先+时间倒序」不变式由 store 的装载/插入/移动端维护
         let pinnedOld = entry(text: "置顶的旧内容", createdAt: Date(timeIntervalSinceNow: -9999), pinned: true)
         let recent = entry(text: "最新", createdAt: Date())
         let older = entry(text: "较旧", createdAt: Date(timeIntervalSinceNow: -100))
 
-        let results = ClipboardSearchService.search("", in: [older, recent, pinnedOld])
-        XCTAssertEqual(results.first?.isPinned, true)
-        XCTAssertEqual(results.dropFirst().map(\.plainText), ["最新", "较旧"])
+        let input = [pinnedOld, recent, older]   // store 顺序（不变式已排好）
+        let results = ClipboardSearchService.search("", in: input)
+        XCTAssertEqual(results.map(\.plainText), ["置顶的旧内容", "最新", "较旧"], "空查询必须原样直通")
     }
 
     func testCaseAndDiacriticInsensitive() {

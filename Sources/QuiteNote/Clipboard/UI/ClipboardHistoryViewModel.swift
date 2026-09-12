@@ -10,6 +10,9 @@ import Combine
 final class ClipboardHistoryViewModel: ObservableObject {
     @Published var searchText = "" {
         didSet {
+            // 同值写入守卫：输入框删空后继续按 Delete 会重复写 ""，
+            // @Published 即便同值也会触发 objectWillChange → 整棵视图无谓重算（卡顿源之一）
+            guard oldValue != searchText else { return }
             scheduleSearchDebounce()
         }
     }
@@ -21,6 +24,23 @@ final class ClipboardHistoryViewModel: ObservableObject {
         }
     }
     @Published var selectedIndex = 0
+
+    // MARK: - 可见条目记忆化（每次按键 body 重算多次读取，不能每次都全量过滤+排序）
+
+    private var cachedVisible: [ClipboardEntry] = []
+    private var cacheKey = ""
+
+    /// 当前可见条目：类型筛选 → 防抖搜索。按 (filter, debouncedQuery, entries.count,
+    /// entriesVersion) 记忆化——同一轮按键内多次读取只算一次
+    func visibleEntries(in store: ClipboardHistoryStore) -> [ClipboardEntry] {
+        let key = "\(filter.rawValue)|\(debouncedQuery)|\(store.entries.count)|\(store.entriesVersion)"
+        if key == cacheKey { return cachedVisible }
+        let filtered = store.entries.filter { filter.matches($0) }
+        let result = ClipboardSearchService.search(debouncedQuery, in: filtered)
+        cachedVisible = result
+        cacheKey = key
+        return result
+    }
 
     /// ←→ 循环切换筛选类型
     func switchFilter(_ forward: Bool) {

@@ -8,6 +8,8 @@ import AppKit
 /// 就是 Alfred 的交互；rows(in: visibleRect) 可精确拿到可见行（⌘1–⌘9 锚定视口）。
 struct ClipboardListTableView: NSViewRepresentable {
     let entries: [ClipboardEntry]
+    /// store 的内容版本号：与 count 组成 O(1) 数据签名（旧 O(n) 签名串每次按键重建）
+    let entriesVersion: Int
     @Binding var selectedIndex: Int
     let onSingleClick: (Int) -> Void   // 单击 = 选中 + 复制
     let onDoubleClick: (Int) -> Void   // 双击 = 粘贴
@@ -88,10 +90,10 @@ struct ClipboardListTableView: NSViewRepresentable {
         }
     }
 
-    /// 轻量数据签名（内容 id + 选中相关字段变化才整表重载）
+    /// O(1) 数据签名：count + store 版本号（置顶/OCR/增删/翻页都会 bump version，
+    /// 覆盖旧 O(n) 签名串的全部语义）
     private var signature: String {
-        entries.map { "\($0.id.uuidString.prefix(8))-\($0.isPinned ? 1 : 0)-($0.savedRecordID != nil ? 1 : 0)-\($0.ocrStatus?.rawValue ?? "")" }
-            .joined(separator: ",")
+        "\(entries.count)-\(entriesVersion)"
     }
 
     // MARK: - Coordinator

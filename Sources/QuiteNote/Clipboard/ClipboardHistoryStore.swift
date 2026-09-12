@@ -13,6 +13,11 @@ final class ClipboardHistoryStore: ObservableObject {
 
     /// 全部历史条目（置顶在前，其余按复制时间倒序）
     @Published private(set) var entries: [ClipboardEntry] = []
+    /// entries 内容版本号：任何变更（增删/置顶/OCR/翻页/重载）+1。
+    /// 列表格子的"数据变没变"签名用 count+version O(1) 判定，替代旧 O(n) 签名串
+    private(set) var entriesVersion = 0
+
+    private func bumpVersion() { entriesVersion += 1 }
     @Published private(set) var isLoaded = false
 
     private let persistence: ClipboardHistoryPersistence
@@ -51,6 +56,7 @@ final class ClipboardHistoryStore: ObservableObject {
 
     func reload() {
         entries = fetchPage(limit: Self.pageSize, offset: 0)
+        bumpVersion()
         hasMore = totalCount() > entries.count
     }
 
@@ -91,6 +97,7 @@ final class ClipboardHistoryStore: ObservableObject {
             return
         }
         entries.append(contentsOf: next)
+        bumpVersion()
         hasMore = totalCount() > entries.count
         DiagnosticCenter.info("Clipboard", "按需加载下一页：共 \(entries.count)/\(totalCount()) 条")
     }
@@ -100,6 +107,7 @@ final class ClipboardHistoryStore: ObservableObject {
         guard hasMore else { return }
         let remaining = fetchPage(limit: totalCount() - entries.count, offset: entries.count)
         entries.append(contentsOf: remaining)
+        bumpVersion()
         hasMore = false
     }
 
@@ -112,6 +120,7 @@ final class ClipboardHistoryStore: ObservableObject {
         objects.forEach(context.delete)
         try? context.save()
         entries = []
+        bumpVersion()
         hasMore = false
     }
     #endif
@@ -134,12 +143,16 @@ final class ClipboardHistoryStore: ObservableObject {
             touched.lastUsedAt = entry.lastUsedAt
             // 类型可能升级（比如先复制了文本后来同 hash 不可能变化，仅保守处理）
             entries[index] = touched
+            bumpVersion()
             persist(touched)
             moveToFront(index)
             return entries.first { $0.id == touched.id } ?? touched
         }
 
-        entries.insert(entry, at: 0)
+        // 插到置顶块之后：保持「置顶优先 + 时间倒序」不变式（搜索空查询免排序依赖）
+        let firstUnpinned = entries.firstIndex(where: { !$0.isPinned }) ?? entries.count
+        entries.insert(entry, at: min(firstUnpinned, entries.count))
+        bumpVersion()
         persist(entry)
 
         QuiteNoteNotification.post(.clipboardEntryAdded, object: nil, userInfo: ["id": entry.id])
@@ -187,6 +200,7 @@ final class ClipboardHistoryStore: ObservableObject {
     func delete(id: UUID) {
         guard let index = entries.firstIndex(where: { $0.id == id }) else { return }
         let entry = entries.remove(at: index)
+        bumpVersion()
         deletePersisted(id: entry.id)
         if entry.savedRecordID == nil {
             removeAssetFiles(entry)
@@ -198,6 +212,7 @@ final class ClipboardHistoryStore: ObservableObject {
     func clearAll() {
         let all = entries
         entries.removeAll()
+        bumpVersion()
         let context = persistence.context
         let request = NSFetchRequest<CDClipboardEntry>(entityName: "CDClipboardEntry")
         if let objects = try? context.fetch(request) {
@@ -254,6 +269,7 @@ final class ClipboardHistoryStore: ObservableObject {
 
         let victims = entries.filter { ids.contains($0.id) }
         entries.removeAll { ids.contains($0.id) }
+        bumpVersion()
         let context = persistence.context
         // 先刷新全部注册对象再删除：清理流程没有合法的待存修改（条目变更已由
         // persist 落库），旧快照若与 DB 不一致（外部改动过），save 时会抛
@@ -310,6 +326,7 @@ final class ClipboardHistoryStore: ObservableObject {
     private func moveToFront(_ index: Int) {
         let entry = entries.remove(at: index)
         entries.insert(entry, at: 0)
+        bumpVersion()
         resortInPlace()
     }
 
