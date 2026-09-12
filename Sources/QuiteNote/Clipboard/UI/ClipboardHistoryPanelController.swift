@@ -109,20 +109,6 @@ final class ClipboardHistoryPanelController {
 
     private var resignObserver: NSObjectProtocol?
 
-    /// 面板成为 key window → 发事件（AppKit 观察者在 ensurePanel 就注册，
-    /// 不受 SwiftUI 首帧订阅竞态影响——聚焦断言挂在这个事件上，替代定时轮询）
-    private var becomeKeyObserver: NSObjectProtocol?
-
-    private func installBecomeKeyObserver() {
-        guard becomeKeyObserver == nil, let panel else { return }
-        becomeKeyObserver = NotificationCenter.default.addObserver(
-            forName: NSWindow.didBecomeKeyNotification, object: panel, queue: .main
-        ) { _ in
-            DiagnosticCenter.info("Clipboard", "面板成为 key window（聚焦断言事件已发）")
-            QuiteNoteNotification.post(.clipboardPanelDidBecomeKey)
-        }
-    }
-
     private func installResignObserver() {
         guard resignObserver == nil, let panel else { return }
         resignObserver = NotificationCenter.default.addObserver(
@@ -175,7 +161,6 @@ final class ClipboardHistoryPanelController {
 
         self.panel = panel
         installResignObserver()
-        installBecomeKeyObserver()
         return panel
     }
 

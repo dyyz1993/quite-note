@@ -72,19 +72,7 @@ struct ClipboardHistoryView: View {
         self.controller = controller
     }
 
-    /// 聚焦搜索框（事件驱动，2026-09-12 替代轮询 hack——两组智能体对比后重构）：
-    /// force（becomeKey/行点击后）先置 false，**下一 tick** 再 true——同一事务的
-    /// false→true 会被 SwiftUI 合并成 no-op，必须拆两个更新事务
-    private func focusSearchField(force: Bool = false) {
-        if force {
-            searchFocused = false
-            DispatchQueue.main.async {
-                searchFocused = true
-            }
-        } else {
-            searchFocused = true
-        }
-    }
+
 
     var body: some View {
         VStack(spacing: 0) {
@@ -113,11 +101,6 @@ struct ClipboardHistoryView: View {
         }
         .onDisappear {
             controller.onKeyAction = nil
-        }
-        .onReceive(NotificationCenter.default.publisher(for: QuiteNoteNotification.clipboardPanelDidBecomeKey.name)) { _ in
-            // 面板真正拿到 key window 的时刻（AppKit 观察者事件，不受首帧订阅竞态
-            // 影响）：FocusState 若卡在"记录 true 未生效"，跨 tick 翻转重新发起
-            focusSearchField(force: true)
         }
         .onReceive(NotificationCenter.default.publisher(for: QuiteNoteNotification.clipboardPanelDidShow.name)) { _ in
             // 每次面板唤起：清空搜索 + 聚焦 + 重新接键盘处理器
@@ -269,11 +252,9 @@ struct ClipboardHistoryView: View {
             entriesVersion: store.entriesVersion,
             selectedIndex: $vm.selectedIndex,
             onSingleClick: { index in
-                // 单击 = 选中并复制（用户约定）；表格点击会抢走第一响应者，
-                // 跨 tick 翻转把焦点还给搜索框（否则之后打字全进不去）
+                // 单击 = 选中并复制（用户约定）
                 ClipboardPasteService.shared.copy(visibleEntries[index])
                 showHint("已复制到剪贴板")
-                focusSearchField(force: true)
             },
             onDoubleClick: { index in
                 paste(visibleEntries[index])

@@ -356,6 +356,11 @@ import ImageIO
 /// 表格子类：焦点在列表时 ESC 由 responder chain 到此（NSTableView 会先收到
 /// cancelOperation 且默认不冒泡到窗口），直接转发关闭面板
 final class ClipTableView: NSTableView {
+    /// 不可成为第一响应者：键盘交互全部由窗口层 NSEvent monitor 处理（↑↓/回车/ESC），
+    /// 表格若可成为响应者，面板成为 key window 时会被系统 key-view 循环选中，
+    /// 抢走 SwiftUI FocusState 的聚焦——"启动器正常、剪贴板失焦"的唯一结构差异（实锤）
+    override var acceptsFirstResponder: Bool { false }
+
     override func cancelOperation(_ sender: Any?) {
         ClipboardHistoryPanelController.shared.hide()
     }
