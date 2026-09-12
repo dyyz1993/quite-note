@@ -118,6 +118,8 @@ struct LauncherSettingsTab: View {
                 explanationRow("系统命令", "锁屏 / 睡眠 / 切换深浅外观 / 清倒废纸篓 / 重启 / 关机（后三项需再按一次 ↵ 确认）")
                 explanationRow("搜文件", "输「文件」后空格或 ↵ 进入（也可 ' 或 ~ 前缀直通），回车用默认应用打开")
                 explanationRow("搜收藏/备忘", "置顶的剪贴板文本与贴纸会出现在结果里（绿「收藏」/黄「备忘」），↵ 复制到剪贴板")
+                explanationRow("网页搜索", "搜索 词 / 百度 词 / gh 词 / so 词 / npm 词 / 知乎 词 → 回车用浏览器搜索")
+                explanationRow("退出应用", "退出 应用名（如 退出 微信）→ 回车退出该运行中应用")
             }
         }
     }

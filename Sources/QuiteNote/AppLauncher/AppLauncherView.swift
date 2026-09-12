@@ -174,6 +174,122 @@ struct AppLauncherView: View {
         case .file(let file): fileRow(index, file)
         case .text(let item): textRow(index, item)
         case .scope(let match): scopeRow(index, match)
+        case .web(let query): webRow(index, query)
+        case .quit(let target): quitRow(index, target)
+        }
+    }
+
+    /// 网页搜索行："搜索 swift" → "在 Google 搜索「swift」" ↵ 打开浏览器
+    private func webRow(_ index: Int, _ query: LauncherWebSearch.Query) -> some View {
+        let selected = index == vm.selectedIndex
+        return HStack(spacing: 10) {
+            Text(index < 9 ? String(index + 1) : "·")
+                .font(.system(size: 11, weight: selected ? .semibold : .regular))
+                .foregroundColor(selected ? .themeBlue400 : .themeTextTertiary)
+                .frame(width: 14)
+
+            LucideView(name: .globe, size: 15, color: .themeBlue300)
+                .frame(width: 28, height: 28)
+                .background(RoundedRectangle(cornerRadius: 7).fill(Color.themeBlue600.opacity(0.18)))
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text("在 \(query.presetName) 搜索「\(query.term)」")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(.themeTextPrimary)
+                    .lineLimit(1)
+                Text("用默认浏览器打开搜索结果")
+                    .font(.system(size: 11))
+                    .foregroundColor(.themeTextTertiary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text("网页")
+                .font(.system(size: 10))
+                .foregroundColor(.themeBlue300)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 2)
+                .background(Capsule().fill(Color.themeBlue600.opacity(0.14)))
+                .overlay(Capsule().stroke(Color.themeBlue600.opacity(0.35), lineWidth: 1))
+
+            if selected {
+                HStack(spacing: 4) {
+                    Text("↵").font(.system(size: 11, weight: .semibold))
+                    Text("搜索").font(.system(size: 11))
+                }
+                .foregroundColor(.themeBlue400)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 6)
+        .background(selected ? Color.themeBlue600.opacity(0.20) : Color.clear)
+        .overlay(alignment: .leading) {
+            if selected {
+                Rectangle().fill(Color.themeBlue500).frame(width: 2)
+            }
+        }
+        .contentShape(Rectangle())
+        .onHover { hovering in
+            if hovering && vm.selectedIndex != index { vm.selectedIndex = index }
+        }
+        .onTapGesture {
+            vm.activateWeb(query, controller: controller)
+        }
+    }
+
+    /// 退出应用行："退出 微信" → "退出「微信」" ↵ terminate
+    private func quitRow(_ index: Int, _ target: LauncherQuitService.Target) -> some View {
+        let selected = index == vm.selectedIndex
+        return HStack(spacing: 10) {
+            Text(index < 9 ? String(index + 1) : "·")
+                .font(.system(size: 11, weight: selected ? .semibold : .regular))
+                .foregroundColor(selected ? .themeBlue400 : .themeTextTertiary)
+                .frame(width: 14)
+
+            LucideView(name: .power, size: 15, color: .themeStatusError)
+                .frame(width: 28, height: 28)
+                .background(RoundedRectangle(cornerRadius: 7).fill(Color.themeStatusError.opacity(0.12)))
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text("退出「\(target.appName)」")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(.themeTextPrimary)
+                Text(target.bundleID)
+                    .font(.system(size: 11))
+                    .foregroundColor(.themeTextTertiary)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text("退出")
+                .font(.system(size: 10))
+                .foregroundColor(.themeStatusError)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 2)
+                .background(Capsule().fill(Color.themeStatusError.opacity(0.10)))
+                .overlay(Capsule().stroke(Color.themeStatusError.opacity(0.3), lineWidth: 1))
+
+            if selected {
+                HStack(spacing: 4) {
+                    Text("↵").font(.system(size: 11, weight: .semibold))
+                    Text("退出").font(.system(size: 11))
+                }
+                .foregroundColor(.themeBlue400)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 6)
+        .background(selected ? Color.themeBlue600.opacity(0.20) : Color.clear)
+        .overlay(alignment: .leading) {
+            if selected {
+                Rectangle().fill(Color.themeBlue500).frame(width: 2)
+            }
+        }
+        .contentShape(Rectangle())
+        .onHover { hovering in
+            if hovering && vm.selectedIndex != index { vm.selectedIndex = index }
+        }
+        .onTapGesture {
+            vm.activateQuit(target, controller: controller)
         }
     }
 

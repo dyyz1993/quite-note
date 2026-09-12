@@ -8,6 +8,8 @@ enum LauncherItem: Identifiable {
     case file(LauncherFile)
     case text(LauncherTextItem)
     case scope(LauncherScopeParser.Match)
+    case web(LauncherWebSearch.Query)
+    case quit(LauncherQuitService.Target)
 
     var id: String {
         switch self {
@@ -16,6 +18,8 @@ enum LauncherItem: Identifiable {
         case .file(let file): return "file:" + file.id
         case .text(let item): return "text:" + item.id
         case .scope: return "scope:files"
+        case .web(let q): return "web:" + q.presetName + q.term
+        case .quit(let t): return "quit:" + t.bundleID
         }
     }
 }
@@ -100,6 +104,13 @@ final class AppLauncherViewModel: ObservableObject {
         let store = AppCatalogStore.shared
         // 排序：范围入口 → 收藏片段/备忘（用户高频内容）→ 系统命令 → 应用
         var items: [LauncherItem] = []
+        // 网页搜索："搜索 swift 泛型" → 首行"在 Google 搜索"（退出应用的结果混排其后）
+        if let web = LauncherWebSearch.parse(searchText) {
+            items.append(.web(web))
+        }
+        if let quitTargets = LauncherQuitService.parse(searchText) {
+            items += quitTargets.map { .quit($0) }
+        }
         if let scope = LauncherScopeParser.parse(searchText) {
             // 输入范围词：未跟词 → 亮范围行等 ↵/空格；已跟词 → 直接进文件模式
             if scope.entered {
@@ -194,6 +205,14 @@ final class AppLauncherViewModel: ObservableObject {
             copyTextItem(item, controller: controller)
         case .scope:
             enterFileScope(controller: controller)
+        case .web(let query):
+            controller.hide()
+            NSWorkspace.shared.open(query.url)
+            DiagnosticCenter.info("Launcher", "网页搜索：\(query.presetName)「\(query.term)」")
+        case .quit(let target):
+            controller.hide()
+            let ok = target.terminate()
+            DiagnosticCenter.info("Launcher", "\(ok ? "已退出" : "退出失败")「\(target.appName)」")
         }
     }
 
@@ -210,6 +229,20 @@ final class AppLauncherViewModel: ObservableObject {
         coalesceWork?.cancel()
         searchText = term.isEmpty ? "'" : "' " + term
         recompute()
+    }
+
+    /// 点击网页搜索行（与回车同语义）
+    func activateWeb(_ query: LauncherWebSearch.Query, controller: AppLauncherPanelController) {
+        controller.hide()
+        NSWorkspace.shared.open(query.url)
+        DiagnosticCenter.info("Launcher", "网页搜索：\(query.presetName)「\(query.term)」")
+    }
+
+    /// 点击退出应用行（与回车同语义）
+    func activateQuit(_ target: LauncherQuitService.Target, controller: AppLauncherPanelController) {
+        controller.hide()
+        let ok = target.terminate()
+        DiagnosticCenter.info("Launcher", "\(ok ? "已退出" : "退出失败")「\(target.appName)」")
     }
 
     /// 点击文件行（与回车同语义）
