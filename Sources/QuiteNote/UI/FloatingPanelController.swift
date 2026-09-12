@@ -568,6 +568,17 @@ final class FloatingPanelController {
         // 如果用户主动隐藏了窗口，则不进行任何前置操作
         if userHidden { return }
 
+        // Alfred 式快捷面板（启动器/剪贴板历史）打开期间不抢 key window——
+        // 悬停计时器晚于面板打开触发时会把 key 夺走，导致面板内 ESC/键盘失灵
+        //（实锤：ESC 落到浮球的 onKeyPress 上、启动器退不出）。
+        // 本方法只从主线程调用（悬停计时器/main async），assumeIsolated 安全
+        let launcherOrClipboardVisible = MainActor.assumeIsolated {
+            AppLauncherPanelController.shared.isVisible || ClipboardHistoryPanelController.shared.isVisible
+        }
+        if launcherOrClipboardVisible {
+            return
+        }
+
         // 拖拽中不抢焦点：中途 makeKeyAndOrderFront 会触发系统对出屏窗口的
         // 位置约束，与拖拽的 setFrame 拉扯造成边缘闪跳，还可能打断拖拽手势
         if isInteracting { return }
@@ -615,6 +626,13 @@ final class FloatingPanelController {
         // 缩短延迟时间到 0.3 秒，让离开后的响应更灵敏，同时保留基础防抖
         revertTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { [weak self] _ in
             guard let self else { return }
+            // Alfred 式快捷面板（启动器/剪贴板）打开期间不回退：此时把焦点还给上一个应用
+            // 会立即夺走面板刚拿到的 key window（用户悬停浮球后唤起面板时必现，面板可见但
+            // 非 key → 面板内键盘/ESC 全部失灵）。本回调在主线程计时器上，assumeIsolated 安全
+            let quickPanelVisible = MainActor.assumeIsolated {
+                AppLauncherPanelController.shared.isVisible || ClipboardHistoryPanelController.shared.isVisible
+            }
+            if quickPanelVisible { return }
             // 只有在非悬停且非交互状态下才回退到 Accessory
             if !self.hoverActive && !self.isInteracting && !self.userHidden {
 

@@ -1,23 +1,33 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// 右上角设置面板：AI、记录、蓝牙、窗口标签页
+/// 右上角设置面板：AI、记录、窗口标签页
 struct SettingsOverlayView: View {
     @ObservedObject var store: RecordStore
     @ObservedObject var bluetooth: BluetoothManager
     @ObservedObject private var prefs = PreferencesManager.shared
     @Binding var showSettings: Bool
+    private let allowsDismissal: Bool
     @State private var tab: String
     @State private var isTestingConnection = false
     @State private var windowLock = false
     @State private var animationsEnabled = true
     @State private var rememberWindowPosition = true
+    /// 反馈表单状态（视图与 footer「发送反馈」主按钮共享）
+    @StateObject private var feedbackModel = FeedbackFormModel()
 
-    init(store: RecordStore, bluetooth: BluetoothManager, showSettings: Binding<Bool>, initialTab: String = "ai") {
+    init(
+        store: RecordStore,
+        bluetooth: BluetoothManager,
+        showSettings: Binding<Bool>,
+        initialTab: String = "ai",
+        allowsDismissal: Bool = true
+    ) {
         self.store = store
         self.bluetooth = bluetooth
         self._showSettings = showSettings
         self._tab = State(initialValue: initialTab)
+        self.allowsDismissal = allowsDismissal
     }
 
     /// 构建设置面板 UI，右上角浮层
@@ -29,19 +39,28 @@ struct SettingsOverlayView: View {
             footerView
         }
         .background(Color.themeBackground.opacity(0.9)) // bg-gray-900/90
+        .onAppear {
+            // 状态栏菜单「用户反馈…」入口：打开设置并直接切到反馈 Tab（flag 由 StatusBarController 写入）
+            if UserDefaults.standard.bool(forKey: "qn.openFeedbackTabOnShow") {
+                tab = "feedback"
+                UserDefaults.standard.removeObject(forKey: "qn.openFeedbackTabOnShow")
+            }
+        }
     }
     
     /// 头部视图
     private var headerView: some View {
         HStack(spacing: 12) {
-            Button(action: { withAnimation { showSettings = false } }) {
-                LucideView(name: .chevronLeft, size: 20, color: .themeTextSecondary)
-                    .padding(6)
-                    .background(Color.themeHoverLight)
-                    .clipShape(Circle())
+            if allowsDismissal {
+                Button(action: { withAnimation { showSettings = false } }) {
+                    LucideView(name: .chevronLeft, size: 20, color: .themeTextSecondary)
+                        .padding(6)
+                        .background(Color.themeHoverLight)
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .pointingHandCursor()
             }
-            .buttonStyle(.plain)
-            .pointingHandCursor()
             
             Text("偏好设置")
                 .font(.themeH2)
@@ -49,27 +68,6 @@ struct SettingsOverlayView: View {
             
             Spacer()
             
-            // Bluetooth Status Icon
-            HStack(spacing: 6) {
-               if let name = bluetooth.connectedDeviceName {
-                   LucideView(name: .bluetooth, size: 14, color: .themeBlue400)
-                   Text(name)
-                       .font(.themeCaption)
-                       .foregroundColor(.themeBlue400)
-               } else if bluetooth.state == .poweredOn {
-                   LucideView(name: .bluetooth, size: 14, color: .themeYellow500)
-               } else {
-                   LucideView(name: .bluetoothOff, size: 14, color: .themeTextTertiary)
-               }
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(Color.themeHoverLight)
-            .cornerRadius(12)
-            .onTapGesture {
-               withAnimation { tab = "bluetooth" }
-            }
-            .pointingHandCursor()
         }
         .padding(.horizontal, 24)
         .padding(.vertical, 16)
@@ -84,13 +82,14 @@ struct SettingsOverlayView: View {
                 TabButtonLucide(key: "ai", label: "AI", icon: .sparkles, current: $tab)
                 TabButtonLucide(key: "history", label: "记录", icon: .database, current: $tab)
                 TabButtonLucide(key: "clipboard", label: "剪贴板", icon: .clipboardList, current: $tab)
-                TabButtonLucide(key: "bluetooth", label: "蓝牙", icon: .bluetooth, current: $tab)
+                TabButtonLucide(key: "launcher", label: "启动器", icon: .appWindowMac, current: $tab)
                 TabButtonLucide(key: "window", label: "悬浮窗", icon: .layout, current: $tab)
                 TabButtonLucide(key: "screenshot", label: "截图", icon: .camera, current: $tab)
                 TabButtonLucide(key: "recording", label: "录屏", icon: .video, current: $tab)
                 TabButtonLucide(key: "file", label: "文件", icon: .folder, current: $tab)
                 TabButtonLucide(key: "memory", label: "监控", icon: .cpu, current: $tab)
                 TabButtonLucide(key: "symbols", label: "符号", icon: .square, current: $tab)
+                TabButtonLucide(key: "feedback", label: "反馈", icon: .bug, current: $tab)
             }
             .padding(.horizontal, 24)
             .padding(.vertical, 14)
@@ -108,13 +107,14 @@ struct SettingsOverlayView: View {
                 case "ai": AISettingsTab(store: store, isTestingConnection: $isTestingConnection)
                 case "history": HistorySettingsTab(store: store)
                 case "clipboard": ClipboardSettingsTab()
-                case "bluetooth": BluetoothSettingsTab(bluetooth: bluetooth)
+                case "launcher": LauncherSettingsTab()
                 case "window": WindowSettingsTab()
                 case "screenshot": ScreenshotSettingsTab()
                 case "recording": RecordingSettingsTab()
                 case "file": FileSettingsTab(store: store)
                 case "memory": MemorySettingsTab()
                 case "symbols": SymbolSettingsTab()
+                case "feedback": FeedbackSettingsTab(model: feedbackModel)
                 default: EmptyView()
                 }
             }
@@ -157,6 +157,22 @@ struct SettingsOverlayView: View {
                     Text("OCR: 本地 Vision · 不联网")
                         .font(.themeCaptionSmall)
                         .foregroundColor(.themeTextTertiary)
+                } else if tab == "launcher" {
+                    Text("应用目录: \(AppCatalogStore.shared.apps.count) 个应用")
+                        .font(.themeCaptionSmall)
+                        .foregroundColor(.themeTextTertiary)
+                    Text("拼音转换: 本地 CoreFoundation · 不联网")
+                        .font(.themeCaptionSmall)
+                        .foregroundColor(.themeTextTertiary)
+                } else if tab == "feedback" {
+                    Text("提交后开发者手机实时收到推送")
+                        .font(.themeCaptionSmall)
+                        .foregroundColor(.themeTextTertiary)
+                    Text(feedbackModel.attachments.isEmpty
+                         ? "未附截图（⌘V 可粘贴）"
+                         : "已附 \(feedbackModel.attachments.count) 张截图")
+                        .font(.themeCaptionSmall)
+                        .foregroundColor(.themeTextTertiary)
                 } else if tab == "symbols" {
                     Text("符号库: \(SymbolConfigManager.shared.configs.count) 个")
                         .font(.themeCaptionSmall)
@@ -183,33 +199,44 @@ struct SettingsOverlayView: View {
                     .pointingHandCursor()
                     .help("清除图标缓存并重新加载")
                 } else {
-                    Text(tab == "bluetooth" ? "蓝牙设备状态" : "设置已就绪")
+                    Text("设置已就绪")
                         .font(.themeCaptionSmall)
                         .foregroundColor(.themeTextTertiary)
                 }
             }
             
             Spacer()
-            
-            Button(action: {
-                withAnimation { showSettings = false }
-                store.postToast("配置已保存。", type: "success")
-            }) {
-                HStack(spacing: 8) {
-                    LucideView(name: .save, size: 16, color: .white)
-                    Text("保存设置")
+
+            // 主按钮按 Tab 定制：只有真"提交"类 Tab 才有按钮（反馈=发送反馈）。
+            // 其余 Tab 偏好均为即时写入（改动即生效），无保存语义 → 不放按钮
+            //（2026-09-11 与用户确认）。未来引入草稿/显式保存模式的 Tab，
+            // 必须做脏检测（无改动时禁用）再放"保存"按钮。
+            if tab == "feedback" {
+                Button(action: {
+                    feedbackModel.sendFeedback(entry: "prefs")
+                }) {
+                    HStack(spacing: 8) {
+                        if feedbackModel.sending {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            LucideView(name: .upload, size: 16, color: .white)
+                        }
+                        Text(feedbackModel.sending ? "发送中…" : "发送反馈")
+                    }
+                    .font(.themeBody)
+                    .fontWeight(.medium)
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 10)
+                    .background(feedbackModel.canSubmit ? Color.themeBlue600 : Color.themeGray600)
+                    .cornerRadius(10)
+                    .shadow(color: feedbackModel.canSubmit ? Color.themeShadowBlue : .clear, radius: 8, y: 4)
                 }
-                .font(.themeBody)
-                .fontWeight(.medium)
-                .foregroundColor(.white)
-                .padding(.horizontal, 20)
-                .padding(.vertical, 10)
-                .background(Color.themeBlue600)
-                .cornerRadius(10)
-                .shadow(color: Color.themeShadowBlue, radius: 8, y: 4)
+                .buttonStyle(.plain)
+                .pointingHandCursor()
+                .disabled(!feedbackModel.canSubmit)
             }
-            .buttonStyle(.plain)
-            .pointingHandCursor()
         }
         .padding(20)
         .background(Color.themeGray900.opacity(0.6))
