@@ -56,10 +56,16 @@ struct ClipboardHistoryView: View {
     @StateObject private var vm = ClipboardHistoryViewModel()
 
     @State private var hint: String?
+    @State private var showDirectPastePermissionDialog = false
     @FocusState private var searchFocused: Bool
 
-    /// 当前可见条目：类型筛选 → 防抖搜索（PRD 9.2）
+    /// 当前可见条目：类型筛选 → 防抖搜索（PRD 9.2）。
+    /// 有搜索词时补齐全量历史（列表默认只加载首页；loadAllIfNeeded 幂等，
+    /// 只有第一次搜索真正付 DB 取页成本）
     private var visibleEntries: [ClipboardEntry] {
+        if !vm.debouncedQuery.trimmingCharacters(in: .whitespaces).isEmpty {
+            store.loadAllIfNeeded()
+        }
         let filtered = store.entries.filter { vm.filter.matches($0) }
         return ClipboardSearchService.search(vm.debouncedQuery, in: filtered)
     }
@@ -82,6 +88,8 @@ struct ClipboardHistoryView: View {
             }
         }
         .background(ClipboardPalette.background)
+        // 隐藏标题栏仍会预留 ~28pt 安全区，顶进该区域让搜索框贴顶（紧凑化）
+        .ignoresSafeArea(.container, edges: .top)
         .overlay(alignment: .top) {
             if let hint {
                 ClipboardHintBanner(text: hint)
@@ -100,6 +108,16 @@ struct ClipboardHistoryView: View {
             vm.resetInput()
             searchFocused = true
             wireKeyHandler()
+        }
+        .alert("启用直接粘贴？", isPresented: $showDirectPastePermissionDialog) {
+            Button("仅复制", role: .cancel) {}
+            Button("打开辅助功能设置") {
+                if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+                    NSWorkspace.shared.open(url)
+                }
+            }
+        } message: {
+            Text("内容已复制到剪贴板。直接粘贴回原 App 是可选高级功能，需要辅助功能权限；你也可以现在按 ⌘V 手动粘贴。")
         }
     }
 
@@ -135,25 +153,21 @@ struct ClipboardHistoryView: View {
                 .foregroundColor(ClipboardPalette.textPrimary)
                 .focused($searchFocused)
             if !vm.searchText.isEmpty {
-                Button {
-                    vm.searchText = ""
-                } label: {
-                    LucideView(name: .circleX, size: 14, color: ClipboardPalette.textTertiary)
+                LucideView(name: .circleX, size: 14, color: ClipboardPalette.textTertiary)
+                    .contentShape(Rectangle())
+                    .onTapGesture { vm.searchText = "" }
+                    .pointingHandCursor()
+            }
+            // 唯一的设置入口：内联小图标（替代整条标题栏，面板极简）。
+            // 用 onTapGesture 而非 Button——Button 会进键盘焦点链画蓝色焦点环
+            //（全键盘访问开启时实锤），纯图标无此问题
+            LucideView(name: .settings, size: 14, color: ClipboardPalette.textTertiary)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    QuiteNoteNotification.post(.showSettings, object: nil, userInfo: ["tab": "clipboard"])
                 }
-                .buttonStyle(.plain)
-            }
-            // 唯一的设置入口：内联小图标（替代整条标题栏，面板极简）
-            Button {
-                QuiteNoteNotification.post(.showSettings, object: nil, userInfo: ["tab": "clipboard"])
-            } label: {
-                LucideView(name: .settings, size: 14, color: ClipboardPalette.textTertiary)
-                    .frame(width: 24, height: 24)
-                    .background(ClipboardPalette.background)
-                    .cornerRadius(5)
-            }
-            .buttonStyle(.plain)
-            .pointingHandCursor()
-            .help("剪贴板设置")
+                .pointingHandCursor()
+                .help("剪贴板设置")
         }
         .padding(.horizontal, 12)
         .frame(height: 46)
@@ -161,7 +175,7 @@ struct ClipboardHistoryView: View {
         .cornerRadius(9)
         .overlay(RoundedRectangle(cornerRadius: 9).stroke(searchFocused ? ClipboardPalette.accent : ClipboardPalette.inputBorder, lineWidth: searchFocused ? 1.5 : 1))
         .padding(.horizontal, 12)
-        .padding(.top, 12)
+        .padding(.top, 10)
         .padding(.bottom, 6)
         .background(ClipboardPalette.background)
     }
@@ -170,24 +184,24 @@ struct ClipboardHistoryView: View {
 
     private var filterBar: some View {
         HStack(spacing: 6) {
-            ForEach(ClipboardFilter.allCases, id: \.self) { item in
+                        ForEach(ClipboardFilter.allCases, id: \.self) { item in
                 let isSelected = vm.filter == item
-                Button {
-                    vm.filter = item
-                } label: {
-                    HStack(spacing: 4) {
-                        LucideView(name: item.icon, size: 11, color: isSelected ? ClipboardPalette.accent : ClipboardPalette.textTertiary)
-                        Text(item.label)
-                            .font(.system(size: 11))
-                    }
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 4)
-                    .foregroundColor(isSelected ? ClipboardPalette.accent : ClipboardPalette.textSecondary)
-                    .background(isSelected ? ClipboardPalette.rowSelected : Color.white)
-                    .cornerRadius(11)
-                    .overlay(RoundedRectangle(cornerRadius: 11).stroke(isSelected ? ClipboardPalette.accent.opacity(0.35) : ClipboardPalette.inputBorder))
+                // 纯点按而非 Button：Button 会进键盘焦点链画系统焦点环（全键盘访问
+                // 开启时实锤，同设置齿轮问题）；筛选切换已有 ←→ 快捷键
+                HStack(spacing: 4) {
+                    LucideView(name: item.icon, size: 11, color: isSelected ? ClipboardPalette.accent : ClipboardPalette.textTertiary)
+                    Text(item.label)
+                        .font(.system(size: 11))
                 }
-                .buttonStyle(.plain)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 4)
+                .foregroundColor(isSelected ? ClipboardPalette.accent : ClipboardPalette.textSecondary)
+                .background(isSelected ? ClipboardPalette.rowSelected : Color.white)
+                .cornerRadius(11)
+                .overlay(RoundedRectangle(cornerRadius: 11).stroke(isSelected ? ClipboardPalette.accent.opacity(0.35) : ClipboardPalette.inputBorder))
+                .contentShape(Rectangle())
+                .onTapGesture { vm.filter = item }
+                .pointingHandCursor()
             }
             Spacer()
             Text("\(visibleEntries.count) 条")
@@ -245,6 +259,9 @@ struct ClipboardHistoryView: View {
             },
             onVisibleTopChanged: { top in
                 vm.viewportTopChanged(top)
+            },
+            onLoadMore: {
+                store.loadMore()
             }
         )
     }
@@ -264,14 +281,8 @@ struct ClipboardHistoryView: View {
                     .foregroundColor(ClipboardPalette.textSecondary)
                 Button("恢复记录") { prefs.setClipboardPausedUntil(nil) }
                     .buttonStyle(.borderedProminent)
-            } else if !ClipboardPasteService.canSimulatePaste {
-                LucideView(name: .keyboard, size: 34, color: ClipboardPalette.textTertiary)
-                Text("没有历史记录")
-                    .font(.system(size: 13))
-                    .foregroundColor(ClipboardPalette.textSecondary)
-                ClipboardPermissionHint()
             } else {
-                LucideView(name: .clipboard, size: 34, color: ClipboardPalette.textTertiary)
+                LucideView(name: .keyboard, size: 34, color: ClipboardPalette.textTertiary)
                 Text("没有历史记录")
                     .font(.system(size: 13))
                     .foregroundColor(ClipboardPalette.textSecondary)
@@ -295,10 +306,7 @@ struct ClipboardHistoryView: View {
             Text("⌘P 置顶")
             Text("Esc 关闭")
             Spacer()
-            if !ClipboardPasteService.canSimulatePaste {
-                Text("缺辅助功能权限：粘贴降级为复制")
-                    .foregroundColor(ClipboardPalette.statusPaused)
-            } else if prefs.isClipboardPaused {
+            if prefs.isClipboardPaused {
                 Button("已暂停 · 点击恢复") {
                     prefs.setClipboardPausedUntil(nil)
                     showHint("已恢复记录")
@@ -339,6 +347,11 @@ struct ClipboardHistoryView: View {
     }
 
     private func paste(_ entry: ClipboardEntry) {
+        if ClipboardPasteService.permissionDecision(hasAccessibilityPermission: ClipboardPasteService.canSimulatePaste) == .copyThenOfferAccessibility {
+            ClipboardPasteService.shared.copy(entry)
+            showDirectPastePermissionDialog = true
+            return
+        }
         ClipboardPasteService.shared.paste(entry) {
             controller.hide()
         } completion: { outcome in
@@ -445,24 +458,6 @@ struct ClipboardHintBanner: View {
     }
 }
 
-/// 无辅助功能权限提示（PRD 7.5 / 15）
-struct ClipboardPermissionHint: View {
-    var body: some View {
-        VStack(spacing: 6) {
-            Text("未检测到辅助功能权限")
-                .font(.system(size: 12))
-                .foregroundColor(ClipboardPalette.statusPaused)
-            Button("打开系统设置授权") {
-                if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
-                    NSWorkspace.shared.open(url)
-                }
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-        }
-    }
-}
-
 /// 首次启动引导（PRD 4.1：介绍 + 隐私说明 + 默认勾选，确认后开始捕获）
 struct ClipboardOnboardingView: View {
     @ObservedObject private var prefs = PreferencesManager.shared
@@ -497,6 +492,7 @@ struct ClipboardOnboardingView: View {
                     prefs.setClipboardHistoryEnabled(false)
                 }
                 .buttonStyle(.bordered)
+                .focusable(false) // 键盘导航不可达 → 不画焦点环
                 .controlSize(.large)
 
                 Button {
@@ -511,6 +507,7 @@ struct ClipboardOnboardingView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
+                .focusable(false) // 键盘导航不可达 → 不画焦点环
             }
 
             Text("可随时在 设置 → 剪贴板 中调整或关闭")

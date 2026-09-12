@@ -158,6 +158,7 @@ struct ClipboardDetailPane: View {
                 HStack(spacing: 8) {
                     OCRStatusBadge(status: .failed)
                     Button("重试 OCR") { onRetryOCR?() }
+                        .focusable(false) // 键盘导航不可达 → 不画焦点环
                         .buttonStyle(.bordered)
                         .controlSize(.small)
                 }

@@ -62,16 +62,16 @@ final class ClipboardHistoryPersistence {
         entity.name = "CDClipboardEntry"
         entity.managedObjectClassName = NSStringFromClass(CDClipboardEntry.self)
 
-        func attr(_ name: String, _ type: NSAttributeType, optional: Bool = true, defaultValue: Any? = nil, indexed: Bool = false) -> NSAttributeDescription {
+        func attr(_ name: String, _ type: NSAttributeType, optional: Bool = true, defaultValue: Any? = nil) -> NSAttributeDescription {
             let a = NSAttributeDescription()
             a.name = name
             a.attributeType = type
             a.isOptional = optional
             a.defaultValue = defaultValue
-            a.isIndexed = indexed
             return a
         }
 
+        let contentHash = attr("contentHash", .stringAttributeType, optional: false)
         entity.properties = [
             attr("id", .UUIDAttributeType, optional: false),
             attr("type", .stringAttributeType, optional: false, defaultValue: "text"),
@@ -81,7 +81,7 @@ final class ClipboardHistoryPersistence {
             attr("sourceURL", .stringAttributeType),
             attr("sourceApp", .stringAttributeType),
             attr("sourceBundleID", .stringAttributeType),
-            attr("contentHash", .stringAttributeType, optional: false, indexed: true),
+            contentHash,
             attr("assetPath", .stringAttributeType),
             attr("ocrText", .stringAttributeType),
             attr("ocrStatus", .stringAttributeType),
@@ -89,6 +89,16 @@ final class ClipboardHistoryPersistence {
             attr("pasteCount", .integer32AttributeType, optional: false, defaultValue: 0),
             attr("isPinned", .booleanAttributeType, optional: false, defaultValue: false),
             attr("savedRecordID", .UUIDAttributeType),
+        ]
+        let contentHashIndexElement = NSFetchIndexElementDescription(
+            property: contentHash,
+            collationType: .binary
+        )
+        entity.indexes = [
+            NSFetchIndexDescription(
+                name: "CDClipboardEntry_contentHash",
+                elements: [contentHashIndexElement]
+            )
         ]
 
         let model = NSManagedObjectModel()

@@ -209,9 +209,11 @@ enum ClipboardSourceAppIcon {
     static func icon(bundleID: String?) -> NSImage? {
         guard let bundleID, !bundleID.isEmpty else { return nil }
         if let hit = cache[bundleID] { return hit }
+        // 预缩放为 28px 位图（14pt@2x）：NSWorkspace 原始图标带 1024px representation，
+        // 行渲染时现场光栅化是滚动卡顿来源之一（同启动器 87ms 首建问题）
         let resolved: NSImage? = NSWorkspace.shared
             .urlForApplication(withBundleIdentifier: bundleID)
-            .map { NSWorkspace.shared.icon(forFile: $0.path) }
+            .map { AppCatalogStore.downscaledIcon(url: $0, side: 28) }
         cache[bundleID] = resolved
         return resolved
     }

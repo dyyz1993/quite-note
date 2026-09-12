@@ -1,6 +1,7 @@
 import Foundation
 import AppKit
 import os.log
+import CryptoKit
 
 /// 负责后台缩略图生成与缓存
 final class ThumbnailGenerator {
@@ -17,9 +18,9 @@ final class ThumbnailGenerator {
     func getThumbnailURL(for sourceURL: URL) -> URL? {
         let cacheDir = FileCoordinator.shared.getDirectoryURL(for: .thumbnail)
         
-        // 缩略图文件名为原文件名的 hash
-        let hash = String(sourceURL.path.hashValue)
-        let thumbnailURL = cacheDir.appendingPathComponent("\(hash).jpg")
+        // 缩略图文件名为路径的稳定哈希（Swift hashValue 每次启动随机化，
+        // 用它做 key 等于缓存永远不命中——每次启动首滚都全量重新生成缩略图）
+        let thumbnailURL = cacheDir.appendingPathComponent("\(Self.stableKey(for: sourceURL)).jpg")
         
         // 如果已存在且源文件没变，直接返回
         if fileManager.fileExists(atPath: thumbnailURL.path) {
@@ -43,11 +44,16 @@ final class ThumbnailGenerator {
     /// 删除指定资源的缩略图
     func removeThumbnail(for sourceURL: URL) {
         let cacheDir = FileCoordinator.shared.getDirectoryURL(for: .thumbnail)
-        let hash = String(sourceURL.path.hashValue)
-        let thumbnailURL = cacheDir.appendingPathComponent("\(hash).jpg")
+        let thumbnailURL = cacheDir.appendingPathComponent("\(Self.stableKey(for: sourceURL)).jpg")
         try? fileManager.removeItem(at: thumbnailURL)
     }
     
+    /// 路径 → 稳定缓存 key（SHA256 前 16 位，跨启动一致）
+    static func stableKey(for url: URL) -> String {
+        let digest = SHA256.hash(data: Data(url.path.utf8))
+        return digest.prefix(8).map { String(format: "%02x", $0) }.joined()
+    }
+
     // MARK: - Private Helpers
     
     private func generateThumbnail(from source: URL, to destination: URL) -> URL? {

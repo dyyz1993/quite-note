@@ -63,6 +63,11 @@ final class ClipboardHistoryPanelController {
 
         installKeyMonitor()
 
+        // ESC Carbon 拦截（面板打开期间）：搜狗中文模式会吞裸 ESC，同启动器面板
+        GlobalHotkeyManager.shared.register(key: "esc", modifiers: [], id: 5004) { [weak self] in
+            self?.hide()
+        }
+
         // 首次打开加载历史
         ClipboardHistoryStore.shared.loadIfNeeded()
         ClipboardMonitor.shared.syncWithPreferences()
@@ -73,6 +78,7 @@ final class ClipboardHistoryPanelController {
     func hide() {
         panel?.orderOut(nil)
         removeKeyMonitor()
+        GlobalHotkeyManager.shared.unregister(id: 5004)
         onKeyAction = nil
     }
 
@@ -84,12 +90,14 @@ final class ClipboardHistoryPanelController {
         guard resignObserver == nil, let panel else { return }
         resignObserver = NotificationCenter.default.addObserver(
             forName: NSWindow.didResignKeyNotification, object: panel, queue: .main
-        ) { [weak self] note in
-            guard let self, let window = note.object as? NSWindow, window === self.panel else { return }
-            // 新 key window 不是本面板（点到了其他 app / 主悬浮面板 / 浮球）→ 自动收起；
-            // hide() 幂等，粘贴流程主动 orderOut 触发的同名通知无害
-            if NSApp.keyWindow !== window {
-                self.hide()
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self, let panel = self.panel else { return }
+                // 新 key window 不是本面板（点到了其他 app / 主悬浮面板 / 浮球）→ 自动收起；
+                // hide() 幂等，粘贴流程主动 orderOut 触发的同名通知无害
+                if NSApp.keyWindow !== panel {
+                    self.hide()
+                }
             }
         }
     }
@@ -103,8 +111,11 @@ final class ClipboardHistoryPanelController {
         // 左列表 + 右预览双栏：760 宽（左 ~300 列表 + 右 ~440 详情）
         let rect = NSRect(x: 0, y: 0, width: 760, height: 520)
         let panel = ClipboardHistoryPanel(contentRect: rect, styleMask: [.titled, .fullSizeContentView], backing: .buffered, defer: false)
-        panel.level = .floating
         panel.isFloatingPanel = true
+        // 层级 popUpMenu（101）：热键唤起的速查面板必须压在一切常规窗口之上
+        //（高于闪记主面板 26，与启动器面板同层——两者互斥不会同屏）。
+        // ⚠️ 必须先设 isFloatingPanel 再设 level，该属性 setter 会把 level 重置回 .floating
+        panel.level = .popUpMenu
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
         panel.titlebarAppearsTransparent = true

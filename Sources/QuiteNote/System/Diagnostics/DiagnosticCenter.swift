@@ -110,6 +110,49 @@ final class DiagnosticCenter {
     /// 日志目录（设置界面/导出诊断用）
     var logDirectoryURL: URL { logDirectory }
 
+    // MARK: - 慢操作埋点（用户反馈排查链路）
+
+    /// 性能日志阈值：同步慢操作超过此值落 [PERF] 日志
+    static let perfLogThreshold: TimeInterval = 0.3
+
+    /// 同步慢操作埋点：仅当耗时超过 threshold 才落 [PERF] 日志（避免刷屏）。
+    /// 用户反馈排查时在 app-*.log 里 grep "[PERF]" 即可看到所有慢操作。
+    @discardableResult
+    static func measure<T>(_ category: String, _ name: String,
+                           threshold: TimeInterval = DiagnosticCenter.perfLogThreshold,
+                           _ block: () throws -> T) rethrows -> T {
+        let start = DispatchTime.now()
+        let result = try block()
+        let ms = Double(DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1_000_000
+        if ms >= threshold * 1000 {
+            shared.writeLine(level: .warning, category: "PERF",
+                             message: "慢操作 \(category)/\(name)：\(String(format: "%.0f", ms))ms（阈值 \(Int(threshold * 1000))ms）")
+        }
+        return result
+    }
+
+    /// 异步操作埋点句柄：begin 后在完成时调 end()，超阈值才落日志
+    struct MeasureToken {
+        let category: String
+        let name: String
+        let threshold: TimeInterval
+        let start: DispatchTime
+        var extra: String = ""
+
+        func end() {
+            let ms = Double(DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1_000_000
+            guard ms >= threshold * 1000 else { return }
+            let suffix = extra.isEmpty ? "" : " · \(extra)"
+            shared.writeLine(level: .warning, category: "PERF",
+                             message: "慢操作 \(category)/\(name)：\(String(format: "%.0f", ms))ms（阈值 \(Int(threshold * 1000))ms）\(suffix)")
+        }
+    }
+
+    static func beginMeasure(_ category: String, _ name: String,
+                             threshold: TimeInterval = DiagnosticCenter.perfLogThreshold) -> MeasureToken {
+        MeasureToken(category: category, name: name, threshold: threshold, start: DispatchTime.now())
+    }
+
     // MARK: - 文件写入
 
     private static let timestampFormatter: DateFormatter = {
@@ -163,6 +206,29 @@ final class DiagnosticCenter {
             }
         }
         return removed
+    }
+
+    /// 读取今日日志尾部（反馈"附带运行日志"用）。
+    /// 日志规范（见 AGENTS.md）本身不落用户内容：仅类别/级别/计数/尺寸/长度/哈希/来源 App 等打点信息，
+    /// 因此这里只做行数与字节截断，不做内容脱敏——新增日志埋点时必须继续遵守该规范。
+    func recentLogs(maxLines: Int = 150, maxBytes: Int = 32 * 1024) -> String {
+        fileLock.lock()
+        defer { fileLock.unlock() }
+
+        fileHandle?.synchronizeFile()
+        let fileName = currentLogFileName ?? "app-\(Self.dayFormatter.string(from: Date())).log"
+        let url = logDirectory.appendingPathComponent(fileName)
+        guard let data = try? Data(contentsOf: url), let text = String(data: data, encoding: .utf8) else { return "" }
+
+        var lines = text.split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
+        if lines.count > maxLines {
+            lines = Array(lines.suffix(maxLines))
+        }
+        var output = lines.joined(separator: "\n")
+        if output.utf8.count > maxBytes {
+            output = String(output.suffix(maxBytes))
+        }
+        return output
     }
 
     // MARK: - 会话异常退出检测
@@ -254,34 +320,58 @@ final class DiagnosticCenter {
         try? "crashed".write(toFile: crashDirectoryPath + "/session.state", atomically: true, encoding: .utf8)
     }
 
-    // MARK: - 主线程卡死看门狗
+    // MARK: - 主线程卡顿/卡死看门狗（分级）
+
+    /// 卡顿分级阈值：超过 minor 归为"卡顿"（[PERF]，滚动/渲染类），超过 major 归为"卡死"（[Hang]）
+    static let stallMinorThreshold: TimeInterval = 0.5
+    static let stallMajorThreshold: TimeInterval = 5.0
 
     private func startWatchdog() {
-        // 主线程心跳：每秒打点；主线程被阻塞时打点自然停止
+        // 主线程心跳：每 0.25s 打点（可感知 0.5s 级卡顿）；主线程被阻塞时打点自然停止
         func beat() {
             watchdogLock.lock()
             lastHeartbeat = Date()
             watchdogLock.unlock()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { beat() }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { beat() }
         }
         DispatchQueue.main.async { beat() }
 
-        // 看门狗线程：监测心跳滞后
+        // 看门狗线程：每 0.25s 监测心跳滞后，episode 状态机分级上报：
+        //   滞后 > 5s → 立即 [Hang] ERROR（卡死，只报一次）
+        //   episode（>0.5s 的滞后段）恢复时 → [PERF] WARN 记录持续时长（卡顿）
         Thread.detachNewThread {
-            let threshold: TimeInterval = 5.0
+            var perfEpisodeStart: Date?
             while true {
-                Thread.sleep(forTimeInterval: 2.0)
+                Thread.sleep(forTimeInterval: 0.25)
                 self.watchdogLock.lock()
                 let lag = Date().timeIntervalSince(self.lastHeartbeat)
                 self.watchdogLock.unlock()
 
-                if lag > threshold {
+                // 卡死级（立即报，一次）
+                if lag > Self.stallMajorThreshold {
                     if !self.hangEpisodeReported {
                         self.hangEpisodeReported = true
                         self.hangStartTime = Date().addingTimeInterval(-lag)
-                        self.writeLine(level: .error, category: "Hang", message: "⚠️ 主线程无响应 \(Int(lag)) 秒（疑似卡死，超过 \(Int(threshold)) 秒阈值）")
+                        self.writeLine(level: .error, category: "Hang", message: "⚠️ 主线程无响应 \(Int(lag)) 秒（疑似卡死，超过 \(Int(Self.stallMajorThreshold)) 秒阈值）")
                     }
-                } else if self.hangEpisodeReported && lag < 2.0 {
+                }
+
+                // 卡顿级 episode 跟踪（0.5s ~ 5s 的滞后段）
+                if lag > Self.stallMinorThreshold {
+                    if perfEpisodeStart == nil {
+                        perfEpisodeStart = Date().addingTimeInterval(-lag)
+                    }
+                } else if lag < Self.stallMinorThreshold * 0.6, let start = perfEpisodeStart {
+                    perfEpisodeStart = nil
+                    let duration = Date().timeIntervalSince(start)
+                    if duration >= Self.stallMinorThreshold {
+                        self.writeLine(level: .warning, category: "PERF",
+                                       message: "主线程卡顿约 \(String(format: "%.1f", duration))s（滚动/渲染类卡顿，看此时间段前后的其他日志定位来源）")
+                    }
+                }
+
+                // 卡死 episode 恢复（保留原语义）
+                if self.hangEpisodeReported && lag < 2.0 {
                     self.hangEpisodeReported = false
                     if let start = self.hangStartTime {
                         let duration = Date().timeIntervalSince(start)

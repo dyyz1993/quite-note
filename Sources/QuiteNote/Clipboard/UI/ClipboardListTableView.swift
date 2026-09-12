@@ -13,6 +13,8 @@ struct ClipboardListTableView: NSViewRepresentable {
     let onDoubleClick: (Int) -> Void   // 双击 = 粘贴
     /// 可见首行变化回调（⌘N 序号锚定视口用）
     let onVisibleTopChanged: (Int) -> Void
+    /// 滚动接近列表底部时回调（按需加载下一页）
+    let onLoadMore: () -> Void
 
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
@@ -22,8 +24,8 @@ struct ClipboardListTableView: NSViewRepresentable {
         let table = ClipTableView()
         table.headerView = nil
         table.backgroundColor = .clear
-        table.rowHeight = 38
-        table.intercellSpacing = NSSize(width: 0, height: 4)
+        table.rowHeight = 30
+        table.intercellSpacing = NSSize(width: 0, height: 3)
         table.selectionHighlightStyle = .none // 选中态由行内容自绘（紫底白字）
         table.doubleAction = #selector(Coordinator.onDoubleAction(_:))
         table.target = context.coordinator
@@ -59,6 +61,7 @@ struct ClipboardListTableView: NSViewRepresentable {
             // 数据变化后保持选中在范围内
             let safe = min(max(0, selectedIndex), max(0, entries.count - 1))
             if safe != selectedIndex { selectedIndex = safe }
+            context.coordinator.lastRenderedSelectedRow = safe
         }
         // 外部（↑↓ 键盘/⌘N）驱动的选中变化：同步表格选择并逐行滚到可见
         if let table, table.selectedRow != selectedIndex, entries.indices.contains(selectedIndex) {
@@ -67,9 +70,21 @@ struct ClipboardListTableView: NSViewRepresentable {
             table.scrollRowToVisible(selectedIndex)
             context.coordinator.suppressSelectionCallback = false
         }
-        // 选中行刷新（数据签名没变但选中变了也要重绘新旧选中行）
+        // 选中行刷新（数据签名没变但选中变了）：只重绘新旧选中两行。
+        // ⚠️ 严禁整表 reloadData——本方法在每次 body 重算都会执行（滚动期每帧一次），
+        // 全表重载 = 每帧重建全部可见行（实测滚动卡顿的元凶）
         if reloadNeeded == false, let table {
-            table.reloadData(forRowIndexes: IndexSet(integersIn: 0..<max(1, entries.count)), columnIndexes: IndexSet(integer: 0))
+            let newRow = min(max(0, selectedIndex), max(0, entries.count - 1))
+            let oldRow = context.coordinator.lastRenderedSelectedRow
+            if oldRow != newRow {
+                var rows = IndexSet()
+                if entries.indices.contains(oldRow) { rows.insert(oldRow) }
+                if entries.indices.contains(newRow) { rows.insert(newRow) }
+                if !rows.isEmpty {
+                    table.reloadData(forRowIndexes: rows, columnIndexes: IndexSet(integer: 0))
+                }
+            }
+            context.coordinator.lastRenderedSelectedRow = newRow
         }
     }
 
@@ -87,6 +102,8 @@ struct ClipboardListTableView: NSViewRepresentable {
         var entriesSignature = ""
         /// 当前可见首行（序号锚定视口）
         var visibleTop = 0
+        /// 上次渲染时的选中行（差量刷新新旧选中两行用）
+        var lastRenderedSelectedRow = 0
         /// 外部程序化选择时抑制 selectionDidChange 的单击回调（防误复制）
         var suppressSelectionCallback = false
 
@@ -139,13 +156,18 @@ struct ClipboardListTableView: NSViewRepresentable {
         func reportVisibleTop() {
             guard let table, let scroll = table.enclosingScrollView else { return }
             let visible = table.rows(in: scroll.contentView.visibleRect)
-            guard visible.length > 0, visible.location != visibleTop else { return }
-            let oldTop = visibleTop
+            guard visible.length > 0 else { return }
+            // 接近底部 → 请求下一页（store.loadMore 内部有 hasMore 守卫，幂等）
+            if visible.location + visible.length >= parent.entries.count - 30 {
+                parent.onLoadMore()
+            }
+            guard visible.location != visibleTop else { return }
             visibleTop = visible.location
             parent.onVisibleTopChanged(visibleTop)
-            // 只刷新受序号变化影响的可见行区间（滚动一行只波及约两行的编号边界）
-            let lo = max(0, min(oldTop, visibleTop))
-            let hi = min(parent.entries.count - 1, max(oldTop, visibleTop) + 11)
+            // 只刷新当前可见区间（⌘N 序号随视口变；滚出屏幕的行不需要刷）。
+            // 旧实现刷 oldTop..newTop+11，快速滚动时一次冲刷 30-50 行
+            let lo = max(0, Int(visible.location))
+            let hi = min(parent.entries.count - 1, lo + Int(visible.length) - 1)
             if hi >= lo {
                 table.reloadData(forRowIndexes: IndexSet(integersIn: lo...hi), columnIndexes: IndexSet(integer: 0))
             }
@@ -191,10 +213,10 @@ final class ClipRowCell: NSTableCellView {
         addSubview(shortcutLabel)
 
         NSLayoutConstraint.activate([
-            iconView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
+            iconView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
             iconView.centerYAnchor.constraint(equalTo: centerYAnchor),
-            iconView.widthAnchor.constraint(equalToConstant: 26),
-            iconView.heightAnchor.constraint(equalToConstant: 26),
+            iconView.widthAnchor.constraint(equalToConstant: 20),
+            iconView.heightAnchor.constraint(equalToConstant: 20),
 
             titleLabel.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: 8),
             titleLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
@@ -205,37 +227,42 @@ final class ClipRowCell: NSTableCellView {
             timeLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
             sourceIconView.trailingAnchor.constraint(equalTo: timeLabel.leadingAnchor, constant: -6),
             sourceIconView.centerYAnchor.constraint(equalTo: centerYAnchor),
-            sourceIconView.widthAnchor.constraint(equalToConstant: 14),
-            sourceIconView.heightAnchor.constraint(equalToConstant: 14),
+            sourceIconView.widthAnchor.constraint(equalToConstant: 12),
+            sourceIconView.heightAnchor.constraint(equalToConstant: 12),
 
             titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: sourceIconView.leadingAnchor, constant: -8),
         ])
     }
 
+    // 每帧 configure 都会跑，字体/颜色用静态常量避免重复创建
+    private static let titleFont = NSFont.systemFont(ofSize: 12.5, weight: .medium)
+    private static let metaFont = NSFont.monospacedDigitSystemFont(ofSize: 10.5, weight: .regular)
+    private static let shortcutFont = NSFont.monospacedDigitSystemFont(ofSize: 10.5, weight: .medium)
+    private static let selectedBg = NSColor(red: 0.424, green: 0.204, blue: 0.514, alpha: 1)
+    private static let normalBg = NSColor.white
+    private static let normalTitle = NSColor(red: 0.10, green: 0.10, blue: 0.10, alpha: 1)
+    private static let normalTime = NSColor(red: 0.60, green: 0.60, blue: 0.60, alpha: 1)
+    private static let accent = NSColor(red: 0.424, green: 0.204, blue: 0.514, alpha: 1)
+
     func configure(entry: ClipboardEntry, index: Int, isSelected: Bool, paletteNumber: Int?) {
         self.entry = entry
         wantsLayer = true
         layer?.cornerRadius = 4
-        layer?.backgroundColor = NSColor.white.cgColor
-
-        let titleFont = NSFont.systemFont(ofSize: 12.5, weight: .medium)
-        let metaFont = NSFont.monospacedDigitSystemFont(ofSize: 10.5, weight: .regular)
 
         if isSelected {
-            layer?.backgroundColor = NSColor(red: 0.424, green: 0.204, blue: 0.514, alpha: 1).cgColor
+            layer?.backgroundColor = Self.selectedBg.cgColor
             titleLabel.textColor = .white
             timeLabel.textColor = NSColor.white.withAlphaComponent(0.75)
             shortcutLabel.textColor = .white
         } else {
-            layer?.backgroundColor = NSColor.white.cgColor
-            titleLabel.textColor = NSColor(red: 0.10, green: 0.10, blue: 0.10, alpha: 1)
-            timeLabel.textColor = NSColor(red: 0.60, green: 0.60, blue: 0.60, alpha: 1)
-            let accent = NSColor(red: 0.424, green: 0.204, blue: 0.514, alpha: 1)
-            shortcutLabel.textColor = paletteNumber != nil ? accent : NSColor(red: 0.6, green: 0.6, blue: 0.6, alpha: 0.6)
+            layer?.backgroundColor = Self.normalBg.cgColor
+            titleLabel.textColor = Self.normalTitle
+            timeLabel.textColor = Self.normalTime
+            shortcutLabel.textColor = paletteNumber != nil ? Self.accent : NSColor(red: 0.6, green: 0.6, blue: 0.6, alpha: 0.6)
         }
-        titleLabel.font = titleFont
-        timeLabel.font = metaFont
-        shortcutLabel.font = NSFont.monospacedDigitSystemFont(ofSize: 10.5, weight: .medium)
+        titleLabel.font = Self.titleFont
+        timeLabel.font = Self.metaFont
+        shortcutLabel.font = Self.shortcutFont
 
         titleLabel.stringValue = ClipRowContent.singleLine(entry)
         timeLabel.stringValue = ClipboardTimeFormatter.short(entry.createdAt)
@@ -302,14 +329,23 @@ enum ClipRowContent {
         }
     }
 
+    /// 图片像素尺寸缓存（key = 解析后的文件路径）：CGImageSource 读文件头是磁盘 IO，
+    /// 行 configure 每次跑（滚动期高频），不能每次都读盘
+    private static var pixelSizeCache: [String: CGSize?] = [:]
+
     static func pixelSize(_ entry: ClipboardEntry) -> CGSize? {
         guard let virtualPath = entry.assetPath,
-              let url = FileCoordinator.shared.resolveVirtualPath(virtualPath),
-              let source = CGImageSourceCreateWithURL(url as CFURL, nil),
-              let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
-              let w = props[kCGImagePropertyPixelWidth] as? Int,
-              let h = props[kCGImagePropertyPixelHeight] as? Int else { return nil }
-        return CGSize(width: w, height: h)
+              let url = FileCoordinator.shared.resolveVirtualPath(virtualPath) else { return nil }
+        if let cached = pixelSizeCache[url.path] { return cached }
+        let size: CGSize? = {
+            guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+                  let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+                  let w = props[kCGImagePropertyPixelWidth] as? Int,
+                  let h = props[kCGImagePropertyPixelHeight] as? Int else { return nil }
+            return CGSize(width: w, height: h)
+        }()
+        pixelSizeCache[url.path] = size
+        return size
     }
 }
 

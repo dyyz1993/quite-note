@@ -10,15 +10,10 @@ import Combine
 final class ClipboardHistoryViewModel: ObservableObject {
     @Published var searchText = "" {
         didSet {
-            DiagnosticCenter.info("ClipboardUI", "searchText → \(searchText)")
             scheduleSearchDebounce()
         }
     }
-    @Published private(set) var debouncedQuery = "" {
-        didSet {
-            DiagnosticCenter.info("ClipboardUI", "debouncedQuery → \(debouncedQuery)")
-        }
-    }
+    @Published private(set) var debouncedQuery = ""
     @Published var filter: ClipboardFilter = .all {
         didSet {
             selectedIndex = 0
@@ -67,8 +62,11 @@ final class ClipboardHistoryViewModel: ObservableObject {
 
     /// 每页行数 = ⌘N 快捷键数
     static let pageSize = 9
-    /// 当前视口顶部第一个可见行的数据索引（序号 1 对应它）
-    @Published private(set) var viewportTopIndex = 0
+    /// 当前视口顶部第一个可见行的数据索引（序号 1 对应它）。
+    /// ⚠️ 故意不用 @Published：滚动时每 tick 发布会触发整棵 SwiftUI 重算 +
+    /// NSTableView 全表 reloadData（实测滚动卡顿的元凶）。⌘N 序号由列表的
+    /// Coordinator 自绘（不依赖 SwiftUI），此值仅供 ⌘N 命中时静默读取
+    private(set) var viewportTopIndex = 0
     /// 各行在视口坐标里的位置（index → (minY, maxY)，由行上报）
     private var rowFrames: [Int: (minY: CGFloat, maxY: CGFloat)] = [:]
     private var viewportHeight: CGFloat = 0

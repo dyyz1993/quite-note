@@ -30,7 +30,9 @@ final class ClipboardHistoryStore: ObservableObject {
     func loadIfNeeded() {
         guard !isLoaded else { return }
         isLoaded = true
-        reload()
+        DiagnosticCenter.measure("Clipboard", "历史加载", threshold: 0.2) {
+            reload()
+        }
         applyRetentionIfNeeded()
         startRetentionTimer()
     }
@@ -48,14 +50,71 @@ final class ClipboardHistoryStore: ObservableObject {
     }
 
     func reload() {
+        entries = fetchPage(limit: Self.pageSize, offset: 0)
+        hasMore = totalCount() > entries.count
+    }
+
+    // MARK: - 按需分页加载（防止大库全量物化撑爆内存）
+    //
+    // reload 只取首页（置顶优先 + 时间倒序，与列表展示一致）；滚动接近底部时
+    // loadMore() 翻下一页；搜索需要全量时 loadAllIfNeeded() 一次性补齐（搜索是
+    // 低频动作，一次 DB 取页可接受）。每页 500 条 × 平均几 KB 文本 = 单页几 MB。
+
+    static let pageSize = 500
+
+    /// 是否还有未加载的页（视图据此在滚动近底部时触发 loadMore）
+    @Published private(set) var hasMore = false
+
+    private func fetchPage(limit: Int, offset: Int) -> [ClipboardEntry] {
         let request = NSFetchRequest<CDClipboardEntry>(entityName: "CDClipboardEntry")
         request.sortDescriptors = [
             NSSortDescriptor(key: "isPinned", ascending: false),
             NSSortDescriptor(key: "createdAt", ascending: false),
         ]
+        request.fetchLimit = limit
+        request.fetchOffset = offset
         let objects = (try? persistence.context.fetch(request)) ?? []
-        entries = objects.map(\.asValue)
+        return objects.map(\.asValue)
     }
+
+    private func totalCount() -> Int {
+        let request = NSFetchRequest<CDClipboardEntry>(entityName: "CDClipboardEntry")
+        return (try? persistence.context.count(for: request)) ?? 0
+    }
+
+    /// 滚动近底部时翻下一页（同步主线程：单页 DB 取值 <50ms）
+    func loadMore() {
+        guard hasMore else { return }
+        let next = fetchPage(limit: Self.pageSize, offset: entries.count)
+        guard !next.isEmpty else {
+            hasMore = false
+            return
+        }
+        entries.append(contentsOf: next)
+        hasMore = totalCount() > entries.count
+        DiagnosticCenter.info("Clipboard", "按需加载下一页：共 \(entries.count)/\(totalCount()) 条")
+    }
+
+    /// 搜索前补齐全量（幂等；只补一次）
+    func loadAllIfNeeded() {
+        guard hasMore else { return }
+        let remaining = fetchPage(limit: totalCount() - entries.count, offset: entries.count)
+        entries.append(contentsOf: remaining)
+        hasMore = false
+    }
+
+    /// 测试辅助：清空全部条目（仅测试目标可见）
+    #if DEBUG
+    func deleteAllForTesting() {
+        let context = persistence.context
+        let request = NSFetchRequest<CDClipboardEntry>(entityName: "CDClipboardEntry")
+        let objects = (try? context.fetch(request)) ?? []
+        objects.forEach(context.delete)
+        try? context.save()
+        entries = []
+        hasMore = false
+    }
+    #endif
 
     func entry(id: UUID) -> ClipboardEntry? {
         entries.first { $0.id == id }
@@ -139,13 +198,12 @@ final class ClipboardHistoryStore: ObservableObject {
     func clearAll() {
         let all = entries
         entries.removeAll()
+        let context = persistence.context
         let request = NSFetchRequest<CDClipboardEntry>(entityName: "CDClipboardEntry")
-        persistence.context.performAndWait {
-            if let objects = try? self.persistence.context.fetch(request) {
-                objects.forEach(self.persistence.context.delete)
-            }
-            try? self.persistence.context.save()
+        if let objects = try? context.fetch(request) {
+            objects.forEach(context.delete)
         }
+        try? context.save()
         for entry in all where entry.savedRecordID == nil {
             removeAssetFiles(entry)
         }
@@ -196,14 +254,18 @@ final class ClipboardHistoryStore: ObservableObject {
 
         let victims = entries.filter { ids.contains($0.id) }
         entries.removeAll { ids.contains($0.id) }
-        persistence.context.performAndWait {
-            let request = NSFetchRequest<CDClipboardEntry>(entityName: "CDClipboardEntry")
-            request.predicate = NSPredicate(format: "id IN %@", Array(ids))
-            if let objects = try? self.persistence.context.fetch(request) {
-                objects.forEach(self.persistence.context.delete)
-            }
-            try? self.persistence.context.save()
+        let context = persistence.context
+        // 先刷新全部注册对象再删除：清理流程没有合法的待存修改（条目变更已由
+        // persist 落库），旧快照若与 DB 不一致（外部改动过），save 时会抛
+        // CoreData 乐观锁 NSException（try? 接不住，直接闪退——2026-09-12 实锤）。
+        // persist() 里不能这么做（会丢掉刚 apply 的数据），那里单行现取现改无此风险
+        context.refreshAllObjects()
+        let request = NSFetchRequest<CDClipboardEntry>(entityName: "CDClipboardEntry")
+        request.predicate = NSPredicate(format: "id IN %@", Array(ids))
+        if let objects = try? context.fetch(request) {
+            objects.forEach(context.delete)
         }
+        try? context.save()
         for entry in victims where entry.savedRecordID == nil {
             removeAssetFiles(entry)
         }
@@ -277,14 +339,13 @@ final class ClipboardHistoryStore: ObservableObject {
     }
 
     private func deletePersisted(id: UUID) {
-        persistence.context.performAndWait {
-            let request = NSFetchRequest<CDClipboardEntry>(entityName: "CDClipboardEntry")
-            request.predicate = NSPredicate(format: "id == %@", id as CVarArg)
-            if let objects = try? self.persistence.context.fetch(request) {
-                objects.forEach(self.persistence.context.delete)
-            }
-            try? self.persistence.context.save()
+        let context = persistence.context
+        let request = NSFetchRequest<CDClipboardEntry>(entityName: "CDClipboardEntry")
+        request.predicate = NSPredicate(format: "id == %@", id as CVarArg)
+        if let objects = try? context.fetch(request) {
+            objects.forEach(context.delete)
         }
+        try? context.save()
     }
 
     /// 删除条目对应的图片原图（FileCoordinator 每张图独立子目录，删子目录即可）

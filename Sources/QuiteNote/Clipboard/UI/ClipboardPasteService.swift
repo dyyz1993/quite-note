@@ -2,6 +2,11 @@ import Foundation
 import AppKit
 import Carbon.HIToolbox
 
+enum DirectPastePermissionDecision: Equatable {
+    case pasteDirectly
+    case copyThenOfferAccessibility
+}
+
 /// 剪贴板条目「粘贴回原应用」服务（PRD 6 / 15）
 ///
 /// 流程：记住打开面板前的前台应用 → 写入剪贴板（登记自写抑制）→ 隐藏面板 →
@@ -24,6 +29,10 @@ final class ClipboardPasteService {
 
     /// 是否具备模拟粘贴的辅助功能权限
     static var canSimulatePaste: Bool { AXIsProcessTrusted() }
+
+    nonisolated static func permissionDecision(hasAccessibilityPermission: Bool) -> DirectPastePermissionDecision {
+        hasAccessibilityPermission ? .pasteDirectly : .copyThenOfferAccessibility
+    }
 
     /// 把条目内容写入系统剪贴板（图片写原图、文件写文件引用、其余写文本）
     func writeToPasteboard(_ entry: ClipboardEntry) {
