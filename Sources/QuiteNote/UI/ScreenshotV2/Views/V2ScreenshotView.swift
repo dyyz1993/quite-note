@@ -583,7 +583,39 @@ struct V2ScreenshotView: View {
                 }
             }
 
-            notificationObservers = [saveToken, copyToken, ocrToken, recordToken]
+            // 监听反馈通知（工具栏 🐞）：退出截图会话，把当前截图（含标注）带入反馈窗口
+            let feedbackToken = NotificationCenter.default.addObserver(forName: NSNotification.Name("FeedbackScreenshot"), object: nil, queue: .main) { [self] _ in
+                guard controllerSessionID == currentSessionID else {
+                    print("⚠️ [FeedbackScreenshot] Ignored - session mismatch")
+                    return
+                }
+                guard let selection = localSelectedArea, let finalImage = generateFinalImage(rect: selection) else { return }
+
+                // 敏感信息引导：截图会原样提交给开发者，马赛克只能在会话内打，
+                // 所以引导出现在退出会话之前（SwiftUI 小窗悬浮在遮罩上方；NSAlert 会被遮罩盖住不可用）。
+                // 引导期间会话保持存活——「返回打码」后可继续标注，再点 🐞 会带新标注重新走流程。
+                func proceed() {
+                    MainActor.assumeIsolated {
+                        DiagnosticCenter.info("Feedback", "截图反馈：退出截图会话，进入反馈窗口，选区 \(Int(selection.width))x\(Int(selection.height))")
+                        V2ScreenshotController.close()
+                        V2FeedbackPanelController.shared.show(image: finalImage, on: screen)
+                    }
+                }
+                // 会话所属屏以视图自带的 screen 为准（keyWindow/NSScreen.main 在多屏会话下不可靠）
+                if UserDefaults.standard.bool(forKey: "feedbackPrivacyGuideSuppressed") {
+                    proceed()
+                } else {
+                    V2FeedbackPrivacyGuideController.shared.show(
+                        onContinue: proceed,
+                        onCancel: {
+                            DiagnosticCenter.info("Feedback", "截图反馈：用户选择返回打码")
+                        },
+                        on: screen
+                    )
+                }
+            }
+
+            notificationObservers = [saveToken, copyToken, ocrToken, recordToken, feedbackToken]
         }
         .onDisappear {
             // 移除通知监听器：不移除的话闭包会一直持有视图（含整屏截图 NSImage），每次截图都泄漏一份
@@ -782,9 +814,8 @@ struct V2ScreenshotView: View {
                                 
                                 // 3. 如果确认了拖拽目标，初始化状态
                                 if let element = targetElement {
-                                    if element.tool == .magnifier {
+                                    if element.tool == .magnifier, let start = element.points.first {
                                         // 放大镜特殊逻辑
-                                        let start = element.points.first!
                                         let dotRect = CGRect(x: start.x - 15, y: start.y - 15, width: 30, height: 30)
                                         if dotRect.contains(value.startLocation) {
                                             isDraggingElement = true

@@ -154,16 +154,18 @@ final class ScreenshotService {
 
     // MARK: - 录屏收尾提示（M1：文件 + 剪贴板路径 + 轻提示；预览/闪记入档在后续里程碑）
 
-    /// 录屏保存成功：复制路径到剪贴板（跟随截图的开关）+ 轻提示 + 日志
+    /// 录屏保存成功：复制用户导出目录中的路径到剪贴板（跟随截图的开关）+ 轻提示 + 日志
     func announceRecordingSaved(path: String) {
-        DiagnosticCenter.info("Save", "录屏已导出: \(path)")
+        DiagnosticCenter.info("Save", "录屏已导出: \((path as NSString).lastPathComponent)")
+        var copiedPath = false
         if PreferencesManager.shared.screenshotCopyPathAfterSave {
             let pasteboard = NSPasteboard.general
             pasteboard.clearContents()
             pasteboard.setString(path, forType: .string)
-            print("[DEBUG ScreenshotService] 已复制录屏路径到剪贴板: \(path)")
+            copiedPath = true
+            print("[DEBUG ScreenshotService] 已复制录屏路径到剪贴板")
         }
-        recordStore?.postLightHint("录屏已保存 ✅ 路径已复制")
+        recordStore?.postLightHint(copiedPath ? "录屏已保存 ✅ 路径已复制" : "录屏已保存 ✅")
     }
 
     /// 录屏取消（用户主动丢弃）
@@ -212,13 +214,14 @@ final class ScreenshotService {
             let durationText = seconds >= 3600
                 ? String(format: "%d:%02d:%02d", seconds / 3600, (seconds % 3600) / 60, seconds % 60)
                 : String(format: "%d:%02d", seconds / 60, seconds % 60)
+            let resolvedVirtualPath = virtualPath
 
             await MainActor.run { [weak self] in
                 self?.recordStore?.addRecord(
-                    content: "录屏 \(durationText)：\(path)",
+                    content: "录屏 \(durationText)：\(fileURL.lastPathComponent)",
                     hash: hash,
                     sourceApp: "Screen Recording",
-                    sourceUrl: virtualPath,
+                    sourceUrl: resolvedVirtualPath,
                     type: .video,
                     skipAI: true
                 )
@@ -228,11 +231,11 @@ final class ScreenshotService {
         }
     }
 
-    /// 保存截图（推荐入口）：导出 PNG 文件到默认目录 + 复制绝对路径到剪贴板 + 存入闪记
+    /// 保存截图（推荐入口）：导出 PNG 到用户选择的目录 + 可选复制路径 + 存入闪记
     func saveScreenshotWithFile(image: NSImage) {
         let exportedPath = exportImageFile(image)
         if let path = exportedPath {
-            DiagnosticCenter.info("Save", "截图已导出: \(path)")
+            DiagnosticCenter.info("Save", "截图已导出: \((path as NSString).lastPathComponent)")
         } else {
             DiagnosticCenter.error("Save", "截图导出文件失败（闪记记录不受影响）")
         }
@@ -242,13 +245,13 @@ final class ScreenshotService {
             let pasteboard = NSPasteboard.general
             pasteboard.clearContents()
             pasteboard.setString(path, forType: .string)
-            print("[DEBUG ScreenshotService] 已复制文件路径到剪贴板: \(path)")
+            print("[DEBUG ScreenshotService] 已复制文件路径到剪贴板")
         }
 
         saveScreenshotRecord(image: image, exportedPath: exportedPath)
     }
 
-    /// 导出 PNG 到用户设置的默认保存目录（未设置时使用桌面）
+    /// 导出 PNG 到用户选择且已授权的保存目录。
     /// - Returns: 导出文件的绝对路径，失败返回 nil
     func exportImageFile(_ image: NSImage) -> String? {
         guard let tiffData = image.tiffRepresentation,
@@ -258,22 +261,13 @@ final class ScreenshotService {
             return nil
         }
 
-        // 解析保存目录：未设置时默认「下载」文件夹（不弄乱桌面；设置里可改任意目录）
-        let dirPref = PreferencesManager.shared.screenshotSaveDirectory
         let dirURL: URL
-        if dirPref.isEmpty {
-            dirURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
-                ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        } else {
-            let bookmarkStore = SecurityScopedBookmarkStore.shared
-            if let scopedURL = bookmarkStore.resolve(forKey: "screenshotSaveDirectoryBookmark") {
-                dirURL = scopedURL
-            } else if bookmarkStore.hasBookmark(forKey: "screenshotSaveDirectoryBookmark") {
-                logger.error("截图导出失败：保存目录授权已失效，请重新选择目录")
-                return nil
-            } else {
-                dirURL = URL(fileURLWithPath: (dirPref as NSString).expandingTildeInPath, isDirectory: true)
-            }
+        switch UserExportDirectory.resolveForUserInitiatedExport() {
+        case .success(let resolved):
+            dirURL = resolved
+        case .failure(let error):
+            logger.error("截图导出失败：\(error.localizedDescription)")
+            return nil
         }
 
         do {
@@ -292,7 +286,7 @@ final class ScreenshotService {
             }
 
             try pngData.write(to: fileURL)
-            print("[DEBUG ScreenshotService] 截图已导出: \(fileURL.path)")
+            print("[DEBUG ScreenshotService] 截图已导出: \(fileURL.lastPathComponent)")
             return fileURL.path
         } catch {
             print("[DEBUG ScreenshotService] 导出截图失败: \(error.localizedDescription)")
@@ -306,11 +300,10 @@ final class ScreenshotService {
         let timestamp = Int(Date().timeIntervalSince1970)
         let hash = "screenshot_\(timestamp)_\(self.screenshotCount)"
 
-        // 有导出文件时，提示和记录都带上路径信息
+        // 有导出文件时，只在通知里表示是否复制路径；绝不把绝对路径写进闪记内容。
         let message: String
-        if let path = exportedPath {
-            message = "截图已保存 ✅ 路径已复制"
-            print("[DEBUG ScreenshotService] 导出路径: \(path)")
+        if exportedPath != nil {
+            message = PreferencesManager.shared.screenshotCopyPathAfterSave ? "截图已保存 ✅ 路径已复制" : "截图已保存 ✅"
         } else {
             message = "截图 \(self.screenshotCount)"
         }
@@ -325,7 +318,7 @@ final class ScreenshotService {
             // 预生成缩略图
             ThumbnailGenerator.shared.getThumbnailURLAsync(for: localURL) { _ in }
             
-            print("[DEBUG ScreenshotService] 截图已通过 FileCoordinator 保存: \(sourceUrl ?? "nil")")
+            print("[DEBUG ScreenshotService] 截图已通过 FileCoordinator 保存")
         } catch {
             print("[DEBUG ScreenshotService] 保存截图失败: \(error.localizedDescription)")
         }
@@ -333,10 +326,10 @@ final class ScreenshotService {
         // 1. 发送轻提示
         self.recordStore?.postLightHint(message)
 
-        // 2. 创建真正的记录（带上导出路径，方便日后检索定位文件）
+        // 2. 创建真正的记录。外部文件路径不写入内容，避免泄露路径且不误导用户。
         let recordContent: String
         if let path = exportedPath {
-            recordContent = "截图 \(self.screenshotCount)：\(path)"
+            recordContent = "截图 \(self.screenshotCount)：\((path as NSString).lastPathComponent)"
         } else {
             recordContent = message
         }

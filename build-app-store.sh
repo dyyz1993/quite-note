@@ -62,24 +62,15 @@ PROFILE_PATH="${APP_STORE_PROVISIONING_PROFILE:-}"
 find_identity() {
     local pattern="$1"
     security find-identity -v -p codesigning \
-        | awk -F'"' -v pattern="$pattern" '$2 ~ pattern { print $2; exit }'
+        | awk -F'"' -v pattern="$pattern" '$2 ~ pattern { print $1; exit }' \
+        | awk '{ print $2 }'
 }
 
 find_installer_identity() {
     security find-identity -v -p basic \
-        | awk -F'"' '/Mac Installer Distribution|3rd Party Mac Developer Installer/ { print $2; exit }'
+        | awk -F'"' '/Mac Installer Distribution|3rd Party Mac Developer Installer/ { print $1; exit }' \
+        | awk '{ print $2 }'
 }
-
-if [ -z "${APP_SIGN_IDENTITY:-}" ]; then
-    APP_SIGN_IDENTITY="$(find_identity 'Mac App Distribution|Apple Distribution|3rd Party Mac Developer Application' || true)"
-fi
-if [ -z "$APP_SIGN_IDENTITY" ]; then
-    echo "❌ 未找到 App Store 应用签名证书。"
-    echo "   需要 Mac App Distribution（部分系统显示为 Apple Distribution 或旧名称 3rd Party Mac Developer Application）证书。"
-    echo "   当前可见证书："
-    security find-identity -v -p codesigning || true
-    exit 2
-fi
 
 if [ -z "${INSTALLER_SIGN_IDENTITY:-}" ]; then
     INSTALLER_SIGN_IDENTITY="$(find_installer_identity || true)"
@@ -116,6 +107,22 @@ profile_name() {
         || true
 }
 
+profile_signing_identity() {
+    local profile="$1"
+    local certificate_fingerprint
+    certificate_fingerprint="$(security cms -D -i "$profile" 2>/dev/null \
+        | plutil -extract DeveloperCertificates.0 raw -o - - 2>/dev/null \
+        | base64 -D \
+        | openssl x509 -inform DER -noout -fingerprint -sha1 2>/dev/null \
+        | sed 's/.*=//' \
+        | tr -d ':')"
+    [ -n "$certificate_fingerprint" ] || return 0
+
+    security find-identity -v -p codesigning \
+        | awk -F'"' -v fingerprint="$certificate_fingerprint" '$1 ~ fingerprint { print $1; exit }' \
+        | awk '{ print $2 }'
+}
+
 if [ -z "$PROFILE_PATH" ]; then
     if [ -d "$PROFILES_DIR" ]; then
         while IFS= read -r candidate; do
@@ -143,6 +150,22 @@ if [ "$PROFILE_APP_ID" != "$TEAM_ID.$BUNDLE_ID" ]; then
     exit 2
 fi
 
+# The embedded App Store profile authorizes a specific distribution certificate.
+# Keychains may have multiple certificates with the same display name, so always
+# resolve the exact SHA-1 identity from the profile instead of selecting by name.
+PROFILE_SIGN_IDENTITY="$(profile_signing_identity "$PROFILE_PATH")"
+if [ -z "$PROFILE_SIGN_IDENTITY" ]; then
+    echo "❌ provisioning profile 中的应用签名证书未安装，或无法解析。"
+    echo "   profile：$(profile_name "$PROFILE_PATH")"
+    exit 2
+fi
+if [ -n "${APP_SIGN_IDENTITY:-}" ] && [ "$APP_SIGN_IDENTITY" != "$PROFILE_SIGN_IDENTITY" ]; then
+    echo "❌ APP_SIGN_IDENTITY 与 provisioning profile 中的签名证书不一致。"
+    echo "   请移除 APP_SIGN_IDENTITY，让脚本自动匹配 profile。"
+    exit 2
+fi
+APP_SIGN_IDENTITY="$PROFILE_SIGN_IDENTITY"
+
 echo "📦 App Store 构建：$VERSION"
 echo "✅ 应用证书：$APP_SIGN_IDENTITY"
 echo "✅ 安装包证书：$INSTALLER_SIGN_IDENTITY"
@@ -150,12 +173,17 @@ echo "✅ provisioning profile：$(profile_name "$PROFILE_PATH")"
 
 echo ""
 echo "🛠 构建 App Store 沙盒应用..."
-./build-app.sh --app-store --no-launch
+APP_SIGN_IDENTITY="$APP_SIGN_IDENTITY" ./build-app.sh --app-store --no-launch
 
 /usr/libexec/PlistBuddy \
     -c "Set :CFBundleShortVersionString $VERSION" \
     -c "Set :CFBundleVersion $BUILD_NUMBER" \
     "$APP_PATH/Contents/Info.plist" >/dev/null
+
+if [ "$(plutil -extract ITSAppUsesNonExemptEncryption raw -o - "$APP_PATH/Contents/Info.plist" 2>/dev/null || true)" != "false" ]; then
+    echo "❌ Info.plist 缺少 ITSAppUsesNonExemptEncryption=false，无法自动完成出口合规声明。"
+    exit 3
+fi
 
 cp "$PROFILE_PATH" "$APP_PATH/Contents/embedded.provisionprofile"
 
@@ -187,6 +215,19 @@ codesign --verify --deep --strict --verbose=2 "$APP_PATH"
 codesign --display --entitlements :- "$APP_PATH" 2>/dev/null \
     | grep -q 'com.apple.security.app-sandbox' \
     || { echo "❌ 最终应用未带 App Sandbox entitlement"; exit 3; }
+
+# 用户主动选择的导出目录由 user-selected + security-scoped bookmark 授权；
+# 不需要也不得重新加入全局 Downloads 文件夹读写权限。必须审计最终签名产物，
+# 而不是只检查源 entitlements 文件，因为审核和上传看到的是这里的结果。
+SIGNED_ENTITLEMENTS="$(mktemp "${TMPDIR:-/tmp}/quitenote-signed-entitlements.XXXXXX")"
+codesign --display --entitlements :- "$APP_PATH" > "$SIGNED_ENTITLEMENTS" 2>/dev/null
+if plutil -extract 'com.apple.security.files.downloads.read-write' raw -o - "$SIGNED_ENTITLEMENTS" 2>/dev/null | grep -qx 'true'; then
+    rm -f "$SIGNED_ENTITLEMENTS"
+    echo "❌ 最终应用仍带 Downloads 文件夹读写权限。"
+    echo "   请改用用户选择目录和 security-scoped bookmark，不能提交该 entitlement。"
+    exit 3
+fi
+rm -f "$SIGNED_ENTITLEMENTS"
 
 echo "📦 创建 Mac App Store .pkg..."
 rm -f "$PKG_FILE"

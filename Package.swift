@@ -3,6 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "QuiteNote",
+    defaultLocalization: "en",
     platforms: [
         .macOS(.v13)
     ],
@@ -23,8 +24,19 @@ let package = Package(
                 .product(name: "Yams", package: "yams")
             ],
             path: "Sources/QuiteNote",
+            exclude: [
+                "UI/FloatingPanel/Untitled-2.ini",
+                "UI/FloatingPanel/┌───────────────────────────────────────.ini",
+                "UI/ScreenshotV2/DEBUG_WIREFRAME_ISSUE.md",
+                "UI/ScreenshotV2/Docs",
+                "UI/ScreenshotV2/LongScreenshot/Docs",
+                "UI/ScreenshotV2/LongScreenshot/README.md",
+                "UI/ScreenshotV2/Views/Overlays/YellowWireframe_ANALYSIS.md",
+                "UI/ScreenshotV3"
+            ],
             resources: [
                 .process("Info-debug.plist"),
+                .process("Resources/Localization"),
                 .process("Resources/Symbols/default.yaml")
             ]
         ),

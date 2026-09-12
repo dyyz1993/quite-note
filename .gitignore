@@ -16,3 +16,6 @@ output/
 
 # App Store 提交资料（含电话等个人信息，不进仓库）
 app-store-submission/
+
+# 反馈 Worker 管理令牌（本地保存，云端在 wrangler secrets）
+cloud/feedback-worker/.admin-token

@@ -1,0 +1,3 @@
+"NSScreenCaptureUsageDescription" = "Quite Note 需要屏幕录制权限来执行截图功能，帮助您快速截取和保存屏幕内容。";
+"NSAudioCaptureUsageDescription" = "Quite Note 需要系统声音录制权限来录制您选择的屏幕内容中的音频。";
+"NSMicrophoneUsageDescription" = "Quite Note 需要访问麦克风来录制您的解说（口播）。仅在选择录制麦克风时使用，可在录屏设置中随时关闭。";

@@ -1,5 +1,45 @@
 import SwiftUI
 
+/// 工具栏按钮 hover tooltip：常驻悬浮在按钮正上方（鼠标移开才消失，不自动关闭）。
+/// tooltip 作为按钮自身 overlay 渲染（top 对齐 + 上移），天然跟随按钮位置，无需坐标换算；
+/// allowsHitTesting(false) 保证 tooltip 不拦截鼠标（否则会遮挡按钮导致 hover 丢失、闪烁）。
+private struct ToolbarHoverTooltip: ViewModifier {
+    let text: String
+    @Binding var tooltipText: String
+    @Binding var showTooltip: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .overlay(alignment: .top) {
+                if showTooltip && tooltipText == text {
+                    Text(text)
+                        .font(.system(size: 11))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.themeShadowHeavy)
+                        .foregroundColor(.white)
+                        .cornerRadius(4)
+                        .fixedSize()
+                        .offset(y: -24)
+                        .allowsHitTesting(false)
+                        .transition(.opacity)
+                }
+            }
+            .onHover { hovering in
+                if hovering {
+                    tooltipText = text
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        showTooltip = true
+                    }
+                } else {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        showTooltip = false
+                    }
+                }
+            }
+    }
+}
+
 private enum RecordingAudioPreset: CaseIterable, Identifiable {
     case demo, voiceover, meeting, silent
 
@@ -36,9 +76,8 @@ struct V2AnnotationToolbar: View {
     @State private var audioMicrophone = PreferencesManager.shared.recordingMicrophone
     @State private var cursorMode: V2RecordingCursorMode =
         V2RecordingCursorMode(rawValue: PreferencesManager.shared.recordingCursorMode) ?? .keep
-    // P2.1: 自定义 tooltip 状态
+    // P2.1: 自定义 tooltip 状态（tooltip 由每个按钮的 overlay 自渲染）
     @State private var tooltipText: String = ""
-    @State private var tooltipPosition: CGPoint = .zero
     @State private var showTooltip: Bool = false
 
     var body: some View {
@@ -67,29 +106,6 @@ struct V2AnnotationToolbar: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
-        // P2.1: 自定义 tooltip 覆盖层
-        .overlay(
-            Group {
-                if showTooltip {
-                    Text(tooltipText)
-                        .font(.system(size: 11))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Color.themeShadowHeavy)
-                        .foregroundColor(.white)
-                        .cornerRadius(4)
-                        .position(x: tooltipPosition.x, y: tooltipPosition.y - 35)
-                        .transition(.opacity.combined(with: .move(edge: .top)))
-                        .onAppear {
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                                withAnimation {
-                                    showTooltip = false
-                                }
-                            }
-                        }
-                }
-            }
-        )
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: expandedGroup)
         .frame(maxWidth: 650) // 恢复宽度，新交互更省空间
     }
@@ -134,18 +150,7 @@ struct V2AnnotationToolbar: View {
                 }
             }
             .buttonStyle(.plain)
-            .onHover { hovering in
-                if hovering {
-                    tooltipText = "文字识别 (⌘O)"
-                    withAnimation(.easeInOut(duration: 0.15)) {
-                        showTooltip = true
-                    }
-                } else {
-                    withAnimation(.easeInOut(duration: 0.15)) {
-                        showTooltip = false
-                    }
-                }
-            }
+            .modifier(ToolbarHoverTooltip(text: "文字识别 (⌘O)", tooltipText: $tooltipText, showTooltip: $showTooltip))
 
             // P3.3: 保存按钮 (Command+S) - 使用 SF Symbols
             Button(action: {
@@ -166,18 +171,7 @@ struct V2AnnotationToolbar: View {
                 }
             }
             .buttonStyle(.plain)
-            .onHover { hovering in
-                if hovering {
-                    tooltipText = "保存文件并复制路径 (⌘S)"
-                    withAnimation(.easeInOut(duration: 0.15)) {
-                        showTooltip = true
-                    }
-                } else {
-                    withAnimation(.easeInOut(duration: 0.15)) {
-                        showTooltip = false
-                    }
-                }
-            }
+            .modifier(ToolbarHoverTooltip(text: "保存文件并复制路径 (⌘S)", tooltipText: $tooltipText, showTooltip: $showTooltip))
 
             // P3.3: 复制按钮 (Command+C) - 使用 SF Symbols
             Button(action: {
@@ -198,18 +192,7 @@ struct V2AnnotationToolbar: View {
                 }
             }
             .buttonStyle(.plain)
-            .onHover { hovering in
-                if hovering {
-                    tooltipText = "复制到剪贴板 (Command+C)"
-                    withAnimation(.easeInOut(duration: 0.15)) {
-                        showTooltip = true
-                    }
-                } else {
-                    withAnimation(.easeInOut(duration: 0.15)) {
-                        showTooltip = false
-                    }
-                }
-            }
+            .modifier(ToolbarHoverTooltip(text: "复制到剪贴板 (⌘C)", tooltipText: $tooltipText, showTooltip: $showTooltip))
 
             // 区域录屏按钮：退出截图会话，对当前选区开始实时录制 (Command+R)
             Button(action: {
@@ -230,18 +213,7 @@ struct V2AnnotationToolbar: View {
                 }
             }
             .buttonStyle(.plain)
-            .onHover { hovering in
-                if hovering {
-                    tooltipText = "录制视频 (⌘R)"
-                    withAnimation(.easeInOut(duration: 0.15)) {
-                        showTooltip = true
-                    }
-                } else {
-                    withAnimation(.easeInOut(duration: 0.15)) {
-                        showTooltip = false
-                    }
-                }
-            }
+            .modifier(ToolbarHoverTooltip(text: "录制视频 (⌘R)", tooltipText: $tooltipText, showTooltip: $showTooltip))
 
             // 音频快选 ▾：选择本次录制的音频来源（两路独立开关，与设置页共用存储）
             Button(action: {
@@ -256,18 +228,20 @@ struct V2AnnotationToolbar: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .onHover { hovering in
-                if hovering {
-                    tooltipText = "录制音频：\(audioDescription)"
-                    withAnimation(.easeInOut(duration: 0.15)) {
-                        showTooltip = true
-                    }
-                } else {
-                    withAnimation(.easeInOut(duration: 0.15)) {
-                        showTooltip = false
-                    }
-                }
+            .modifier(ToolbarHoverTooltip(text: "录制音频：\(audioDescription)", tooltipText: $tooltipText, showTooltip: $showTooltip))
+
+            // 用户反馈入口（刻意低调：小号半透明图标收在工具栏末尾，不与主操作抢占视觉——产品决策见 AGENTS.md）
+            Button(action: {
+                NotificationCenter.default.post(name: NSNotification.Name("FeedbackScreenshot"), object: nil)
+            }) {
+                Image(systemName: "ladybug.fill")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(.white.opacity(0.4))
+                    .frame(width: 22, height: 34)
+                    .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .modifier(ToolbarHoverTooltip(text: "反馈问题（自动附带当前截图）", tooltipText: $tooltipText, showTooltip: $showTooltip))
         }
         .padding(8)
         .background(
@@ -432,33 +406,16 @@ struct V2AnnotationToolbar: View {
         .buttonStyle(.plain)
     }
 
-    /// P2.1: 操作按钮 - 使用自定义 tooltip
+    /// P2.1: 操作按钮 - 常驻 tooltip 悬浮在按钮正上方
     private func actionButton(icon: IconName, action: @escaping () -> Void, tooltip: String, primary: Bool = false) -> some View {
-        GeometryReader { geometry in
-            Button(action: action) {
-                LucideView(name: icon, size: 18, color: .white)
-                    .frame(width: 34, height: 34)
-                    .background(primary ? Color.themeBlue500 : Color.white.opacity(0.1))
-                    .cornerRadius(8)
-            }
-            .buttonStyle(.plain)
-            .onHover { hovering in
-                if hovering {
-                    // 获取按钮在全局坐标系中的中心位置
-                    let bounds = geometry.frame(in: .global)
-                    tooltipPosition = CGPoint(x: bounds.midX, y: bounds.minY)
-                    tooltipText = tooltip
-                    withAnimation(.easeInOut(duration: 0.15)) {
-                        showTooltip = true
-                    }
-                } else {
-                    withAnimation(.easeInOut(duration: 0.15)) {
-                        showTooltip = false
-                    }
-                }
-            }
+        Button(action: action) {
+            LucideView(name: icon, size: 18, color: .white)
+                .frame(width: 34, height: 34)
+                .background(primary ? Color.themeBlue500 : Color.white.opacity(0.1))
+                .cornerRadius(8)
         }
-        .frame(width: 34, height: 34)
+        .buttonStyle(.plain)
+        .modifier(ToolbarHoverTooltip(text: tooltip, tooltipText: $tooltipText, showTooltip: $showTooltip))
     }
 
     // MARK: - 录制音频快选

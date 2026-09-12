@@ -1,0 +1,3 @@
+"NSScreenCaptureUsageDescription" = "Quite Note needs Screen Recording permission to capture and save the screen content you choose.";
+"NSAudioCaptureUsageDescription" = "Quite Note needs System Audio Recording permission to record audio in the screen content you choose.";
+"NSMicrophoneUsageDescription" = "Quite Note needs microphone access only when you choose to record narration. You can turn it off at any time in Recording settings.";

@@ -257,6 +257,19 @@ else
     echo "警告：未找到 Editor 资源目录"
 fi
 
+# Copy app-localized UI and privacy-permission copy directly into the staged
+# application bundle. The release assembler does not embed SwiftPM's resource
+# bundle, so these .lproj directories must live beside Info.plist.
+LOCALIZATION_SOURCE="Sources/QuiteNote/Resources/Localization"
+if [ -d "$LOCALIZATION_SOURCE" ]; then
+    echo "复制本地化资源到 Resources 目录..."
+    find "$LOCALIZATION_SOURCE" -type d -name '*.lproj' -print0 | while IFS= read -r -d '' localization_dir; do
+        cp -R "$localization_dir" "$RESOURCES_DIR/"
+    done
+else
+    echo "警告：未找到本地化资源目录"
+fi
+
 # 创建 Info.plist
 echo "创建 Info.plist..."
 cat > "$CONTENTS/Info.plist" << EOF
@@ -272,6 +285,8 @@ cat > "$CONTENTS/Info.plist" << EOF
     <string>$APP_NAME</string>
     <key>CFBundleDisplayName</key>
     <string>$APP_NAME</string>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
     <key>CFBundleVersion</key>
     <string>$VERSION</string>
     <key>CFBundleShortVersionString</key>
@@ -290,10 +305,8 @@ cat > "$CONTENTS/Info.plist" << EOF
     <true/>
     <key>NSSupportsAutomaticGraphicsSwitching</key>
     <true/>
-    <key>NSBluetoothAlwaysUsageDescription</key>
-    <string>Quite Note 需要访问蓝牙来发现和连接附近的设备，用于设备间数据同步和分享功能。</string>
-    <key>NSBluetoothPeripheralUsageDescription</key>
-    <string>Quite Note 使用蓝牙来与周边设备通信，实现剪切板内容的快速分享和同步。</string>
+    <key>ITSAppUsesNonExemptEncryption</key>
+    <false/>
     <key>NSScreenCaptureUsageDescription</key>
     <string>Quite Note 需要屏幕录制权限来执行截图功能，帮助您快速截取和保存屏幕内容。</string>
     <key>NSAudioCaptureUsageDescription</key>
@@ -315,13 +328,18 @@ if [ "$BINARY_CHANGED" = true ]; then
         # 优先用 Developer ID Application 证书签名（与发布流水线同一身份）：
         # 签名身份统一后，开发构建 ↔ 发布构建来回切换不会导致系统权限失效。
         # ad-hoc 签名身份每次编译都变，会导致权限被系统重置、每次都要重新授权。
-        if [ "$APP_STORE_MODE" = true ]; then
-            SIGN_IDENTITY=$(security find-identity -v -p codesigning | awk -F'"' '/Apple Development|Apple Distribution/{print $2; exit}')
+        if [ -n "${APP_SIGN_IDENTITY:-}" ]; then
+            # A keychain may contain duplicate certificates with the same
+            # display name. Accept a SHA-1 fingerprint from the caller so
+            # codesign receives an unambiguous identity.
+            SIGN_IDENTITY="$APP_SIGN_IDENTITY"
+        elif [ "$APP_STORE_MODE" = true ]; then
+            SIGN_IDENTITY=$(security find-identity -v -p codesigning | awk -F'"' '/Apple Development|Apple Distribution/{print $1; exit}' | awk '{ print $2 }')
         else
-            SIGN_IDENTITY=$(security find-identity -v -p codesigning | awk -F'"' '/Developer ID Application/{print $2; exit}')
+            SIGN_IDENTITY=$(security find-identity -v -p codesigning | awk -F'"' '/Developer ID Application/{print $1; exit}' | awk '{ print $2 }')
         fi
         if [ -z "$SIGN_IDENTITY" ] && [ "$APP_STORE_MODE" = false ]; then
-            SIGN_IDENTITY=$(security find-identity -v -p codesigning | awk -F'"' '/Apple Development/{print $2; exit}')
+            SIGN_IDENTITY=$(security find-identity -v -p codesigning | awk -F'"' '/Apple Development/{print $1; exit}' | awk '{ print $2 }')
         fi
         if [ -n "$SIGN_IDENTITY" ]; then
             codesign --force --deep --sign "$SIGN_IDENTITY" "$APP_PATH" --identifier "$BUNDLE_ID" --entitlements "$ENTITLEMENTS_FILE"

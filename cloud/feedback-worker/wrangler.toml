@@ -1,0 +1,18 @@
+name = "quitenote-feedback"
+main = "src/worker.js"
+compatibility_date = "2025-09-01"
+workers_dev = true
+
+# 国内网络 *.workers.dev 不可达，走自定义域名（自动建 DNS + 证书）
+routes = [
+  { pattern = "feedback.drel.app", custom_domain = true }
+]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "quitenote-feedback"
+database_id = "b3ab142e-57bc-407c-b697-e02b4853aeba"
+
+[[r2_buckets]]
+binding = "ATT"
+bucket_name = "quitenote-feedback-att"

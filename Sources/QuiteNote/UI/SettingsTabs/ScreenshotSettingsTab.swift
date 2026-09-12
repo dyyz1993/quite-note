@@ -5,7 +5,6 @@ struct ScreenshotSettingsTab: View {
     @ObservedObject private var prefs = PreferencesManager.shared
     @State private var isRecording = false
     @State private var screenCaptureGranted = false
-    @State private var accessibilityGranted = false
 
     // 定时器，每 2 秒刷新一次权限状态
     private let timer = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
@@ -14,7 +13,7 @@ struct ScreenshotSettingsTab: View {
         VStack(alignment: .leading, spacing: 20) {
             permissionSection
 
-            if screenCaptureGranted && accessibilityGranted {
+            if screenCaptureGranted {
                 shortcutSection
                 behaviorSection
             } else {
@@ -22,29 +21,12 @@ struct ScreenshotSettingsTab: View {
             }
         }
         .onAppear {
-            // 页面打开时立即执行一次强制权限请求/检查
-            autoRequestPermissions()
+            // 设置页只展示当前状态；用户主动点击授权按钮时才请求系统权限。
+            updatePermissionStatus()
         }
         .onReceive(timer) { _ in
             updatePermissionStatus()
         }
-    }
-    
-    private func autoRequestPermissions() {
-        // 1. 更新当前状态
-        updatePermissionStatus()
-        
-        // 2. 如果没有权限，则尝试请求（这会触发系统弹窗或静默检查）
-        if !screenCaptureGranted {
-            _ = ScreenshotService.shared.checkAndRequestPermission()
-        }
-        
-        if !accessibilityGranted {
-            _ = ScreenshotService.shared.checkAccessibilityPermission(prompt: true)
-        }
-        
-        // 3. 再次更新状态
-        updatePermissionStatus()
     }
     
     private var permissionRequiredHint: some View {
@@ -53,7 +35,7 @@ struct ScreenshotSettingsTab: View {
             Text("请先完成上方权限授权")
                 .font(.themeBody)
                 .foregroundColor(.themeTextSecondary)
-            Text("获得授权后即可配置快捷键和截图行为")
+            Text("屏幕录制授权后即可配置截图行为")
                 .font(.themeCaption)
                 .foregroundColor(.themeTextTertiary)
         }
@@ -66,14 +48,16 @@ struct ScreenshotSettingsTab: View {
     
     private func updatePermissionStatus() {
         screenCaptureGranted = ScreenshotService.shared.checkScreenCapturePermission()
-        accessibilityGranted = ScreenshotService.shared.checkAccessibilityPermission(prompt: false)
     }
 
     // MARK: - 保存目录
 
     private var saveDirectoryDescription: String {
         let raw = prefs.screenshotSaveDirectory
-        if raw.isEmpty { return "下载文件夹（默认）" }
+        if raw.isEmpty { return "未选择（首次导出时会要求选择）" }
+        if case .failure = UserExportDirectory.configuredDirectory() {
+            return "目录授权已失效，请重新选择"
+        }
         // 用 ~ 缩写 home 目录，显示更友好
         return raw.replacingOccurrences(of: NSHomeDirectory(), with: "~")
     }
@@ -83,7 +67,7 @@ struct ScreenshotSettingsTab: View {
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.canCreateDirectories = true
-        panel.message = "选择截图的默认保存目录"
+        panel.message = "选择截图、录屏和快剪的保存目录（所有后续导出都会保存到此目录）"
         if panel.runModal() == .OK, let url = panel.url {
             prefs.setScreenshotSaveDirectory(url)
         }
@@ -187,24 +171,6 @@ struct ScreenshotSettingsTab: View {
                 }
             )
             
-            Divider().background(Color.themeBorderSubtle)
-            
-            // 辅助功能权限
-            permissionRow(
-                title: "辅助功能权限",
-                description: "需要此权限才能监听全局快捷键 (⌘+⇧+S)。",
-                isGranted: accessibilityGranted,
-                action: {
-                    if !accessibilityGranted {
-                        let granted = ScreenshotService.shared.checkAccessibilityPermission(prompt: true)
-                        if !granted {
-                            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
-                                NSWorkspace.shared.open(url)
-                            }
-                        }
-                    }
-                }
-            )
         }
         .padding(20)
         .background(Color.themeCard)
@@ -298,7 +264,7 @@ struct ScreenshotSettingsTab: View {
 
                     if !prefs.screenshotSaveDirectory.isEmpty {
                         Button(action: { prefs.setScreenshotSaveDirectory("") }) {
-                            Text("恢复默认")
+                            Text("清除")
                                 .font(.themeCaption)
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 6)
