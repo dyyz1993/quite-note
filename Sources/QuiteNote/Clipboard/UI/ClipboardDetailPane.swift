@@ -121,18 +121,36 @@ struct ClipboardDetailPane: View, Equatable {
         }
     }
 
-    /// 后台降采样解码（展示尺寸 ~1400px 足够，避免全分辨率解码与光栅化）。
-    /// 由 .task(id: entry.id) 驱动：↑↓ 换选中自动取消旧任务加载新图
+    /// 两阶段加载（用户方案，2026-09-12）：
+    /// ① 缩略图秒出——捕获时已生成的 256px 缩略图解码毫秒级，↑↓ 每步都有图看
+    /// ② 停稳 300ms 后原图降采样（1400px）换上——Task.sleep 期间被取消
+    ///   （.task(id:) 换选中即取消）= 快速连按时**不发起任何全图解码**，
+    ///   只有用户停下才加载，彻底消除解码并发抢主线程
     private func loadDetailImage(entry: ClipboardEntry, url: URL) async {
         guard loadedImageID != entry.id else { return }
         loadedImageID = entry.id
         detailImage = nil
         let entryID = entry.id
-        let image = await Task.detached(priority: .userInitiated) {
+
+        // 阶段 ①：已有缩略图（512px 内解码，后台低开销）
+        let thumb = await Task.detached(priority: .userInitiated) { () -> NSImage? in
+            guard let thumbURL = ThumbnailGenerator.shared.existingThumbnailURL(for: url) else { return nil }
+            return Self.decodeDownsampled(at: thumbURL, maxPixel: 512)
+        }.value
+        if entryID == entry.id {
+            detailImage = thumb   // 可能为 nil（无缩略图）→ 继续显示 ProgressView
+        }
+
+        // 阶段 ②：停稳窗口（快速 ↑↓ 时任务在此被取消，不浪费解码）
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        guard !Task.isCancelled, entryID == entry.id else { return }
+
+        let full = await Task.detached(priority: .utility) {   // 低优先级，不抢主线程
             Self.decodeDownsampled(at: url, maxPixel: 1400)
         }.value
-        guard entryID == entry.id else { return }   // 快速 ↑↓ 时的过期结果丢弃
-        detailImage = image
+        if entryID == entry.id, full != nil {
+            detailImage = full
+        }
     }
 
     nonisolated static func decodeDownsampled(at url: URL, maxPixel: CGFloat) -> NSImage? {

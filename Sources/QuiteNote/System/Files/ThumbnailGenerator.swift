@@ -31,6 +31,14 @@ final class ThumbnailGenerator {
         return generateThumbnail(from: sourceURL, to: thumbnailURL)
     }
     
+    /// 只查**已存在**的缩略图（不生成）——详情面板秒出首帧用；
+    /// 返回 nil 表示该图还没有缩略图（捕获时未生成/外部文件）
+    func existingThumbnailURL(for sourceURL: URL) -> URL? {
+        let cacheDir = FileCoordinator.shared.getDirectoryURL(for: .thumbnail)
+        let thumbnailURL = cacheDir.appendingPathComponent("\(Self.stableKey(for: sourceURL)).jpg")
+        return fileManager.fileExists(atPath: thumbnailURL.path) ? thumbnailURL : nil
+    }
+
     /// 异步获取缩略图
     func getThumbnailURLAsync(for sourceURL: URL, completion: @escaping (URL?) -> Void) {
         DispatchQueue.global(qos: .userInitiated).async {
