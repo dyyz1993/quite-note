@@ -173,6 +173,66 @@ struct AppLauncherView: View {
         case .command(let cmd): commandRow(index, cmd)
         case .file(let file): fileRow(index, file)
         case .text(let item): textRow(index, item)
+        case .scope(let match): scopeRow(index, match)
+        }
+    }
+
+    /// 范围入口行（"文件"等范围词命中时显示）：↵ 或点击进入文件搜索模式
+    private func scopeRow(_ index: Int, _ match: LauncherScopeParser.Match) -> some View {
+        let selected = index == vm.selectedIndex
+        return HStack(spacing: 10) {
+            Text(index < 9 ? String(index + 1) : "·")
+                .font(.system(size: 11, weight: selected ? .semibold : .regular))
+                .foregroundColor(selected ? .themeBlue400 : .themeTextTertiary)
+                .frame(width: 14)
+
+            LucideView(name: .folderOpen, size: 16, color: .themeBlue300)
+                .frame(width: 28, height: 28)
+                .background(RoundedRectangle(cornerRadius: 7).fill(Color.themeBlue600.opacity(0.18)))
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text("搜索文件")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(.themeTextPrimary)
+                Text(match.term.isEmpty ? "进入文件搜索模式（也可输入 文件 关键词 + 空格）" : "在文件中搜索「\(match.term)」")
+                    .font(.system(size: 11))
+                    .foregroundColor(.themeTextTertiary)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text("范围")
+                .font(.system(size: 10))
+                .foregroundColor(.themePurple300)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 2)
+                .background(Capsule().fill(Color.themePurple600.opacity(0.15)))
+                .overlay(Capsule().stroke(Color.themePurple600.opacity(0.35), lineWidth: 1))
+
+            if selected {
+                HStack(spacing: 4) {
+                    Text("↵").font(.system(size: 11, weight: .semibold))
+                    Text("进入").font(.system(size: 11))
+                }
+                .foregroundColor(.themeBlue400)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 6)
+        .background(selected ? Color.themeBlue600.opacity(0.20) : Color.clear)
+        .overlay(alignment: .leading) {
+            if selected {
+                Rectangle().fill(Color.themeBlue500).frame(width: 2)
+            }
+        }
+        .contentShape(Rectangle())
+        .onHover { hovering in
+            if hovering && vm.selectedIndex != index {
+                vm.selectedIndex = index
+            }
+        }
+        .onTapGesture {
+            vm.enterFileScope(controller: controller)
         }
     }
 

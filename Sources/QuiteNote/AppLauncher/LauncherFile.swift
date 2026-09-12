@@ -47,3 +47,40 @@ enum FileModeParser {
         return String(text.dropFirst(length)).trimmingCharacters(in: .whitespaces)
     }
 }
+
+/// 内置范围命令（用户提议 2026-09-12）：输入范围关键词后**空格或 ↵** 进入对应搜索
+/// 模式——比符号前缀好记（' 前缀难输入且无发现性）。关键词用**词**而非字母前缀：
+/// 字母在中文输入法下会被当拼音上屏（"f " 实测变「发」），中文词/完整英文词直通。
+///
+/// - "文件" 单独（后无空格）→ 只显示范围行，↵/点击进入
+/// - "文件 报告" 或 "文件 "（后跟空格）→ 直接进入文件模式，查 "报告"
+enum LauncherScopeParser {
+
+    struct Match: Equatable {
+        let entered: Bool
+        let term: String
+    }
+
+    /// 范围关键词表（小写）。后续加范围（如网页搜索）在此扩行
+    static let fileKeywords = ["文件", "搜文件", "文件搜索", "file", "files", "wj"]
+
+    /// 解析输入；nil = 未命中范围词
+    static func parse(_ rawText: String) -> Match? {
+        let text = rawText.trimmingCharacters(in: .whitespaces)
+        guard !text.isEmpty else { return nil }
+        let lowered = text.lowercased()
+        for keyword in fileKeywords {
+            if lowered == keyword {
+                // 尾部空格（原始文本上判断，trim 会吃掉它）= 直接进入空词模式
+                if rawText.hasSuffix(" ") { return Match(entered: true, term: "") }
+                return Match(entered: false, term: "")   // 只亮范围行，等 ↵/空格
+            }
+            // 关键词 + 空格 + 词 → 直接进入；关键词本身必须完整词头（避免"文"误触）
+            if lowered.hasPrefix(keyword + " ") {
+                let term = String(text.dropFirst(keyword.count + 1)).trimmingCharacters(in: .whitespaces)
+                return Match(entered: true, term: term)
+            }
+        }
+        return nil
+    }
+}

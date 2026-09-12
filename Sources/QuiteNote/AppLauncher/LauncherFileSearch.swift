@@ -104,31 +104,43 @@ final class LauncherFileSearch {
         query = nil
     }
 
-    /// Spotlight 不可用时的目录兜底：扫家目录顶层 + 六个用户内容目录的一层，
-    /// 文件名包含匹配（不递归深层——要全量深度搜索请开系统 Spotlight 索引）
-    nonisolated static func scanCommonDirectories(term: String) -> [LauncherFile] {
+    /// Spotlight 不可用时的目录兜底：家目录顶层 + 六个用户内容目录**递归 4 层**
+    /// （覆盖 ~/Documents/子目录/孙目录/文件 的常见结构），文件名包含匹配；
+    /// 扫描量上限 3000 项防爆，后台队列执行。再深请开系统 Spotlight 索引
+    nonisolated static func scanCommonDirectories(term: String, homePath: String = NSHomeDirectory()) -> [LauncherFile] {
         let fm = FileManager.default
-        let home = NSHomeDirectory()
-        let directories = [
+        let home = homePath
+        let roots = [
             home, home + "/Desktop", home + "/Documents", home + "/Downloads",
             home + "/Pictures", home + "/Movies", home + "/Music",
         ]
         let lowerTerm = term.lowercased()
         var results: [LauncherFile] = []
-        for dir in directories {
-            guard let entries = try? fm.contentsOfDirectory(atPath: dir) else { continue }
+        var scanned = 0
+        let scanLimit = 3000
+
+        func scan(dir: String, depth: Int) {
+            guard depth <= 4, scanned < scanLimit,
+                  let entries = try? fm.contentsOfDirectory(atPath: dir) else { return }
             for entry in entries {
-                guard !entry.hasPrefix("."),
-                      entry.lowercased().contains(lowerTerm) else { continue }
+                scanned += 1
+                guard scanned < scanLimit else { return }
+                guard !entry.hasPrefix(".") else { continue }
                 let url = URL(fileURLWithPath: dir).appendingPathComponent(entry)
                 let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .contentModificationDateKey])
                 let isDir = values?.isDirectory ?? false
-                let kind = isDir ? "" : Self.kindDescription(extension: url.pathExtension)
-                results.append(LauncherFile(name: entry, url: url, kindDescription: kind,
-                                            modifiedDate: values?.contentModificationDate,
-                                            isDirectory: isDir))
+                if entry.lowercased().contains(lowerTerm) {
+                    let kind = isDir ? "" : Self.kindDescription(extension: url.pathExtension)
+                    results.append(LauncherFile(name: entry, url: url, kindDescription: kind,
+                                                modifiedDate: values?.contentModificationDate,
+                                                isDirectory: isDir))
+                }
+                if isDir, depth < 4 {
+                    scan(dir: url.path, depth: depth + 1)
+                }
             }
         }
+        for dir in roots { scan(dir: dir, depth: 1) }
         return results
             .sorted { ($0.modifiedDate ?? .distantPast) > ($1.modifiedDate ?? .distantPast) }
             .prefix(50)

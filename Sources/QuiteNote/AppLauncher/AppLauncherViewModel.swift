@@ -1,12 +1,13 @@
 import SwiftUI
 import AppKit
 
-/// 启动器结果条目：应用 / 系统命令 / 文件 / 收藏·备忘文本混合列表的统一身份
+/// 启动器结果条目：应用 / 系统命令 / 文件 / 收藏·备忘文本 / 范围入口混合列表的统一身份
 enum LauncherItem: Identifiable {
     case app(LauncherApp)
     case command(LauncherCommand)
     case file(LauncherFile)
     case text(LauncherTextItem)
+    case scope(LauncherScopeParser.Match)
 
     var id: String {
         switch self {
@@ -14,6 +15,7 @@ enum LauncherItem: Identifiable {
         case .command(let cmd): return "cmd:" + cmd.id
         case .file(let file): return "file:" + file.id
         case .text(let item): return "text:" + item.id
+        case .scope: return "scope:files"
         }
     }
 }
@@ -96,8 +98,23 @@ final class AppLauncherViewModel: ObservableObject {
             calculatorResult = nil
         }
         let store = AppCatalogStore.shared
-        // 排序：收藏片段/备忘（用户高频内容）→ 系统命令 → 应用
-        var items: [LauncherItem] = LauncherTextSearch.matchingItems(
+        // 排序：范围入口 → 收藏片段/备忘（用户高频内容）→ 系统命令 → 应用
+        var items: [LauncherItem] = []
+        if let scope = LauncherScopeParser.parse(searchText) {
+            // 输入范围词：未跟词 → 亮范围行等 ↵/空格；已跟词 → 直接进文件模式
+            if scope.entered {
+                isFileMode = true
+                calculatorResult = nil
+                results = []
+                LauncherFileSearch.shared.search(scope.term) { [weak self] files in
+                    guard let self, self.isFileMode else { return }
+                    self.results = files.prefix(Self.maxVisible).map { .file($0) }
+                }
+                return
+            }
+            items.append(.scope(scope))
+        }
+        items += LauncherTextSearch.matchingItems(
             tokens: queryTokens, in: LauncherTextSearch.collect()
         ).map { .text($0) }
         items += SystemCommandService.matchingCommands(tokens: queryTokens)
@@ -175,6 +192,8 @@ final class AppLauncherViewModel: ObservableObject {
             openFile(file, controller: controller)
         case .text(let item):
             copyTextItem(item, controller: controller)
+        case .scope:
+            enterFileScope(controller: controller)
         }
     }
 
@@ -183,6 +202,14 @@ final class AppLauncherViewModel: ObservableObject {
         controller.hide()
         NSWorkspace.shared.open(file.url)
         DiagnosticCenter.info("Launcher", "打开文件：\(file.url.path)")
+    }
+
+    /// 进入文件搜索范围（↵/点击范围行）：搜索框变成 ' 前缀，保留已输入的词
+    func enterFileScope(controller: AppLauncherPanelController) {
+        let term = queryTokens.dropFirst().joined(separator: " ")
+        coalesceWork?.cancel()
+        searchText = term.isEmpty ? "'" : "' " + term
+        recompute()
     }
 
     /// 点击文件行（与回车同语义）
