@@ -6,6 +6,11 @@ struct ClipboardDetailPane: View, Equatable {
     let entry: ClipboardEntry?
     var onRetryOCR: (() -> Void)? = nil
 
+    /// 详情大图（异步降采样加载——body 里同步 NSImage(contentsOf:) 解码全分辨率
+    /// 原图，每按一次 ↑↓ 换选中都在主线程解码几 MB，是方向键切换卡顿的元凶）
+    @State private var detailImage: NSImage?
+    @State private var loadedImageID: UUID?
+
     /// 按身份比较而非全字段：synthesized == 会逐字段比较 plainText/ocrText
     /// （可达 1MB），每次按键的视图 diff 都付这个成本（打字卡顿源）。
     /// 内容变化（OCR 完成等）由 store.entriesVersion → 全表 reload 覆盖
@@ -116,6 +121,32 @@ struct ClipboardDetailPane: View, Equatable {
         }
     }
 
+    /// 后台降采样解码（展示尺寸 ~1400px 足够，避免全分辨率解码与光栅化）。
+    /// 由 .task(id: entry.id) 驱动：↑↓ 换选中自动取消旧任务加载新图
+    private func loadDetailImage(entry: ClipboardEntry, url: URL) async {
+        guard loadedImageID != entry.id else { return }
+        loadedImageID = entry.id
+        detailImage = nil
+        let entryID = entry.id
+        let image = await Task.detached(priority: .userInitiated) {
+            Self.decodeDownsampled(at: url, maxPixel: 1400)
+        }.value
+        guard entryID == entry.id else { return }   // 快速 ↑↓ 时的过期结果丢弃
+        detailImage = image
+    }
+
+    nonisolated static func decodeDownsampled(at url: URL, maxPixel: CGFloat) -> NSImage? {
+        let options: [CFString: Any] = [kCGImageSourceShouldCache: false]
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, options as CFDictionary) else { return nil }
+        let thumbOptions: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxPixel,
+            kCGImageSourceShouldCacheImmediately: true,
+        ]
+        guard let cg = CGImageSourceCreateThumbnailAtIndex(source, 0, thumbOptions as CFDictionary) else { return nil }
+        return NSImage(cgImage: cg, size: NSSize(width: cg.width, height: cg.height))
+    }
+
     // MARK: - 图片详情：大图 + OCR 全文 + 重试
 
     @ViewBuilder
@@ -123,16 +154,27 @@ struct ClipboardDetailPane: View, Equatable {
         VStack(alignment: .leading, spacing: 10) {
             if let virtualPath = entry.assetPath,
                let url = FileCoordinator.shared.resolveVirtualPath(virtualPath),
-               FileManager.default.fileExists(atPath: url.path),
-               let image = NSImage(contentsOf: url) {
-                // 宽高双向约束：保持比例完整适配（宽图贴宽、长图贴高，不裁切不溢出）
-                Image(nsImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(maxWidth: .infinity)
-                    .frame(maxHeight: 340)
-                    .cornerRadius(6)
-                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(ClipboardPalette.inputBorder))
+               FileManager.default.fileExists(atPath: url.path) {
+                if let image = detailImage, loadedImageID == entry.id {
+                    // 宽高双向约束：保持比例完整适配（宽图贴宽、长图贴高，不裁切不溢出）
+                    Image(nsImage: image)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(maxWidth: .infinity)
+                        .frame(maxHeight: 340)
+                        .cornerRadius(6)
+                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(ClipboardPalette.inputBorder))
+                        .task(id: entry.id) {
+                            await loadDetailImage(entry: entry, url: url)
+                        }
+                } else {
+                    ProgressView()
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 200)
+                        .task(id: entry.id) {
+                            await loadDetailImage(entry: entry, url: url)
+                        }
+                }
             } else {
                 HStack(spacing: 6) {
                     LucideView(name: .circleX, size: 13, color: ClipboardPalette.statusError)
