@@ -24,10 +24,24 @@ jobs:
           p = base64.urlsafe_b64encode(json.dumps({"iss":issuer,"exp":int(time.time())+600,"aud":"appstoreconnect-v1"}).encode()).rstrip(b"=")
           s = h + b"." + p
           open("/tmp/sig_input","wb").write(s)
-          sig = subprocess.run(["openssl","dgst","-sha256","-sign","/tmp/asc.p8","/tmp/sig_input"],capture_output=True).stdout
-          print((s + b"." + base64.urlsafe_b64encode(sig).rstrip(b"=")).decode())
+          der = subprocess.run(["openssl","dgst","-sha256","-sign","/tmp/asc.p8","/tmp/sig_input"],capture_output=True).stdout
+          def der_to_raw(sig):
+              def read_len(d, i):
+                  l = d[i]; i += 1
+                  if l & 0x80:
+                      n = l & 0x7f; l = int.from_bytes(d[i:i+n],"big"); i += n
+                  return l, i
+              i = 2
+              ints = []
+              for _ in range(2):
+                  i += 1
+                  l, i = read_len(sig, i)
+                  v = sig[i:i+l]; i += l
+                  ints.append(v.rjust(32, b"\x00")[-32:])
+              return ints[0] + ints[1]
+          raw = der_to_raw(der)
+          print((s + b"." + base64.urlsafe_b64encode(raw).rstrip(b"=")).decode())
           PYEOF
-          # heredoc 里的缩进要去掉（<<- 不适用于空格）
           sed -i '' 's/^          //' /tmp/jwt.py
           python3 /tmp/jwt.py > /tmp/jwt.txt
           echo "JWT ready: $(wc -c < /tmp/jwt.txt) bytes"
