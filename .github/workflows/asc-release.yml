@@ -59,7 +59,7 @@ jobs:
               "data": {
                 "type": "appStoreVersions",
                 "attributes": {
-                  "platform": "MACOS",
+                  "platform": "MAC_OS",
                   "versionString": "1.1.0"
                 },
                 "relationships": {
