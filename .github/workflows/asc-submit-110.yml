@@ -1,0 +1,75 @@
+name: ASC Submit 1.1.0 (manual)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  submit:
+    runs-on: macos-latest
+    steps:
+      - name: Prepare key
+        env:
+          ASC_API_KEY_P8_BASE64: ${{ secrets.ASC_API_KEY_P8_BASE64 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: echo "$ASC_API_KEY_P8_BASE64" | base64 -d > /tmp/asc.p8
+
+      - name: Create 1.1.0 version + attach build + set What's New
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          cat > /tmp/jwt.py <<'PYEOF'
+          import base64, json, time, subprocess, os
+          key_id, issuer = os.environ["ASC_KEY_ID"], os.environ["ASC_ISSUER_ID"]
+          h = base64.urlsafe_b64encode(json.dumps({"alg":"ES256","kid":key_id,"typ":"JWT"}).encode()).rstrip(b"=")
+          p = base64.urlsafe_b64encode(json.dumps({"iss":issuer,"exp":int(time.time())+1200,"aud":"appstoreconnect-v1"}).encode()).rstrip(b"=")
+          s2 = h + b"." + p
+          open("/tmp/sig_input","wb").write(s2)
+          der = subprocess.run(["openssl","dgst","-sha256","-sign","/tmp/asc.p8","/tmp/sig_input"],capture_output=True).stdout
+          def read_len(d, i):
+              l = d[i]; i += 1
+              if l & 0x80:
+                  n = l & 0x7f; l = int.from_bytes(d[i:i+n],"big"); i += n
+              return l, i
+          i = 2
+          ints = []
+          for _ in range(2):
+              i += 1
+              l, i = read_len(der, i)
+              v = der[i:i+l]; i += l
+              ints.append(v.rjust(32, b"\x00")[-32:])
+          raw = ints[0] + ints[1]
+          print((s2 + b"." + base64.urlsafe_b64encode(raw).rstrip(b"=")).decode())
+          PYEOF
+          sed -i '' 's/^          //' /tmp/jwt.py
+          python3 /tmp/jwt.py > /tmp/jwt.txt
+          JWT=$(cat /tmp/jwt.txt)
+          AUTH="Authorization: Bearer $JWT"
+          CT="Content-Type: application/json"
+          API="https://api.appstoreconnect.apple.com/v1"
+          APP_ID=6802559186
+
+          # 查找或创建 1.1.0 版本
+          VERSION_ID=$(curl -sSg -H "$AUTH" "$API/apps/$APP_ID/appStoreVersions?filter[versionString]=1.1.0&limit=1" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['data'][0]['id'] if d.get('data') else 'NONE')")
+          if [ "$VERSION_ID" = "NONE" ] || [ -z "$VERSION_ID" ]; then
+            VERSION_ID=$(curl -sSg -X POST "$API/appStoreVersions" -H "$AUTH" -H "$CT" \
+              -d '{"data":{"type":"appStoreVersions","attributes":{"platform":"MAC_OS","versionString":"1.1.0"},"relationships":{"app":{"data":{"type":"apps","id":"'$APP_ID'"}}}}}' \
+              | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('data',{}).get('id','ERR'))")
+          fi
+          echo "VERSION_ID=$VERSION_ID"
+
+          # 关联 build 7
+          BUILD_ID=$(curl -sSg -H "$AUTH" "$API/builds?filter[app]=$APP_ID&filter[version]=7&limit=1" | python3 -c "import json,sys; print(json.load(sys.stdin)['data'][0]['id'])")
+          curl -sSg -X PATCH "$API/appStoreVersions/$VERSION_ID" -H "$AUTH" -H "$CT" \
+            -d '{"data":{"type":"appStoreVersions","id":"'$VERSION_ID'","relationships":{"build":{"data":{"type":"builds","id":"'$BUILD_ID'"}}}}}' | head -3
+          echo "BUILD attached: $BUILD_ID"
+
+          # 设置 What's New（patch localizations）
+          WHATS_NEW="新增剪贴板历史：最近复制的内容自动存档，支持搜索、类型筛选、本地 OCR 与 Cmd+1-9 一键回贴；可排除密码管理器等指定应用，随时暂停记录。\n\n新增用户反馈：在设置、菜单栏或截图过程中即可向我们提交反馈，可附带截图与运行统计日志。\n\n新增 ⌥空格 应用启动器：搜索并打开应用、内置计算器、网页搜索、文件搜索。新增系统命令与收藏片段复制。\n\n本次更新同时包含界面与稳定性改进。"
+          LOC_ID=$(curl -sSg -H "$AUTH" "$API/appStoreVersions/$VERSION_ID/appStoreVersionLocalizations?limit=5" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['data'][0]['id'] if d.get('data') else 'NONE')")
+          if [ "$LOC_ID" != "NONE" ]; then
+            curl -sSg -X PATCH "$API/appStoreVersionLocalizations/$LOC_ID" -H "$AUTH" -H "$CT" \
+              -d "{\"data\":{\"type\":\"appStoreVersionLocalizations\",\"id\":\"$LOC_ID\",\"attributes\":{\"whatsNewText\":\"$WHATS_NEW\"}}}" | python3 -m json.tool | head -5
+          fi
+          echo "=== DONE: version=$VERSION_ID loc=$LOC_ID build=$BUILD_ID ==="
