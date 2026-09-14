@@ -1,3 +1,4 @@
+#if !APP_STORE
 import AppKit
 
 /// 文件名搜索（范围模式）：**目录索引缓存优先**（首扫落盘，之后内存过滤毫秒级）。
@@ -319,3 +320,4 @@ final class LauncherFileSearch {
         return map[ext.lowercased()] ?? ""
     }
 }
+#endif

@@ -63,7 +63,8 @@ enum LauncherWebSearch {
     }
 }
 
-/// 退出运行中的应用（P1 三件套之二）："退出 微信" / "退出chrome"
+#if !APP_STORE
+/// 退出运行中的应用（仅官网下载版）："退出 微信" / "退出chrome"
 @MainActor
 enum LauncherQuitService {
 
@@ -115,3 +116,4 @@ enum LauncherQuitService {
         return hits.prefix(5).map { Target(appName: $0.localizedName ?? "?", bundleID: $0.bundleIdentifier ?? "?") }
     }
 }
+#endif

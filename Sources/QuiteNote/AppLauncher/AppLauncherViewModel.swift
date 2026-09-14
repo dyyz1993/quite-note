@@ -1,26 +1,38 @@
 import SwiftUI
 import AppKit
 
-/// 启动器结果条目：应用 / 系统命令 / 文件 / 收藏·备忘文本 / 范围入口混合列表的统一身份
+/// 启动器结果条目。App Store 版只保留沙盒可用的项目。
 enum LauncherItem: Identifiable {
     case app(LauncherApp)
+#if !APP_STORE
     case command(LauncherCommand)
     case file(LauncherFile)
+#endif
     case text(LauncherTextItem)
+#if !APP_STORE
     case scope(LauncherScopeParser.Match)
+#endif
     case web(LauncherWebSearch.Query)
+#if !APP_STORE
     case quit(LauncherQuitService.Target)
+#endif
     case symbol(SymbolItem)
 
     var id: String {
         switch self {
         case .app(let app): return "app:" + app.id
+#if !APP_STORE
         case .command(let cmd): return "cmd:" + cmd.id
         case .file(let file): return "file:" + file.id
+#endif
         case .text(let item): return "text:" + item.id
+#if !APP_STORE
         case .scope: return "scope:files"
+#endif
         case .web(let q): return "web:" + q.presetName + q.term
+#if !APP_STORE
         case .quit(let t): return "quit:" + t.bundleID
+#endif
         case .symbol(let sym): return "sym:" + sym.id.uuidString
         }
     }
@@ -79,7 +91,9 @@ final class AppLauncherViewModel: ObservableObject {
         let t0 = DispatchTime.now()
         pendingConfirmCommandID = nil
 
-        // `f ` 前缀：文件搜索模式（Spotlight 异步查询，结果回调后落列表）
+        // 文件搜索会扫描用户目录，只保留在官网下载版；App Store 版需要
+        // 改为用户选择目录和安全书签，不能悄悄遍历 Desktop/Documents。
+#if !APP_STORE
         if FileModeParser.isFileMode(searchText) {
             isFileMode = true
             queryTokens = []
@@ -92,8 +106,11 @@ final class AppLauncherViewModel: ObservableObject {
             }
             return
         }
+#endif
         isFileMode = false
+#if !APP_STORE
         LauncherFileSearch.shared.cancel()
+#endif
 
         queryTokens = AppSearchService.tokenize(searchText)
         // 算式优先：输入像算式且可求值 → 顶部出结果卡（输入中途 "12+" 也切计算模式，求值失败不显示）
@@ -104,12 +121,14 @@ final class AppLauncherViewModel: ObservableObject {
             calculatorResult = nil
         }
         let store = AppCatalogStore.shared
-        // 排序：范围入口 → 收藏片段/备忘（用户高频内容）→ 系统命令 → 应用
+        // 排序：网页搜索 → 收藏片段/备忘 → 符号 → 应用。
+        // 非 App Store 渠道额外提供本机系统集成能力。
         var items: [LauncherItem] = []
-        // 网页搜索："搜索 swift 泛型" → 首行"在 Google 搜索"（退出应用的结果混排其后）
+        // 网页搜索："搜索 swift 泛型" → 首行"在 Google 搜索"
         if let web = LauncherWebSearch.parse(searchText) {
             items.append(.web(web))
         }
+#if !APP_STORE
         if let quitTargets = LauncherQuitService.parse(searchText) {
             items += quitTargets.map { .quit($0) }
         }
@@ -127,6 +146,7 @@ final class AppLauncherViewModel: ObservableObject {
             }
             items.append(.scope(scope))
         }
+#endif
         items += LauncherTextSearch.matchingItems(
             tokens: queryTokens, in: LauncherTextSearch.collect()
         ).map { .text($0) }
@@ -136,8 +156,10 @@ final class AppLauncherViewModel: ObservableObject {
                 .prefix(5)
                 .map { .symbol($0) }
         }
+#if !APP_STORE
         items += SystemCommandService.matchingCommands(tokens: queryTokens)
             .map { .command($0) }
+#endif
         items += AppSearchService.search(searchText, in: store.apps, recentIDs: store.recentIDs)
             .prefix(Self.maxVisible)
             .map { .app($0) }
@@ -205,22 +227,28 @@ final class AppLauncherViewModel: ObservableObject {
         switch results[index] {
         case .app(let app):
             launch(app, controller: controller)
+#if !APP_STORE
         case .command(let cmd):
             confirmOrExecute(cmd, controller: controller)
         case .file(let file):
             openFile(file, controller: controller)
+#endif
         case .text(let item):
             copyTextItem(item, controller: controller)
+#if !APP_STORE
         case .scope:
             enterFileScope(controller: controller)
+#endif
         case .web(let query):
             controller.hide()
             NSWorkspace.shared.open(query.url)
             DiagnosticCenter.info("Launcher", "网页搜索：\(query.presetName)「\(query.term)」")
+#if !APP_STORE
         case .quit(let target):
             controller.hide()
             let ok = target.terminate()
             DiagnosticCenter.info("Launcher", "\(ok ? "已退出" : "退出失败")「\(target.appName)」")
+#endif
         case .symbol(let symbol):
             controller.hide()
             NSPasteboard.general.clearContents()
@@ -229,6 +257,7 @@ final class AppLauncherViewModel: ObservableObject {
         }
     }
 
+#if !APP_STORE
     /// 用默认应用打开文件（目录 = 在 Finder 打开）
     private func openFile(_ file: LauncherFile, controller: AppLauncherPanelController) {
         controller.hide()
@@ -243,6 +272,7 @@ final class AppLauncherViewModel: ObservableObject {
         searchText = term.isEmpty ? "'" : "' " + term
         recompute()
     }
+#endif
 
     /// 点击网页搜索行（与回车同语义）
     func activateWeb(_ query: LauncherWebSearch.Query, controller: AppLauncherPanelController) {
@@ -251,12 +281,14 @@ final class AppLauncherViewModel: ObservableObject {
         DiagnosticCenter.info("Launcher", "网页搜索：\(query.presetName)「\(query.term)」")
     }
 
+#if !APP_STORE
     /// 点击退出应用行（与回车同语义）
     func activateQuit(_ target: LauncherQuitService.Target, controller: AppLauncherPanelController) {
         controller.hide()
         let ok = target.terminate()
         DiagnosticCenter.info("Launcher", "\(ok ? "已退出" : "退出失败")「\(target.appName)」")
     }
+#endif
 
     /// 点击符号行（与回车同语义）
     func copySymbol(_ symbol: SymbolItem, controller: AppLauncherPanelController) {
@@ -266,10 +298,12 @@ final class AppLauncherViewModel: ObservableObject {
         DiagnosticCenter.info("Launcher", "已复制符号「\(symbol.content)」")
     }
 
+#if !APP_STORE
     /// 点击文件行（与回车同语义）
     func openFileTap(_ file: LauncherFile, controller: AppLauncherPanelController) {
         openFile(file, controller: controller)
     }
+#endif
 
     /// 复制收藏片段/备忘到剪贴板（↵ 与点击同语义；面板收起后 ⌘V 粘贴）。
     /// 文本条目写字符串；图片条目写原始图片数据。
@@ -289,6 +323,7 @@ final class AppLauncherViewModel: ObservableObject {
         DiagnosticCenter.info("Launcher", "已复制\(item.kind == .favorite ? "收藏片段" : "备忘")「\(item.title)」（\(item.copyText.utf8.count) 字节）")
     }
 
+#if !APP_STORE
     /// 点击命令行（与回车同语义：破坏性命令也要二次点击确认）
     func handleCommandTap(_ cmd: LauncherCommand, controller: AppLauncherPanelController) {
         confirmOrExecute(cmd, controller: controller)
@@ -315,6 +350,7 @@ final class AppLauncherViewModel: ObservableObject {
         controller.hide()
         SystemCommandService.execute(cmd.action, title: cmd.title)
     }
+#endif
 
     /// 复制计算结果并收起面板（↵ 默认路径，99% 场景）
     func copyCalculatorResult(controller: AppLauncherPanelController) {

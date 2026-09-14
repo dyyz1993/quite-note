@@ -1,3 +1,4 @@
+#if !APP_STORE
 import AppKit
 
 /// 启动器可执行命令（系统命令等非应用条目）
@@ -164,3 +165,4 @@ enum SystemCommandService {
         }
     }
 }
+#endif

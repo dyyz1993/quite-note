@@ -68,6 +68,9 @@ final class KeyboardShortcutManager {
         
         // 全局粘贴事件监听（当应用没有焦点时）
         // ⚠️ 粘贴仍然使用监视器，因为我们不需要拦截它，只是感知
+        // App Store 沙盒版剔除：全局 keyDown 监控需要 Input Monitoring 授权，
+        // 沙盒内静默失效且 App Review 会质询（沙盒审计 2026-09-15）
+        #if !APP_STORE
         pasteMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] e in
             guard let self = self else { return }
             
@@ -79,6 +82,7 @@ final class KeyboardShortcutManager {
                 }
             }
         }
+        #endif
         
         // ⚠️ 移除旧的全局监视器，因为它对截图快捷键不够可靠
         // globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] e in

@@ -170,12 +170,18 @@ struct AppLauncherView: View {
     private func row(_ index: Int, _ item: LauncherItem) -> some View {
         switch item {
         case .app(let app): appRow(index, app)
+#if !APP_STORE
         case .command(let cmd): commandRow(index, cmd)
         case .file(let file): fileRow(index, file)
+#endif
         case .text(let item): textRow(index, item)
+#if !APP_STORE
         case .scope(let match): scopeRow(index, match)
+#endif
         case .web(let query): webRow(index, query)
+#if !APP_STORE
         case .quit(let target): quitRow(index, target)
+#endif
         case .symbol(let symbol): symbolRow(index, symbol)
         }
     }
@@ -237,6 +243,7 @@ struct AppLauncherView: View {
         }
     }
 
+#if !APP_STORE
     /// 退出应用行："退出 微信" → "退出「微信」" ↵ terminate
     private func quitRow(_ index: Int, _ target: LauncherQuitService.Target) -> some View {
         let selected = index == vm.selectedIndex
@@ -293,6 +300,7 @@ struct AppLauncherView: View {
             vm.activateQuit(target, controller: controller)
         }
     }
+#endif
 
     /// 符号行（符号库 emoji 等）：↵ 复制符号内容
     private func symbolRow(_ index: Int, _ symbol: SymbolItem) -> some View {
@@ -352,6 +360,7 @@ struct AppLauncherView: View {
         }
     }
 
+#if !APP_STORE
     /// 范围入口行（"文件"等范围词命中时显示）：↵ 或点击进入文件搜索模式
     private func scopeRow(_ index: Int, _ match: LauncherScopeParser.Match) -> some View {
         let selected = index == vm.selectedIndex
@@ -410,6 +419,7 @@ struct AppLauncherView: View {
             vm.enterFileScope(controller: controller)
         }
     }
+#endif
 
     /// 收藏片段/备忘行：↵ 复制内容/图片到剪贴板
     private func textRow(_ index: Int, _ item: LauncherTextItem) -> some View {
@@ -481,6 +491,7 @@ struct AppLauncherView: View {
         }
     }
 
+#if !APP_STORE
     private func fileRow(_ index: Int, _ file: LauncherFile) -> some View {
         let selected = index == vm.selectedIndex
         return HStack(spacing: 10) {
@@ -537,6 +548,7 @@ struct AppLauncherView: View {
             openFileDirect(file)
         }
     }
+#endif
 
     /// 文件路径 ~ 缩写（/Users/xxx → ~）
     static func abbreviatedPath(_ path: String) -> String {
@@ -553,6 +565,7 @@ struct AppLauncherView: View {
         return abbreviatedPath(app.url.deletingLastPathComponent().path)
     }
 
+#if !APP_STORE
     private func openFileDirect(_ file: LauncherFile) {
         vm.openFileTap(file, controller: controller)
     }
@@ -617,6 +630,7 @@ struct AppLauncherView: View {
             vm.handleCommandTap(cmd, controller: controller)
         }
     }
+#endif
 
     private func appRow(_ index: Int, _ app: LauncherApp) -> some View {
         let selected = index == vm.selectedIndex

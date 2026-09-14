@@ -115,11 +115,15 @@ struct LauncherSettingsTab: View {
                 explanationRow("输入拼音首字母", "如 wx → 微信、gc → Google Chrome")
                 explanationRow("空搜索", "显示最近使用的应用（经启动器启动过的最近 10 个）")
                 explanationRow("快速计算", "12+34、(50-8)×2、2^10 幂、√144、5² 上标、π/e 常量，回车复制结果")
+#if !APP_STORE
                 explanationRow("系统命令", "锁屏 / 睡眠 / 切换深浅外观 / 清倒废纸篓 / 重启 / 关机（后三项需再按一次 ↵ 确认）")
                 explanationRow("搜文件", "输「文件」后空格或 ↵ 进入（也可 ' 或 ~ 前缀直通），回车用默认应用打开")
+#endif
                 explanationRow("搜收藏/备忘", "置顶的剪贴板文本与贴纸会出现在结果里（绿「收藏」/黄「备忘」），↵ 复制到剪贴板")
                 explanationRow("网页搜索", "搜索 词 / 百度 词 / gh 词 / so 词 / npm 词 / 知乎 词 → 回车用浏览器搜索")
+#if !APP_STORE
                 explanationRow("退出应用", "退出 应用名（如 退出 微信）→ 回车退出该运行中应用")
+#endif
                 explanationRow("搜符号", "符号库（emoji 等）按触发词混在结果里（黄「符号」徽标），↵ 复制")
             }
         }

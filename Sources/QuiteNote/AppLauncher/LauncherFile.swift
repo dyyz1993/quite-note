@@ -1,3 +1,4 @@
+#if !APP_STORE
 import Foundation
 
 /// 启动器文件搜索条目（`f ` 前缀模式的结果）
@@ -85,3 +86,4 @@ enum LauncherScopeParser {
         return nil
     }
 }
+#endif
