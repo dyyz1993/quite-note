@@ -1,0 +1,35 @@
+name: App Store Upload (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '版本号'
+        required: true
+        default: '1.1.0'
+
+jobs:
+  build-upload:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装密钥
+        env:
+          ASC_API_KEY_P8_BASE64: ${{ secrets.ASC_API_KEY_P8_BASE64 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+        run: |
+          mkdir -p ~/.appstoreconnect/private_keys
+          echo "$ASC_API_KEY_P8_BASE64" | base64 -d > ~/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8
+
+      - name: 构建沙盒版并上传
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: ./build-app-store.sh "${{ inputs.version }}" --upload
+
+      - name: 上传 pkg 为 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: QuiteNote-${{ inputs.version }}-macOS.pkg
+          path: QuiteNote-*-macOS.pkg
