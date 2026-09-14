@@ -87,8 +87,16 @@ jobs:
           echo "=== 关联 build 7 ==="
           BUILD_ID=$(curl -sSg -H "$AUTH" "$API/builds?filter[app]=$APP_ID&filter[version]=7&limit=1" | python3 -c "import json,sys; print(json.load(sys.stdin)['data'][0]['id'])")
           echo "BUILD_ID=$BUILD_ID"
-          curl -sSg -X POST "$API/appStoreVersions/$VERSION_ID/relationships/build" \
+          curl -sSg -X PATCH "$API/appStoreVersions/$VERSION_ID" \
             -H "$AUTH" -H "$CT" \
-            -d '{ "data": { "type": "builds", "id": "'$BUILD_ID'" } }' | python3 -m json.tool | head -5
+            -d '{
+              "data": {
+                "type": "appStoreVersions",
+                "id": "'$VERSION_ID'",
+                "relationships": {
+                  "build": { "data": { "type": "builds", "id": "'$BUILD_ID'" } }
+                }
+              }
+            }' | python3 -m json.tool | head -5
 
           echo "=== 完成：版本 $VERSION_ID 已关联构建 $BUILD_ID ==="
