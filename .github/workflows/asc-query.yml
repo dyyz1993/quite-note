@@ -37,13 +37,13 @@ jobs:
           JWT=$(cat /tmp/jwt.txt)
           AUTH="Authorization: Bearer $JWT"
           echo "=== App 记录 ==="
-          curl -sS -H "$AUTH" "https://api.appstoreconnect.apple.com/v1/apps?filter[bundleId]=com.quitenote.app&limit=1" | python3 -m json.tool | head -30
-          APP_ID=$(curl -sS -H "$AUTH" "https://api.appstoreconnect.apple.com/v1/apps?filter[bundleId]=com.quitenote.app&limit=1" | python3 -c "import json,sys; print(json.load(sys.stdin)['data'][0]['id'])")
+          curl -sSg -H "$AUTH" "https://api.appstoreconnect.apple.com/v1/apps?filter[bundleId]=com.quitenote.app&limit=1" | python3 -m json.tool | head -30
+          APP_ID=$(curl -sSg -H "$AUTH" "https://api.appstoreconnect.apple.com/v1/apps?filter[bundleId]=com.quitenote.app&limit=1" | python3 -c "import json,sys; print(json.load(sys.stdin)['data'][0]['id'])")
           echo "APP_ID=$APP_ID"
           echo "=== 版本记录（状态与资料） ==="
-          curl -sS -H "$AUTH" "https://api.appstoreconnect.apple.com/v1/apps/$APP_ID/appStoreVersions?limit=10" | python3 -m json.tool | head -80
+          curl -sSg -H "$AUTH" "https://api.appstoreconnect.apple.com/v1/apps/$APP_ID/appStoreVersions?limit=10" | python3 -m json.tool | head -80
           echo "=== 构建列表 ==="
-          curl -sS -H "$AUTH" "https://api.appstoreconnect.apple.com/v1/builds?filter[app]=$APP_ID&limit=10&sort=-uploadedDate" | python3 -c "
+          curl -sSg -H "$AUTH" "https://api.appstoreconnect.apple.com/v1/builds?filter[app]=$APP_ID&limit=10&sort=-uploadedDate" | python3 -c "
           import json,sys
           d = json.load(sys.stdin)
           for b in d.get('data', []):
