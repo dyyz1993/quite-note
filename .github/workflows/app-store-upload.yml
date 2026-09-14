@@ -14,8 +14,8 @@ jobs:
     steps:
       - name: 下载 pkg
         run: |
-          curl -sL -o pkg.tar.gz "https://github.com/${{ github.repository }}/releases/download/v${{ inputs.version }}-upload/QuiteNote-${{ inputs.version }}-macOS.pkg"
-          file pkg.tar.gz
+          curl -sL -o "QuiteNote-${{ inputs.version }}-macOS.pkg" "https://github.com/${{ github.repository }}/releases/download/v${{ inputs.version }}-upload/QuiteNote-${{ inputs.version }}-macOS.pkg"
+          ls -lh QuiteNote-*.pkg
 
       - name: 安装 ASC 密钥
         env:
