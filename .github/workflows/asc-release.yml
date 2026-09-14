@@ -1,0 +1,95 @@
+name: ASC Release 1.1.0 (manual)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  release:
+    runs-on: macos-latest
+    steps:
+      - name: Prepare key
+        env:
+          ASC_API_KEY_P8_BASE64: ${{ secrets.ASC_API_KEY_P8_BASE64 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          mkdir -p ~/.appstoreconnect/private_keys
+          echo "$ASC_API_KEY_P8_BASE64" | base64 -d > ~/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8
+
+      - name: Create version, attach build, submit
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          cat > /tmp/jwt.py <<'PYEOF'
+          import base64, json, time, subprocess, os
+          key_id, issuer = os.environ["ASC_KEY_ID"], os.environ["ASC_ISSUER_ID"]
+          h = base64.urlsafe_b64encode(json.dumps({"alg":"ES256","kid":key_id,"typ":"JWT"}).encode()).rstrip(b"=")
+          p = base64.urlsafe_b64encode(json.dumps({"iss":issuer,"exp":int(time.time())+1200,"aud":"appstoreconnect-v1"}).encode()).rstrip(b"=")
+          s2 = h + b"." + p
+          open("/tmp/sig_input","wb").write(s2)
+          der = subprocess.run(["openssl","dgst","-sha256","-sign","/tmp/asc.p8","/tmp/sig_input"],capture_output=True).stdout
+          def read_len(d, i):
+              l = d[i]; i += 1
+              if l & 0x80:
+                  n = l & 0x7f; l = int.from_bytes(d[i:i+n],"big"); i += n
+              return l, i
+          i = 2
+          ints = []
+          for _ in range(2):
+              i += 1
+              l, i = read_len(der, i)
+              v = der[i:i+l]; i += l
+              ints.append(v.rjust(32, b"\x00")[-32:])
+          raw = ints[0] + ints[1]
+          print((s2 + b"." + base64.urlsafe_b64encode(raw).rstrip(b"=")).decode())
+          PYEOF
+          sed -i '' 's/^          //' /tmp/jwt.py
+          python3 /tmp/jwt.py > /tmp/jwt.txt
+          JWT=$(cat /tmp/jwt.txt)
+          AUTH="Authorization: Bearer $JWT"
+          CT="Content-Type: application/json"
+          API="https://api.appstoreconnect.apple.com/v1"
+          APP_ID=6802559186
+
+          # 1. 创建 1.1.0 版本记录（iOS 版 platform = MACOS）
+          echo "=== 创建 1.1.0 版本记录 ==="
+          VERSION_RESP=$(curl -sSg -X POST "$API/appStoreVersions" \
+            -H "$AUTH" -H "$CT" \
+            -d '{
+              "data": {
+                "type": "appStoreVersions",
+                "attributes": {
+                  "platform": "MACOS",
+                  "versionString": "1.1.0"
+                },
+                "relationships": {
+                  "app": { "data": { "type": "apps", "id": "'$APP_ID'" } }
+                }
+              }
+            }')
+          echo "$VERSION_RESP" | python3 -m json.tool | head -20
+          VERSION_ID=$(echo "$VERSION_RESP" | python3 -c "
+          import json,sys
+          d=json.load(sys.stdin)
+          if 'data' in d: print(d['data']['id'])
+          else:
+              # 已存在则查找
+              print('EXISTS')
+          " 2>/dev/null || echo "EXISTS")
+
+          if [ "$VERSION_ID" = "EXISTS" ] || [ -z "$VERSION_ID" ]; then
+            echo "版本已存在，查找现有 ID..."
+            VERSION_ID=$(curl -sSg -H "$AUTH" "$API/apps/$APP_ID/appStoreVersions?filter[versionString]=1.1.0&limit=1" | python3 -c "import json,sys; print(json.load(sys.stdin)['data'][0]['id'])")
+          fi
+          echo "VERSION_ID=$VERSION_ID"
+
+          # 2. 关联 build 7
+          echo "=== 关联 build 7 ==="
+          BUILD_ID=$(curl -sSg -H "$AUTH" "$API/builds?filter[app]=$APP_ID&filter[version]=7&limit=1" | python3 -c "import json,sys; print(json.load(sys.stdin)['data'][0]['id'])")
+          echo "BUILD_ID=$BUILD_ID"
+          curl -sSg -X POST "$API/appStoreVersions/$VERSION_ID/relationships/build" \
+            -H "$AUTH" -H "$CT" \
+            -d '{ "data": { "type": "builds", "id": "'$BUILD_ID'" } }' | python3 -m json.tool | head -5
+
+          echo "=== 完成：版本 $VERSION_ID 已关联构建 $BUILD_ID ==="
