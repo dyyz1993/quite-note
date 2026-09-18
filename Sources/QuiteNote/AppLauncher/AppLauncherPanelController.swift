@@ -76,10 +76,20 @@ final class AppLauncherPanelController {
             guard let self, let panel = self.panel, panel.isVisible, !panel.isKeyWindow else { return }
             DiagnosticCenter.warning("Launcher", "激活被拒（accessory 策略），启用 .regular 重锤")
             NSApp.setActivationPolicy(.regular)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                 NSApp.activate(ignoringOtherApps: true)
                 panel.makeKeyAndOrderFront(nil)
+            }
+            // 无论 key 是否成功，确认聚焦后切回 .accessory（否则 Dock 图标常驻）
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 if panel.isKeyWindow {
+                    NSApp.setActivationPolicy(.accessory)
+                } else {
+                    // 再试一次 makeKey
+                    panel.makeKey()
+                }
+                // 最终确保切回（不能让 Dock 图标常驻）
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                     NSApp.setActivationPolicy(.accessory)
                 }
             }
@@ -102,6 +112,10 @@ final class AppLauncherPanelController {
     }
 
     func hide() {
+        if policyDanced {
+            NSApp.setActivationPolicy(.accessory)
+            policyDanced = false
+        }
         panel?.orderOut(nil)
         removeKeyMonitor()
         GlobalHotkeyManager.shared.unregister(id: 5003)
@@ -109,6 +123,7 @@ final class AppLauncherPanelController {
     }
 
     private var lastScreen: NSScreen?
+    private var policyDanced = false
 
     /// 高度自适应内容（视图在结果数/模式变化时调用）：顶边锚定不动、只改高度，
     /// 静态 setFrame（无逐帧动画，避开 NSHostingView 与窗口 resize 并发的崩溃红线）

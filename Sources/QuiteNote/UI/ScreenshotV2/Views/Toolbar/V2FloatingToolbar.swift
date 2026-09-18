@@ -1,53 +1,93 @@
 import SwiftUI
 
-/// 普通截图模式的浮动工具栏
-/// 负责显示标注工具和操作按钮
+/// Screenshot toolbar - auto-positions and supports dragging
 struct V2FloatingToolbar: View {
     let selection: CGRect
     let screen: NSScreen
     @ObservedObject var stateManager = V2PrimaryScreenStateManager.shared
 
+    @State private var dragOffset: CGSize = .zero
+    @State private var accumulatedDrag: CGSize = .zero
+    @State private var isBeingDragged = false
+
     var body: some View {
-        // 普通截图模式：显示标注工具栏
+        toolbarContent
+            .overlay(alignment: .top) { dragHandle }
+            .offset(dragOffset)
+            .position(positionInScreen)
+            // 实时跟随选区（不用 spring——快速拖拽时 spring 会追不上）
+    }
+
+    private var toolbarContent: some View {
         V2AnnotationToolbar(stateManager: stateManager)
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .onHover { hovering in
                 stateManager.isMouseOverUI = hovering
             }
-            .position(calculatePosition())
-            .transition(.move(edge: .bottom).combined(with: .opacity))
-            .animation(.spring(response: 0.3), value: selection)
     }
 
-    /// 计算工具栏位置（添加边界约束防止超出屏幕）
-    private func calculatePosition() -> CGPoint {
-        let toolbarHeight: CGFloat = 60
-        let toolbarWidth: CGFloat = 400  // ✅ 估算工具栏宽度
-        let spacing: CGFloat = 12
-        let margin: CGFloat = 20  // ✅ 边距
+    private var dragHandle: some View {
+        RoundedRectangle(cornerRadius: 3)
+            .fill(Color.white.opacity(isBeingDragged ? 0.4 : 0.12))
+            .frame(width: 60, height: 5)
+            .padding(.top, 1)
+            .contentShape(Rectangle())
+            .gesture(dragGesture)
+            .onHover { h in
+                if h { NSCursor.pointingHand.push() } else { NSCursor.pop() }
+            }
+    }
 
-        // 计算允许的 X 坐标范围
-        let minX = toolbarWidth / 2 + margin
-        let maxX = screen.frame.width - toolbarWidth / 2 - margin
+    private var dragGesture: some Gesture {
+        DragGesture()
+            .onChanged { value in
+                isBeingDragged = true
+                let w = accumulatedDrag.width + value.translation.width
+                let h = accumulatedDrag.height + value.translation.height
+                accumulatedDrag = CGSize(width: w, height: h)
+                dragOffset = accumulatedDrag
+            }
+            .onEnded { _ in
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    isBeingDragged = false
+                }
+            }
+    }
+
+    private var positionInScreen: CGPoint {
+        let base = calculatePosition()
+        return CGPoint(x: base.x + dragOffset.width, y: base.y + dragOffset.height)
+    }
+
+    private func calculatePosition() -> CGPoint {
+        let toolbarHeight: CGFloat = 48
+        let toolbarWidth: CGFloat = 420
+        let spacing: CGFloat = 12
+        let margin: CGFloat = 16
+
+        let visibleFrame = screen.visibleFrame
+        let minX = visibleFrame.minX + toolbarWidth / 2 + margin
+        let maxX = visibleFrame.maxX - toolbarWidth / 2 - margin
         let constrainedX = max(minX, min(maxX, selection.midX))
 
-        // 1. 优先尝试底部
         let bottomY = selection.maxY + toolbarHeight / 2 + spacing
-        if bottomY < screen.frame.height - margin {
+        if bottomY + toolbarHeight / 2 < visibleFrame.maxY - margin {
             return CGPoint(x: constrainedX, y: bottomY)
         }
 
-        // 2. 尝试顶部
         let topY = selection.minY - toolbarHeight / 2 - spacing
-        if topY > margin {
+        if topY - toolbarHeight / 2 > visibleFrame.minY + margin {
             return CGPoint(x: constrainedX, y: topY)
         }
 
-        // 3. 全屏或空间不足：显示在选区内部底部
+        let innerY = min(
+            selection.maxY - toolbarHeight / 2 - spacing - 10,
+            visibleFrame.maxY - toolbarHeight / 2 - margin
+        )
         return CGPoint(
             x: constrainedX,
-            y: selection.maxY - toolbarHeight / 2 - spacing - 10
+            y: max(visibleFrame.minY + toolbarHeight / 2 + margin, innerY)
         )
     }
 }
