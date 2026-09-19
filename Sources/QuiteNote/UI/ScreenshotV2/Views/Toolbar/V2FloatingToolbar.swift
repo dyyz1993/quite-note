@@ -7,13 +7,11 @@ struct V2FloatingToolbar: View {
     @ObservedObject var stateManager = V2PrimaryScreenStateManager.shared
 
     @State private var dragOffset: CGSize = .zero
-    @State private var accumulatedDrag: CGSize = .zero
     @State private var isBeingDragged = false
 
     var body: some View {
         toolbarContent
             .overlay(alignment: .top) { dragHandle }
-            .offset(dragOffset)
             .position(positionInScreen)
             // 实时跟随选区（不用 spring——快速拖拽时 spring 会追不上）
     }
@@ -43,10 +41,8 @@ struct V2FloatingToolbar: View {
         DragGesture()
             .onChanged { value in
                 isBeingDragged = true
-                let w = accumulatedDrag.width + value.translation.width
-                let h = accumulatedDrag.height + value.translation.height
-                accumulatedDrag = CGSize(width: w, height: h)
-                dragOffset = accumulatedDrag
+                // value.translation 是相对手势起点的总位移，直接使用
+                dragOffset = value.translation
             }
             .onEnded { _ in
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
