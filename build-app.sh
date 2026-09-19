@@ -124,7 +124,15 @@ done
 # 构建 release 版本
 if [ "$SKIP_BUILD" = false ]; then
     echo "正在编译应用..."
-    swift build -c release --product QuiteNote
+    # App Store target must compile out integrations that macOS App Sandbox
+    # cannot support (for example arbitrary process control and home-folder
+    # file crawling). The Developer ID/open-source build keeps those optional
+    # power-user integrations.
+    SWIFT_BUILD_ARGS=(-c release --product QuiteNote)
+    if [ "$APP_STORE_MODE" = true ]; then
+        SWIFT_BUILD_ARGS+=(-Xswiftc -D -Xswiftc APP_STORE)
+    fi
+    swift build "${SWIFT_BUILD_ARGS[@]}"
 else
     echo "使用已编译的二进制文件..."
 fi

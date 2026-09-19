@@ -14,6 +14,15 @@
 4. 使用 Mac Installer Distribution 证书生成 `QuiteNote-<版本>-macOS.pkg`。
 5. 校验应用签名和安装包签名。
 
+## 双渠道功能策略
+
+同一代码库提供两种可分发版本：
+
+- **官网下载版**：使用 `./build-release.sh <版本>` 进行 Developer ID 签名和公证；保留启动器的文件搜索、系统命令和“退出其他应用”等本机效率工具。
+- **Mac App Store 版**：使用本文件的 `./build-app-store.sh <版本>`；构建脚本会传入 `APP_STORE` 编译条件，直接排除终止其他 App、Apple Events / 外部系统命令，以及对桌面、文稿、下载等目录的递归搜索。其余核心功能保持一致。
+
+这不是单纯隐藏按钮：不兼容实现不会编译进 App Store 二进制，避免在审核环境中出现失效入口或沙盒违规行为。
+
 ## 首次配置
 
 在 Apple Developer 后台完成以下项目：

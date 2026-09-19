@@ -229,6 +229,23 @@ if plutil -extract 'com.apple.security.files.downloads.read-write' raw -o - "$SI
 fi
 rm -f "$SIGNED_ENTITLEMENTS"
 
+# The direct-download build intentionally offers a few local power-user
+# integrations. They must be compiled out of the App Store binary rather than
+# merely hidden, because App Sandbox forbids arbitrary app termination,
+# external system control, and raw well-known-folder crawling.
+APP_BINARY="$APP_PATH/Contents/MacOS/QuiteNote"
+FORBIDDEN_STORE_SURFACE='NSAppleScript|System Events|empty trash|CGSession|pmset|LauncherQuitService|/Downloads|/Documents|/Desktop|scanCommonDirectories|scanAllForIndex'
+if [ ! -x "$APP_BINARY" ]; then
+    echo "❌ 找不到已签名的主程序：$APP_BINARY"
+    exit 3
+fi
+if strings "$APP_BINARY" | grep -E "$FORBIDDEN_STORE_SURFACE"; then
+    echo "❌ App Store 二进制仍包含沙盒不兼容的启动器实现。"
+    echo "   请确认 --app-store 构建使用 APP_STORE 编译条件，而不是只隐藏界面。"
+    exit 3
+fi
+echo "✅ 已确认 App Store 二进制不含沙盒不兼容的启动器实现"
+
 echo "📦 创建 Mac App Store .pkg..."
 rm -f "$PKG_FILE"
 productbuild \
