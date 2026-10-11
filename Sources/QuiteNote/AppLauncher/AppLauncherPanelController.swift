@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 /// 应用启动器面板按键动作（窗口内快捷键）
-enum AppLauncherKeyAction {
+enum AppLauncherKeyAction: Equatable {
     case moveUp
     case moveDown
     case launchSelected   // Return / 小键盘 Enter
@@ -99,9 +99,16 @@ final class AppLauncherPanelController {
 
         // ESC 注册为 Carbon 热键（面板打开期间）：搜狗在「搜索框聚焦+中文模式」下
         // 会在 app 之前吞掉裸 ESC（实测单/双击都到不了 NSEvent 监听器），Carbon 层
-        // 拦截可绕过输入法。面板隐藏即注销（失焦自动收起保证了暴露窗口极小）
+        // 拦截可绕过输入法。面板隐藏即注销（失焦自动收起保证了暴露窗口极小）。
+        // 走 onKeyAction(.escape) 而非直调 hide()：与 NSEvent 路径同语义
+        // （破坏性命令的二次确认态要先撤销，而不是直接关面板）
         GlobalHotkeyManager.shared.register(key: "esc", modifiers: [], id: 5003) { [weak self] in
-            self?.hide()
+            guard let self else { return }
+            if let handler = self.onKeyAction {
+                handler(.escape)
+            } else {
+                self.hide()
+            }
         }
 
         // 首次打开扫描应用目录；距上次超过 5 分钟后台重扫（新装/卸载）
@@ -206,9 +213,15 @@ final class AppLauncherPanelController {
                 let keyNow = NSApp.keyWindow.map { String(describing: type(of: $0)) } ?? "nil"
                 DiagnosticCenter.info("Launcher", "ESC 到达 app（事件窗口: \(target)，当前 key: \(keyNow)）")
             }
-            guard let self, let window = event.window, window === self.panel, window.isKeyWindow else { return event }
+            // 不校验 isKeyWindow：event.window === panel 已保证事件目标是本面板的
+            // 响应者链；激活重试/policy 切换期间 key 状态抖动时按键照样可用
+            guard let self, let window = event.window, window === self.panel else { return event }
+            // 输入法组合态（marked text）放行 Return/方向键：搜狗拼音打字时回车是
+            // "上屏候选词"，拦截会让候选词没上屏就启动了选中应用
+            if Self.isIMEComposing(), Self.mapKey(event) != nil { return event }
             guard let action = Self.mapKey(event) else { return event }
-            self.onKeyAction?(action)
+            guard let handler = self.onKeyAction else { return event } // 处理器未接线时不偷键
+            handler(action)
             return nil // 消费事件
         }
     }
@@ -220,8 +233,16 @@ final class AppLauncherPanelController {
         }
     }
 
-    /// 按键映射：↑↓ / Return / Esc / ⌘1–9 / ⌘W
-    private static func mapKey(_ event: NSEvent) -> AppLauncherKeyAction? {
+    /// 搜索框 field editor 是否处于输入法组合态（拼音未上屏）
+    private static func isIMEComposing() -> Bool {
+        guard let client = NSApp.keyWindow?.firstResponder as? NSTextInputClient else { return false }
+        return client.hasMarkedText()
+    }
+
+    /// 按键映射：↑↓ / Return / Esc / ⌘1–9 / ⌘W。
+    /// ⌥ 修饰残留宽容：唤起热键是 ⌥空格，用户松开 ⌥ 稍慢时按 ↓ 会带着 ⌥——
+    /// option-only 视同无修饰（⌘/⇧/⌃ 组合仍放行给文本框，如 ⇧↓ 选择文本）
+    nonisolated static func mapKey(_ event: NSEvent) -> AppLauncherKeyAction? {
         let flags = event.modifierFlags.intersection([.command, .option, .shift, .control])
         let keyCode = event.keyCode
 
@@ -234,7 +255,7 @@ final class AppLauncherPanelController {
             if keyCode == 36 || keyCode == 76 { return .copyCalcFull }  // ⌘↵
         }
 
-        if flags.isEmpty {
+        if flags.isEmpty || flags == .option {
             switch keyCode {
             case 125: return .moveDown
             case 126: return .moveUp

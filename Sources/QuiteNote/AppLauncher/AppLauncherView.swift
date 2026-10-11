@@ -97,6 +97,12 @@ struct AppLauncherView: View {
 
     // MARK: - 列表
 
+    /// LazyVStack 已物化行的 id 集合（近似可见窗口：物化范围 ⊇ 视口）。
+    /// 键盘导航时选中行已在窗口内部（收缩 1 行余量）就不滚动——Alfred 的
+    /// scrollRowToVisible 最小移动语义；此前 scrollTo(.center) 每次无条件
+    /// 居中，连按 ↓ 列表逐行抖动，手动滚动后按键还会丢弃用户滚动位置
+    @State private var materializedRowIDs: Set<String> = []
+
     private var listArea: some View {
         ScrollViewReader { proxy in
             ScrollView {
@@ -109,6 +115,8 @@ struct AppLauncherView: View {
                     }
                     ForEach(Array(vm.results.enumerated()), id: \.element.id) { index, item in
                         row(index, item)
+                            .onAppear { materializedRowIDs.insert(item.id) }
+                            .onDisappear { materializedRowIDs.remove(item.id) }
                     }
                     if vm.results.isEmpty && vm.calculatorResult == nil {
                         emptyState
@@ -117,9 +125,44 @@ struct AppLauncherView: View {
             }
             .onChange(of: vm.selectedIndex) { _ in
                 guard vm.results.indices.contains(vm.selectedIndex) else { return }
-                proxy.scrollTo(vm.results[vm.selectedIndex].id, anchor: .center)
+                let target = vm.results[vm.selectedIndex]
+                // 已在物化窗口内部（收缩 1 行）→ 视口内，不抢滚动位置
+                if isSettledVisible(target) { return }
+                // 出界方向决定 anchor：上方出界顶对齐，下方出界底对齐（最小滚动量）
+                let below = vm.selectedIndex > (materializedIndexRange()?.lowerBound ?? 0)
+                proxy.scrollTo(target.id, anchor: below ? .bottom : .top)
+            }
+            .onChange(of: vm.resultsVersion) { _ in
+                // 新结果落地：物化窗口作废重建；selectedIndex 恰为 0 时
+                // onChange(selectedIndex) 不触发，旧滚动偏移会残留——显式回顶
+                materializedRowIDs = []
+                if vm.selectedIndex == 0, let first = vm.results.first {
+                    proxy.scrollTo(first.id, anchor: .top)
+                }
             }
         }
+    }
+
+    /// 物化窗口覆盖的 results 下标范围（nil = 尚未有行物化）
+    private func materializedIndexRange() -> ClosedRange<Int>? {
+        guard !materializedRowIDs.isEmpty else { return nil }
+        var lo: Int?
+        var hi: Int?
+        for (i, item) in vm.results.enumerated() where materializedRowIDs.contains(item.id) {
+            if lo == nil || i < lo! { lo = i }
+            if hi == nil || i > hi! { hi = i }
+        }
+        guard let lo, let hi else { return nil }
+        return lo...hi
+    }
+
+    /// 选中行是否"确定在视口内"：位于物化窗口 [lo, hi] 收缩 1 行后的内部区间。
+    /// 收缩是保守方向——误判只会多滚一行（无害），不会让高亮跑出视口
+    private func isSettledVisible(_ item: LauncherItem) -> Bool {
+        guard let range = materializedIndexRange(),
+              range.count >= 3 else { return false }
+        guard let idx = vm.results.firstIndex(where: { $0.id == item.id }) else { return false }
+        return (range.lowerBound + 1...range.upperBound - 1).contains(idx)
     }
 
     /// 计算结果卡（输入算式时置顶显示，回车/点击复制）
@@ -236,7 +279,7 @@ struct AppLauncherView: View {
         }
         .contentShape(Rectangle())
         .onHover { hovering in
-            if hovering && vm.selectedIndex != index { vm.selectedIndex = index }
+            if hovering { vm.hoverSelect(index) }
         }
         .onTapGesture {
             vm.activateWeb(query, controller: controller)
@@ -294,7 +337,7 @@ struct AppLauncherView: View {
         }
         .contentShape(Rectangle())
         .onHover { hovering in
-            if hovering && vm.selectedIndex != index { vm.selectedIndex = index }
+            if hovering { vm.hoverSelect(index) }
         }
         .onTapGesture {
             vm.activateQuit(target, controller: controller)
@@ -353,7 +396,7 @@ struct AppLauncherView: View {
         }
         .contentShape(Rectangle())
         .onHover { hovering in
-            if hovering && vm.selectedIndex != index { vm.selectedIndex = index }
+            if hovering { vm.hoverSelect(index) }
         }
         .onTapGesture {
             vm.copySymbol(symbol, controller: controller)
@@ -411,8 +454,8 @@ struct AppLauncherView: View {
         }
         .contentShape(Rectangle())
         .onHover { hovering in
-            if hovering && vm.selectedIndex != index {
-                vm.selectedIndex = index
+            if hovering {
+                vm.hoverSelect(index)
             }
         }
         .onTapGesture {
@@ -482,8 +525,8 @@ struct AppLauncherView: View {
         }
         .contentShape(Rectangle())
         .onHover { hovering in
-            if hovering && vm.selectedIndex != index {
-                vm.selectedIndex = index
+            if hovering {
+                vm.hoverSelect(index)
             }
         }
         .onTapGesture {
@@ -540,8 +583,8 @@ struct AppLauncherView: View {
         }
         .contentShape(Rectangle())
         .onHover { hovering in
-            if hovering && vm.selectedIndex != index {
-                vm.selectedIndex = index
+            if hovering {
+                vm.hoverSelect(index)
             }
         }
         .onTapGesture {
@@ -622,8 +665,8 @@ struct AppLauncherView: View {
         }
         .contentShape(Rectangle())
         .onHover { hovering in
-            if hovering && vm.selectedIndex != index {
-                vm.selectedIndex = index
+            if hovering {
+                vm.hoverSelect(index)
             }
         }
         .onTapGesture {
@@ -696,8 +739,8 @@ struct AppLauncherView: View {
         }
         .contentShape(Rectangle())
         .onHover { hovering in
-            if hovering && vm.selectedIndex != index {
-                vm.selectedIndex = index
+            if hovering {
+                vm.hoverSelect(index)
             }
         }
         .onTapGesture {

@@ -68,6 +68,22 @@ final class AppLauncherViewModel: ObservableObject {
     private var pendingConfirmDate: Date?
     private let confirmWindow: TimeInterval = 4
 
+    // MARK: - hover 选中抑制（2026-10-11 三症状修复）
+    // 布局变化（recompute 换列表/面板重开）会让新行滑到静止光标下，macOS 合成
+    // mouseEntered → onHover(true) 触发——不带任何真实鼠标移动。若不拦截，
+    // 重置到 0 的选中会立刻被"光标下的行"覆盖（选中跳到下面的主根因），
+    // 惯性滚动期间还会与 scrollTo 形成"滚动被抢"的反馈循环。
+    // 判定：键盘导航/重算时记录当前光标位置并抑制；onHover 触发时光标位置
+    // 与记录不同 = 真实移动（解除抑制），相同 = 布局合成（拒绝）。纯查询
+    // NSEvent.mouseLocation，不依赖事件监听器（面板非 key 时也准确）。
+    private(set) var hoverSelectionSuppressed = true
+    private var lastHoverMouseLocation: CGPoint?
+
+    /// 结果集版本：每次 results 更新递增（含异步文件回调）。
+    /// 视图据此在新结果落地时把列表滚回顶部（selectedIndex 恰为 0 时
+    /// onChange(selectedIndex) 不触发，旧偏移会残留）。
+    private(set) var resultsVersion = 0
+
     /// 当前查询分词（归一化后），供名称高亮与区段判断
     private(set) var queryTokens: [String] = []
 
@@ -86,8 +102,12 @@ final class AppLauncherViewModel: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + coalesceInterval, execute: work)
     }
 
-    /// 全量重算：搜索 + 截断 + 选中归零（防抖到期、目录扫描完成、面板重开时调用）
+    /// 全量重算：搜索 + 截断 + 选中归零（防抖到期、目录扫描完成、面板重开时调用）。
+    /// 幂等取消挂起的防抖任务——resetInput/enterFileScope 同步重算后不再被 30ms 后的重复项打扰
     func recompute() {
+        coalesceWork?.cancel()
+        coalesceWork = nil
+        suppressHoverSelection()
         let t0 = DispatchTime.now()
         pendingConfirmCommandID = nil
 
@@ -102,7 +122,7 @@ final class AppLauncherViewModel: ObservableObject {
             let term = FileModeParser.fileTerm(searchText)
             LauncherFileSearch.shared.search(term) { [weak self] files in
                 guard let self, self.isFileMode else { return }
-                self.results = files.prefix(Self.maxVisible).map { .file($0) }
+                self.applyFileResults(files)
             }
             return
         }
@@ -140,7 +160,7 @@ final class AppLauncherViewModel: ObservableObject {
                 results = []
                 LauncherFileSearch.shared.search(scope.term) { [weak self] files in
                     guard let self, self.isFileMode else { return }
-                    self.results = files.prefix(Self.maxVisible).map { .file($0) }
+                    self.applyFileResults(files)
                 }
                 return
             }
@@ -164,6 +184,7 @@ final class AppLauncherViewModel: ObservableObject {
             .prefix(Self.maxVisible)
             .map { .app($0) }
         results = items
+        resultsVersion += 1
         pendingConfirmCommandID = nil
         if selectedIndex != 0 { selectedIndex = 0 }
         // 性能埋点：只在异常（计算 >5ms）时落盘，正常按键不打日志（防刷屏）；
@@ -182,24 +203,79 @@ final class AppLauncherViewModel: ObservableObject {
     func resetInput() {
         coalesceWork?.cancel()
         searchText = ""
-        recompute()   // 面板重开要立即可见，不走防抖
+        recompute()   // 面板重开要立即可见，不走防抖（recompute 幂等取消，不会再排重复项）
     }
+
+    // MARK: - 选中状态机（2026-10-11 重写：不回绕 + 防抖冲刷 + hover 抑制）
+
+    /// 键盘动作前冲刷挂起的防抖重算：保证 ↑↓/回车永远作用于**当前输入**的最新结果。
+    /// 否则打字后 30ms 内的按键在旧列表上移动/启动，随后 recompute 把选中重置为 0——
+    /// 按键被吞、甚至回车启动旧列表里的错误应用
+    func flushPendingRecompute() {
+        guard coalesceWork != nil else { return }
+        coalesceWork?.cancel()
+        coalesceWork = nil
+        recompute()
+    }
+
+    /// 键盘导航（Alfred 语义：到顶/到底即停，不回绕——回绕会让 ↑ 从第一项
+    /// 直接跳到最后一项，正是"选中跑到下面"的体验来源之一）
+    func moveSelection(up: Bool) {
+        guard !results.isEmpty else { return }
+        pendingConfirmCommandID = nil
+        suppressHoverSelection()
+        if up {
+            if selectedIndex > 0 { selectedIndex -= 1 }
+        } else {
+            if selectedIndex < results.count - 1 { selectedIndex += 1 }
+        }
+    }
+
+    /// 行 hover 选中入口（视图 onHover 统一调用）。抑制期内（键盘操作/重算后、
+    /// 鼠标未真实移动前）拒绝——挡住布局合成的 hover 事件抢走选中
+    func hoverSelect(_ index: Int, mouseLocation: CGPoint? = nil) {
+        let location = mouseLocation ?? NSEvent.mouseLocation
+        if location != lastHoverMouseLocation {
+            // 光标位置变了 = 真实移动，恢复 hover 选中（同一点触发 = 布局合成，维持抑制）
+            lastHoverMouseLocation = location
+            hoverSelectionSuppressed = false
+        }
+        guard !hoverSelectionSuppressed else { return }
+        if selectedIndex != index { selectedIndex = index }
+    }
+
+    private func suppressHoverSelection() {
+        hoverSelectionSuppressed = true
+        lastHoverMouseLocation = NSEvent.mouseLocation
+    }
+
+#if !APP_STORE
+    /// 文件/scope 模式异步搜索结果落地（早前直接赋值 results，绕过了选中重置——
+    /// 列表缩短时 selectedIndex 越界：无高亮、回车静默失效、下次 ↓ 从任意位置回绕）
+    func applyFileResults(_ files: [LauncherFile]) {
+        results = files.prefix(Self.maxVisible).map { .file($0) }
+        resultsVersion += 1
+        suppressHoverSelection()
+        if selectedIndex != 0 { selectedIndex = 0 }
+    }
+#endif
 
     // MARK: - 键盘动作（由面板控制器 onKeyAction 分发）
 
     func handle(_ action: AppLauncherKeyAction, controller: AppLauncherPanelController) {
         switch action {
         case .moveUp:
-            guard !results.isEmpty else { return }
-            pendingConfirmCommandID = nil
-            selectedIndex = (selectedIndex - 1 + results.count) % results.count
+            flushPendingRecompute()
+            moveSelection(up: true)
         case .moveDown:
-            guard !results.isEmpty else { return }
-            pendingConfirmCommandID = nil
-            selectedIndex = (selectedIndex + 1) % results.count
+            flushPendingRecompute()
+            moveSelection(up: false)
         case .copyCalcFull:
+            flushPendingRecompute()
             copyCalculatorFull(controller: controller)
         case .launchSelected:
+            // 先冲刷：打完字立刻回车时，算式结果/搜索结果必须已就绪
+            flushPendingRecompute()
             // 算式模式下回车 = 复制结果（Alfred 同款优先级；⌘1–9 仍可直开下方应用）
             if calculatorResult != nil {
                 copyCalculatorResult(controller: controller)
@@ -207,6 +283,7 @@ final class AppLauncherViewModel: ObservableObject {
             }
             activateItem(at: selectedIndex, controller: controller)
         case .launchIndex(let digit):
+            flushPendingRecompute()
             activateItem(at: digit - 1, controller: controller)
         case .escape:
             // Alfred 式：ESC 直接关面板（有二次确认态先撤确认）。
