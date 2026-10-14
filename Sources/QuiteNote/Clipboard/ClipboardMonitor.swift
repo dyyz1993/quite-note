@@ -1,3 +1,4 @@
+import QuiteNoteSharedStorage
 import Foundation
 import AppKit
 import UniformTypeIdentifiers

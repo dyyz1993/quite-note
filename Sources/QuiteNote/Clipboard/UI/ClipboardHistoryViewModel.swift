@@ -1,3 +1,4 @@
+import QuiteNoteSharedStorage
 import Foundation
 import SwiftUI
 import Combine
@@ -8,6 +9,8 @@ import Combine
 /// 在 NSHostingView 场景不可靠（实测搜索过滤不生效），防抖 workItem 也需要稳定的持有者。
 @MainActor
 final class ClipboardHistoryViewModel: ObservableObject {
+    private typealias ClipboardIndex = SearchIndexService<SearchIndexDocument<ClipboardEntry>>
+
     @Published var searchText = "" {
         didSet {
             // 同值写入守卫：输入框删空后继续按 Delete 会重复写 ""，
@@ -16,30 +19,98 @@ final class ClipboardHistoryViewModel: ObservableObject {
             scheduleSearchDebounce()
         }
     }
-    @Published private(set) var debouncedQuery = ""
+    @Published var debouncedQuery = ""
     @Published var filter: ClipboardFilter = .all {
         didSet {
             selectedIndex = 0
             resetViewport()
+            recomputeVisibleEntries()
         }
     }
     @Published var selectedIndex = 0
+    @Published private(set) var visibleEntries: [ClipboardEntry] = []
+    @Published private(set) var isSearching = false
 
-    // MARK: - 可见条目记忆化（每次按键 body 重算多次读取，不能每次都全量过滤+排序）
+    // MARK: - 可见条目（计算/DB 读取都不进入 SwiftUI body）
 
-    private var cachedVisible: [ClipboardEntry] = []
-    private var cacheKey = ""
+    private var searchGeneration = 0
+    private var visibleEntriesKey = ""
+    private var storeCancellable: AnyCancellable?
+    private let searchIndex = ClipboardIndex()
 
-    /// 当前可见条目：类型筛选 → 防抖搜索。按 (filter, debouncedQuery, entries.count,
-    /// entriesVersion) 记忆化——同一轮按键内多次读取只算一次
-    func visibleEntries(in store: ClipboardHistoryStore) -> [ClipboardEntry] {
-        let key = "\(filter.rawValue)|\(debouncedQuery)|\(store.entries.count)|\(store.entriesVersion)"
-        if key == cacheKey { return cachedVisible }
-        let filtered = store.entries.filter { filter.matches($0) }
-        let result = ClipboardSearchService.search(debouncedQuery, in: filtered)
-        cachedVisible = result
-        cacheKey = key
-        return result
+    /// 面板打开时接入 store。store 变化在事件回调里重算，避免 body 副作用。
+    func bind(store: ClipboardHistoryStore) {
+        guard storeCancellable == nil else { return }
+        storeCancellable = store.objectWillChange
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self, weak store] _ in
+                guard let self, let store else { return }
+                self.recomputeVisibleEntries(store: store)
+            }
+        recomputeVisibleEntries(store: store)
+    }
+
+    func recomputeVisibleEntries(store: ClipboardHistoryStore? = nil) {
+        let store = store ?? ClipboardHistoryStore.shared
+        let query = debouncedQuery
+        let filter = filter
+        let key = "\(filter.rawValue)|\(query)|\(store.entries.count)|\(store.entriesVersion)"
+        guard key != visibleEntriesKey else { return }
+        visibleEntriesKey = key
+
+        searchGeneration += 1
+        let generation = searchGeneration
+        if query.isEmpty {
+            visibleEntries = store.entries.filter { filter.matches($0) }
+            isSearching = false
+            visibleEntriesKey = key
+            return
+        }
+
+        isSearching = true
+        let token = DiagnosticCenter.beginMeasure("Clipboard", "历史搜索", threshold: 0.15)
+        DispatchQueue.global(qos: .userInitiated).async {
+            store.loadAllEntriesInBackground { allEntries in
+                // 统一索引负责快照匹配/排序/分页；内存增量仍即时合并，保证搜索期间的新剪贴板可见。
+                DispatchQueue.main.async { [weak self] in
+                    guard let self else { return }
+                    self.searchIndex.rebuild(using: {
+                        allEntries
+                            .filter { filter.matches($0) }
+                            .map(Self.indexDocument)
+                    }) { [weak self] _ in
+                        guard let self, self.searchGeneration == generation else { return }
+                        self.searchIndex.search(query, limit: 300) { [weak self] page in
+                            guard let self, self.searchGeneration == generation else { return }
+                            let results = page.documents.map(\.payload)
+                            let resultIDs = Set(results.map(\.id))
+                            let incremental = store.entries.filter {
+                                filter.matches($0) && !resultIDs.contains($0.id) &&
+                                ClipboardSearchService.matchScore(query: query, entry: $0) > 0
+                            }
+                            self.visibleEntries = results + incremental
+                            self.isSearching = false
+                            token.end()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private nonisolated static func indexDocument(_ entry: ClipboardEntry) -> SearchIndexDocument<ClipboardEntry> {
+        let fields = ClipboardSearchService.searchableFields(entry)
+        let title = entry.plainText ?? entry.sourceURL ?? entry.sourceApp ?? ""
+        return SearchIndexDocument(
+            id: entry.id.uuidString,
+            source: .clipboard,
+            payload: entry,
+            normalizedTitle: SearchIndexText.normalize(String(title.prefix(300))),
+            normalizedBody: SearchIndexText.normalize(fields.joined(separator: "\u{1f}")),
+            normalizedKeywords: [entry.sourceApp, entry.sourceBundleID].compactMap { $0 }.map(SearchIndexText.normalize),
+            createdAt: entry.createdAt,
+            isPinned: entry.isPinned
+        )
     }
 
     /// ←→ 循环切换筛选类型
@@ -56,23 +127,28 @@ final class ClipboardHistoryViewModel: ObservableObject {
 
     /// 重置输入（面板每次打开时调用）
     func resetInput() {
+        workItem?.cancel()
         searchText = ""
-        debouncedQuery = ""
+        commitQuery("")
         filter = .all
-        selectedIndex = 0
-        resetViewport()
+        recomputeVisibleEntries()
     }
 
     private func scheduleSearchDebounce() {
         workItem?.cancel()
         let text = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         let item = DispatchWorkItem { [weak self] in
-            self?.debouncedQuery = text
-            self?.selectedIndex = 0
-            self?.resetViewport()
+            self?.commitQuery(text)
         }
         workItem = item
         DispatchQueue.main.asyncAfter(deadline: .now() + debounceInterval, execute: item)
+    }
+
+    private func commitQuery(_ text: String) {
+        debouncedQuery = text
+        selectedIndex = 0
+        resetViewport()
+        recomputeVisibleEntries()
     }
 
     // MARK: - 视口锚定序号（用户模型）：⌘1 永远是视口最顶行，与选中态无关

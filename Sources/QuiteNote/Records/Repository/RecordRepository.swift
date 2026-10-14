@@ -43,6 +43,29 @@ final class RecordRepository {
         return records
     }
 
+    /// 启动器取用面语料（收藏记录 + 全部链接记录）：链接免点星全量可搜（用户
+    /// 高频取用物、数量小），文本须点星防噪声。不受主列表内存分页窗口限制。
+    func fetchSearchableRecords(limit: Int = 500) throws -> [Record] {
+        var records: [Record] = []
+        var fetchError: Error?
+
+        stack.context.performAndWait {
+            do {
+                let req = NSFetchRequest<CDRecord>(entityName: "CDRecord")
+                req.predicate = NSPredicate(format: "starred == YES OR type == 'url'")
+                req.sortDescriptors = [NSSortDescriptor(key: "createdAt", ascending: false)]
+                req.fetchLimit = limit
+                let cds = try stack.context.fetch(req)
+                records = cds.map { self.cdRecordToRecord($0) }
+            } catch {
+                fetchError = error
+            }
+        }
+
+        if let error = fetchError { throw error }
+        return records
+    }
+
     /// 根据 ID 查找记录
     func find(id: UUID) throws -> Record? {
         var record: Record?

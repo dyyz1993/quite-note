@@ -14,6 +14,7 @@ final class LauncherFileSearch {
     private var query: NSMetadataQuery?
     private var debounceWork: DispatchWorkItem?
     private var timeoutWork: DispatchWorkItem?
+    private var searchGeneration = 0
     private let debounceInterval: TimeInterval = 0.15
     private let queryTimeout: TimeInterval = 1.5
 
@@ -172,10 +173,27 @@ final class LauncherFileSearch {
             return
         }
 
-        // 索引路径（常态）：内存过滤毫秒级返回；顺手触发过期重扫（静默）
+        searchGeneration += 1
+        let generation = searchGeneration
+        let isCurrent: @MainActor ([LauncherFile]) -> Void = { files in
+            guard self.searchGeneration == generation else { return }
+            completion(files)
+        }
+        let deliverIfCurrent: ([LauncherFile]) -> Void = { files in
+            DispatchQueue.main.async {
+                Task { @MainActor in
+                    isCurrent(files)
+                }
+            }
+        }
+
+        // 索引路径（常态）：后台过滤/排序/补齐修改时间；主线程只交付未过期结果。
         ensureIndex()   // ensureIndex 会顺带触发首扫/过期重扫（后台，不阻塞本次搜索）
         if indexLoaded, !index.isEmpty {
-            completion(Self.filterIndex(term, in: index))
+            let snapshot = index
+            DispatchQueue.global(qos: .userInitiated).async {
+                deliverIfCurrent(Self.filterIndex(term, in: snapshot))
+            }
             rescanIndexIfStale()
             return
         }
@@ -190,6 +208,7 @@ final class LauncherFileSearch {
     }
 
     func cancel() {
+        searchGeneration += 1
         debounceWork?.cancel()
         timeoutWork?.cancel()
         stopQuery()

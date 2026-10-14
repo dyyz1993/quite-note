@@ -464,11 +464,11 @@ struct AppLauncherView: View {
     }
 #endif
 
-    /// 收藏片段/备忘行：↵ 复制内容/图片到剪贴板
+    /// 收藏片段/备忘/闪记行：↵ 复制内容/图片到剪贴板
     private func textRow(_ index: Int, _ item: LauncherTextItem) -> some View {
         let selected = index == vm.selectedIndex
-        let isFav = item.kind == .favorite
-        let tint = isFav ? Color(red: 0.2, green: 0.83, blue: 0.6) : Color(red: 0.98, green: 0.75, blue: 0.14)
+        let tint = textRowTint(item.kind)
+        let icon = textRowIcon(item.kind)
         return HStack(spacing: 10) {
             Text(index < 9 ? String(index + 1) : "·")
                 .font(.system(size: 11, weight: selected ? .semibold : .regular))
@@ -482,7 +482,7 @@ struct AppLauncherView: View {
                     .frame(width: 28, height: 28)
                     .background(RoundedRectangle(cornerRadius: 7).fill(tint.opacity(0.14)))
             } else {
-                LucideView(name: isFav ? .star : .fileText, size: 15, color: tint)
+                LucideView(name: icon, size: 15, color: tint)
                     .frame(width: 28, height: 28)
                     .background(RoundedRectangle(cornerRadius: 7).fill(tint.opacity(0.14)))
             }
@@ -499,7 +499,7 @@ struct AppLauncherView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            Text(isFav ? "收藏" : "备忘")
+            Text(item.kind.badge)
                 .font(.system(size: 10))
                 .foregroundColor(tint)
                 .padding(.horizontal, 7)
@@ -531,6 +531,22 @@ struct AppLauncherView: View {
         }
         .onTapGesture {
             vm.copyTextItem(item, controller: controller)
+        }
+    }
+
+    private func textRowTint(_ kind: LauncherTextItem.Kind) -> Color {
+        switch kind {
+        case .favorite: return Color(red: 0.2, green: 0.83, blue: 0.6)
+        case .memo: return Color(red: 0.98, green: 0.75, blue: 0.14)
+        case .flash: return .themeBlue400
+        }
+    }
+
+    private func textRowIcon(_ kind: LauncherTextItem.Kind) -> IconName {
+        switch kind {
+        case .favorite: return .star
+        case .memo: return .fileText
+        case .flash: return .zap
         }
     }
 

@@ -1,3 +1,4 @@
+import QuiteNoteSharedStorage
 import Foundation
 
 /// 剪贴板历史搜索（PRD 9）

@@ -1,3 +1,4 @@
+import QuiteNoteSharedStorage
 import XCTest
 @testable import QuiteNote
 

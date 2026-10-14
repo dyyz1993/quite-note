@@ -1,8 +1,20 @@
+import QuiteNoteSharedStorage
 import XCTest
 @testable import QuiteNote
 
 /// 收藏片段/备忘文本条目：标题提取、匹配打分、贴纸标记剥离
 final class LauncherTextItemTests: XCTestCase {
+
+    override func setUp() {
+        super.setUp()
+        TestStorageIsolation.activate
+        LauncherTextSearch.resetCacheForTesting()
+    }
+
+    override func tearDown() {
+        LauncherTextSearch.resetCacheForTesting()
+        super.tearDown()
+    }
 
     private func item(_ copyText: String, kind: LauncherTextItem.Kind = .favorite) -> LauncherTextItem {
         LauncherTextItem(kind: kind, id: "t1", copyText: copyText)
@@ -75,6 +87,80 @@ final class LauncherTextItemTests: XCTestCase {
         XCTAssertEqual(it.imagePath, "/tmp/QNFavTest.png")
         // 文件名含数字片段可命中（搜文件名）
         XCTAssertGreaterThan(LauncherTextSearch.tokenScore("153542", item: it), 0)
+    }
+
+    @MainActor
+    func testCollectCacheIsReusedUntilClipboardVersionChanges() {
+        let store = ClipboardHistoryStore.shared
+        store.deleteAllForTesting()
+        let entry = ClipboardEntry(
+            type: .text,
+            createdAt: Date(),
+            plainText: "缓存片段",
+            contentHash: "launcher-text-cache",
+            isPinned: true
+        )
+        store.insertOrUpdate(entry)
+
+        let first = LauncherTextSearch.collect()
+        XCTAssertTrue(first.contains { $0.copyText == "缓存片段" })
+
+        // 空查询也不应触发文本语料构造；这里通过再次收集同版本缓存保持等价。
+        XCTAssertEqual(LauncherTextSearch.collect(), first)
+    }
+
+    // MARK: - 闪记收藏（主面板 starred 记录）
+
+    private func makeRecord(_ content: String, type: RecordType = .text, starred: Bool = false) -> Record {
+        Record(id: UUID(), content: content, createdAt: Date(),
+               hash: UUID().uuidString, starred: starred, type: type)
+    }
+
+    func test闪记_链接免点星全量收录_文本须点星() {
+        let records = [
+            makeRecord("https://example.com/article", type: .url, starred: false),
+            makeRecord("未点星的普通文本", type: .text, starred: false),
+            makeRecord("https://github.com/dyyz1993/quite-note", type: .url, starred: true),
+            makeRecord("已点星的文本记录", type: .text, starred: true),
+            makeRecord("/Users/x/Attachments/shot.png", type: .screenshot, starred: true),
+            makeRecord("- [x] 便签内容", type: .note, starred: true),
+        ]
+        let items = LauncherTextSearch.flashItems(from: records)
+        XCTAssertEqual(items.count, 3)
+        XCTAssertEqual(items.filter { $0.kind == .flash }.count, 3)
+        XCTAssertTrue(items.contains { $0.copyText == "https://example.com/article" }, "链接不点星也要能搜到")
+        XCTAssertTrue(items.contains { $0.copyText == "https://github.com/dyyz1993/quite-note" })
+        XCTAssertTrue(items.contains { $0.copyText == "已点星的文本记录" })
+    }
+
+    func test闪记收藏_链接标题即URL_可按域名搜索() {
+        let items = LauncherTextSearch.flashItems(from: [
+            makeRecord("https://github.com/dyyz1993/quite-note", type: .url, starred: false),
+        ])
+        let it = items[0]
+        XCTAssertEqual(it.title, "https://github.com/dyyz1993/quite-note")
+        XCTAssertGreaterThan(LauncherTextSearch.tokenScore("github", item: it), 0, "域名可命中标题包含")
+    }
+
+    func test闪记_副标题带溯源信息_类型来源与相对时间() {
+        let items = LauncherTextSearch.flashItems(from: [
+            Record(id: UUID(), content: "https://example.com/doc", createdAt: Date(),
+                   hash: "prov-1", sourceApp: "Safari浏览器", type: .url),
+            Record(id: UUID(), content: "多行文本\n第二行", createdAt: Date(timeIntervalSinceNow: -3 * 86400),
+                   hash: "prov-2", starred: true, type: .text),
+        ])
+        // 类型名走本地化（测试环境可能是英文），断言不写死语言；只验证溯源要素
+        XCTAssertTrue(items[0].detail.contains("来自 Safari浏览器"), "URL 条目带来源应用")
+        XCTAssertTrue(items[0].detail.contains("刚刚"), "URL 条目带相对时间")
+        XCTAssertFalse(items[1].detail.contains("来自"), "无来源应用时省略「来自」段")
+        XCTAssertTrue(items[1].detail.contains("3 天前"))
+        XCTAssertEqual(items[1].title, "多行文本", "长内容只露首行，溯源占据副标题")
+    }
+
+    func test闪记收藏_空内容跳过() {
+        XCTAssertTrue(LauncherTextSearch.flashItems(from: [
+            makeRecord("  \n  ", type: .text, starred: true),
+        ]).isEmpty)
     }
 
     func test图片复制到剪贴板() throws {

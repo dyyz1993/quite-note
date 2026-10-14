@@ -1,3 +1,4 @@
+import QuiteNoteSharedStorage
 import Foundation
 import AppKit
 import CoreData
@@ -111,6 +112,32 @@ final class ClipboardHistoryStore: ObservableObject {
         hasMore = false
     }
 
+    /// 搜索用全量读取：后台 context 物化，不把 UI 线程当 CoreData 队列。
+    ///
+    /// 完成回调固定主线程。这里不改 `entries`：搜索语料是瞬时快照，避免把 UI
+    /// 首页/翻页状态一次性撑到全库大小。
+    nonisolated func loadAllEntriesInBackground(completion: @escaping ([ClipboardEntry]) -> Void) {
+        let container = searchCorpusContainer
+        let context = container.newBackgroundContext()
+        context.perform {
+            let request = NSFetchRequest<CDClipboardEntry>(entityName: "CDClipboardEntry")
+            request.sortDescriptors = [
+                NSSortDescriptor(key: "isPinned", ascending: false),
+                NSSortDescriptor(key: "createdAt", ascending: false),
+            ]
+            let objects = (try? context.fetch(request)) ?? []
+            let values = objects.map(\.asValue)
+            DispatchQueue.main.async {
+                completion(values)
+            }
+        }
+    }
+
+    /// 只允许主线程创建/读取；拷贝引用给后台 context 使用。
+    private nonisolated let searchCorpusContainer: NSPersistentContainer = {
+        MainActor.assumeIsolated { ClipboardHistoryPersistence.shared.container }
+    }()
+
     /// 测试辅助：清空全部条目（仅测试目标可见）
     #if DEBUG
     func deleteAllForTesting() {
@@ -177,6 +204,7 @@ final class ClipboardHistoryStore: ObservableObject {
         let entry = entries[index]
         persist(entry)
         resortInPlace()
+        bumpVersion()
     }
 
     /// 更新 OCR 结果（OCR 队列回调）

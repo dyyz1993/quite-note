@@ -1,3 +1,4 @@
+import QuiteNoteSharedStorage
 import SwiftUI
 
 /// 剪贴板历史面板配色（按用户指定的 Alfred「All Snippets」参考样式复刻）

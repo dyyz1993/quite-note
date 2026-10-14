@@ -1,3 +1,4 @@
+import QuiteNoteSharedStorage
 import SwiftUI
 import AppKit
 

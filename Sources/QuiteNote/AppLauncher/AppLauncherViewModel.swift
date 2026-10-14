@@ -46,12 +46,17 @@ enum LauncherItem: Identifiable {
 /// ② 列表上限 20 行（Alfred 级）；③ 选中态只在变化时发布。
 @MainActor
 final class AppLauncherViewModel: ObservableObject {
+    private typealias LauncherTextIndex = SearchIndexService<SearchIndexDocument<LauncherTextItem>>
+    private typealias LauncherAppIndex = SearchIndexService<SearchIndexDocument<LauncherApp>>
+
     /// 列表展示上限：宽泛查询（如单字符）bundleID/子序列会命中大量应用，封顶控制列表规模
     static let maxVisible = 20
 
     /// 快速输入合并窗口：连击期间只做一次搜索+发布
     private let coalesceInterval: TimeInterval = 0.03
     private var coalesceWork: DispatchWorkItem?
+    private let textIndex = LauncherTextIndex()
+    private let appIndex = LauncherAppIndex()
 
     @Published var searchText = "" {
         didSet { scheduleRecompute() }
@@ -167,9 +172,19 @@ final class AppLauncherViewModel: ObservableObject {
             items.append(.scope(scope))
         }
 #endif
-        items += LauncherTextSearch.matchingItems(
-            tokens: queryTokens, in: LauncherTextSearch.collect()
-        ).map { .text($0) }
+        if !queryTokens.isEmpty {
+            let textItems = LauncherTextSearch.collect()
+            let documents = textItems.map(Self.textIndexDocument)
+            textIndex.rebuild(documents: documents)
+            textIndex.search(searchText, limit: Self.maxVisible) { [weak self] page in
+                guard let self, self.searchText == searchText else { return }
+                let textResults = page.documents.map(\.payload).map { LauncherItem.text($0) }
+                self.results.insert(contentsOf: textResults, at: min(1, self.results.count))
+                self.resultsVersion += 1
+                self.suppressHoverSelection()
+                if self.selectedIndex != 0 { self.selectedIndex = 0 }
+            }
+        }
         // 符号库（emoji 等）：复用 SymbolConfigManager 的搜索（触发词/描述包含匹配）
         if !queryTokens.isEmpty {
             items += SymbolConfigManager.shared.searchSymbols(query: searchText)
@@ -180,9 +195,20 @@ final class AppLauncherViewModel: ObservableObject {
         items += SystemCommandService.matchingCommands(tokens: queryTokens)
             .map { .command($0) }
 #endif
-        items += AppSearchService.search(searchText, in: store.apps, recentIDs: store.recentIDs)
-            .prefix(Self.maxVisible)
-            .map { .app($0) }
+        let recentIDs = Set(store.recentIDs)
+        let appDocuments = store.apps.map { app -> SearchIndexDocument<LauncherApp> in
+            Self.appIndexDocument(app, scoreBonus: recentIDs.contains(app.id) ? 5 : 0)
+        }
+        appIndex.rebuild(documents: appDocuments)
+        let query = searchText
+        appIndex.search(searchText, limit: Self.maxVisible) { [weak self] page in
+            guard let self, self.searchText == query else { return }
+            let appResults = page.documents.map(\.payload).map { LauncherItem.app($0) }
+            self.results.append(contentsOf: appResults)
+            self.resultsVersion += 1
+            self.suppressHoverSelection()
+            if self.selectedIndex != 0 { self.selectedIndex = 0 }
+        }
         results = items
         resultsVersion += 1
         pendingConfirmCommandID = nil
@@ -200,8 +226,39 @@ final class AppLauncherViewModel: ObservableObject {
         }
     }
 
+    private nonisolated static func textIndexDocument(_ item: LauncherTextItem) -> SearchIndexDocument<LauncherTextItem> {
+        SearchIndexDocument(
+            id: item.id,
+            source: .launcherText,
+            payload: item,
+            title: item.title,
+            body: item.contentNormalized,
+            pinyin: item.pinyinCompact,
+            pinyinInitials: item.pinyinInitials,
+            isPinned: item.kind == .favorite
+        )
+    }
+
+    private nonisolated static func appIndexDocument(
+        _ app: LauncherApp,
+        scoreBonus: Int
+    ) -> SearchIndexDocument<LauncherApp> {
+        SearchIndexDocument(
+            id: app.id,
+            source: .launcherApp,
+            payload: app,
+            normalizedTitle: app.nameNormalized,
+            normalizedBody: app.bundleIDLower,
+            normalizedPinyin: app.pinyinCompact,
+            normalizedPinyinInitials: app.initialsNormalized,
+            scoreBonus: scoreBonus
+        )
+    }
+
     func resetInput() {
         coalesceWork?.cancel()
+        textIndex.cancel()
+        appIndex.cancel()
         searchText = ""
         recompute()   // 面板重开要立即可见，不走防抖（recompute 幂等取消，不会再排重复项）
     }
@@ -397,7 +454,7 @@ final class AppLauncherViewModel: ObservableObject {
         }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(item.copyText, forType: .string)
-        DiagnosticCenter.info("Launcher", "已复制\(item.kind == .favorite ? "收藏片段" : "备忘")「\(item.title)」（\(item.copyText.utf8.count) 字节）")
+        DiagnosticCenter.info("Launcher", "已复制\(item.kind.badge)片段「\(item.title)」（\(item.copyText.utf8.count) 字节）")
     }
 
 #if !APP_STORE

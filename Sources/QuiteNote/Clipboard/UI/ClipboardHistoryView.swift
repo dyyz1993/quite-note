@@ -1,3 +1,4 @@
+import QuiteNoteSharedStorage
 import SwiftUI
 import AppKit
 import Combine
@@ -59,15 +60,6 @@ struct ClipboardHistoryView: View {
     @State private var showDirectPastePermissionDialog = false
     @FocusState private var searchFocused: Bool
 
-    /// 当前可见条目：走 VM 记忆化（每次按键 body 重算会多次读取，全量过滤+排序
-    /// 每次重算是打字/删除卡顿的主因）。有搜索词时先补齐全量历史（幂等）
-    private var visibleEntries: [ClipboardEntry] {
-        if !vm.debouncedQuery.trimmingCharacters(in: .whitespaces).isEmpty {
-            store.loadAllIfNeeded()
-        }
-        return vm.visibleEntries(in: store)
-    }
-
     init(controller: ClipboardHistoryPanelController) {
         self.controller = controller
     }
@@ -96,6 +88,7 @@ struct ClipboardHistoryView: View {
             }
         }
         .onAppear {
+            vm.bind(store: store)
             wireKeyHandler()
         }
         .onDisappear {
@@ -135,7 +128,7 @@ struct ClipboardHistoryView: View {
                     controller.hide()
                 }
             default:
-                vm.handle(action, entries: visibleEntries) { paste($0) }
+                vm.handle(action, entries: vm.visibleEntries) { paste($0) }
             }
         }
     }
@@ -200,7 +193,7 @@ struct ClipboardHistoryView: View {
                 .pointingHandCursor()
             }
             Spacer()
-            Text("\(visibleEntries.count) 条")
+            Text("\(vm.visibleEntries.count) 条")
                 .font(.system(size: 11))
                 .foregroundColor(ClipboardPalette.textTertiary)
         }
@@ -216,7 +209,7 @@ struct ClipboardHistoryView: View {
 
     private var contentArea: some View {
         Group {
-            if visibleEntries.isEmpty {
+            if vm.visibleEntries.isEmpty {
                 emptyStateView
             } else {
                 // 双栏布局（参考图）：左列表 + 右选中条目详情
@@ -244,16 +237,16 @@ struct ClipboardHistoryView: View {
     /// 对齐 Alfred 手感；SwiftUI ScrollView 方案已废弃）
     private var entryList: some View {
         ClipboardListTableView(
-            entries: visibleEntries,
+            entries: vm.visibleEntries,
             entriesVersion: store.entriesVersion,
             selectedIndex: $vm.selectedIndex,
             onSingleClick: { index in
                 // 单击 = 选中并复制（用户约定）
-                ClipboardPasteService.shared.copy(visibleEntries[index])
+                ClipboardPasteService.shared.copy(vm.visibleEntries[index])
                 showHint("已复制到剪贴板")
             },
             onDoubleClick: { index in
-                paste(visibleEntries[index])
+                paste(vm.visibleEntries[index])
             },
             onVisibleTopChanged: { top in
                 vm.viewportTopChanged(top)
@@ -268,10 +261,15 @@ struct ClipboardHistoryView: View {
     private var emptyStateView: some View {
         VStack(spacing: 12) {
             if !vm.debouncedQuery.isEmpty {
-                LucideView(name: .search, size: 34, color: ClipboardPalette.textTertiary)
-                Text("没有匹配「\(vm.debouncedQuery)」的结果")
-                    .font(.system(size: 13))
-                    .foregroundColor(ClipboardPalette.textSecondary)
+                if vm.isSearching {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    LucideView(name: .search, size: 34, color: ClipboardPalette.textTertiary)
+                    Text("没有匹配「\(vm.debouncedQuery)」的结果")
+                        .font(.system(size: 13))
+                        .foregroundColor(ClipboardPalette.textSecondary)
+                }
             } else if prefs.clipboardHistoryEnabled && prefs.isClipboardPaused {
                 LucideView(name: .pause, size: 34, color: ClipboardPalette.statusPaused)
                 Text("剪贴板记录已暂停")
@@ -334,7 +332,7 @@ struct ClipboardHistoryView: View {
     // MARK: - 行为
 
     private var selectedEntry: ClipboardEntry? {
-        visibleEntries.indices.contains(vm.selectedIndex) ? visibleEntries[vm.selectedIndex] : nil
+        vm.visibleEntries.indices.contains(vm.selectedIndex) ? vm.visibleEntries[vm.selectedIndex] : nil
     }
 
     /// 保留策略文案（footer 右侧）：30 天 / 500 条 / 永不过期
@@ -378,11 +376,11 @@ struct ClipboardHistoryView: View {
     }
 
     private func deleteAt(_ index: Int) {
-        guard visibleEntries.indices.contains(index) else { return }
-        let entry = visibleEntries[index]
+        guard vm.visibleEntries.indices.contains(index) else { return }
+        let entry = vm.visibleEntries[index]
         store.delete(id: entry.id)
-        if vm.selectedIndex >= visibleEntries.count - 1 {
-            vm.selectedIndex = max(0, visibleEntries.count - 2)
+        if vm.selectedIndex >= vm.visibleEntries.count - 1 {
+            vm.selectedIndex = max(0, vm.visibleEntries.count - 2)
         }
         showHint("已删除")
     }

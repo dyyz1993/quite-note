@@ -54,12 +54,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let store = RecordStore()
         let bluetooth = BluetoothManager()
 
-        // 清理僵尸便签（关联到已删除记录的便签）
-        StickyNoteManager.shared.cleanupZombieNotes { recordId in
-            // 检查记录是否还存在
-            return store.records.contains(where: { $0.id == recordId })
-        }
-
         clipboard = ClipboardService(store: store)
         self.recordStore = store
         self.bluetoothManager = bluetooth

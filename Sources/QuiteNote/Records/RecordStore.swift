@@ -13,6 +13,9 @@ final class RecordStore: ObservableObject {
 
     /// 核心数据：记录列表
     @Published private(set) var records: [Record] = []
+    /// 启动器取用面语料（点星收藏的记录 + 全部链接记录），DB 直查不受主列表
+    /// 内存分页窗口限制——老收藏/老链接也能被搜到。初始异步加载，toggleStar/delete 增量维护。
+    @Published private(set) var searchableRecords: [Record] = []
 
     /// 搜索配置（直接存储，同步到 searcher）
     @Published var searchInSummaries: Bool = false
@@ -340,8 +343,8 @@ final class RecordStore: ObservableObject {
         syncToAICoordinator()
         syncFromSearchHistoryManager()
 
-        // 加载数据和偏好
-        loadFromStore()
+        // 初始数据异步分页加载；启动路径不再同步物化 1000 条 CoreData 记录。
+        loadInitialRecords()
         loadPreferences()
 
         // 设置内存优化
@@ -391,6 +394,44 @@ final class RecordStore: ObservableObject {
             .sink { [weak self] newValue in
                 self?.confirmConfig = newValue
             }
+    }
+
+    /// 启动首屏加载：后台读取 100 条，主线程一次性发布。
+    ///
+    /// 旧实现在 init 中同步取 1000 条，悬浮球显示前就要完成 CoreData I/O 和对象
+    /// 物化。这里先让 App 进入可交互状态；贴纸清理等依赖完整数据的任务挂到
+    /// 首屏数据落地后执行，避免 records 尚未加载时误判记录不存在。
+    private func loadInitialRecords() {
+        let token = DiagnosticCenter.beginMeasure("RecordStore", "初始记录异步加载", threshold: 0.2)
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let loaded = (try? self?.repository.fetchRecords(limit: 100, offset: 0)) ?? []
+            let searchable = (try? self?.repository.fetchSearchableRecords()) ?? []
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                // 首屏查询发出后、结果落地前，用户可能已经新增/修改了记录。
+                // 保留这段时间内出现的内存记录，避免旧查询快照覆盖新状态。
+                let loadedIDs = Set(loaded.map(\.id))
+                let concurrentChanges = self.records.filter { !loadedIDs.contains($0.id) }
+                var merged = loaded + concurrentChanges
+                merged.sort { lhs, rhs in
+                    if lhs.starred != rhs.starred { return lhs.starred }
+                    return lhs.createdAt > rhs.createdAt
+                }
+                self.records = merged
+                // 与 records 同款合并：保留首屏查询发出后、落地前新收藏/新链接的记录
+                let searchableIDs = Set(searchable.map(\.id))
+                self.searchableRecords = searchable + self.searchableRecords.filter { !searchableIDs.contains($0.id) }
+                token.end()
+                self.cleanupStickyNotesAfterInitialLoad()
+            }
+        }
+    }
+
+    private func cleanupStickyNotesAfterInitialLoad() {
+        // 首屏只加载 100 条；贴纸是否僵尸必须查库，不能把第 100 条之后的记录误判为已删除。
+        StickyNoteManager.shared.cleanupZombieNotes { recordId in
+            (try? repository.find(id: recordId)) != nil
+        }
     }
 
     // MARK: - 核心操作：添加记录
@@ -662,8 +703,9 @@ final class RecordStore: ObservableObject {
     /// 删除指定记录
     /// - Parameter skipHistory: 是否跳过历史记录（用于撤销/重做时避免循环）
     func delete(_ record: Record, skipHistory: Bool = false) {
-        print("[DEBUG RecordStore.delete()] 开始删除记录, ID: \(record.id), Type: \(record.type)")
+        print("[DEBUG RecordStore.delete()] 开始删除记录, ID: \(record.id), Type: \(record.type.rawValue)")
         Self.logger.info("开始删除记录, ID: \(record.id), Type: \(record.type.rawValue)")
+        searchableRecords.removeAll { $0.id == record.id }
 
         // P4.1: 记录到历史栈（除非 skipHistory 为 true）
         if !skipHistory {
@@ -975,6 +1017,16 @@ final class RecordStore: ObservableObject {
             withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                 records[idx].starred.toggle()
                 sortRecordsInPlace()
+            }
+
+            // 同步启动器搜索语料快照（链接记录无论是否点星都在语料里）
+            let toggled = records[idx]
+            if toggled.starred {
+                if !searchableRecords.contains(where: { $0.id == toggled.id }) {
+                    searchableRecords.insert(toggled, at: 0)
+                }
+            } else if toggled.type != .url {
+                searchableRecords.removeAll { $0.id == toggled.id }
             }
 
             // 异步更新数据库

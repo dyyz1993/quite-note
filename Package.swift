@@ -8,7 +8,9 @@ let package = Package(
         .macOS(.v13)
     ],
     products: [
-        .executable(name: "QuiteNote", targets: ["QuiteNote"])
+        .library(name: "QuiteNoteSharedStorage", targets: ["QuiteNoteSharedStorage"]),
+        .executable(name: "QuiteNote", targets: ["QuiteNote"]),
+        .executable(name: "QuiteNoteCoreService", targets: ["QuiteNoteCoreService"])
     ],
     dependencies: [
         // Lucide-Swift 图标库
@@ -17,9 +19,14 @@ let package = Package(
         .package(url: "https://github.com/jpsim/Yams", from: "5.0.0")
     ],
     targets: [
+        .target(
+            name: "QuiteNoteSharedStorage",
+            path: "Sources/QuiteNoteSharedStorage"
+        ),
         .executableTarget(
             name: "QuiteNote",
             dependencies: [
+                "QuiteNoteSharedStorage",
                 .product(name: "LucideIcons", package: "lucide-icons-swift"),
                 .product(name: "Yams", package: "yams")
             ],
@@ -40,10 +47,20 @@ let package = Package(
                 .process("Resources/Symbols/default.yaml")
             ]
         ),
+        .executableTarget(
+            name: "QuiteNoteCoreService",
+            dependencies: ["QuiteNoteSharedStorage"],
+            path: "Sources/QuiteNoteCoreService"
+        ),
         .testTarget(
             name: "QuiteNoteTests",
             dependencies: ["QuiteNote"],
             path: "Tests/QuiteNoteTests"
+        ),
+        .testTarget(
+            name: "QuiteNoteCoreServiceTests",
+            dependencies: ["QuiteNoteCoreService", "QuiteNoteSharedStorage"],
+            path: "Tests/QuiteNoteCoreServiceTests"
         )
     ]
 )

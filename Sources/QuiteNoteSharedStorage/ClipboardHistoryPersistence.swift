@@ -7,17 +7,53 @@ import CoreData
 /// 完全隔离——剪贴板历史的写入/清理/清空不可能影响生产记录数据（数据隔离红线）。
 /// 隔离口径与 CoreDataStack 一致：dev 变体用 -Debug 后缀，测试进程经
 /// QN_TEST_STORAGE_ROOT 重定向到临时目录。
-final class ClipboardHistoryPersistence {
-    static let shared = ClipboardHistoryPersistence()
+public final class ClipboardHistoryPersistence {
+    public static let shared = ClipboardHistoryPersistence()
 
-    let container: NSPersistentContainer
+    public let container: NSPersistentContainer
     /// 剪贴板库文件位置（占用统计用，含 -wal/-shm）
-    let storeURL: URL
+    public let storeURL: URL
 
-    init() {
+    public init() {
         let model = Self.makeModel()
         container = NSPersistentContainer(name: "ClipboardHistory", managedObjectModel: model)
+        let databaseURL = Self.defaultDatabaseURL()
+        storeURL = databaseURL
 
+        try? FileManager.default.createDirectory(at: databaseURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let desc = NSPersistentStoreDescription(url: databaseURL)
+        desc.shouldMigrateStoreAutomatically = true
+        desc.shouldInferMappingModelAutomatically = true
+        container.persistentStoreDescriptions = [desc]
+        container.loadPersistentStores { _, error in
+            if error != nil {
+                // SharedStorage 不能依赖 App target 的 DiagnosticCenter；错误仍由调用方通过 store 状态观察。
+            }
+        }
+        container.viewContext.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy
+        container.viewContext.automaticallyMergesChangesFromParent = true
+    }
+
+    public init(databaseURL: URL) {
+        let model = Self.makeModel()
+        container = NSPersistentContainer(name: "ClipboardHistory", managedObjectModel: model)
+        storeURL = databaseURL
+
+        try? FileManager.default.createDirectory(at: databaseURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let desc = NSPersistentStoreDescription(url: databaseURL)
+        desc.shouldMigrateStoreAutomatically = true
+        desc.shouldInferMappingModelAutomatically = true
+        container.persistentStoreDescriptions = [desc]
+        container.loadPersistentStores { _, error in
+            if error != nil {
+                // SharedStorage 不能依赖 App target 的 DiagnosticCenter；错误仍由调用方通过 store 状态观察。
+            }
+        }
+        container.viewContext.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy
+        container.viewContext.automaticallyMergesChangesFromParent = true
+    }
+
+    private static func defaultDatabaseURL() -> URL {
         let bundleID = Bundle.main.bundleIdentifier ?? "com.quitenote.app"
         let executablePath = Bundle.main.executablePath ?? ""
         let isDebug = bundleID.contains("debug") || bundleID.contains("dev") || executablePath.contains(".build")
@@ -33,31 +69,18 @@ final class ClipboardHistoryPersistence {
                 .appendingPathComponent(directoryName, isDirectory: true)
                 .appendingPathComponent(dbName)
         }
-        storeURL = databaseURL
-
-        try? FileManager.default.createDirectory(at: databaseURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-        let desc = NSPersistentStoreDescription(url: databaseURL)
-        desc.shouldMigrateStoreAutomatically = true
-        desc.shouldInferMappingModelAutomatically = true
-        container.persistentStoreDescriptions = [desc]
-        container.loadPersistentStores { _, error in
-            if let error {
-                DiagnosticCenter.error("Clipboard", "剪贴板历史库加载失败: \(error.localizedDescription)")
-            }
-        }
-        container.viewContext.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy
-        container.viewContext.automaticallyMergesChangesFromParent = true
+        return databaseURL
     }
 
-    var context: NSManagedObjectContext { container.viewContext }
+    public var context: NSManagedObjectContext { container.viewContext }
 
-    func performBackgroundTask(_ block: @escaping (NSManagedObjectContext) -> Void) {
+    public func performBackgroundTask(_ block: @escaping (NSManagedObjectContext) -> Void) {
         container.performBackgroundTask(block)
     }
 
     // MARK: - 动态模型
 
-    private static func makeModel() -> NSManagedObjectModel {
+    public static func makeModel() -> NSManagedObjectModel {
         let entity = NSEntityDescription()
         entity.name = "CDClipboardEntry"
         entity.managedObjectClassName = NSStringFromClass(CDClipboardEntry.self)
@@ -108,25 +131,25 @@ final class ClipboardHistoryPersistence {
 }
 
 /// 剪贴板条目的 Core Data 托管对象（字段与 ClipboardEntry 一一对应）
-final class CDClipboardEntry: NSManagedObject {
-    @NSManaged var id: UUID
-    @NSManaged var type: String
-    @NSManaged var createdAt: Date
-    @NSManaged var lastUsedAt: Date
-    @NSManaged var plainText: String?
-    @NSManaged var sourceURL: String?
-    @NSManaged var sourceApp: String?
-    @NSManaged var sourceBundleID: String?
-    @NSManaged var contentHash: String
-    @NSManaged var assetPath: String?
-    @NSManaged var ocrText: String?
-    @NSManaged var ocrStatus: String?
-    @NSManaged var byteSize: Int64
-    @NSManaged var pasteCount: Int32
-    @NSManaged var isPinned: Bool
-    @NSManaged var savedRecordID: UUID?
+public final class CDClipboardEntry: NSManagedObject {
+    @NSManaged public var id: UUID
+    @NSManaged public var type: String
+    @NSManaged public var createdAt: Date
+    @NSManaged public var lastUsedAt: Date
+    @NSManaged public var plainText: String?
+    @NSManaged public var sourceURL: String?
+    @NSManaged public var sourceApp: String?
+    @NSManaged public var sourceBundleID: String?
+    @NSManaged public var contentHash: String
+    @NSManaged public var assetPath: String?
+    @NSManaged public var ocrText: String?
+    @NSManaged public var ocrStatus: String?
+    @NSManaged public var byteSize: Int64
+    @NSManaged public var pasteCount: Int32
+    @NSManaged public var isPinned: Bool
+    @NSManaged public var savedRecordID: UUID?
 
-    var asValue: ClipboardEntry {
+    public var asValue: ClipboardEntry {
         ClipboardEntry(
             id: id,
             type: ClipboardEntryType(rawValue: type) ?? .text,
@@ -147,7 +170,7 @@ final class CDClipboardEntry: NSManagedObject {
         )
     }
 
-    func apply(_ entry: ClipboardEntry) {
+    public func apply(_ entry: ClipboardEntry) {
         id = entry.id
         type = entry.type.rawValue
         createdAt = entry.createdAt
