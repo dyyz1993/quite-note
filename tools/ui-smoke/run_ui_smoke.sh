@@ -501,6 +501,7 @@ fi
 python3 "$ROOT/tools/ui-smoke/computer_use_smoke.py" \
   --run-dir "$RUN_DIR" \
   --app-path "$APP_PATH" \
+  --app-pid "$TEST_PID" \
   --suites "${SUITES[@]}" \
   --evidence "$EVIDENCE"
 STATUS=$?

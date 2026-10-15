@@ -108,6 +108,10 @@ class AXDriver:
         from ApplicationServices import AXUIElementCreateApplication
         self.element = AXUIElementCreateApplication(pid)
 
+    @property
+    def pid(self) -> int:
+        return int(self.element or 0)
+
     def foreground_floating_window(self) -> dict | None:
         candidates = [w for w in self.windows() if w["frame"][2] > 100 and w["frame"][3] > 60]
         if not candidates:
@@ -324,7 +328,7 @@ def _find_ax_element_by_identifier(identifier: str):
     global _target_ax_identifier
     _target_ax_identifier = identifier
     from ApplicationServices import AXUIElementCreateApplication
-    app_element = AXUIElementCreateApplication(app_pid())
+    app_element = driver_global.element
     # Targeted hit test avoids traversing large/offscreen AX trees on the remote Mac.
     window = driver_global.foreground_floating_window()
     if window:
@@ -386,6 +390,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--run-dir", type=Path, required=True)
     parser.add_argument("--app-path", type=Path)
+    parser.add_argument("--app-pid", type=int)
     parser.add_argument("--suites", nargs="+", required=True)
     parser.add_argument("--evidence", choices=("fast", "full"), default="fast")
     args = parser.parse_args()
@@ -393,7 +398,7 @@ def main() -> int:
     run = Run(args.run_dir, args.evidence)
     run.record("permissions.accessibility", validate_accessibility)
     try:
-        driver = AXDriver(app_pid())
+        driver = AXDriver(args.app_pid or app_pid())
     except Exception as exc:
         run.record("launch.app", lambda: (_ for _ in ()).throw(RuntimeError(str(exc))))
         return 1

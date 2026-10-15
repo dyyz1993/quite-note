@@ -78,6 +78,16 @@
 - Evidence: run `38781096843` attempt 3 的 app log 和 `report.json`。
 - Status: fixed
 
+### 2026-10-16 · NSWorkspace 返回了残留 Dev 实例 pid
+
+- Version / Commit / Run: 0304bf8 / ui-20261015-235010-0304bf87
+- Symptom: runner 子进程 pid `86389` 正常运行并有 GUI window，但 Python 通过 `NSWorkspace` 找到的是手工排查遗留的 pid `85233`，导致窗口列表为空。
+- Root cause: 专用机此前手工验证留下一个同 bundle id Dev 实例；`NSWorkspace` 只返回第一个匹配，且未优先使用 runner 直接启动的 pid。
+- Fix: runner 把 `$TEST_PID` 通过 `--app-pid` 传给 Python；AX、窗口和流程检查都使用这个确定的当前 run 子进程。
+- Prevention: 手工调试 Dev App 后必须退出该实例；自动化运行必须绑定自身 fork/exec 得到的 pid，不能依赖全局进程枚举。
+- Evidence: xyz-mac 上 `app.pid=86389`，`NSWorkspace` 返回 `85233`。
+- Status: fixed
+
 ### 2026-10-15 · 菜单栏应用没有常规窗口
 
 - Version / Commit / Run: Quite Note Dev
