@@ -9,12 +9,13 @@
 #   4. Runner 机器存公证凭据（App Store Connect API Key 方式，命令见 AGENTS.md）
 #
 # 效果：
-#   - push / MR → 自动跑全部单元测试
+#   - push / MR → 自动跑全部单元测试，并生成 Dev ZIP 供 xyz-mac UI 回归拉取
 #   - git tag v1.3.0 && git push <gitlab-remote> v1.3.0
 #     → 自动执行 build-release.sh（构建 → Developer ID 签名 → 公证 → DMG），产物保留 30 天
 
 stages:
   - test
+  - ui-artifact
   - release
 
 # 每次 push / MR：跑全部单元测试（含 OCR/马赛克/导出等 25 个用例）
@@ -31,6 +32,31 @@ run-tests:
     key: swift-build-$CI_PROJECT_PATH
     paths:
       - .build/
+
+# UI 冒烟专用 Dev ZIP：ZIP 内根层必须是「Quite Note Dev.app」。
+# xyz-mac 是 Intel Mac；Runner 必须是 x86_64 或 universal构建。
+dev-ui-artifact:
+  stage: ui-artifact
+  tags: [macos]
+  needs: []
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH
+  script:
+    - uname -m
+    - ./build-app.sh --dev --no-launch
+    - ARTIFACT_NAME="QuiteNoteDev-${CI_COMMIT_SHORT_SHA}.zip"
+    - ditto -c -k --keepParent "Quite Note Dev.app" "$ARTIFACT_NAME"
+    - shasum -a 256 "$ARTIFACT_NAME" > "$ARTIFACT_NAME.sha256"
+    - echo "UI_ARTIFACT=$ARTIFACT_NAME" >> build.env
+  artifacts:
+    name: "QuiteNoteDev-${CI_COMMIT_SHORT_SHA}"
+    paths:
+      - QuiteNoteDev-*.zip
+      - QuiteNoteDev-*.zip.sha256
+    expire_in: 7 days
+    reports:
+      dotenv: build.env
 
 # 打 v*.*.* 标签时：完整发布流水线
 release-dmg:

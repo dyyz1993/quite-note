@@ -22,6 +22,9 @@
 
 # CI 产物 + xyz-mac 专用测试机（本机不启动 UI）
 ./tools/ui-smoke/run_ui_smoke.sh --remote xyz-mac --artifact-url <CI_BUILD_URL> --mode full
+
+# GitLab Dev 产物作业：dev-ui-artifact
+# 产物：QuiteNoteDev-<shortsha>.zip 和 .sha256
 ```
 
 报告位于 `tools/ui-smoke/runs/<run-id>/`。核心文件：
@@ -93,6 +96,7 @@
 
 - 本机只做控制、下载 CI 产物和收集报告，绝不启动测试 App、不执行键盘/鼠标交互。
 - CI 构建产物必须是 `.zip`（内含一个 `.app`）或 `.dmg`（内含一个 `.app`）。
+- GitLab `dev-ui-artifact` 作业产出根层为 `Quite Note Dev.app` 的 ZIP，并附带 SHA-256。
 - 远端目录固定在 `~/QuitenoteUITest/`。
 - 远端使用一次性 `QN_TEST_STORAGE_ROOT`，测试后报告 rsync 回本机 run 目录。
 - 远端 Python 依赖为 PyObjC 10.3.2。
