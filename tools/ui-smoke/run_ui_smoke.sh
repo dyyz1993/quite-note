@@ -300,7 +300,8 @@ import json
 import shutil, subprocess, sys
 from pathlib import Path
 
-root, run_dir, app_dir, artifact, storage, run_id = map(Path, sys.argv[1:])
+root, run_dir, app_dir, storage = (Path(x) for x in sys.argv[1:5])
+run_id = sys.argv[6]
 archive = Path(artifact)
 if archive.suffix == ".dmg":
     mount = root / "mounts" / run_id
