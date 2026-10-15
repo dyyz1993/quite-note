@@ -101,6 +101,7 @@ authorize_remote_ui xyz-mac
 - 本机只做控制、下载 CI 产物和收集报告，绝不启动测试 App、不执行键盘/鼠标交互。
 - CI 构建产物必须是 `.zip`（内含一个 `.app`）或 `.dmg`（内含一个 `.app`）。
 - GitLab `dev-ui-artifact` 作业产出根层为 `Quite Note Dev.app` 的 ZIP，并附带 SHA-256。
+- GitLab `ui-smoke-remote` 作业在 CI 内直接调用 runner，把 `manifest/report/timeline/screenshots` 作为当前版本的 GitLab artifact 保留 30 天；`allow_failure: true` 时不阻塞普通 push，但失败产物同样保留。
 - 远端目录固定在 `~/QuitenoteUITest/`。
 - 远端使用一次性 `QN_TEST_STORAGE_ROOT`，测试后报告 rsync 回本机 run 目录。
 - 远端 Python 依赖为 PyObjC 10.3.2。
