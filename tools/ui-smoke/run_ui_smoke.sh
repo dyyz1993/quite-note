@@ -466,7 +466,8 @@ with open(p,"w") as f: json.dump(d,f,indent=2,ensure_ascii=False); f.write("\n")
 PY
 
 TEST_PID_FILE="$RUN_DIR/app.pid"
-QN_TEST_STORAGE_ROOT="$STORAGE_ROOT" open -n -a "$APP_PATH" --args --ui-smoke-run "$RUN_ID"
+defaults write com.quitenote.app.dev clipboardOnboarded -bool true
+QN_TEST_STORAGE_ROOT="$STORAGE_ROOT" open -n "$APP_PATH/Contents/MacOS/QuiteNoteDev" --args --ui-smoke-run "$RUN_ID"
 DEADLINE=$((SECONDS + 15))
 TEST_PID=""
 while (( SECONDS < DEADLINE )); do

@@ -68,6 +68,16 @@
 - Evidence: run artifact 截图 `screenshots/permissions-accessibility-1792086705.png`。
 - Status: open
 
+### 2026-10-16 · self-hosted runner 无法用 open -a 启动 Dev App
+
+- Version / Commit / Run: 7a899b1 / ui-20261015-233220-7a899b18
+- Symptom: runner 记录到 app pid 并创建了隔离存储，但后续 Python 会话立即找不到 Quite Note Dev 进程；手工排查发现进程已退出。
+- Root cause: LaunchAgent 服务会话中 `open -n -a` 与 GUI 登录会话的 LaunchServices 上下文不稳定；同时脚本用 `Foundation.NSWorkspace` 查找进程，该符号实际在 AppKit 中。
+- Fix: 直接执行 `$APP/Contents/MacOS/QuiteNoteDev` 并继续传递 `QN_TEST_STORAGE_ROOT`；Python 从 `AppKit.NSWorkspace` 读取进程列表。
+- Prevention: UI runner 不要依赖 `open -a` 的 LaunchServices 状态；执行身份切换后必须用真实 runner 会话做首跑验证，而不是只看 pid。
+- Evidence: run `38781096843` attempt 3 的 app log 和 `report.json`。
+- Status: fixed
+
 ### 2026-10-15 · 菜单栏应用没有常规窗口
 
 - Version / Commit / Run: Quite Note Dev
