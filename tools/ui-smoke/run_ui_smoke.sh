@@ -496,7 +496,7 @@ fi
 python3 "$ROOT/tools/ui-smoke/computer_use_smoke.py" \
   --run-dir "$RUN_DIR" \
   --app-path "$APP_PATH" \
-  --suites "${SUITES[*]}" \
+  --suites "${SUITES[@]}" \
   --evidence "$EVIDENCE"
 STATUS=$?
 if [[ "$STATUS" -eq 3 ]]; then

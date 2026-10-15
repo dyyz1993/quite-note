@@ -48,6 +48,26 @@
 - Evidence: run `38778021033` 的 `Run UI smoke from prebuilt artifact` 日志。
 - Status: fixed
 
+### 2026-10-15 · Bash 数组字符串被误传成一个 suite
+
+- Version / Commit / Run: 4267f8d / ui-20261015-175138-4267f8d0
+- Symptom: 报告出现 `unknown suite: launch flash-notes clipboard launcher settings devcore cleanup`，七个 suite 被拼成一个参数。
+- Root cause: 本地执行分支把数组写成 `"${SUITES[*]}"`，展开为单个字符串；远端 SSH 分支没有此问题。
+- Fix: Python `argparse nargs='+'` 场景必须传 `"${SUITES[@]}"`。
+- Prevention: 每次新增本地/远端双路径时，用 `bash -x` 或日志确认数组展开语义保持一致。
+- Evidence: run artifact `QuiteNoteUI-4267f8d0.../report.json`。
+- Status: fixed
+
+### 2026-10-15 · self-hosted runner 服务缺少屏幕录制授权
+
+- Version / Commit / Run: 4267f8d / ui-20261015-175138-4267f8d0
+- Symptom: `screencapture` 连续输出 `could not create image from display`，同时 `permissions.accessibility` BLOCKED。
+- Root cause: LaunchAgent runner 与此前 SSH Python 进程的 TCC 身份不同；runner 服务身份尚未被授予当前 GUI 会话的辅助功能/屏幕录制权限。
+- Fix: 在 xyz-mac 登录会话中打开「系统设置 → 隐私与安全性」，为 runner 相关 shell / 终端授予辅助功能和屏幕录制；重启 runner 后复测。
+- Prevention: 更换执行身份（SSH → LaunchAgent/self-hosted runner）必须重新验证 TCC；旧的授权不能证明新身份可用。
+- Evidence: run artifact 截图 `screenshots/permissions-accessibility-1792086705.png`。
+- Status: open
+
 ### 2026-10-15 · 菜单栏应用没有常规窗口
 
 - Version / Commit / Run: Quite Note Dev
