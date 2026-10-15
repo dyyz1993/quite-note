@@ -16,6 +16,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Prepare login keychain for service codesigning
+        env:
+          QN_UI_KEYCHAIN_PASSWORD: ${{ secrets.QN_UI_KEYCHAIN_PASSWORD }}
+        run: |
+          KEYCHAIN="$HOME/Library/Keychains/login.keychain-db"
+          security unlock-keychain -p "$QN_UI_KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$QN_UI_KEYCHAIN_PASSWORD" "$KEYCHAIN"
+
       - name: Build universal Dev app
         env:
           APP_SIGN_IDENTITY: ${{ vars.QN_UI_SIGN_IDENTITY }}
@@ -24,11 +32,11 @@ jobs:
           swift build -c release --arch x86_64 --arch arm64 --product QuiteNote
           mkdir -p .build/release
           cp .build/apple/Products/Release/QuiteNote .build/release/QuiteNote
-          # Self-hosted runner may already have a valid identity in its keychain.
-          # If no override is configured, fall back to the development matcher.
           if [[ -z "$APP_SIGN_IDENTITY" ]]; then
-            APP_SIGN_IDENTITY=$(security find-identity -v -p codesigning               | awk -F'"' '/Apple Development/{print $1; exit}' | awk '{print $2}')
+            APP_SIGN_IDENTITY=$(security find-identity -v -p codesigning \
+              | awk -F'"' '/Apple Development/{print $1; exit}' | awk '{print $2}')
           fi
+          [[ -n "$APP_SIGN_IDENTITY" ]] || { echo "No codesigning identity found"; exit 2; }
           export APP_SIGN_IDENTITY
           ./build-app.sh --dev --no-build --no-launch
 
