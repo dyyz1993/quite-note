@@ -11,6 +11,7 @@ struct ClipSearchField: NSViewRepresentable {
     @Binding var text: String
     /// 焦点回调（驱动 SwiftUI 侧的边框高亮等视觉，非聚焦机制本身）
     var onFocusChange: ((Bool) -> Void)?
+    var accessibilityIdentifier: String = "clipboard.search_field"
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -24,6 +25,8 @@ struct ClipSearchField: NSViewRepresentable {
         field.isBordered = false
         field.focusRingType = .none
         field.delegate = context.coordinator
+        field.setAccessibilityIdentifier(accessibilityIdentifier)
+        field.setAccessibilityLabel("剪贴板历史搜索")
         context.coordinator.field = field
         // 暴露给控制器做 makeFirstResponder（弱引用防环）
         ClipboardHistoryPanelController.shared.searchFieldHandle = field

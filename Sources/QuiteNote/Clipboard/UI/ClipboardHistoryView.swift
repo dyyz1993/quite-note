@@ -196,10 +196,12 @@ struct ClipboardHistoryView: View {
             Text("\(vm.visibleEntries.count) 条")
                 .font(.system(size: 11))
                 .foregroundColor(ClipboardPalette.textTertiary)
+                .accessibilityIdentifier("clipboard.count")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 5)
         .background(ClipboardPalette.background)
+        .accessibilityIdentifier("clipboard.filter_bar")
         .overlay(alignment: .bottom) {
             Rectangle().fill(ClipboardPalette.inputBorder).frame(height: 1)
         }
