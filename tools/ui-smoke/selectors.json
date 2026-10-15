@@ -1,0 +1,37 @@
+{
+  "suite_version": "1.0.0",
+  "identifier_policy": "AXIdentifier first; AXRole+AXLabel second; window-relative coordinates last",
+  "app": {
+    "bundle_id": "com.quitenote.app.dev",
+    "process_name": "QuiteNoteDev",
+    "menu_bar_item": "Quite Note Dev"
+  },
+  "shortcuts": {
+    "show_hide_flash_note": "option+command+r",
+    "force_center_flash_note": "option+command+shift+r",
+    "capture_clipboard": "option+command+c",
+    "clipboard_history": "command+shift+v",
+    "app_launcher": "option+space"
+  },
+  "controls": {
+    "flash_note.search_field": "flash_note.search_field",
+    "flash_note.record_list": "flash_note.record_list",
+    "flash_note.status_bar": "flash_note.status_bar",
+    "clipboard.search_field": "clipboard.search_field",
+    "clipboard.filter_bar": "clipboard.filter_bar",
+    "clipboard.list": "clipboard.list",
+    "clipboard.detail": "clipboard.detail",
+    "clipboard.count": "clipboard.count",
+    "launcher.panel": "launcher.panel",
+    "launcher.search_field": "launcher.search_field",
+    "launcher.result_list": "launcher.result_list",
+    "settings.panel": "settings.panel",
+    "settings.tab_bar": "settings.tab_bar",
+    "settings.close": "settings.close"
+  },
+  "fallback_labels": {
+    "clipboard.search_field": "输入以搜索剪贴板内容…",
+    "clipboard.filter_all": "全部",
+    "settings.clipboard_tab": "剪贴板"
+  }
+}

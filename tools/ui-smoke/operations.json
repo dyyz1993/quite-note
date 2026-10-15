@@ -1,0 +1,62 @@
+{
+  "suite_version": "1.0.0",
+  "strategy": "Use this cached operation sequence; do not rediscover UI paths when AX succeeds.",
+  "operations": {
+    "launch": [
+      {"action": "assert", "target": "process", "value": "com.quitenote.app.dev"},
+      {"action": "assert", "target": "storage_root", "value": "QN_TEST_STORAGE_ROOT must exist"},
+      {"action": "capture", "when": "full-evidence-or-failure"}
+    ],
+    "flash_notes": [
+      {"action": "shortcut", "keys": "option+command+shift+r", "purpose": "force main panel visible and centered"},
+      {"action": "focus", "selector": "flash_note.search_field"},
+      {"action": "set_value", "selector": "flash_note.search_field", "value": "QNUI_SMOKE_FLASH"},
+      {"action": "wait", "condition": "debounced_search_settled", "timeout_ms": 1000},
+      {"action": "assert", "selector": "flash_note.record_list", "condition": "contains QNUI_SMOKE_FLASH"},
+      {"action": "set_value", "selector": "flash_note.search_field", "value": ""},
+      {"action": "shortcut", "keys": "option+command+r", "purpose": "hide main panel"}
+    ],
+    "clipboard": [
+      {"action": "shortcut", "keys": "command+shift+v"},
+      {"action": "assert", "target": "focused_element", "selector": "clipboard.search_field"},
+      {"action": "set_value", "selector": "clipboard.search_field", "value": "QNUI_SMOKE_CLIP"},
+      {"action": "wait", "condition": "debounce_200ms_and_search_idle", "timeout_ms": 1200},
+      {"action": "key", "selector": "clipboard.filter_bar", "keys": "ArrowRight", "iterations": 2},
+      {"action": "key", "selector": "clipboard.list", "keys": "ArrowDown", "iterations": 2},
+      {"action": "assert", "selector": "clipboard.detail", "condition": "matches selected row"},
+      {"action": "key", "keys": "Escape", "expect": "clear search first"},
+      {"action": "key", "keys": "Escape", "expect": "close panel"}
+    ],
+    "launcher": [
+      {"action": "shortcut", "keys": "option+space"},
+      {"action": "focus", "selector": "launcher.search_field"},
+      {"action": "set_value", "selector": "launcher.search_field", "value": "finder"},
+      {"action": "wait", "condition": "results_nonempty", "timeout_ms": 1200},
+      {"action": "key", "keys": "ArrowDown", "iterations": 2},
+      {"action": "assert", "selector": "launcher.result_list", "condition": "selection_changes"},
+      {"action": "key", "keys": "Escape"}
+    ],
+    "settings": [
+      {"action": "open", "selector": "settings.panel"},
+      {"action": "iterate_tabs", "selector": "settings.tab_bar", "policy": "read-only"},
+      {"action": "assert", "condition": "no_error_dialog", "capture_on_failure": true},
+      {"action": "close", "selector": "settings.close"}
+    ],
+    "devcore": [
+      {"action": "open", "selector": "settings.panel"},
+      {"action": "open", "selector": "settings.tab_bar", "value": "clipboard"},
+      {"action": "assert", "condition": "DevCore status visible and isolated storage reported"},
+      {"action": "close", "selector": "settings.close"}
+    ],
+    "cleanup": [
+      {"action": "terminate_only", "target": "com.quitenote.app.dev"},
+      {"action": "assert", "condition": "production com.quitenote.app process remains running"}
+    ]
+  },
+  "selector_priority": [
+    "accessibilityIdentifier from selectors.json",
+    "AXRole + stable AXLabel",
+    "window-relative coordinate with fresh window frame",
+    "screenshot/model review only for failure diagnosis"
+  ]
+}

@@ -23,3 +23,6 @@ cloud/feedback-worker/.admin-token
 # AI 工具工作目录（不进仓库）
 .brainstorm/
 .zcode/
+.ui-smoke-worktrees/
+tools/ui-smoke/runs/
+tools/ui-smoke/__pycache__/
