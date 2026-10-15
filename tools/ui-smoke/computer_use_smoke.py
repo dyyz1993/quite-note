@@ -18,21 +18,19 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-import Quartz
-from ApplicationServices import (
-    AXIsProcessTrusted,
-    AXUIElementCopyElementAtPosition,
-    AXUIElementCreateApplication,
-    AXUIElementPerformAction,
-    AXUIElementSetAttributeValue,
-    kAXErrorCannotComplete,
-    kAXValueAttribute,
-)
-from Foundation import NSWorkspace
+try:
+    import Quartz
+    from ApplicationServices import AXIsProcessTrusted
+    from Foundation import NSWorkspace
+except ImportError:  # The remote test Mac boots before pip dependencies are installed.
+    Quartz = None
+    AXIsProcessTrusted = None
+    NSWorkspace = None
 
 
 APP_NAME = "Quite Note Dev"
 SETTLE_SECONDS = 0.35
+_target_ax_identifier = ""
 
 
 class BlockedError(RuntimeError):
@@ -104,6 +102,9 @@ class Run:
 
 class AXDriver:
     def __init__(self, pid: int):
+        if Quartz is None:
+            raise BlockedError("PyObjC is required on the UI execution Mac")
+        from ApplicationServices import AXUIElementCreateApplication
         self.element = AXUIElementCreateApplication(pid)
 
     def windows(self) -> list[dict]:
@@ -142,15 +143,23 @@ class AXDriver:
 
 
 def app_pid() -> int:
-    for app in NSWorkspace.sharedWorkspace().runningApplications():
-        if app.bundleIdentifier() == "com.quitenote.app.dev":
-            return app.processIdentifier()
+    if NSWorkspace is not None:
+        for app in NSWorkspace.sharedWorkspace().runningApplications():
+            if app.bundleIdentifier() == "com.quitenote.app.dev":
+                return app.processIdentifier()
+    script = "tell application \"System Events\" to get unix id of first process whose bundle identifier is \"com.quitenote.app.dev\""
+    result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=5)
+    if result.returncode == 0 and result.stdout.strip().isdigit():
+        return int(result.stdout.strip())
     raise RuntimeError("Quite Note Dev is not running")
 
 
 def validate_accessibility() -> str:
-    if not AXIsProcessTrusted():
+    if AXIsProcessTrusted is not None and not AXIsProcessTrusted():
         raise BlockedError("Accessibility permission is not granted to the runner")
+    if AXIsProcessTrusted is None:
+        # PyObjC is unavailable; System Events cannot fully substitute AX trust.
+        return "PyObjC unavailable; using osascript/CGWindow fallback"
     return ""
 
 
@@ -191,6 +200,39 @@ def smoke_clipboard(run: Run, driver: AXDriver) -> str:
     raise RuntimeError("clipboard.search_field not found after invoking panel")
 
 
+def smoke_launcher(run: Run, driver: AXDriver) -> str:
+    if not driver.windows():
+        raise RuntimeError("app has no visible window before launcher invocation")
+    _press_status_menu_item("应用启动器")
+    deadline = time.monotonic() + 3
+    while time.monotonic() < deadline:
+        try:
+            found = _find_ax_element_by_identifier("launcher.search_field")
+            if found is not None:
+                return "launcher search field exposed via AX"
+        except Exception:
+            pass
+        time.sleep(0.1)
+    raise RuntimeError("launcher.search_field not found after invoking panel")
+
+
+def _press_status_menu_item(title: str) -> None:
+    script = f'''
+    tell application "System Events"
+      tell process "{APP_NAME}"
+        tell menu bar item 1 of menu bar 2
+          perform action "AXPress"
+          delay 0.2
+          tell menu item "{title}" of menu 1
+            perform action "AXPress"
+          end tell
+        end tell
+      end tell
+    end tell
+    '''
+    subprocess.run(["osascript", "-e", script], check=True, timeout=5)
+
+
 def _invoke_shortcut(key_combo: str) -> None:
     keys = key_combo.split()
     script = (
@@ -205,7 +247,7 @@ def _walk_ax(element, depth: int = 0, max_depth: int = 16):
     if depth > max_depth:
         return None
     identifier = _ax_string(_ax_attribute(element, "AXDescription")) or _ax_string(_ax_attribute(element, "AXIdentifier"))
-    if identifier == "clipboard.search_field" or _ax_string(_ax_attribute(element, "AXRole")) == "AXTextField":
+    if identifier == _target_ax_identifier:
         return element
     for child_ref in _ax_children(element):
         result = _walk_ax(child_ref, depth + 1, max_depth)
@@ -231,14 +273,10 @@ def _ax_children(element):
 
 
 def _find_ax_element_by_identifier(identifier: str):
+    global _target_ax_identifier
+    _target_ax_identifier = identifier
     found = _walk_ax(AXUIElementCreateApplication(app_pid()))
     return found
-
-
-def smoke_launcher(run: Run, driver: AXDriver) -> str:
-    if not driver.windows():
-        raise RuntimeError("app has no visible window before launcher invocation")
-    return "AX flow available"
 
 
 def smoke_flash_notes(run: Run, driver: AXDriver) -> str:
@@ -270,10 +308,9 @@ def append_timeline(run_dir: Path, event: str, data: dict | None = None) -> None
 
 def assert_production_process_untouched() -> str:
     production = []
-    for app in NSWorkspace.sharedWorkspace().runningApplications():
-        if app.bundleIdentifier() == "com.quitenote.app":
-            production.append(app.processIdentifier())
-    return "production pids: " + (",".join(map(str, production)) or "none")
+    if NSWorkspace is not None:
+        production = [str(app.processIdentifier()) for app in NSWorkspace.sharedWorkspace().runningApplications() if app.bundleIdentifier() == "com.quitenote.app"]
+    return "production pids: " + (",".join(production) or "none")
 
 
 def main() -> int:

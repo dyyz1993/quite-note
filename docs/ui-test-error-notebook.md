@@ -37,3 +37,13 @@
 - Prevention: 禁止把上一次窗口坐标当作稳定选择器。
 - Evidence: 本地 Computer Use 实测。
 - Status: fixed
+
+### 2026-10-15 · 本机 UI 自动化抢焦点影响日常使用
+
+- Version / Commit / Run: efd41dc / 697c350
+- Symptom: 在用户日常使用的 Mac 上执行 UI 用例会弹面板、抢占键盘焦点和剪贴板，干扰正常工作。
+- Root cause: UI 自动化与用户交互共享同一 GUI 会话；macOS Accessibility/AppleScript 无法完全避免焦点影响。
+- Fix: 迁移到 `xyz-mac` 专用测试机；本机只构建/下载 CI 产物并控制 SSH，不启动 App UI。
+- Prevention: 交互式 UI 用例必须通过 `--remote xyz-mac` 执行；本机只允许 dry-run、静态检查和单元测试。
+- Evidence: `docs/ui-test-knowledge.md` 远程执行模式。
+- Status: fixed

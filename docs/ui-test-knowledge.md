@@ -19,6 +19,9 @@
 
 # 按变更增量回归
 ./tools/ui-smoke/run_ui_smoke.sh --mode incremental --incremental-since v1.3.0
+
+# CI 产物 + xyz-mac 专用测试机（本机不启动 UI）
+./tools/ui-smoke/run_ui_smoke.sh --remote xyz-mac --artifact-url <CI_BUILD_URL> --mode full
 ```
 
 报告位于 `tools/ui-smoke/runs/<run-id>/`。核心文件：
@@ -85,6 +88,16 @@
 4. 剪贴板搜索有 200ms debounce，等待条件用 `search_idle`，不要固定 sleep。
 5. `Esc` 语义：启动器/剪贴板先清搜索，再按一次才关闭。
 6. 结束只退出 Dev 进程，绝不杀正式版 `com.quitenote.app`。
+
+## xyz-mac 远程执行模式
+
+- 本机只做控制、下载 CI 产物和收集报告，绝不启动测试 App、不执行键盘/鼠标交互。
+- CI 构建产物必须是 `.zip`（内含一个 `.app`）或 `.dmg`（内含一个 `.app`）。
+- 远端目录固定在 `~/QuitenoteUITest/`。
+- 远端使用一次性 `QN_TEST_STORAGE_ROOT`，测试后报告 rsync 回本机 run 目录。
+- 远端 Python 依赖为 PyObjC 10.3.2。
+- 若远端报告 `BLOCKED`，优先检查辅助功能、屏幕录制、CI 产物签名/架构。
+- 目前 `xyz-mac` 是 Intel Mac；CI 产物必须包含 x86_64 或 universal binary。
 
 ## 安全与权限红线
 

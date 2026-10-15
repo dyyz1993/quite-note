@@ -12,6 +12,8 @@ KEEP_DATA=true
 EVIDENCE="fast"
 SKIP_BUILD=false
 DRY_RUN=false
+REMOTE_HOST=""
+ARTIFACT_URL=""
 
 usage() {
   cat <<'EOF'
@@ -27,6 +29,8 @@ Options:
   --no-keep-data                Delete this run's isolated storage after execution.
   --evidence <fast|full>        fast keeps key/failure screenshots; full saves every step.
   --skip-build                  Reuse the worktree app bundle when it already exists.
+  --remote <host>               Execute UI over SSH on the dedicated test Mac.
+  --artifact-url <url>          Download a CI-produced .zip or .dmg artifact.
   --dry-run                     Resolve metadata/select suites, but do not build or launch.
   -h | --help                   Show this help.
 EOF
@@ -46,13 +50,16 @@ while [[ $# -gt 0 ]]; do
     --no-keep-data) KEEP_DATA=false; shift ;;
     --evidence) EVIDENCE="${2:?missing evidence mode}"; shift 2 ;;
     --skip-build) SKIP_BUILD=true; shift ;;
+    --remote) REMOTE_HOST="${2:?missing remote host}"; shift 2 ;;
+    --artifact-url) ARTIFACT_URL="${2:?missing artifact URL}"; shift 2 ;;
     --dry-run) DRY_RUN=true; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
   esac
 done
 
-[[ "$MODE" =~ ^(full|release|incremental)$ ]] || { echo "Invalid mode: $MODE" >&2; exit 2; }
+if [[ -n "$REMOTE_HOST" ]]; then MODE="remote"; fi
+[[ "$MODE" =~ ^(full|release|incremental|remote)$ ]] || { echo "Invalid mode: $MODE" >&2; exit 2; }
 [[ "$EVIDENCE" =~ ^(fast|full)$ ]] || { echo "Invalid evidence mode: $EVIDENCE" >&2; exit 2; }
 [[ -z "$BASELINE" && "$MODE" == "release" ]] && BASELINE="$DEFAULT_BASELINE"
 
@@ -62,6 +69,10 @@ need sw_vers
 need xcodebuild
 need system_profiler
 need screencapture
+if [[ -n "$REMOTE_HOST" ]]; then
+  need ssh
+  need rsync
+fi
 
 ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
@@ -154,6 +165,22 @@ XCODE_VERSION="$(xcodebuild -version | head -1 | sed 's/^Xcode //')"
 DISPLAY_TOPOLOGY="$(system_profiler SPDisplaysDataType -json 2>/dev/null | python3 tools/ui-smoke/display_topology.py)"
 APP_VERSION="unknown"
 APP_BUNDLE_ID="com.quitenote.app.dev"
+
+LOCAL_ARTIFACT=""
+download_ci_artifact() {
+  local dest="$RUN_DIR/artifact$(printf '%s' "$ARTIFACT_URL" | sed 's/.*\.[[:alnum:]]*$/.&/')"
+  curl -fL --retry 3 --connect-timeout 15 "$ARTIFACT_URL" -o "$dest"
+  LOCAL_ARTIFACT="$dest"
+}
+
+if [[ -n "$ARTIFACT_URL" && "$DRY_RUN" != true ]]; then
+  download_ci_artifact
+elif [[ "$MODE" != "remote" && "$SKIP_BUILD" != true ]]; then
+  APP_PATH_HINT="$APP_PATH"
+else
+  APP_PATH_HINT="$APP_PATH"
+fi
+
 if [[ -f "$APP_PATH/Contents/Info.plist" ]]; then
   APP_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PATH/Contents/Info.plist" 2>/dev/null || echo unknown)"
   APP_BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_PATH/Contents/Info.plist" 2>/dev/null || echo com.quitenote.app.dev)"
@@ -183,7 +210,9 @@ cat > "$RUN_DIR/manifest.json" <<EOF
   "suites": $SUITES_JSON,
   "macos_version": $(printf '%s' "$MACOS_VERSION" | json_escape),
   "xcode_version": $(printf '%s' "$XCODE_VERSION" | json_escape),
-  "display_topology": $(printf '%s' "$DISPLAY_TOPOLOGY" | json_escape)
+  "display_topology": $(printf '%s' "$DISPLAY_TOPOLOGY" | json_escape),
+  "remote_host": $(printf '%s' "$REMOTE_HOST" | json_escape),
+  "artifact_url": $(printf '%s' "$ARTIFACT_URL" | json_escape)
 }
 EOF
 
@@ -245,6 +274,64 @@ PY
   rm -rf "$STORAGE_ROOT"
   echo "Dry run OK: $RUN_DIR/manifest.json"
   exit 0
+fi
+
+if [[ "$MODE" == "remote" ]]; then
+  [[ -n "$REMOTE_HOST" ]] || { echo "Remote mode requires --remote <host>" >&2; exit 2; }
+  [[ -n "$ARTIFACT_URL" ]] || { echo "Remote mode requires --artifact-url <CI artifact>" >&2; exit 2; }
+
+  REMOTE_ROOT='$HOME/QuitenoteUITest'
+  REMOTE_RUN_DIR="$REMOTE_ROOT/runs/$RUN_ID"
+  REMOTE_APP_DIR="$REMOTE_ROOT/apps/$GIT_COMMIT"
+  REMOTE_ARTIFACT="$REMOTE_ROOT/artifacts/$(basename "$LOCAL_ARTIFACT")"
+
+  ssh "$REMOTE_HOST" "mkdir -p '$REMOTE_ROOT/runs/$RUN_ID/screenshots' '$REMOTE_ROOT/apps/$GIT_COMMIT' '$REMOTE_ROOT/artifacts'"
+  rsync -a "$LOCAL_ARTIFACT" "$REMOTE_HOST:$REMOTE_ARTIFACT"
+  rsync -a "$ROOT/tools/ui-smoke/computer_use_smoke.py" "$REMOTE_HOST:$REMOTE_ROOT/tools/"
+
+  ssh "$REMOTE_HOST" "python3 - '$REMOTE_ROOT' '$REMOTE_RUN_DIR' '$REMOTE_APP_DIR' '$REMOTE_ARTIFACT' '$STORAGE_ROOT' '$RUN_ID'" <<'PY'
+import shutil, subprocess, sys
+from pathlib import Path
+
+root, run_dir, app_dir, artifact, storage, run_id = map(Path, sys.argv[1:])
+archive = Path(artifact)
+if archive.suffix == ".dmg":
+    mount = root / "mounts" / run_id
+    mount.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["hdiutil", "attach", str(archive), "-mountpoint", str(mount), "-nobrowse", "-readonly"], check=True)
+    source = next(mount.glob("*.app"), None)
+else:
+    tmp = root / "extract" / run_id
+    shutil.unpack_archive(str(archive), tmp)
+    source = next(tmp.glob("*.app"), None)
+if source is None:
+    raise SystemExit("BLOCKED: artifact contains no .app")
+if app_dir.exists():
+    shutil.rmtree(app_dir)
+shutil.copytree(source, app_dir, symlinks=True)
+(run_dir / "manifest.json").write_text('{"storage_root": "%s"}\n' % storage)
+print(app_dir)
+PY
+
+  ssh "$REMOTE_HOST" "QN_TEST_STORAGE_ROOT='$STORAGE_ROOT' open -n -a '$REMOTE_APP_DIR' --args --ui-smoke-run '$RUN_ID'"
+  sleep 4
+  ssh "$REMOTE_HOST" "python3 '$REMOTE_ROOT/tools/computer_use_smoke.py' --run-dir '$REMOTE_RUN_DIR' --app-path '$REMOTE_APP_DIR' --suites '${SUITES[*]}' --evidence '$EVIDENCE'"
+  STATUS=$?
+  ssh "$REMOTE_HOST" "osascript -e 'tell application id \"com.quitenote.app.dev\" to quit' >/dev/null 2>&1 || true"
+  rsync -a "$REMOTE_HOST:$REMOTE_RUN_DIR/" "$RUN_DIR/"
+  if [[ "$STATUS" -eq 3 ]]; then exit 3; fi
+  if [[ "$STATUS" -ne 0 ]]; then
+    python3 - "$RUN_DIR" <<'PY'
+import json, pathlib, sys
+p=pathlib.Path(sys.argv[1]); results=json.loads((p/"report.json").read_text()) if (p/"report.json").exists() else {"results":[]}
+lines=["# Knowledge candidate","", f"- Generated by run: `{p.name}`","", "## Failures requiring triage",""]
+for r in results.get("results",[]):
+    if r.get("status") not in ("PASS","SKIP"):
+        lines += [f"### {r.get('name','unknown')}", f"- Reason: {r.get('reason','not recorded')}", f"- Evidence: `{r.get('evidence','')}`", ""]
+(p/"knowledge-candidate.md").write_text("\n".join(lines))
+PY
+  fi
+  exit "$STATUS"
 fi
 
 
