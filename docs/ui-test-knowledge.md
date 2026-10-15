@@ -123,6 +123,7 @@ authorize_remote_ui "$QN_UI_REMOTE_HOST"
 - CI 构建产物必须是 `.zip`（内含一个 `.app`）或 `.dmg`（内含一个 `.app`）。
 - GitLab `dev-ui-artifact` 作业产出根层为 `Quite Note Dev.app` 的 ZIP，并附带 SHA-256。
 - GitLab `ui-smoke-remote` 作业在 CI 内直接调用 runner，把 `manifest/report/timeline/screenshots` 作为当前版本的 GitLab artifact 保留 30 天；`allow_failure: true` 时不阻塞普通 push，但失败产物同样保留。
+- GitHub Actions 对应 workflow 为 `.github/workflows/ui-smoke.yml`：构建 universal Dev ZIP；配置 `QN_UI_REMOTE_HOST` 与 `QN_UI_SSH_KEY` 后自动远程执行 UI，并上传报告/截图 artifact 保留 30 天。未配置时只保留构建产物，不执行远程 UI。
 - 远端目录固定在用户目录下的 `~/QuitenoteUITest/`。
 - SSH 主机名只存在本机 SSH config 与 GitLab protected CI Variable `QN_UI_REMOTE_HOST` 中，不写入仓库；仓库内只有别名占位或变量名。
 - 远端使用一次性 `QN_TEST_STORAGE_ROOT`，测试后报告 rsync 回本机 run 目录。

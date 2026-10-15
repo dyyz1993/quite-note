@@ -1,0 +1,96 @@
+name: UI Smoke
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  QN_UI_REMOTE_HOST: ${{ secrets.QN_UI_REMOTE_HOST }}
+
+jobs:
+  build-dev-artifact:
+    name: Build Dev UI Artifact
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build universal Dev app
+        run: |
+          uname -m
+          swift build -c release --arch x86_64 --arch arm64 --product QuiteNote
+          mkdir -p .build/release
+          cp .build/apple/Products/Release/QuiteNote .build/release/QuiteNote
+          ./build-app.sh --dev --no-build --no-launch
+
+      - name: Package artifact
+        run: |
+          ARTIFACT_NAME="QuiteNoteDev-${GITHUB_SHA::8}-universal.zip"
+          ditto -c -k --keepParent "Quite Note Dev.app" "$ARTIFACT_NAME"
+          shasum -a 256 "$ARTIFACT_NAME" > "$ARTIFACT_NAME.sha256"
+          echo "UI_ARTIFACT=$ARTIFACT_NAME" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.UI_ARTIFACT }}
+          path: |
+            QuiteNoteDev-*.zip
+            QuiteNoteDev-*.zip.sha256
+          retention-days: 30
+          if-no-files-found: error
+
+  remote-ui-smoke:
+    name: Remote UI Smoke
+    needs: build-dev-artifact
+    # GitHub-hosted runner cannot SSH into a private test Mac unless QN_UI_REMOTE_HOST is configured.
+    if: ${{ env.QN_UI_REMOTE_HOST != '' }}
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: QuiteNoteDev-*.zip
+          merge-multiple: true
+
+      - name: Configure SSH
+        env:
+          QN_UI_SSH_KEY: ${{ secrets.QN_UI_SSH_KEY }}
+        run: |
+          if [[ -z "$QN_UI_SSH_KEY" ]]; then
+            echo "QN_UI_SSH_KEY is required" >&2
+            exit 1
+          fi
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$QN_UI_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+
+      - name: Run remote UI smoke
+        env:
+          QN_UI_REMOTE_HOST: ${{ secrets.QN_UI_REMOTE_HOST }}
+        run: |
+          ARTIFACT_URL="$GITHUB_WORKSPACE/$(find . -maxdepth 1 -name 'QuiteNoteDev-*.zip' -print -quit)"
+          ./tools/ui-smoke/run_ui_smoke.sh \
+            --remote "$QN_UI_REMOTE_HOST" \
+            --artifact-url "$ARTIFACT_URL" \
+            --mode full
+
+      - name: Upload UI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: QuiteNoteUI-${{ github.sha }}
+          path: |
+            tools/ui-smoke/runs/ui-*/manifest.json
+            tools/ui-smoke/runs/ui-*/report.json
+            tools/ui-smoke/runs/ui-*/report.md
+            tools/ui-smoke/runs/ui-*/timeline.jsonl
+            tools/ui-smoke/runs/ui-*/screenshots/
+            tools/ui-smoke/runs/ui-*/knowledge-candidate.md
+          retention-days: 30
+          if-no-files-found: warn
