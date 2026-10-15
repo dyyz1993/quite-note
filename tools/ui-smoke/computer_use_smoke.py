@@ -344,15 +344,20 @@ def _find_ax_element_by_identifier(identifier: str):
 
 
 def smoke_flash_notes(run: Run, driver: AXDriver) -> str:
-    if not driver.windows():
-        raise RuntimeError("app has no visible window before main-panel invocation")
-    return "AX flow available"
+    # The floating panel is a non-titled NSPanel; its deterministic 520x640
+    # frame is exposed on the GUI session at launch.
+    windows = driver.windows()
+    if not any(480 <= w["frame"][2] <= 560 and 600 <= w["frame"][3] <= 680 for w in windows):
+        raise RuntimeError(f"main panel not exposed; windows={windows}")
+    return "main 520x640 panel exposed"
 
 
 def smoke_settings(run: Run, driver: AXDriver) -> str:
-    if not driver.windows():
-        raise RuntimeError("app has no visible window before settings invocation")
-    return "AX flow available"
+    # Settings is reached without changing user data from the main panel.
+    window = driver.foreground_floating_window()
+    if window is None:
+        raise RuntimeError("settings invocation requires the main panel")
+    return "settings AX flow available from main panel"
 
 
 def smoke_devcore(run: Run, driver: AXDriver) -> str:

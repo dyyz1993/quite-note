@@ -106,6 +106,8 @@ jobs:
             tools/ui-smoke/runs/ui-*/report.json
             tools/ui-smoke/runs/ui-*/report.md
             tools/ui-smoke/runs/ui-*/timeline.jsonl
+            tools/ui-smoke/runs/ui-*/app.stdout.log
+            tools/ui-smoke/runs/ui-*/app.stderr.log
             tools/ui-smoke/runs/ui-*/screenshots/
             tools/ui-smoke/runs/ui-*/knowledge-candidate.md
           retention-days: 30

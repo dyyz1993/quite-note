@@ -467,18 +467,22 @@ PY
 
 TEST_PID_FILE="$RUN_DIR/app.pid"
 defaults write com.quitenote.app.dev clipboardOnboarded -bool true
-QN_TEST_STORAGE_ROOT="$STORAGE_ROOT" open -n "$APP_PATH/Contents/MacOS/QuiteNoteDev" --args --ui-smoke-run "$RUN_ID"
+QN_TEST_STORAGE_ROOT="$STORAGE_ROOT" "$APP_PATH/Contents/MacOS/QuiteNoteDev" --ui-smoke-run "$RUN_ID" >"$RUN_DIR/app.stdout.log" 2>"$RUN_DIR/app.stderr.log" &
+TEST_PID=$!
+echo "$TEST_PID" > "$TEST_PID_FILE"
 DEADLINE=$((SECONDS + 15))
-TEST_PID=""
 while (( SECONDS < DEADLINE )); do
-  TEST_PID="$(pgrep -f "$APP_PATH/Contents/MacOS/QuiteNoteDev" | tail -1 || true)"
-  [[ -n "$TEST_PID" ]] && break
+  [[ -d "$STORAGE_ROOT" ]] && kill -0 "$TEST_PID" 2>/dev/null && break
   sleep 1
 done
-[[ -n "$TEST_PID" ]] || { echo "BLOCKED: Quite Note Dev did not start" >&2; screencapture -x "$RUN_DIR/screenshots/blocked.png" 2>/dev/null || true; exit 3; }
-echo "$TEST_PID" > "$TEST_PID_FILE"
-sleep 2
-TEST_PID="$(cat "$TEST_PID_FILE" 2>/dev/null || true)"
+if ! kill -0 "$TEST_PID" 2>/dev/null; then
+  echo "BLOCKED: Quite Note Dev did not start" >&2
+  cat "$RUN_DIR/app.stderr.log" >&2 || true
+  screencapture -x "$RUN_DIR/screenshots/blocked.png" 2>/dev/null || true
+  exit 3
+fi
+[[ -d "$STORAGE_ROOT" ]] || { echo "BLOCKED: isolated storage root was not created: $STORAGE_ROOT" >&2; screencapture -x "$RUN_DIR/screenshots/blocked.png" 2>/dev/null || true; exit 3; }
+sleep 1
 
 cleanup() {
   if [[ -n "${TEST_PID:-}" ]] && kill -0 "$TEST_PID" 2>/dev/null; then
