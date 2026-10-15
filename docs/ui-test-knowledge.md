@@ -25,6 +25,10 @@
 
 # GitLab Dev 产物作业：dev-ui-artifact
 # 产物：QuiteNoteDev-<shortsha>.zip 和 .sha256
+
+# 首次授权时打开 xyz-mac 的系统设置页
+source tools/ui-smoke/run_ui_smoke.sh >/dev/null 2>&1 || true
+authorize_remote_ui xyz-mac
 ```
 
 报告位于 `tools/ui-smoke/runs/<run-id>/`。核心文件：

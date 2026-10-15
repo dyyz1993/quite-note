@@ -37,7 +37,7 @@ EOF
 }
 
 need() { command -v "$1" >/dev/null 2>&1 || { echo "Missing command: $1" >&2; exit 2; }; }
-json_escape() { python3 -c 'import json,sys; print(json.dumps(sys.stdin.read().rstrip("\n")))'; }
+json_escape() { python3 -c 'import json,sys; sys.stdout.write(json.dumps(sys.argv[1]))' "$1"; }
 iso_now() { date -u +"%Y-%m-%dT%H:%M:%SZ"; }
 
 while [[ $# -gt 0 ]]; do
@@ -162,13 +162,18 @@ read -r -a SUITES <<<"$(python3 -c 'import json,sys; print(" ".join(json.loads(s
 
 MACOS_VERSION="$(sw_vers -productVersion)"
 XCODE_VERSION="$(xcodebuild -version | head -1 | sed 's/^Xcode //')"
-DISPLAY_TOPOLOGY="$(system_profiler SPDisplaysDataType -json 2>/dev/null | python3 tools/ui-smoke/display_topology.py)"
+DISPLAY_TOPOLOGY_FILE="$RUN_DIR/display-topology.json"
+system_profiler SPDisplaysDataType -json > "$DISPLAY_TOPOLOGY_FILE" 2>/dev/null || true
+DISPLAY_TOPOLOGY="$(python3 tools/ui-smoke/display_topology.py < "$DISPLAY_TOPOLOGY_FILE" 2>/dev/null || true)"
 APP_VERSION="unknown"
 APP_BUNDLE_ID="com.quitenote.app.dev"
 
 LOCAL_ARTIFACT=""
 download_ci_artifact() {
-  local dest="$RUN_DIR/artifact$(printf '%s' "$ARTIFACT_URL" | sed 's/.*\.[[:alnum:]]*$/.&/')"
+  local name
+  name="$(basename "$ARTIFACT_URL" | sed 's/[?#].*$//')"
+  [[ "$name" =~ \.(zip|dmg)$ ]] || { echo "Artifact URL must end in .zip or .dmg" >&2; exit 2; }
+  local dest="$RUN_DIR/$name"
   curl -fL --retry 3 --connect-timeout 15 "$ARTIFACT_URL" -o "$dest"
   LOCAL_ARTIFACT="$dest"
 }
@@ -188,39 +193,39 @@ fi
 
 cat > "$RUN_DIR/manifest.json" <<EOF
 {
-  "run_id": $(printf '%s' "$RUN_ID" | json_escape),
-  "suite_version": $(printf '%s' "$SUITE_VERSION" | json_escape),
-  "started_at": $(printf '%s' "$(iso_now)" | json_escape),
+  "run_id": $(json_escape "$RUN_ID"),
+  "suite_version": $(json_escape "$SUITE_VERSION"),
+  "started_at": $(json_escape "$(iso_now)"),
   "finished_at": null,
-  "mode": $(printf '%s' "$MODE" | json_escape),
-  "git_ref": $(printf '%s' "$GIT_REF" | json_escape),
-  "git_commit": $(printf '%s' "$GIT_COMMIT" | json_escape),
-  "git_tag": $(printf '%s' "$GIT_TAG_AT_COMMIT" | json_escape),
-  "git_describe": $(printf '%s' "$GIT_DESCRIBE" | json_escape),
-  "working_tree_patch_sha": $(printf '%s' "$PATCH_SHA" | json_escape),
-  "baseline_ref": $(printf '%s' "$BASELINE" | json_escape),
-  "baseline_commit": $(printf '%s' "$BASELINE_COMMIT" | json_escape),
-  "baseline_tag": $(printf '%s' "$BASELINE_TAG" | json_escape),
+  "mode": $(json_escape "$MODE"),
+  "git_ref": $(json_escape "$GIT_REF"),
+  "git_commit": $(json_escape "$GIT_COMMIT"),
+  "git_tag": $(json_escape "$GIT_TAG_AT_COMMIT"),
+  "git_describe": $(json_escape "$GIT_DESCRIBE"),
+  "working_tree_patch_sha": $(json_escape "$PATCH_SHA"),
+  "baseline_ref": $(json_escape "$BASELINE"),
+  "baseline_commit": $(json_escape "$BASELINE_COMMIT"),
+  "baseline_tag": $(json_escape "$BASELINE_TAG"),
   "baseline_run_id": null,
-  "app_version": $(printf '%s' "$APP_VERSION" | json_escape),
-  "app_bundle_id": $(printf '%s' "$APP_BUNDLE_ID" | json_escape),
-  "storage_root": $(printf '%s' "$STORAGE_ROOT" | json_escape),
+  "app_version": $(json_escape "$APP_VERSION"),
+  "app_bundle_id": $(json_escape "$APP_BUNDLE_ID"),
+  "storage_root": $(json_escape "$STORAGE_ROOT"),
   "keep_data": $KEEP_DATA,
-  "evidence": $(printf '%s' "$EVIDENCE" | json_escape),
+  "evidence": $(json_escape "$EVIDENCE"),
   "suites": $SUITES_JSON,
-  "macos_version": $(printf '%s' "$MACOS_VERSION" | json_escape),
-  "xcode_version": $(printf '%s' "$XCODE_VERSION" | json_escape),
-  "display_topology": $(printf '%s' "$DISPLAY_TOPOLOGY" | json_escape),
-  "remote_host": $(printf '%s' "$REMOTE_HOST" | json_escape),
-  "artifact_url": $(printf '%s' "$ARTIFACT_URL" | json_escape)
+  "macos_version": $(json_escape "$MACOS_VERSION"),
+  "xcode_version": $(json_escape "$XCODE_VERSION"),
+  "display_topology": $(json_escape "$DISPLAY_TOPOLOGY"),
+  "remote_host": $(json_escape "$REMOTE_HOST"),
+  "artifact_url": $(json_escape "$ARTIFACT_URL")
 }
 EOF
 
 cat > "$RUN_DIR/baseline-comparison.json" <<EOF
 {
-  "baseline_ref": $(printf '%s' "$BASELINE" | json_escape),
-  "baseline_commit": $(printf '%s' "$BASELINE_COMMIT" | json_escape),
-  "target_commit": $(printf '%s' "$GIT_COMMIT" | json_escape),
+  "baseline_ref": $(json_escape "$BASELINE"),
+  "baseline_commit": $(json_escape "$BASELINE_COMMIT"),
+  "target_commit": $(json_escape "$GIT_COMMIT"),
   "new_failures": [],
   "fixed_failures": [],
   "still_failing": [],
@@ -230,7 +235,7 @@ cat > "$RUN_DIR/baseline-comparison.json" <<EOF
 EOF
 
 cat > "$RUN_DIR/timeline.jsonl" <<EOF
-{"timestamp": $(printf '%s' "$(iso_now)" | json_escape), "event": "metadata_resolved", "mode": $(printf '%s' "$MODE" | json_escape), "suites": $SUITES_JSON}
+{"timestamp": $(json_escape "$(iso_now)"), "event": "metadata_resolved", "mode": $(json_escape "$MODE"), "suites": $SUITES_JSON}
 EOF
 
 cat > "$RUN_DIR/report.md" <<EOF
@@ -254,7 +259,7 @@ if [[ "$DRY_RUN" == true ]]; then
 {
   "status": "DRY_RUN",
   "results": [],
-  "manifest": $(printf '%s/manifest.json' "$RUN_DIR" | json_escape)
+  "manifest": $(json_escape "$RUN_DIR/manifest.json")
 }
 EOF
   sed -i '' 's/Result: \*\*RUNNING\*\*/Result: **DRY_RUN**/' "$RUN_DIR/report.md"
@@ -280,7 +285,7 @@ if [[ "$MODE" == "remote" ]]; then
   [[ -n "$REMOTE_HOST" ]] || { echo "Remote mode requires --remote <host>" >&2; exit 2; }
   [[ -n "$ARTIFACT_URL" ]] || { echo "Remote mode requires --artifact-url <CI artifact>" >&2; exit 2; }
 
-  REMOTE_ROOT='$HOME/QuitenoteUITest'
+  REMOTE_ROOT="/Users/$(ssh "$REMOTE_HOST" 'stat -f %Su')/QuitenoteUITest"
   REMOTE_RUN_DIR="$REMOTE_ROOT/runs/$RUN_ID"
   REMOTE_APP_DIR="$REMOTE_ROOT/apps/$GIT_COMMIT"
   REMOTE_ARTIFACT="$REMOTE_ROOT/artifacts/$(basename "$LOCAL_ARTIFACT")"
@@ -302,7 +307,8 @@ if archive.suffix == ".dmg":
     source = next(mount.glob("*.app"), None)
 else:
     tmp = root / "extract" / run_id
-    shutil.unpack_archive(str(archive), tmp)
+    tmp.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["ditto", "-x", "-k", str(archive), str(tmp)], check=True)
     source = next(tmp.glob("*.app"), None)
 if source is None:
     raise SystemExit("BLOCKED: artifact contains no .app")
@@ -313,11 +319,13 @@ shutil.copytree(source, app_dir, symlinks=True)
 print(app_dir)
 PY
 
-  ssh "$REMOTE_HOST" "QN_TEST_STORAGE_ROOT='$STORAGE_ROOT' open -n -a '$REMOTE_APP_DIR' --args --ui-smoke-run '$RUN_ID'"
+  ssh "$REMOTE_HOST" "QN_TEST_STORAGE_ROOT='$STORAGE_ROOT' open -n '$REMOTE_APP_DIR/Contents/MacOS/QuiteNoteDev' --args --ui-smoke-run '$RUN_ID'"
   sleep 4
-  ssh "$REMOTE_HOST" "python3 '$REMOTE_ROOT/tools/computer_use_smoke.py' --run-dir '$REMOTE_RUN_DIR' --app-path '$REMOTE_APP_DIR' --suites '${SUITES[*]}' --evidence '$EVIDENCE'"
+  set +e
+  ssh "$REMOTE_HOST" "python3 '$REMOTE_ROOT/tools/computer_use_smoke.py' --run-dir '$REMOTE_RUN_DIR' --app-path '$REMOTE_APP_DIR' --suites ${SUITES[*]} --evidence '$EVIDENCE'"
   STATUS=$?
-  ssh "$REMOTE_HOST" "osascript -e 'tell application id \"com.quitenote.app.dev\" to quit' >/dev/null 2>&1 || true"
+  set -e
+  ssh "$REMOTE_HOST" "osascript -e 'tell application id \"com.quitenote.app.dev\" to quit' >/dev/null 2>&1 || true; pkill -f '$REMOTE_APP_DIR/Contents/MacOS/QuiteNoteDev' 2>/dev/null || true"
   rsync -a "$REMOTE_HOST:$REMOTE_RUN_DIR/" "$RUN_DIR/"
   if [[ "$STATUS" -eq 3 ]]; then exit 3; fi
   if [[ "$STATUS" -ne 0 ]]; then
@@ -419,3 +427,8 @@ PY
 fi
 
 exit "$STATUS"
+
+authorize_remote_ui() {
+  echo "Opening xyz-mac System Settings for one-time Accessibility and Screen Recording authorization." >&2
+  ssh "$1" "open 'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility'; open 'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture'"
+}
