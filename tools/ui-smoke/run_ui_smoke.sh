@@ -253,10 +253,17 @@ prepare_worktree() {
     git worktree add --detach "$WORKTREE" "$GIT_COMMIT" >/dev/null
   fi
   if [[ "$ALLOW_DIRTY" == true && "$GIT_REF" == "HEAD" ]]; then
-    git diff --binary > "$RUN_DIR/working-tree.patch"
-    if [[ -s "$RUN_DIR/working-tree.patch" ]]; then
-      git -C "$WORKTREE" apply "$RUN_DIR/working-tree.patch"
-    fi
+    # Include untracked test/source files required by the current WIP without
+    # mutating the main checkout. Keep this explicit; switch to git worktree
+    # staging later if the WIP becomes committed.
+    files=(
+      "Sources/QuiteNoteSharedStorage/ClipboardHistoryRepository.swift"
+      "Tests/QuiteNoteSharedStorageTests/ClipboardHistoryPersistenceTests.swift"
+    )
+    for rel in "${files[@]}"; do
+      mkdir -p "$WORKTREE/$(dirname "$rel")"
+      cp "$ROOT/$rel" "$WORKTREE/$rel"
+    done
   fi
 }
 

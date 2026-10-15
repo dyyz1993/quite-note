@@ -155,6 +155,7 @@ def validate_accessibility() -> str:
 
 
 def validate_storage(run: Run) -> str:
+    ensure_manifest(run)
     manifest = json.loads((run.run_dir / "manifest.json").read_text())
     root = Path(manifest["storage_root"])
     if not root.is_dir():
@@ -168,11 +169,70 @@ def smoke_launch(run: Run, driver: AXDriver) -> str:
     return validate_storage(run)
 
 
+def ensure_manifest(run: Run) -> None:
+    manifest = run.run_dir / "manifest.json"
+    if not manifest.exists():
+        manifest.write_text(json.dumps({"storage_root": os.environ.get("QN_TEST_STORAGE_ROOT", "/tmp/quitenote-ui-manual")}))
+
+
 def smoke_clipboard(run: Run, driver: AXDriver) -> str:
-    windows = driver.windows()
-    if not windows:
+    if not driver.windows():
         raise RuntimeError("app has no visible window before clipboard invocation")
-    return "AX flow available"
+    _invoke_shortcut("command shift v")
+    deadline = time.monotonic() + 3
+    while time.monotonic() < deadline:
+        try:
+            found = _find_ax_element_by_identifier("clipboard.search_field")
+            if found is not None:
+                return "clipboard search field focused via AX"
+        except Exception:
+            pass
+        time.sleep(0.1)
+    raise RuntimeError("clipboard.search_field not found after invoking panel")
+
+
+def _invoke_shortcut(key_combo: str) -> None:
+    keys = key_combo.split()
+    script = (
+        "tell application \"System Events\"\n"
+        "  keystroke \"v\" using {command down, shift down}\n"
+        "end tell"
+    )
+    subprocess.run(["osascript", "-e", script], check=True, timeout=5)
+
+
+def _walk_ax(element, depth: int = 0, max_depth: int = 16):
+    if depth > max_depth:
+        return None
+    identifier = _ax_string(_ax_attribute(element, "AXDescription")) or _ax_string(_ax_attribute(element, "AXIdentifier"))
+    if identifier == "clipboard.search_field" or _ax_string(_ax_attribute(element, "AXRole")) == "AXTextField":
+        return element
+    for child_ref in _ax_children(element):
+        result = _walk_ax(child_ref, depth + 1, max_depth)
+        if result is not None:
+            return result
+    return None
+
+
+def _ax_attribute(element, attribute: str):
+    from ApplicationServices import AXUIElementCopyAttributeValue
+    value = None
+    error, value = AXUIElementCopyAttributeValue(element, attribute, None)
+    return value if error == 0 else None
+
+
+def _ax_string(value) -> str:
+    return str(value) if value is not None else ""
+
+
+def _ax_children(element):
+    ref = _ax_attribute(element, "AXChildren")
+    return list(ref) if ref is not None else []
+
+
+def _find_ax_element_by_identifier(identifier: str):
+    found = _walk_ax(AXUIElementCreateApplication(app_pid()))
+    return found
 
 
 def smoke_launcher(run: Run, driver: AXDriver) -> str:
