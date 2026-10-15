@@ -9,9 +9,6 @@ on:
 permissions:
   contents: read
 
-env:
-  QN_UI_REMOTE_HOST: ${{ secrets.QN_UI_REMOTE_HOST }}
-
 jobs:
   build-dev-artifact:
     name: Build Dev UI Artifact
@@ -47,7 +44,7 @@ jobs:
     name: Remote UI Smoke
     needs: build-dev-artifact
     # GitHub-hosted runner cannot SSH into a private test Mac unless QN_UI_REMOTE_HOST is configured.
-    if: ${{ env.QN_UI_REMOTE_HOST != '' }}
+    if: ${{ secrets.QN_UI_REMOTE_HOST != '' }}
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
