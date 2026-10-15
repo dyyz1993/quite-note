@@ -17,11 +17,19 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Build universal Dev app
+        env:
+          APP_SIGN_IDENTITY: ${{ vars.QN_UI_SIGN_IDENTITY }}
         run: |
           uname -m
           swift build -c release --arch x86_64 --arch arm64 --product QuiteNote
           mkdir -p .build/release
           cp .build/apple/Products/Release/QuiteNote .build/release/QuiteNote
+          # Self-hosted runner may already have a valid identity in its keychain.
+          # If no override is configured, fall back to the development matcher.
+          if [[ -z "$APP_SIGN_IDENTITY" ]]; then
+            APP_SIGN_IDENTITY=$(security find-identity -v -p codesigning               | awk -F'"' '/Apple Development/{print $1; exit}' | awk '{print $2}')
+          fi
+          export APP_SIGN_IDENTITY
           ./build-app.sh --dev --no-build --no-launch
 
       - name: Package artifact
