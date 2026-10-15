@@ -302,7 +302,7 @@ from pathlib import Path
 
 root, run_dir, app_dir, storage = (Path(x) for x in sys.argv[1:5])
 run_id = sys.argv[6]
-archive = Path(artifact)
+archive = Path(sys.argv[5])
 if archive.suffix == ".dmg":
     mount = root / "mounts" / run_id
     mount.mkdir(parents=True, exist_ok=True)
