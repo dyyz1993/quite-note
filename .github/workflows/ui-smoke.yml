@@ -44,7 +44,6 @@ jobs:
     name: Remote UI Smoke
     needs: build-dev-artifact
     # GitHub-hosted runner cannot SSH into a private test Mac unless QN_UI_REMOTE_HOST is configured.
-    if: ${{ secrets.QN_UI_REMOTE_HOST != '' }}
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
@@ -71,6 +70,10 @@ jobs:
         env:
           QN_UI_REMOTE_HOST: ${{ secrets.QN_UI_REMOTE_HOST }}
         run: |
+          if [[ -z "$QN_UI_REMOTE_HOST" ]]; then
+            echo "QN_UI_REMOTE_HOST secret is not configured" >&2
+            exit 2
+          fi
           ARTIFACT_URL="$GITHUB_WORKSPACE/$(find . -maxdepth 1 -name 'QuiteNoteDev-*.zip' -print -quit)"
           ./tools/ui-smoke/run_ui_smoke.sh \
             --remote "$QN_UI_REMOTE_HOST" \
