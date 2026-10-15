@@ -1,6 +1,8 @@
 # QuiteNote GitLab CI 配置
 #
-# 启用前提（一次性，详见 AGENTS.md「CI/CD 自动化」）：
+# UI 自动化工作流详见 docs/ui-test-knowledge.md。
+#
+# 启用前提（一次性，详见本地 AGENTS.md「CI/CD 自动化」；该文件含敏感信息不入库）：
 #   1. 仓库推送到 GitLab（gitlab.com 建仓后 push）
 #   2. 一台常开的 Mac 注册 self-hosted runner（GitLab 免费版不提供托管 macOS runner）：
 #      brew install gitlab-runner

@@ -69,6 +69,17 @@ FloatingPanelController (NSPanel with SwiftUI, expanded/ball modes)
 - **Animation+Theme.swift**: Duration constants (_150, _300, _500)
 - **Shape+Theme.swift**: Corner radius and border configs
 
+## UI Automation / Computer Use
+
+Before running QuiteNote UI tests, read `docs/ui-test-knowledge.md` and check `docs/ui-test-error-notebook.md`.
+
+- Standard workflow is GitLab CI: build Dev ZIP, execute UI smoke on the protected test Mac, and archive `manifest`, `report`, `timeline`, and screenshots as version artifacts.
+- Local machine must not launch interactive UI tests. Use CI or the dedicated remote host configured through the protected variable `QN_UI_REMOTE_HOST`.
+- Never commit the private host name, LAN address, or SSH details.
+- Reuse `tools/ui-smoke/operations.json` and `tools/ui-smoke/selectors.json`; do not rediscover UI paths.
+- Regressions: full smoke for tags/release/build changes; path-based incremental smoke for normal commits. `launch` and `cleanup` are always required.
+- FAIL/BLOCKED runs must generate `knowledge-candidate.md`; update the error notebook after triage.
+
 ## Development Commands
 
 ### Build and Run
