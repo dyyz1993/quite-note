@@ -12,7 +12,8 @@ permissions:
 jobs:
   build-dev-artifact:
     name: Build Dev UI Artifact
-    runs-on: [self-hosted, quitenote-ui]
+    # The app now requires the macOS 26 SDK; use GitHub's hosted macOS image.
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
 
@@ -68,7 +69,7 @@ jobs:
           if-no-files-found: error
 
   remote-ui-smoke:
-    name: Remote UI Smoke
+    name: Local UI Smoke on Dedicated Mac
     needs: build-dev-artifact
     runs-on: [self-hosted, quitenote-ui]
     steps:
@@ -79,31 +80,17 @@ jobs:
           pattern: QuiteNoteDev-*.zip
           merge-multiple: true
 
-      - name: Configure SSH
-        env:
-          QN_UI_SSH_KEY: ${{ secrets.QN_UI_SSH_KEY }}
+      - name: Verify artifact
         run: |
-          if [[ -z "$QN_UI_SSH_KEY" ]]; then
-            echo "QN_UI_SSH_KEY is required" >&2
-            exit 1
-          fi
-          mkdir -p ~/.ssh
-          chmod 700 ~/.ssh
-          printf '%s\n' "$QN_UI_SSH_KEY" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
+          ARTIFACT="$(find . -maxdepth 1 -name 'QuiteNoteDev-*.zip' -print -quit)"
+          [[ -n "$ARTIFACT" ]] || { echo "Dev artifact was not downloaded" >&2; exit 2; }
+          shasum -a 256 --check "${ARTIFACT}.sha256"
+          echo "UI_ARTIFACT=$ARTIFACT" >> "$GITHUB_ENV"
 
-      - name: Run remote UI smoke
-        env:
-          QN_UI_REMOTE_HOST: ${{ secrets.QN_UI_REMOTE_HOST }}
+      - name: Run UI smoke from prebuilt artifact
         run: |
-          if [[ -z "$QN_UI_REMOTE_HOST" ]]; then
-            echo "QN_UI_REMOTE_HOST secret is not configured" >&2
-            exit 2
-          fi
-          ARTIFACT_URL="$GITHUB_WORKSPACE/$(find . -maxdepth 1 -name 'QuiteNoteDev-*.zip' -print -quit)"
           ./tools/ui-smoke/run_ui_smoke.sh \
-            --remote "$QN_UI_REMOTE_HOST" \
-            --artifact-url "$ARTIFACT_URL" \
+            --local-artifact "$UI_ARTIFACT" \
             --mode full
 
       - name: Upload UI evidence

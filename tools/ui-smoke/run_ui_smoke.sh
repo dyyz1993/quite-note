@@ -14,6 +14,7 @@ SKIP_BUILD=false
 DRY_RUN=false
 REMOTE_HOST=""
 ARTIFACT_URL=""
+LOCAL_ARTIFACT_PATH=""
 
 usage() {
   cat <<'EOF'
@@ -31,6 +32,7 @@ Options:
   --skip-build                  Reuse the worktree app bundle when it already exists.
   --remote <host>               Execute UI over SSH on the dedicated test Mac.
   --artifact-url <url>          Download a CI-produced .zip or .dmg artifact.
+  --local-artifact <path>       Install and test a CI-produced .zip or .dmg without building.
   --dry-run                     Resolve metadata/select suites, but do not build or launch.
   -h | --help                   Show this help.
 EOF
@@ -52,6 +54,7 @@ while [[ $# -gt 0 ]]; do
     --skip-build) SKIP_BUILD=true; shift ;;
     --remote) REMOTE_HOST="${2:?missing remote host}"; shift 2 ;;
     --artifact-url) ARTIFACT_URL="${2:?missing artifact URL}"; shift 2 ;;
+    --local-artifact) LOCAL_ARTIFACT_PATH="${2:?missing artifact path}"; shift 2 ;;
     --dry-run) DRY_RUN=true; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
@@ -59,6 +62,13 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -n "$REMOTE_HOST" ]]; then MODE="remote"; fi
+if [[ -n "$LOCAL_ARTIFACT_PATH" ]]; then
+  [[ -z "$REMOTE_HOST" && -z "$ARTIFACT_URL" ]] || {
+    echo "--local-artifact cannot be combined with --remote or --artifact-url" >&2
+    exit 2
+  }
+  SKIP_BUILD=true
+fi
 [[ "$MODE" =~ ^(full|release|incremental|remote)$ ]] || { echo "Invalid mode: $MODE" >&2; exit 2; }
 [[ "$EVIDENCE" =~ ^(fast|full)$ ]] || { echo "Invalid evidence mode: $EVIDENCE" >&2; exit 2; }
 [[ -z "$BASELINE" && "$MODE" == "release" ]] && BASELINE="$DEFAULT_BASELINE"
@@ -66,9 +76,11 @@ if [[ -n "$REMOTE_HOST" ]]; then MODE="remote"; fi
 need git
 need python3
 need sw_vers
-need xcodebuild
 need system_profiler
 need screencapture
+if [[ -z "$LOCAL_ARTIFACT_PATH" ]]; then
+  need xcodebuild
+fi
 if [[ -n "$REMOTE_HOST" ]]; then
   need ssh
   need rsync
@@ -161,7 +173,10 @@ read -r -a SUITES <<<"$(python3 -c 'import json,sys; print(" ".join(json.loads(s
 [[ ${#SUITES[@]} -gt 0 ]] || SUITES=(launch flash-notes clipboard launcher settings devcore cleanup)
 
 MACOS_VERSION="$(sw_vers -productVersion)"
-XCODE_VERSION="$(xcodebuild -version | head -1 | sed 's/^Xcode //')"
+XCODE_VERSION="not-required"
+if [[ -z "$LOCAL_ARTIFACT_PATH" ]]; then
+  XCODE_VERSION="$(xcodebuild -version | head -1 | sed 's/^Xcode //')"
+fi
 DISPLAY_TOPOLOGY_FILE="$RUN_DIR/display-topology.json"
 /usr/sbin/system_profiler SPDisplaysDataType -json > "$DISPLAY_TOPOLOGY_FILE" 2>/dev/null || true
 DISPLAY_TOPOLOGY="$(python3 tools/ui-smoke/display_topology.py < "$DISPLAY_TOPOLOGY_FILE" 2>/dev/null || true)"
@@ -217,7 +232,8 @@ cat > "$RUN_DIR/manifest.json" <<EOF
   "xcode_version": $(json_escape "$XCODE_VERSION"),
   "display_topology": $(json_escape "$DISPLAY_TOPOLOGY"),
   "remote_host": $(json_escape "$REMOTE_HOST"),
-  "artifact_url": $(json_escape "$ARTIFACT_URL")
+  "artifact_url": $(json_escape "$ARTIFACT_URL"),
+  "local_artifact": $(json_escape "$LOCAL_ARTIFACT_PATH")
 }
 EOF
 
@@ -279,6 +295,13 @@ PY
   rm -rf "$STORAGE_ROOT"
   echo "Dry run OK: $RUN_DIR/manifest.json"
   exit 0
+fi
+
+if [[ -n "$LOCAL_ARTIFACT_PATH" ]]; then
+  # Building a signed universal artifact is delegated to the cloud; the UI host
+  # only needs test assets and the Python runtime from this checkout.
+  need ditto
+  [[ -x "/usr/libexec/PlistBuddy" ]] || { echo "Missing command: PlistBuddy" >&2; exit 2; }
 fi
 
 if [[ "$MODE" == "remote" ]]; then
@@ -400,7 +423,35 @@ prepare_worktree() {
 }
 
 prepare_worktree
-if [[ "$SKIP_BUILD" != true || ! -d "$APP_PATH" ]]; then
+
+if [[ -n "$LOCAL_ARTIFACT_PATH" ]]; then
+  [[ -f "$LOCAL_ARTIFACT_PATH" ]] || { echo "Local artifact not found: $LOCAL_ARTIFACT_PATH" >&2; exit 2; }
+  case "$LOCAL_ARTIFACT_PATH" in
+    *.zip|*.dmg) ;;
+    *) echo "Local artifact must be a .zip or .dmg" >&2; exit 2 ;;
+  esac
+  cp "$LOCAL_ARTIFACT_PATH" "$RUN_DIR/$(basename "$LOCAL_ARTIFACT_PATH")"
+  if [[ -d "$APP_PATH" ]]; then rm -rf "$APP_PATH"; fi
+  ARTIFACT_INSTALL_DIR="$ROOT/.ui-smoke-artifacts/$GIT_COMMIT"
+  rm -rf "$ARTIFACT_INSTALL_DIR"
+  mkdir -p "$ARTIFACT_INSTALL_DIR" "$WORKTREE"
+  case "$LOCAL_ARTIFACT_PATH" in
+    *.zip)
+      ditto -x -k "$LOCAL_ARTIFACT_PATH" "$ARTIFACT_INSTALL_DIR"
+      ;;
+    *.dmg)
+      ARTIFACT_MOUNT="$ROOT/.ui-smoke-artifacts/$RUN_ID.mount"
+      mkdir -p "$ARTIFACT_MOUNT"
+      hdiutil attach "$LOCAL_ARTIFACT_PATH" -mountpoint "$ARTIFACT_MOUNT" -nobrowse -readonly
+      ditto "$ARTIFACT_MOUNT" "$ARTIFACT_INSTALL_DIR"
+      hdiutil detach "$ARTIFACT_MOUNT" || true
+      ;;
+  esac
+  ARTIFACT_APP="$(find "$ARTIFACT_INSTALL_DIR" -maxdepth 2 -type d -name '*.app' -print -quit)"
+  [[ -n "$ARTIFACT_APP" ]] || { echo "Artifact contains no .app" >&2; exit 2; }
+  mkdir -p "$(dirname "$APP_PATH")"
+  cp -R "$ARTIFACT_APP" "$APP_PATH"
+elif [[ "$SKIP_BUILD" != true || ! -d "$APP_PATH" ]]; then
   (cd "$WORKTREE" && ./build-app.sh --dev --no-launch)
 fi
 

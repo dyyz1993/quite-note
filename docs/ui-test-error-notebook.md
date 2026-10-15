@@ -48,6 +48,16 @@
 - Evidence: `docs/ui-test-knowledge.md` 远程执行模式。
 - Status: fixed
 
+### 2026-10-16 · self-hosted runner 下载了错误 CPU 架构
+
+- Version / Commit / Run: runner v2.338.0 / xyz-mac
+- Symptom: 在 Intel `xyz-mac` 执行 `Runner.Listener` 报 `Bad CPU type in executable`。
+- Root cause: 首次复制的是 arm64 runner 包；该机器没有 Rosetta 可用。
+- Fix: 下载 `actions-runner-osx-x64-2.338.0.tar.gz`，校验 SHA-256 后安装到独立目录 `~/actions-runner-quitenote`。
+- Prevention: 安装前必须核对 `uname -m` 与发行包架构；不得复用/修改其它项目的 `~/actions-runner`。
+- Evidence: GitHub runner 列表中 `quitenote-ui-xyz` 为 online，标签包含 `x86_64`。
+- Status: fixed
+
 ### 2026-10-15 · 远端 UI 冒烟遍历 AX 菜单树导致挂起
 
 - Version / Commit / Run: f707fa5

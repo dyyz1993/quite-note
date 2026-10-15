@@ -21,14 +21,13 @@
 ./tools/ui-smoke/run_ui_smoke.sh --mode incremental --incremental-since v1.3.0
 
 # CI 产物 + 专用测试机（本机不启动 UI）
-./tools/ui-smoke/run_ui_smoke.sh --remote "$QN_UI_REMOTE_HOST" --artifact-url <CI_BUILD_URL> --mode full
+./tools/ui-smoke/run_ui_smoke.sh --local-artifact <CI_BUILD.zip> --mode full
 
-# GitLab Dev 产物作业：dev-ui-artifact
+# CI Dev 产物：GitHub Actions artifact（或等价 CI 产物）
 # 产物：QuiteNoteDev-<shortsha>.zip 和 .sha256
 
-# 首次授权时打开专用测试机的系统设置页
-source tools/ui-smoke/run_ui_smoke.sh >/dev/null 2>&1 || true
-authorize_remote_ui "$QN_UI_REMOTE_HOST"
+# 首次授权：在专用测试机上登录用户，打开「系统设置 → 隐私与安全性」，
+# 为 runner shell / 终端授予辅助功能和屏幕录制权限后重启 runner。
 ```
 
 报告位于 `tools/ui-smoke/runs/<run-id>/`。核心文件：
@@ -44,19 +43,18 @@ authorize_remote_ui "$QN_UI_REMOTE_HOST"
 ## 标准工作流
 
 1. **触发**
-   - push / MR：GitLab 自动跑单元测试、构建 Dev ZIP、执行 `ui-smoke-remote`。
+   - push / PR：GitHub Actions 自动在云端构建 Dev ZIP，再调度到专用测试机执行 UI。
    - 打 `v*.*.*` Tag：自动执行发布构建；发布前手动或后续 CI 触发 `--mode release` 全量回归。
 2. **构建**
-   - GitLab `dev-ui-artifact` 产出 `QuiteNoteDev-<sha>.zip` 与 SHA-256。
-   - 本机不构建 UI 测试版，不启动 UI。
+   - GitHub 云端 `Build Dev UI Artifact` 产出签名 universal `QuiteNoteDev-<sha>.zip` 与 SHA-256。
+   - 用户日常 Mac 与专用测试机都不承担构建，不污染任何本机 WIP。
 3. **执行**
-   - GitLab `ui-smoke-remote` 调用本仓库 runner。
-   - runner 把 Dev ZIP 传到 CI Variable 指定的测试机，远端解包并安装到 `~/QuitenoteUITest/apps/<commit>/`。
-   - 远端使用一次性 `QN_TEST_STORAGE_ROOT` 启动 Dev App，执行 UI 冒烟。
+   - `Local UI Smoke on Dedicated Mac` 运行在 `xyz-mac` self-hosted runner。
+   - runner 从 GitHub artifact 下载当前 Commit 的 Dev ZIP，校验 SHA-256。
+   - runner 用 `--local-artifact` 解包安装到自己的隔离测试目录，使用一次性 `QN_TEST_STORAGE_ROOT` 启动 Dev App。
 4. **归档**
-   - 远端生成 `report.json / report.md / timeline.jsonl / screenshots/`。
-   - runner 回传到本仓库工作区 `tools/ui-smoke/runs/<run-id>/`。
-   - GitLab 把这些文件作为当前 Commit 的 artifact 保留 30 天。
+   - 专用测试机生成 `report.json / report.md / timeline.jsonl / screenshots/`。
+   - GitHub 把这些文件作为当前 Commit 的 artifact 保留 30 天。
 5. **复查**
    - 先看 `report.md` 的 PASS/FAIL/BLOCKED。
    - 有问题时按 `manifest.json` 锁定版本，再看 `report.json` 的失败 reason 与 `screenshots/` 证据。
@@ -117,18 +115,15 @@ authorize_remote_ui "$QN_UI_REMOTE_HOST"
 5. `Esc` 语义：启动器/剪贴板先清搜索，再按一次才关闭。
 6. 结束只退出 Dev 进程，绝不杀正式版 `com.quitenote.app`。
 
-## 专用测试机远程执行模式
+## 专用测试机执行模式
 
-- 本机只做控制、下载 CI 产物和收集报告，绝不启动测试 App、不执行键盘/鼠标交互。
-- CI 构建产物必须是 `.zip`（内含一个 `.app`）或 `.dmg`（内含一个 `.app`）。
-- GitLab `dev-ui-artifact` 作业产出根层为 `Quite Note Dev.app` 的 ZIP，并附带 SHA-256。
-- GitLab `ui-smoke-remote` 作业在 CI 内直接调用 runner，把 `manifest/report/timeline/screenshots` 作为当前版本的 GitLab artifact 保留 30 天；`allow_failure: true` 时不阻塞普通 push，但失败产物同样保留。
-- GitHub Actions 对应 workflow 为 `.github/workflows/ui-smoke.yml`：构建 universal Dev ZIP；配置 `QN_UI_REMOTE_HOST` 与 `QN_UI_SSH_KEY` 后自动远程执行 UI，并上传报告/截图 artifact 保留 30 天。未配置时只保留构建产物，不执行远程 UI。
-- 远端目录固定在用户目录下的 `~/QuitenoteUITest/`。
-- SSH 主机名只存在本机 SSH config 与 GitLab protected CI Variable `QN_UI_REMOTE_HOST` 中，不写入仓库；仓库内只有别名占位或变量名。
-- 远端使用一次性 `QN_TEST_STORAGE_ROOT`，测试后报告 rsync 回本机 run 目录。
-- 远端 Python 依赖为 PyObjC 10.3.2。
-- 若远端报告 `BLOCKED`，优先检查辅助功能、屏幕录制、CI 产物签名/架构。
+- 用户日常 Mac 不参与 UI 工作流；专用测试机只执行测试，不承担构建。
+- CI 产物必须是根层为 `Quite Note Dev.app` 的 ZIP，并附带 SHA-256。
+- GitHub Actions workflow 为 `.github/workflows/ui-smoke.yml`：云端构建 universal Dev ZIP，`quitenote-ui` self-hosted runner 执行本地 UI，并上传报告/截图 artifact 保留 30 天。
+- GitHub 和 runner 都是主动连接 GitHub；仓库不含、也不需要公开任何局域网地址或 SSH 反向入口。
+- 专用测试机使用一次性 `QN_TEST_STORAGE_ROOT`，只退出 `com.quitenote.app.dev`。
+- 专用测试机 Python 依赖为 PyObjC 10.3.2，无需 Xcode。
+- 若专用测试机报告 `BLOCKED`，优先检查辅助功能、屏幕录制、CI 产物签名/架构。
 - 当前专用测试机是 Intel Mac；CI 产物必须包含 x86_64 或 universal binary。
 
 ## 安全与权限红线
