@@ -187,15 +187,17 @@ def ensure_manifest(run: Run) -> None:
 def smoke_clipboard(run: Run, driver: AXDriver) -> str:
     if not driver.windows():
         raise RuntimeError("app has no visible window before clipboard invocation")
-    _invoke_shortcut("command shift v")
+    def field_present() -> bool:
+        try:
+            return _find_ax_element_by_identifier("clipboard.search_field") is not None
+        except Exception:
+            return False
+    if not field_present():
+        _press_status_menu_item("剪贴板历史")
     deadline = time.monotonic() + 3
     while time.monotonic() < deadline:
-        try:
-            found = _find_ax_element_by_identifier("clipboard.search_field")
-            if found is not None:
-                return "clipboard search field focused via AX"
-        except Exception:
-            pass
+        if field_present():
+            return "clipboard search field focused via AX"
         time.sleep(0.1)
     raise RuntimeError("clipboard.search_field not found after invoking panel")
 
@@ -203,30 +205,57 @@ def smoke_clipboard(run: Run, driver: AXDriver) -> str:
 def smoke_launcher(run: Run, driver: AXDriver) -> str:
     if not driver.windows():
         raise RuntimeError("app has no visible window before launcher invocation")
-    _press_status_menu_item("应用启动器")
+    def field_present() -> bool:
+        try:
+            return _find_ax_element_by_identifier("launcher.search_field") is not None
+        except Exception:
+            return False
+    if not field_present():
+        _activate_app()
+        _keystroke(" ", ["option"])
     deadline = time.monotonic() + 3
     while time.monotonic() < deadline:
-        try:
-            found = _find_ax_element_by_identifier("launcher.search_field")
-            if found is not None:
-                return "launcher search field exposed via AX"
-        except Exception:
-            pass
+        if field_present():
+            return "launcher search field exposed via AX"
         time.sleep(0.1)
     raise RuntimeError("launcher.search_field not found after invoking panel")
+
+
+def _activate_app() -> None:
+    script = f'''
+    tell application "System Events"
+      tell process "{APP_NAME}"
+        set frontmost to true
+      end tell
+    end tell
+    '''
+    subprocess.run(["osascript", "-e", script], check=True, timeout=5)
+
+
+def _keystroke(key: str, modifiers: list[str]) -> None:
+    mods = ", ".join(f"{modifier} down" for modifier in modifiers)
+    script = f'''
+    tell application "System Events"
+      keystroke "{key}" using {{{mods}}}
+    end tell
+    '''
+    subprocess.run(["osascript", "-e", script], check=True, timeout=5)
 
 
 def _press_status_menu_item(title: str) -> None:
     script = f'''
     tell application "System Events"
       tell process "{APP_NAME}"
+        set frontmost to true
+        delay 0.4
         tell menu bar item 1 of menu bar 2
           perform action "AXPress"
-          delay 0.2
+          delay 0.5
           tell menu item "{title}" of menu 1
             perform action "AXPress"
           end tell
         end tell
+        set frontmost to true
       end tell
     end tell
     '''
@@ -246,8 +275,11 @@ def _invoke_shortcut(key_combo: str) -> None:
 def _walk_ax(element, depth: int = 0, max_depth: int = 16):
     if depth > max_depth:
         return None
-    identifier = _ax_string(_ax_attribute(element, "AXDescription")) or _ax_string(_ax_attribute(element, "AXIdentifier"))
-    if identifier == _target_ax_identifier:
+    identifiers = (
+        _ax_string(_ax_attribute(element, "AXIdentifier")),
+        _ax_string(_ax_attribute(element, "AXDescription")),
+    )
+    if _target_ax_identifier in identifiers:
         return element
     for child_ref in _ax_children(element):
         result = _walk_ax(child_ref, depth + 1, max_depth)
@@ -275,6 +307,7 @@ def _ax_children(element):
 def _find_ax_element_by_identifier(identifier: str):
     global _target_ax_identifier
     _target_ax_identifier = identifier
+    from ApplicationServices import AXUIElementCreateApplication
     found = _walk_ax(AXUIElementCreateApplication(app_pid()))
     return found
 

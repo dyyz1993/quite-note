@@ -163,7 +163,7 @@ read -r -a SUITES <<<"$(python3 -c 'import json,sys; print(" ".join(json.loads(s
 MACOS_VERSION="$(sw_vers -productVersion)"
 XCODE_VERSION="$(xcodebuild -version | head -1 | sed 's/^Xcode //')"
 DISPLAY_TOPOLOGY_FILE="$RUN_DIR/display-topology.json"
-system_profiler SPDisplaysDataType -json > "$DISPLAY_TOPOLOGY_FILE" 2>/dev/null || true
+/usr/sbin/system_profiler SPDisplaysDataType -json > "$DISPLAY_TOPOLOGY_FILE" 2>/dev/null || true
 DISPLAY_TOPOLOGY="$(python3 tools/ui-smoke/display_topology.py < "$DISPLAY_TOPOLOGY_FILE" 2>/dev/null || true)"
 APP_VERSION="unknown"
 APP_BUNDLE_ID="com.quitenote.app.dev"
@@ -319,6 +319,9 @@ shutil.copytree(source, app_dir, symlinks=True)
 print(app_dir)
 PY
 
+  # The remote host is dedicated to UI testing; suppress one-time onboarding so
+  # deterministic panel assertions can run without mutating application data.
+  ssh "$REMOTE_HOST" "defaults write com.quitenote.app.dev clipboardOnboarded -bool true"
   ssh "$REMOTE_HOST" "QN_TEST_STORAGE_ROOT='$STORAGE_ROOT' open -n '$REMOTE_APP_DIR/Contents/MacOS/QuiteNoteDev' --args --ui-smoke-run '$RUN_ID'"
   sleep 4
   set +e
