@@ -41,6 +41,27 @@ authorize_remote_ui xyz-mac
 
 目录 `tools/ui-smoke/runs/` 和 `.ui-smoke-worktrees/` 已忽略 Git；不要把运行证据提交进仓库。
 
+## 标准工作流
+
+1. **触发**
+   - push / MR：GitLab 自动跑单元测试、构建 Dev ZIP、执行 `ui-smoke-remote`。
+   - 打 `v*.*.*` Tag：自动执行发布构建；发布前手动或后续 CI 触发 `--mode release` 全量回归。
+2. **构建**
+   - GitLab `dev-ui-artifact` 产出 `QuiteNoteDev-<sha>.zip` 与 SHA-256。
+   - 本机不构建 UI 测试版，不启动 UI。
+3. **执行**
+   - GitLab `ui-smoke-remote` 调用本仓库 runner。
+   - runner 把 Dev ZIP 传到 `xyz-mac`，远端解包并安装到 `~/QuitenoteUITest/apps/<commit>/`。
+   - 远端使用一次性 `QN_TEST_STORAGE_ROOT` 启动 Dev App，执行 UI 冒烟。
+4. **归档**
+   - 远端生成 `report.json / report.md / timeline.jsonl / screenshots/`。
+   - runner 回传到本仓库工作区 `tools/ui-smoke/runs/<run-id>/`。
+   - GitLab 把这些文件作为当前 Commit 的 artifact 保留 30 天。
+5. **复查**
+   - 先看 `report.md` 的 PASS/FAIL/BLOCKED。
+   - 有问题时按 `manifest.json` 锁定版本，再看 `report.json` 的失败 reason 与 `screenshots/` 证据。
+   - 非 PASS 的 `knowledge-candidate.md` 需要整理进错题本。
+
 ## 回归策略
 
 - 新 Tag、发布候选、`--mode release`：全量回归。
