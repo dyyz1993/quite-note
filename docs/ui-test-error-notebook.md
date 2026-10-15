@@ -28,6 +28,16 @@
 - Evidence: run `38774784730` 的 `Verify artifact` PASS，`Run UI smoke` 在 dirty 检查处 exit 2。
 - Status: fixed
 
+### 2026-10-15 · artifact 目录导致 sha256 相对路径校验失败
+
+- Version / Commit / Run: e61a908 / 38776352245
+- Symptom: ZIP 已下载到 `$RUNNER_TEMP/ui-artifact`，但校验提示 `QuiteNoteDev-...zip: No such file or directory`。
+- Root cause: `.sha256` 中的文件名是相对路径；`shasum --check` 在仓库工作目录执行，而不是在 artifact 目录执行。
+- Fix: `cd "$RUNNER_TEMP/ui-artifact"` 后按 basename 校验。
+- Prevention: 校验清单必须和清单引用的相对路径在同一工作目录执行。
+- Evidence: run `38776352245` 的 `Verify artifact` 日志。
+- Status: fixed
+
 ### 2026-10-15 · 菜单栏应用没有常规窗口
 
 - Version / Commit / Run: Quite Note Dev

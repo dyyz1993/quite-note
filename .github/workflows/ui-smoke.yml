@@ -85,7 +85,9 @@ jobs:
         run: |
           ARTIFACT="$(find "$RUNNER_TEMP/ui-artifact" -maxdepth 1 -name 'QuiteNoteDev-*.zip' -print -quit)"
           [[ -n "$ARTIFACT" ]] || { echo "Dev artifact was not downloaded" >&2; exit 2; }
-          shasum -a 256 --check "${ARTIFACT}.sha256"
+          CHECKSUM="$(find "$RUNNER_TEMP/ui-artifact" -maxdepth 1 -name 'QuiteNoteDev-*.sha256' -print -quit)"
+          [[ -n "$CHECKSUM" ]] || { echo "Dev artifact checksum was not downloaded" >&2; exit 2; }
+          (cd "$RUNNER_TEMP/ui-artifact" && shasum -a 256 --check "$(basename "$CHECKSUM")")
           echo "UI_ARTIFACT=$ARTIFACT" >> "$GITHUB_ENV"
 
       - name: Run UI smoke from prebuilt artifact
