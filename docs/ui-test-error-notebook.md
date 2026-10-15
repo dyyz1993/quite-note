@@ -38,6 +38,16 @@
 - Evidence: run `38776352245` 的 `Verify artifact` 日志。
 - Status: fixed
 
+### 2026-10-15 · Apple Git 不支持 describe 同时带 dirty 和 ref
+
+- Version / Commit / Run: 5a042d5 / 38778021033
+- Symptom: clean checkout 中解析元数据时报 `fatal: option '--dirty' and commit-ishes cannot be used together`。
+- Root cause: 新旧 Git 行为差异；xyz-mac 的 Apple Git 2.39 拒绝 `git describe --dirty <commit>`。
+- Fix: dirty 后缀只从工作区 describe 获取；clean/指定 ref 场景使用 `git describe --tags --always <commit>`。
+- Prevention: runner 脚本不能依赖最新本机 Git 的宽松参数组合；跨机器命令先用目标 macOS 自带 Git 验证。
+- Evidence: run `38778021033` 的 `Run UI smoke from prebuilt artifact` 日志。
+- Status: fixed
+
 ### 2026-10-15 · 菜单栏应用没有常规窗口
 
 - Version / Commit / Run: Quite Note Dev

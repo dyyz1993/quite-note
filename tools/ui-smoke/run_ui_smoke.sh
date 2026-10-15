@@ -123,7 +123,8 @@ PATCH_SHA="$(git diff --binary | shasum -a 256 | awk '{print $1}')"
 if [[ "$DIRTY" == true ]]; then
   GIT_DESCRIBE="$GIT_DESCRIBE_DIRTY"
 else
-  GIT_DESCRIBE="$(git describe --tags --always --dirty "$GIT_COMMIT")"
+  # Apple Git used by self-hosted runners rejects combining --dirty with a ref.
+  GIT_DESCRIBE="$(git describe --tags --always "$GIT_COMMIT")"
 fi
 
 RUN_ID="ui-$(date -u +%Y%m%d-%H%M%S)-${GIT_COMMIT:0:8}"
