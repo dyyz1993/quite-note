@@ -295,6 +295,8 @@ if [[ "$MODE" == "remote" ]]; then
   rsync -a "$ROOT/tools/ui-smoke/computer_use_smoke.py" "$REMOTE_HOST:$REMOTE_ROOT/tools/"
 
   ssh "$REMOTE_HOST" "python3 - '$REMOTE_ROOT' '$REMOTE_RUN_DIR' '$REMOTE_APP_DIR' '$REMOTE_ARTIFACT' '$STORAGE_ROOT' '$RUN_ID'" <<'PY'
+import datetime
+import json
 import shutil, subprocess, sys
 from pathlib import Path
 
@@ -315,7 +317,7 @@ if source is None:
 if app_dir.exists():
     shutil.rmtree(app_dir)
 shutil.copytree(source, app_dir, symlinks=True)
-(run_dir / "manifest.json").write_text('{"storage_root": "%s"}\n' % storage)
+(run_dir / "manifest.json").write_text(json.dumps({"run_id": run_id, "started_at": datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"), "mode": "remote", "app_path": str(app_dir), "artifact": str(archive), "storage_root": str(storage)}, indent=2) + "\n")
 print(app_dir)
 PY
 
@@ -330,6 +332,38 @@ PY
   set -e
   ssh "$REMOTE_HOST" "osascript -e 'tell application id \"com.quitenote.app.dev\" to quit' >/dev/null 2>&1 || true; pkill -f '$REMOTE_APP_DIR/Contents/MacOS/QuiteNoteDev' 2>/dev/null || true"
   rsync -a "$REMOTE_HOST:$REMOTE_RUN_DIR/" "$RUN_DIR/"
+  python3 - "$RUN_DIR" "$RUN_ID" "$GIT_REF" "$GIT_COMMIT" "$GIT_TAG_AT_COMMIT" "$GIT_DESCRIBE" "$PATCH_SHA" "$BASELINE" "$BASELINE_COMMIT" "$REMOTE_HOST" "$ARTIFACT_URL" "$SUITE_VERSION" "$MACOS_VERSION" "$XCODE_VERSION" "$DISPLAY_TOPOLOGY" <<'PYEOF'
+import datetime
+import json
+import pathlib
+import sys
+
+run_dir = pathlib.Path(sys.argv[1])
+report = json.loads((run_dir / "report.json").read_text())
+remote = json.loads((run_dir / "manifest.json").read_text())
+manifest = {
+    "run_id": sys.argv[2],
+    "started_at": remote.get("started_at"),
+    "finished_at": datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
+    "mode": "remote",
+    "git_ref": sys.argv[3],
+    "git_commit": sys.argv[4],
+    "git_tag": sys.argv[5],
+    "git_describe": sys.argv[6],
+    "working_tree_patch_sha": sys.argv[7],
+    "baseline_ref": sys.argv[8],
+    "baseline_commit": sys.argv[9],
+    "remote_host": sys.argv[10],
+    "artifact_url": sys.argv[11],
+    "suite_version": sys.argv[12],
+    "macos_version": sys.argv[13],
+    "xcode_version": sys.argv[14],
+    "display_topology": sys.argv[15],
+    "status": report.get("status"),
+    "results": report.get("results"),
+}
+(run_dir / "manifest.json").write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n")
+PYEOF
   if [[ "$STATUS" -eq 3 ]]; then exit 3; fi
   if [[ "$STATUS" -ne 0 ]]; then
     python3 - "$RUN_DIR" <<'PY'
