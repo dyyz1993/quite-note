@@ -23,6 +23,7 @@ struct AppLauncherView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(white: 0.12))
+        .accessibilityIdentifier("launcher.panel")
         // 隐藏标题栏仍会预留 ~28pt 安全区，顶进该区域让搜索栏贴顶（用户要求紧凑）
         .ignoresSafeArea(.container, edges: .top)
         .onAppear {
@@ -77,6 +78,7 @@ struct AppLauncherView: View {
                 .font(.system(size: 17, weight: .medium))
                 .foregroundColor(.themeTextPrimary)
                 .focused($searchFocused)
+                .accessibilityIdentifier("launcher.search_field")
             if !vm.searchText.isEmpty {
                 LucideView(name: .x, size: 14, color: .themeTextTertiary)
                     .contentShape(Rectangle())
@@ -123,6 +125,7 @@ struct AppLauncherView: View {
                     }
                 }
             }
+            .accessibilityIdentifier("launcher.result_list")
             .onChange(of: vm.selectedIndex) { _ in
                 guard vm.results.indices.contains(vm.selectedIndex) else { return }
                 let target = vm.results[vm.selectedIndex]
