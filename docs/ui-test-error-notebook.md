@@ -43,15 +43,15 @@
 - Version / Commit / Run: efd41dc / 697c350
 - Symptom: 在用户日常使用的 Mac 上执行 UI 用例会弹面板、抢占键盘焦点和剪贴板，干扰正常工作。
 - Root cause: UI 自动化与用户交互共享同一 GUI 会话；macOS Accessibility/AppleScript 无法完全避免焦点影响。
-- Fix: 迁移到 `xyz-mac` 专用测试机；本机只构建/下载 CI 产物并控制 SSH，不启动 App UI。
-- Prevention: 交互式 UI 用例必须通过 `--remote xyz-mac` 执行；本机只允许 dry-run、静态检查和单元测试。
+- Fix: 迁移到 专用测试机；本机只构建/下载 CI 产物并控制 SSH，不启动 App UI。
+- Prevention: 交互式 UI 用例必须通过 `--remote "$QN_UI_REMOTE_HOST"` 执行；本机只允许 dry-run、静态检查和单元测试。
 - Evidence: `docs/ui-test-knowledge.md` 远程执行模式。
 - Status: fixed
 
 ### 2026-10-15 · 远端 UI 冒烟遍历 AX 菜单树导致挂起
 
 - Version / Commit / Run: f707fa5
-- Symptom: 在 xyz-mac 上递归遍历应用 AX 树查找 TextField 时长时间无响应，尤其是启动器和面板切换场景。
+- Symptom: 在专用测试机上递归遍历应用 AX 树查找 TextField 时长时间无响应，尤其是启动器和面板切换场景。
 - Root cause: NSStatusItem / 菜单相关的 AX 树会瞬时包含大量菜单节点，SSH 场景下遍历成本和时序不稳定。
 - Fix: 冒烟层先用 CGWindow 判定固定尺寸浮层面板出现，再按需做 AX 细粒度断言；剪贴板与启动器均改为面板可见性快速判定。
 - Prevention: 远端 UI 冒烟优先用窗口尺寸/层级做确定性面板存在性检查，避免递归遍历大 AX 树；AX 只用于输入和关键控件断言。

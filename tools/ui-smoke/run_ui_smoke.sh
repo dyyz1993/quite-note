@@ -466,6 +466,6 @@ fi
 exit "$STATUS"
 
 authorize_remote_ui() {
-  echo "Opening xyz-mac System Settings for one-time Accessibility and Screen Recording authorization." >&2
+  echo "Opening remote UI test Mac System Settings for one-time Accessibility and Screen Recording authorization." >&2
   ssh "$1" "open 'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility'; open 'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture'"
 }
