@@ -43,8 +43,7 @@ jobs:
   remote-ui-smoke:
     name: Remote UI Smoke
     needs: build-dev-artifact
-    # GitHub-hosted runner cannot SSH into a private test Mac unless QN_UI_REMOTE_HOST is configured.
-    runs-on: macos-15
+    runs-on: [self-hosted, quitenote-ui]
     steps:
       - uses: actions/checkout@v4
 
