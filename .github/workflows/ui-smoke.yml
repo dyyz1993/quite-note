@@ -79,10 +79,11 @@ jobs:
         with:
           pattern: QuiteNoteDev-*.zip
           merge-multiple: true
+          path: ${{ runner.temp }}/ui-artifact
 
       - name: Verify artifact
         run: |
-          ARTIFACT="$(find . -maxdepth 1 -name 'QuiteNoteDev-*.zip' -print -quit)"
+          ARTIFACT="$(find "$RUNNER_TEMP/ui-artifact" -maxdepth 1 -name 'QuiteNoteDev-*.zip' -print -quit)"
           [[ -n "$ARTIFACT" ]] || { echo "Dev artifact was not downloaded" >&2; exit 2; }
           shasum -a 256 --check "${ARTIFACT}.sha256"
           echo "UI_ARTIFACT=$ARTIFACT" >> "$GITHUB_ENV"

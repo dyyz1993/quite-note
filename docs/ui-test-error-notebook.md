@@ -18,6 +18,16 @@
 
 ## 已知问题
 
+### 2026-10-15 · runner 工作区下载 artifact 后被误判为 dirty
+
+- Version / Commit / Run: a73380e / 38774784730
+- Symptom: GitHub artifact 下载到仓库根目录后，`run_ui_smoke.sh` 认为 checkout 是 dirty，尚未创建 run 目录即退出。
+- Root cause: `actions/download-artifact` 默认写入工作区；下载的 ZIP/sha256 属于未跟踪文件，触发 runner 的 WIP 防护。
+- Fix: artifact 固定下载到 `$RUNNER_TEMP/ui-artifact`，保持 Git checkout clean。
+- Prevention: CI 中所有临时安装包、证书和报告输入不得写入仓库根目录；必须放在 `$RUNNER_TEMP` 或专用 ignored 目录。
+- Evidence: run `38774784730` 的 `Verify artifact` PASS，`Run UI smoke` 在 dirty 检查处 exit 2。
+- Status: fixed
+
 ### 2026-10-15 · 菜单栏应用没有常规窗口
 
 - Version / Commit / Run: Quite Note Dev
