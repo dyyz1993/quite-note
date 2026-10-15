@@ -58,6 +58,33 @@ dev-ui-artifact:
     reports:
       dotenv: build.env
 
+# xyz-mac UI 冒烟：拉取 dev-ui-artifact，远程执行并把报告/截图作为本版本产物保留
+ui-smoke-remote:
+  stage: ui-artifact
+  tags: [macos]
+  needs: [dev-ui-artifact]
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      allow_failure: true
+    - if: $CI_COMMIT_BRANCH
+      allow_failure: true
+  variables:
+    REMOTE_HOST: "xyz-mac"
+  script:
+    - ARTIFACT_URL="$CI_PROJECT_DIR/$(ls QuiteNoteDev-*.zip | head -1)"
+    - ./tools/ui-smoke/run_ui_smoke.sh --remote "$REMOTE_HOST" --artifact-url "$ARTIFACT_URL" --mode full
+  artifacts:
+    name: "QuiteNoteUI-${CI_COMMIT_SHORT_SHA}"
+    paths:
+      - tools/ui-smoke/runs/ui-*/manifest.json
+      - tools/ui-smoke/runs/ui-*/report.json
+      - tools/ui-smoke/runs/ui-*/report.md
+      - tools/ui-smoke/runs/ui-*/timeline.jsonl
+      - tools/ui-smoke/runs/ui-*/screenshots/
+      - tools/ui-smoke/runs/ui-*/knowledge-candidate.md
+    when: always
+    expire_in: 30 days
+
 # 打 v*.*.* 标签时：完整发布流水线
 release-dmg:
   stage: release
