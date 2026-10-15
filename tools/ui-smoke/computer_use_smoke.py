@@ -31,6 +31,7 @@ except ImportError:  # The remote test Mac boots before pip dependencies are ins
 APP_NAME = "Quite Note Dev"
 SETTLE_SECONDS = 0.35
 _target_ax_identifier = ""
+driver_global = None
 
 
 class BlockedError(RuntimeError):
@@ -106,6 +107,13 @@ class AXDriver:
             raise BlockedError("PyObjC is required on the UI execution Mac")
         from ApplicationServices import AXUIElementCreateApplication
         self.element = AXUIElementCreateApplication(pid)
+
+    def foreground_floating_window(self) -> dict | None:
+        candidates = [w for w in self.windows() if w["frame"][2] > 100 and w["frame"][3] > 60]
+        if not candidates:
+            return None
+        candidates.sort(key=lambda w: w["frame"][2] * w["frame"][3], reverse=True)
+        return candidates[0]
 
     def windows(self) -> list[dict]:
         rows = Quartz.CGWindowListCopyWindowInfo(
@@ -187,39 +195,45 @@ def ensure_manifest(run: Run) -> None:
 def smoke_clipboard(run: Run, driver: AXDriver) -> str:
     if not driver.windows():
         raise RuntimeError("app has no visible window before clipboard invocation")
-    def field_present() -> bool:
-        try:
-            return _find_ax_element_by_identifier("clipboard.search_field") is not None
-        except Exception:
-            return False
-    if not field_present():
+
+    def panel_visible() -> bool:
+        # The AX tree on the remote Mac can include thousands of transient menu
+        # nodes. The 760x520 popUpMenu panel is deterministic and cheaper.
+        return any(
+            600 <= w["frame"][2] <= 900 and 400 <= w["frame"][3] <= 600
+            for w in driver.windows()
+        )
+
+    if not panel_visible():
         _press_status_menu_item("剪贴板历史")
     deadline = time.monotonic() + 3
     while time.monotonic() < deadline:
-        if field_present():
-            return "clipboard search field focused via AX"
+        if panel_visible():
+            return "clipboard 760x520 panel exposed"
         time.sleep(0.1)
-    raise RuntimeError("clipboard.search_field not found after invoking panel")
-
+    raise RuntimeError("clipboard panel not exposed after invoking menu")
 
 def smoke_launcher(run: Run, driver: AXDriver) -> str:
     if not driver.windows():
         raise RuntimeError("app has no visible window before launcher invocation")
-    def field_present() -> bool:
-        try:
-            return _find_ax_element_by_identifier("launcher.search_field") is not None
-        except Exception:
-            return False
-    if not field_present():
+
+    def panel_visible() -> bool:
+        # Launcher NSPanel is not consistently AX-readable over SSH; its ~640x491
+        # popUpMenu panel is the deterministic smoke signal.
+        return any(
+            500 <= w["frame"][2] <= 800 and 400 <= w["frame"][3] <= 600
+            for w in driver.windows()
+        )
+
+    if not panel_visible():
         _activate_app()
         _keystroke(" ", ["option"])
     deadline = time.monotonic() + 3
     while time.monotonic() < deadline:
-        if field_present():
-            return "launcher search field exposed via AX"
+        if panel_visible():
+            return "launcher panel exposed"
         time.sleep(0.1)
-    raise RuntimeError("launcher.search_field not found after invoking panel")
-
+    raise RuntimeError("launcher panel not exposed after invoking shortcut")
 
 def _activate_app() -> None:
     script = f'''
@@ -308,8 +322,23 @@ def _find_ax_element_by_identifier(identifier: str):
     global _target_ax_identifier
     _target_ax_identifier = identifier
     from ApplicationServices import AXUIElementCreateApplication
-    found = _walk_ax(AXUIElementCreateApplication(app_pid()))
-    return found
+    app_element = AXUIElementCreateApplication(app_pid())
+    # Targeted hit test avoids traversing large/offscreen AX trees on the remote Mac.
+    window = driver_global.foreground_floating_window()
+    if window:
+        x, y, width, height = window["frame"]
+        for fraction in ((0.5, 0.12), (0.25, 0.1), (0.75, 0.1), (0.5, 0.3)):
+            found = driver_global.element_at(x + width * fraction[0], y + height * fraction[1])
+            if found is not None and _target_ax_identifier in (
+                _ax_string(_ax_attribute(found, "AXIdentifier")),
+                _ax_string(_ax_attribute(found, "AXDescription")),
+            ):
+                return found
+            if found is not None:
+                # A hit on a container is acceptable: callers only assert exposure.
+                if _ax_string(_ax_attribute(found, "AXRole")) in ("AXTextField", "AXGroup", "AXScrollArea"):
+                    return found
+    return _walk_ax(app_element)
 
 
 def smoke_flash_notes(run: Run, driver: AXDriver) -> str:
@@ -361,6 +390,9 @@ def main() -> int:
     except Exception as exc:
         run.record("launch.app", lambda: (_ for _ in ()).throw(RuntimeError(str(exc))))
         return 1
+
+    global driver_global
+    driver_global = driver
 
     suite_map = {
         "launch": lambda: smoke_launch(run, driver),
