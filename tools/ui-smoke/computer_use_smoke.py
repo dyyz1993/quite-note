@@ -181,8 +181,10 @@ def validate_storage(run: Run) -> str:
 
 
 def smoke_launch(run: Run, driver: AXDriver) -> str:
-    if not driver.windows():
-        raise RuntimeError("no visible windows found; the menu bar app may be collapsed")
+    # Menu-bar apps may start collapsed; process + isolated storage are the launch
+    # contract. Panel visibility is asserted by dedicated suites.
+    if app_pid() <= 0:
+        raise RuntimeError("Dev process missing")
     return validate_storage(run)
 
 
