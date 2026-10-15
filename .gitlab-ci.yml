@@ -9,7 +9,7 @@
 #   4. Runner 机器存公证凭据（App Store Connect API Key 方式，命令见 AGENTS.md）
 #
 # 效果：
-#   - push / MR → 自动跑全部单元测试，并生成 Dev ZIP 供 xyz-mac UI 回归拉取
+#   - push / MR → 自动跑全部单元测试，并生成 Dev ZIP 供 专用测试机 UI 回归拉取
 #   - git tag v1.3.0 && git push <gitlab-remote> v1.3.0
 #     → 自动执行 build-release.sh（构建 → Developer ID 签名 → 公证 → DMG），产物保留 30 天
 
@@ -34,7 +34,7 @@ run-tests:
       - .build/
 
 # UI 冒烟专用 Dev ZIP：ZIP 内根层必须是「Quite Note Dev.app」。
-# xyz-mac 是 Intel Mac；Runner 必须是 x86_64 或 universal构建。
+# 目标测试机主机名通过仓库 CI/CD Variables 的 QN_UI_REMOTE_HOST 注入，不写入仓库。
 dev-ui-artifact:
   stage: ui-artifact
   tags: [macos]
@@ -58,7 +58,7 @@ dev-ui-artifact:
     reports:
       dotenv: build.env
 
-# xyz-mac UI 冒烟：拉取 dev-ui-artifact，远程执行并把报告/截图作为本版本产物保留
+# UI 冒烟：拉取 dev-ui-artifact，远程执行并把报告/截图作为本版本产物保留。
 ui-smoke-remote:
   stage: ui-artifact
   tags: [macos]
@@ -69,7 +69,7 @@ ui-smoke-remote:
     - if: $CI_COMMIT_BRANCH
       allow_failure: true
   variables:
-    REMOTE_HOST: "xyz-mac"
+    REMOTE_HOST: "$QN_UI_REMOTE_HOST"
   script:
     - ARTIFACT_URL="$CI_PROJECT_DIR/$(ls QuiteNoteDev-*.zip | head -1)"
     - ./tools/ui-smoke/run_ui_smoke.sh --remote "$REMOTE_HOST" --artifact-url "$ARTIFACT_URL" --mode full

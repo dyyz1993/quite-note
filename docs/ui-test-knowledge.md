@@ -20,15 +20,15 @@
 # 按变更增量回归
 ./tools/ui-smoke/run_ui_smoke.sh --mode incremental --incremental-since v1.3.0
 
-# CI 产物 + xyz-mac 专用测试机（本机不启动 UI）
-./tools/ui-smoke/run_ui_smoke.sh --remote xyz-mac --artifact-url <CI_BUILD_URL> --mode full
+# CI 产物 + 专用测试机（本机不启动 UI）
+./tools/ui-smoke/run_ui_smoke.sh --remote "$QN_UI_REMOTE_HOST" --artifact-url <CI_BUILD_URL> --mode full
 
 # GitLab Dev 产物作业：dev-ui-artifact
 # 产物：QuiteNoteDev-<shortsha>.zip 和 .sha256
 
-# 首次授权时打开 xyz-mac 的系统设置页
+# 首次授权时打开专用测试机的系统设置页
 source tools/ui-smoke/run_ui_smoke.sh >/dev/null 2>&1 || true
-authorize_remote_ui xyz-mac
+authorize_remote_ui "$QN_UI_REMOTE_HOST"
 ```
 
 报告位于 `tools/ui-smoke/runs/<run-id>/`。核心文件：
@@ -51,7 +51,7 @@ authorize_remote_ui xyz-mac
    - 本机不构建 UI 测试版，不启动 UI。
 3. **执行**
    - GitLab `ui-smoke-remote` 调用本仓库 runner。
-   - runner 把 Dev ZIP 传到 `xyz-mac`，远端解包并安装到 `~/QuitenoteUITest/apps/<commit>/`。
+   - runner 把 Dev ZIP 传到 CI Variable 指定的测试机，远端解包并安装到 `~/QuitenoteUITest/apps/<commit>/`。
    - 远端使用一次性 `QN_TEST_STORAGE_ROOT` 启动 Dev App，执行 UI 冒烟。
 4. **归档**
    - 远端生成 `report.json / report.md / timeline.jsonl / screenshots/`。
@@ -117,17 +117,18 @@ authorize_remote_ui xyz-mac
 5. `Esc` 语义：启动器/剪贴板先清搜索，再按一次才关闭。
 6. 结束只退出 Dev 进程，绝不杀正式版 `com.quitenote.app`。
 
-## xyz-mac 远程执行模式
+## 专用测试机远程执行模式
 
 - 本机只做控制、下载 CI 产物和收集报告，绝不启动测试 App、不执行键盘/鼠标交互。
 - CI 构建产物必须是 `.zip`（内含一个 `.app`）或 `.dmg`（内含一个 `.app`）。
 - GitLab `dev-ui-artifact` 作业产出根层为 `Quite Note Dev.app` 的 ZIP，并附带 SHA-256。
 - GitLab `ui-smoke-remote` 作业在 CI 内直接调用 runner，把 `manifest/report/timeline/screenshots` 作为当前版本的 GitLab artifact 保留 30 天；`allow_failure: true` 时不阻塞普通 push，但失败产物同样保留。
-- 远端目录固定在 `~/QuitenoteUITest/`。
+- 远端目录固定在用户目录下的 `~/QuitenoteUITest/`。
+- SSH 主机名只存在本机 SSH config 与 GitLab protected CI Variable `QN_UI_REMOTE_HOST` 中，不写入仓库；仓库内只有别名占位或变量名。
 - 远端使用一次性 `QN_TEST_STORAGE_ROOT`，测试后报告 rsync 回本机 run 目录。
 - 远端 Python 依赖为 PyObjC 10.3.2。
 - 若远端报告 `BLOCKED`，优先检查辅助功能、屏幕录制、CI 产物签名/架构。
-- 目前 `xyz-mac` 是 Intel Mac；CI 产物必须包含 x86_64 或 universal binary。
+- 当前专用测试机是 Intel Mac；CI 产物必须包含 x86_64 或 universal binary。
 
 ## 安全与权限红线
 
