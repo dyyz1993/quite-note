@@ -12,7 +12,7 @@ permissions:
 jobs:
   build-dev-artifact:
     name: Build Dev UI Artifact
-    runs-on: macos-15
+    runs-on: [self-hosted, quitenote-ui]
     steps:
       - uses: actions/checkout@v4
 
