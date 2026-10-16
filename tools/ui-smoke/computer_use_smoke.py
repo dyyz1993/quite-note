@@ -107,10 +107,7 @@ class AXDriver:
             raise BlockedError("PyObjC is required on the UI execution Mac")
         from ApplicationServices import AXUIElementCreateApplication
         self.element = AXUIElementCreateApplication(pid)
-
-    @property
-    def pid(self) -> int:
-        return int(self.element or 0)
+        self.pid = pid
 
     def foreground_floating_window(self) -> dict | None:
         candidates = [w for w in self.windows() if w["frame"][2] > 100 and w["frame"][3] > 60]
