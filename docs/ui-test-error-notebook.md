@@ -98,6 +98,16 @@
 - Evidence: `launchctl print gui/501/...quitenote-ui-xyz` 的 `asid` 与登录会话；run 截图无 App 窗口。
 - Status: fixed
 
+### 2026-10-16 · self-hosted runner 中 System Events 查询挂起
+
+- Version / Commit / Run: 010df88 / ui-20261016-010539-010df885
+- Symptom: AppleScript 通过 System Events 激活进程、点击菜单或发送按键时稳定超时。
+- Root cause: System Events 需要跨进程枚举/控制目标 GUI 进程；在该 runner 服务身份下即使 AX trust 为 true 也会挂起。
+- Fix: 面板热键改用 Quartz `CGEventPost` 直发；进程激活用 `NSWorkspace.activateWithOptions`；不再依赖 System Events 作为主路径。
+- Prevention: UI runner 的主操作路径优先使用 AX API/CGEvent，System Events 只能作为诊断 fallback；每次必须设置短 timeout 并保留截图。
+- Evidence: run `38833585020` 与后续 CGEvent 修复 run。
+- Status: fixed
+
 ### 2026-10-15 · 菜单栏应用没有常规窗口
 
 - Version / Commit / Run: Quite Note Dev
