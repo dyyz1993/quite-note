@@ -249,7 +249,7 @@ def _activate_app() -> None:
 
 
 def _keystroke(key: str, modifiers: list[str]) -> None:
-    from Quartz import CGEventCreateKeyboardEvent, CGEventPost, CGEventSourceCreate, kCGEventFlagMaskAlternate, kCGEventFlagMaskCommand, kCGEventFlagMaskControl, kCGEventFlagMaskShift, kCGEventSourceStateHIDSystemState
+    from Quartz import CGEventCreateKeyboardEvent, CGEventPost, CGEventSetFlags, CGEventSourceCreate, kCGEventFlagMaskAlternate, kCGEventFlagMaskCommand, kCGEventFlagMaskControl, kCGEventFlagMaskShift, kCGEventSourceStateHIDSystemState
     mask = 0
     for modifier in modifiers:
         mask |= {
@@ -262,7 +262,7 @@ def _keystroke(key: str, modifiers: list[str]) -> None:
     source = CGEventSourceCreate(kCGEventSourceStateHIDSystemState)
     for key_down in (True, False):
         event = CGEventCreateKeyboardEvent(source, key_code, key_down)
-        event.setFlags_(mask)
+        CGEventSetFlags(event, mask)
         CGEventPost(kCGEventSourceStateHIDSystemState, event)
         time.sleep(0.05)
 
