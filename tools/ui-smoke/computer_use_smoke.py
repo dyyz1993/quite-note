@@ -240,14 +240,12 @@ def smoke_launcher(run: Run, driver: AXDriver) -> str:
     raise RuntimeError("launcher panel not exposed after invoking shortcut")
 
 def _activate_app() -> None:
-    script = f'''
-    tell application "System Events"
-      tell process "{APP_NAME}"
-        set frontmost to true
-      end tell
-    end tell
-    '''
-    subprocess.run(["osascript", "-e", script], check=True, timeout=15)
+    if NSWorkspace is not None:
+        for app in NSWorkspace.sharedWorkspace().runningApplications():
+            if app.processIdentifier() == driver_global.pid:
+                app.activateWithOptions_(0)
+                return
+    raise RuntimeError("cannot activate the current Dev app process")
 
 
 def _keystroke(key: str, modifiers: list[str]) -> None:
@@ -257,10 +255,14 @@ def _keystroke(key: str, modifiers: list[str]) -> None:
       keystroke "{key}" using {{{mods}}}
     end tell
     '''
-    subprocess.run(["osascript", "-e", script], check=True, timeout=15)
+    subprocess.run(["osascript", "-e", script], check=True, timeout=15, capture_output=True, text=True)
 
 
 def _press_status_menu_item(title: str) -> None:
+    raise RuntimeError(f"status menu AX automation is unavailable in this runner session: {title}")
+
+
+def _press_status_menu_item_system_events(title: str) -> None:
     script = f'''
     tell application "System Events"
       tell process "{APP_NAME}"
@@ -277,7 +279,7 @@ def _press_status_menu_item(title: str) -> None:
       end tell
     end tell
     '''
-    subprocess.run(["osascript", "-e", script], check=True, timeout=15)
+    subprocess.run(["osascript", "-e", script], check=True, timeout=15, capture_output=True, text=True)
 
 
 def _invoke_shortcut(key_combo: str) -> None:
