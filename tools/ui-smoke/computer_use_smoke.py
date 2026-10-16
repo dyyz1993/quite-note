@@ -162,7 +162,11 @@ class AXDriver:
         item = items[0]
         # Opening the transient menu is allowed to return actionFailed; the
         # dropdown is still exposed for subsequent AX enumeration.
-        self.press(item)
+        try:
+            self.press(item)
+        except RuntimeError as exc:
+            if "AX press failed" not in str(exc):
+                raise
         time.sleep(0.3)
         dropdowns = self.attribute("AXChildren", item) or []
         if not dropdowns:
