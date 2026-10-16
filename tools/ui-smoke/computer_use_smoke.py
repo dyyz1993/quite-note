@@ -105,7 +105,7 @@ class AXDriver:
     def __init__(self, pid: int):
         if Quartz is None:
             raise BlockedError("PyObjC is required on the UI execution Mac")
-        from ApplicationServices import AXUIElementCreateApplication
+        from ApplicationServices import AXUIElementCreateApplication, AXUIElementPerformAction
         self.element = AXUIElementCreateApplication(pid)
         self.pid = pid
 
