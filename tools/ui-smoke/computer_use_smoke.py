@@ -147,6 +147,7 @@ class AXDriver:
             raise RuntimeError(f"AX set value failed: {error}")
 
     def press(self, element) -> None:
+        from ApplicationServices import AXUIElementPerformAction
         error = AXUIElementPerformAction(element, "AXPress")
         if error != 0:
             raise RuntimeError(f"AX press failed: {error}")
