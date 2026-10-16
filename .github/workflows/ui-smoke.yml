@@ -94,7 +94,8 @@ jobs:
         run: |
           ./tools/ui-smoke/run_ui_smoke.sh \
             --local-artifact "$UI_ARTIFACT" \
-            --mode full
+            --mode full \
+            --evidence full
 
       - name: Upload UI evidence
         if: always()

@@ -5,6 +5,8 @@
 > 仓库本地的 `AGENTS.md` 包含开发者账号、签名与发布信息，已被 `.gitignore` 忽略，不得提交。
 > 如果 Agent 需要入口规则，以本文档为准；本地可继续在 `AGENTS.md` 顶部引用本文档。
 
+> 版本复查入口：[UI 回归 Run 索引](ui-test-run-index.md)。Tag / Commit 的绿色 run、报告 artifact 和截图入口统一记录在那里。
+
 ## 快速命令
 
 ```bash
@@ -59,6 +61,7 @@
    - 先看 `report.md` 的 PASS/FAIL/BLOCKED。
    - 有问题时按 `manifest.json` 锁定版本，再看 `report.json` 的失败 reason 与 `screenshots/` 证据。
    - 非 PASS 的 `knowledge-candidate.md` 需要整理进错题本。
+   - 按 Tag / Commit 归档和查看时，以 [UI 回归 Run 索引](ui-test-run-index.md) 为入口。
 
 ## 回归策略
 

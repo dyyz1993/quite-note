@@ -57,6 +57,8 @@ class Run:
     def record(self, name: str, fn) -> None:
         started = time.monotonic()
         evidence = ""
+        if self.evidence == "full":
+            evidence = self.capture(name)
         try:
             evidence = fn() or ""
             result = Step(name, "PASS", int((time.monotonic() - started) * 1000), evidence=evidence)
