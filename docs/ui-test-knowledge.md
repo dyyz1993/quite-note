@@ -84,10 +84,22 @@
 当前脚本的确定性验收层已经可用：
 
 - 检查 Accessibility 权限。
-- 按 bundle id 找到 Dev 进程。
+- 使用 runner 传入的当前 run `--app-pid`，避免同 bundle id 残留实例干扰。
 - 检查隔离存储目录。
-- 检查可见窗口。
+- 用 `CGWindowList` 按当前 pid 检查真实 GUI 窗口。
 - 收尾检查生产版进程未被脚本管理。
+
+菜单栏应用的真实用户式操作流：
+
+1. 用当前 pid 创建 `AXUIElementCreateApplication(pid)`。
+2. 读取 App 的 `AXChildren`；最后一个 `AXMenuBar` 是菜单栏 extra，不要走主菜单。
+3. 读取 extra menu bar 的 `AXChildren`，取第一个 `AXMenuBarItem`。
+4. 对它执行 `AXPress` 打开状态菜单。macOS 可能返回 `actionFailed`，只要后续 `AXChildren` 出现即为成功，不能把该返回码当失败。
+5. 等约 300ms，读取菜单项的 `AXChildren` / `AXTitle`。
+6. 按 stable title 精确匹配 `剪贴板历史` 或 `应用启动器`。
+7. 对匹配的 `AXMenuItem` 执行 `AXPress`。
+8. 轮询当前 pid 的窗口尺寸：Clipboard 是 `760x520`，Launcher 是 `640x498`。
+9. 禁止递归遍历整棵 AX 树，也禁止用 System Events 作为主路径。
 
 场景内输入、搜索和键盘断言按 `operations.json` 继续增强。每次增强必须先接入 `selectors.json` 的稳定标识，再把实际可复用的 AX 查询回写 `operations.json`；不要在报告里散落一次性坐标。
 
@@ -98,7 +110,7 @@
 3. 新获取窗口 frame 后的窗口相对坐标
 4. 截图/模型复核，仅用于失败诊断
 
-关键快捷键：
+关键快捷键（人工路径；CI 主路径优先用菜单栏 AX 点击，热键仅做人工复核）：
 
 - 主闪记显示/隐藏：`⌥⌘R`
 - 主闪记强制居中：`⌥⌘⇧R`
@@ -108,8 +120,8 @@
 
 主流程：
 
-1. 用 `open -n` 启动 worktree 内的 `Quite Note Dev.app`。
-2. 通过 bundle id 找进程，不要按窗口标题猜。
+1. 在 self-hosted runner 会话中用 `open -n` 启动 worktree 内的 `Quite Note Dev.app`，记录实际 pid。
+2. UI driver 必须绑定该 pid，不要按窗口标题或全局进程枚举猜。
 3. 面板唤起后先等 AX 稳定，再操作输入框。
 4. 剪贴板搜索有 200ms debounce，等待条件用 `search_idle`，不要固定 sleep。
 5. `Esc` 语义：启动器/剪贴板先清搜索，再按一次才关闭。

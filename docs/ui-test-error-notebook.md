@@ -68,6 +68,16 @@
 - Evidence: run artifact 截图 `screenshots/permissions-accessibility-1792086705.png`。
 - Status: open
 
+### 2026-10-16 · xyz-mac runner 屏幕录制二次授权
+
+- Version / Commit / Run: 8d59a6b / 38829176703
+- Symptom: Accessibility 已 PASS，但截图仍报 `could not create image from display`。
+- Root cause: 用户为 runner node 重新勾选 Screen Recording 后，TCC 状态已变为 allowed=2，但 runner 进程未完全继承新授权状态。
+- Fix: 重启 `quitenote-ui-xyz` LaunchAgent 后复测；窗口枚举与截图能力恢复。
+- Prevention: Screen Recording 授权变更后必须重启 runner；验证要看真实 `screencapture` / `CGWindowList`，不能只读 TCC 数据库。
+- Evidence: TCC `kTCCServiceScreenCapture=2`；重启后 `38831421667` 起窗口可见。
+- Status: fixed
+
 ### 2026-10-16 · self-hosted runner 无法用 open 启动 Dev App
 
 - Version / Commit / Run: 7a899b1 / ui-20261015-233220-7a899b18
@@ -106,6 +116,36 @@
 - Fix: 面板热键改用 Quartz `CGEventPost` 直发；进程激活用 `NSWorkspace.activateWithOptions`；不再依赖 System Events 作为主路径。
 - Prevention: UI runner 的主操作路径优先使用 AX API/CGEvent，System Events 只能作为诊断 fallback；每次必须设置短 timeout 并保留截图。
 - Evidence: run `38833585020` 与后续 CGEvent 修复 run。
+- Status: fixed
+
+### 2026-10-16 · System Events 不可靠但全局热键也不触发
+
+- Version / Commit / Run: ad1d95a / 38836400666
+- Symptom: 改用 Quartz `CGEventPost` 发送 `⇧⌘V` 和 `⌥Space` 后命令执行成功，但 Clipboard / Launcher 面板仍未出现。
+- Root cause: 全局热键依赖 Carbon 注册与窗口服务状态；在 self-hosted runner 的启动上下文中，合成键盘事件未触发应用注册的 global hotkey。继续沿“模拟快捷键”路径调试会偏离真实人工点击路径。
+- Fix: 改为真实用户式菜单操作：AX 定位菜单栏 extra → 打开状态菜单 → 按 `AXTitle` 点击 `剪贴板历史` / `应用启动器`。
+- Prevention: 用户可点击菜单项时，CI 主路径应优先模拟菜单点击；快捷键只能作为辅助路径或人工复核，不得因实现方便而引入 App 测试入口。
+- Evidence: run `38836400666` 的 clipboard / launcher `RuntimeError`。
+- Status: fixed
+
+### 2026-10-16 · 状态菜单 AXPress 返回 actionFailed 但菜单已打开
+
+- Version / Commit / Run: 5c9d1c5 / 38839634717
+- Symptom: Clipboard 场景报 `AX press failed: -25204`，但后续 Launcher 场景能打开同一个状态菜单。
+- Root cause: 对 transient menu extra 执行 `AXPress` 时，macOS 可返回 `actionFailed`；这并不代表菜单未展开，不能用单次返回码判断结果。
+- Fix: 捕获状态菜单打开阶段的 AX press 错误，等待 300ms 后以 `AXChildren` 是否出现作为打开判据；菜单项本身的 `AXPress` 仍严格检查。
+- Prevention: AX action 返回码必须按控件类型分类处理；transient menu open 需要用后续树状态验收，不能把 `-25204` 一律当失败。
+- Evidence: 手工 AX 实测 `AXPress=-25204` 后 `AXChildren` 正常暴露；修复 run `38840392166` 全绿。
+- Status: fixed
+
+### 2026-10-16 · AX API 导入在 Python 命名空间中不稳定
+
+- Version / Commit / Run: e26634e / 38839073990
+- Symptom: 手工验证可用的 `AXUIElementPerformAction` 在 runner 中报 `NameError`。
+- Root cause: PyObjC 的部分 `ApplicationServices` 符号由构造函数局部 import 后未可靠进入模块全局命名空间；跨进程环境与手工 `runpy` 验证不同。
+- Fix: 在实际调用处局部导入 `AXUIElementPerformAction`，避免依赖构造函数 import 的副作用。
+- Prevention: PyObjC API 必须在使用点显式 import；不要假设构造函数局部 import 会把符号提升为全局可见。
+- Evidence: run `38839073990`。
 - Status: fixed
 
 ### 2026-10-15 · 菜单栏应用没有常规窗口

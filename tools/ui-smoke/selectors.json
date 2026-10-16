@@ -4,7 +4,9 @@
   "app": {
     "bundle_id": "com.quitenote.app.dev",
     "process_name": "QuiteNoteDev",
-    "menu_bar_item": "Quite Note Dev"
+    "menu_bar_item": "Quite Note Dev",
+    "status_menu_ax": "last AXMenuBar child of AXApplication; first AXMenuBarItem",
+    "status_menu_open_wait_ms": 300
   },
   "shortcuts": {
     "show_hide_flash_note": "option+command+r",
@@ -17,6 +19,8 @@
     "flash_note.search_field": "flash_note.search_field",
     "flash_note.record_list": "flash_note.record_list",
     "flash_note.status_bar": "flash_note.status_bar",
+    "menu.clipboard_history": "剪贴板历史",
+    "menu.app_launcher": "应用启动器",
     "clipboard.search_field": "clipboard.search_field",
     "clipboard.filter_bar": "clipboard.filter_bar",
     "clipboard.list": "clipboard.list",

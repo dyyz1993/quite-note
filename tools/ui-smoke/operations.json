@@ -17,7 +17,9 @@
       {"action": "shortcut", "keys": "option+command+r", "purpose": "hide main panel"}
     ],
     "clipboard": [
-      {"action": "shortcut", "keys": "command+shift+v"},
+      {"action": "ax_press", "selector": "app.status_menu", "purpose": "open menu bar extra; tolerate actionFailed and verify AXChildren"},
+      {"action": "ax_press", "selector": "menu.clipboard_history", "value": "剪贴板历史"},
+      {"action": "wait", "condition": "window_760x520_visible_for_current_pid", "timeout_ms": 3000},
       {"action": "assert", "target": "focused_element", "selector": "clipboard.search_field"},
       {"action": "set_value", "selector": "clipboard.search_field", "value": "QNUI_SMOKE_CLIP"},
       {"action": "wait", "condition": "debounce_200ms_and_search_idle", "timeout_ms": 1200},
@@ -28,7 +30,9 @@
       {"action": "key", "keys": "Escape", "expect": "close panel"}
     ],
     "launcher": [
-      {"action": "shortcut", "keys": "option+space"},
+      {"action": "ax_press", "selector": "app.status_menu", "purpose": "open menu bar extra; tolerate actionFailed and verify AXChildren"},
+      {"action": "ax_press", "selector": "menu.app_launcher", "value": "应用启动器"},
+      {"action": "wait", "condition": "window_640x498_visible_for_current_pid", "timeout_ms": 3000},
       {"action": "focus", "selector": "launcher.search_field"},
       {"action": "set_value", "selector": "launcher.search_field", "value": "finder"},
       {"action": "wait", "condition": "results_nonempty", "timeout_ms": 1200},
