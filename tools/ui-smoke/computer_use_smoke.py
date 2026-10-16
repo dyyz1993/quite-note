@@ -204,12 +204,12 @@ def smoke_clipboard(run: Run, driver: AXDriver) -> str:
         # The AX tree on the remote Mac can include thousands of transient menu
         # nodes. The 760x520 popUpMenu panel is deterministic and cheaper.
         return any(
-            600 <= w["frame"][2] <= 900 and 400 <= w["frame"][3] <= 600
+            700 <= w["frame"][2] <= 800 and 490 <= w["frame"][3] <= 550
             for w in driver.windows()
         )
 
     if not panel_visible():
-        _press_status_menu_item("剪贴板历史")
+        _keystroke("v", ["command", "shift"])
     deadline = time.monotonic() + 3
     while time.monotonic() < deadline:
         if panel_visible():
@@ -225,7 +225,7 @@ def smoke_launcher(run: Run, driver: AXDriver) -> str:
         # Launcher NSPanel is not consistently AX-readable over SSH; its ~640x491
         # popUpMenu panel is the deterministic smoke signal.
         return any(
-            500 <= w["frame"][2] <= 800 and 400 <= w["frame"][3] <= 600
+            620 <= w["frame"][2] <= 660 and 480 <= w["frame"][3] <= 510
             for w in driver.windows()
         )
 
@@ -249,13 +249,23 @@ def _activate_app() -> None:
 
 
 def _keystroke(key: str, modifiers: list[str]) -> None:
-    mods = ", ".join(f"{modifier} down" for modifier in modifiers)
-    script = f'''
-    tell application "System Events"
-      keystroke "{key}" using {{{mods}}}
-    end tell
-    '''
-    subprocess.run(["osascript", "-e", script], check=True, timeout=15, capture_output=True, text=True)
+    from AppKit import NSEvent
+    from Quartz import CGEventCreateKeyboardEvent, CGEventPost, CGEventSourceCreate, kCGEventSourceStateHIDSystemState, kCGKeyboardEventKeyDown, kCGKeyboardEventKeyUp
+    mask = NSEvent.ModifierFlags()
+    for modifier in modifiers:
+        mask |= {
+            "command": NSEvent.ModifierFlags.command,
+            "option": NSEvent.ModifierFlags.option,
+            "control": NSEvent.ModifierFlags.control,
+            "shift": NSEvent.ModifierFlags.shift,
+        }[modifier]
+    key_code = {" ": 49, "v": 9}.get(key.lower(), 0)
+    source = CGEventSourceCreate(kCGEventSourceStateHIDSystemState)
+    for event_type in (kCGKeyboardEventKeyDown, kCGKeyboardEventKeyUp):
+        event = CGEventCreateKeyboardEvent(source, key_code, event_type == kCGKeyboardEventKeyDown)
+        event.setFlags_(mask)
+        CGEventPost(kCGEventSourceStateHIDSystemState, event)
+        time.sleep(0.05)
 
 
 def _press_status_menu_item(title: str) -> None:
