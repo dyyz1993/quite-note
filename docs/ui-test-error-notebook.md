@@ -88,6 +88,16 @@
 - Evidence: xyz-mac 上 `app.pid=86389`，`NSWorkspace` 返回 `85233`。
 - Status: fixed
 
+### 2026-10-16 · runner SessionCreate 隔离导致窗口不可枚举
+
+- Version / Commit / Run: c74c76a / ui-20261016-004024-c74c76a4
+- Symptom: Dev App 有启动日志和 WindowServer order-front 记录，但 Python `CGWindowListCopyWindowInfo` 看不到该 pid 的任何窗口。
+- Root cause: `svc.sh install` 生成的 LaunchAgent 带 `SessionCreate=1`，runner 被放进独立 audit session；子进程 UI 与当前登录 GUI 会话隔离。
+- Fix: 移除该 runner LaunchAgent 的 `SessionCreate`，重启 LaunchAgent，使其在当前 `gui/501` 登录会话中运行。
+- Prevention: macOS UI runner 不能继承 `SessionCreate=1`；迁移 runner 后必须验证“真实 GUI window 可枚举”，仅凭进程/pid 不算通过。
+- Evidence: `launchctl print gui/501/...quitenote-ui-xyz` 的 `asid` 与登录会话；run 截图无 App 窗口。
+- Status: fixed
+
 ### 2026-10-15 · 菜单栏应用没有常规窗口
 
 - Version / Commit / Run: Quite Note Dev
