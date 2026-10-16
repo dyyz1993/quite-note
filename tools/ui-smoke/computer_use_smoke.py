@@ -151,6 +151,32 @@ class AXDriver:
         if error != 0:
             raise RuntimeError(f"AX press failed: {error}")
 
+    def status_menu_item(self, title: str):
+        children = self.attribute("AXChildren") or []
+        # The menu-extra bar is the last child of the application element.
+        menu = children[-1]
+        items = self.attribute("AXChildren", menu) or []
+        if not items:
+            raise RuntimeError("status menu is unavailable")
+        item = items[0]
+        # Opening the transient menu is allowed to return actionFailed; the
+        # dropdown is still exposed for subsequent AX enumeration.
+        self.press(item)
+        time.sleep(0.3)
+        dropdowns = self.attribute("AXChildren", item) or []
+        if not dropdowns:
+            raise RuntimeError("status menu dropdown did not open")
+        for menu_item in self.attribute("AXChildren", dropdowns[0]) or []:
+            if self.attribute("AXTitle", menu_item) == title:
+                return menu_item
+        raise RuntimeError(f"status menu item not found: {title}")
+
+    def attribute(self, name: str, element=None):
+        from ApplicationServices import AXUIElementCopyAttributeValue
+        target = self.element if element is None else element
+        error, value = AXUIElementCopyAttributeValue(target, name, None)
+        return value if error == 0 else None
+
 
 def app_pid() -> int:
     if NSWorkspace is not None:
@@ -209,7 +235,7 @@ def smoke_clipboard(run: Run, driver: AXDriver) -> str:
         )
 
     if not panel_visible():
-        _keystroke("v", ["command", "shift"])
+        _press_status_menu_item("剪贴板历史")
     deadline = time.monotonic() + 3
     while time.monotonic() < deadline:
         if panel_visible():
@@ -230,8 +256,7 @@ def smoke_launcher(run: Run, driver: AXDriver) -> str:
         )
 
     if not panel_visible():
-        _activate_app()
-        _keystroke(" ", ["option"])
+        _press_status_menu_item("应用启动器")
     deadline = time.monotonic() + 3
     while time.monotonic() < deadline:
         if panel_visible():
@@ -246,6 +271,13 @@ def _activate_app() -> None:
                 app.activateWithOptions_(0)
                 return
     raise RuntimeError("cannot activate the current Dev app process")
+
+
+def _press_status_menu_item(title: str) -> None:
+    if driver_global is None:
+        raise RuntimeError("AX driver is unavailable")
+    item = driver_global.status_menu_item(title)
+    driver_global.press(item)
 
 
 def _keystroke(key: str, modifiers: list[str]) -> None:
@@ -265,10 +297,6 @@ def _keystroke(key: str, modifiers: list[str]) -> None:
         CGEventSetFlags(event, mask)
         CGEventPost(kCGEventSourceStateHIDSystemState, event)
         time.sleep(0.05)
-
-
-def _press_status_menu_item(title: str) -> None:
-    raise RuntimeError(f"status menu AX automation is unavailable in this runner session: {title}")
 
 
 def _press_status_menu_item_system_events(title: str) -> None:
