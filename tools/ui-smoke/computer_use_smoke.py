@@ -249,15 +249,14 @@ def _activate_app() -> None:
 
 
 def _keystroke(key: str, modifiers: list[str]) -> None:
-    from AppKit import NSEvent
-    from Quartz import CGEventCreateKeyboardEvent, CGEventPost, CGEventSourceCreate, kCGEventSourceStateHIDSystemState
-    mask = NSEvent.ModifierFlags()
+    from Quartz import CGEventCreateKeyboardEvent, CGEventPost, CGEventSourceCreate, kCGEventFlagMaskAlternate, kCGEventFlagMaskCommand, kCGEventFlagMaskControl, kCGEventFlagMaskShift, kCGEventSourceStateHIDSystemState
+    mask = 0
     for modifier in modifiers:
         mask |= {
-            "command": NSEvent.ModifierFlags.command,
-            "option": NSEvent.ModifierFlags.option,
-            "control": NSEvent.ModifierFlags.control,
-            "shift": NSEvent.ModifierFlags.shift,
+            "command": kCGEventFlagMaskCommand,
+            "option": kCGEventFlagMaskAlternate,
+            "control": kCGEventFlagMaskControl,
+            "shift": kCGEventFlagMaskShift,
         }[modifier]
     key_code = {" ": 49, "v": 9}.get(key.lower(), 0)
     source = CGEventSourceCreate(kCGEventSourceStateHIDSystemState)
