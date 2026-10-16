@@ -467,22 +467,25 @@ PY
 
 TEST_PID_FILE="$RUN_DIR/app.pid"
 defaults write com.quitenote.app.dev clipboardOnboarded -bool true
-QN_TEST_STORAGE_ROOT="$STORAGE_ROOT" "$APP_PATH/Contents/MacOS/QuiteNoteDev" --ui-smoke-run "$RUN_ID" >"$RUN_DIR/app.stdout.log" 2>"$RUN_DIR/app.stderr.log" &
-TEST_PID=$!
-echo "$TEST_PID" > "$TEST_PID_FILE"
+# The LaunchAgent runner creates its own audit session. A direct child app is
+# registered with WindowServer but remains invisible to that session; ask
+# LaunchServices to place the app in the interactive login session instead.
+QN_TEST_STORAGE_ROOT="$STORAGE_ROOT" open -n "$APP_PATH" --args --ui-smoke-run "$RUN_ID"
 DEADLINE=$((SECONDS + 15))
+TEST_PID=""
 while (( SECONDS < DEADLINE )); do
-  [[ -d "$STORAGE_ROOT" ]] && kill -0 "$TEST_PID" 2>/dev/null && break
+  TEST_PID="$(pgrep -f "$APP_PATH/Contents/MacOS/QuiteNoteDev" | tail -1 || true)"
+  [[ -n "$TEST_PID" && -d "$STORAGE_ROOT" ]] && break
   sleep 1
 done
-if ! kill -0 "$TEST_PID" 2>/dev/null; then
+if [[ -z "$TEST_PID" ]] || ! kill -0 "$TEST_PID" 2>/dev/null; then
   echo "BLOCKED: Quite Note Dev did not start" >&2
-  cat "$RUN_DIR/app.stderr.log" >&2 || true
   screencapture -x "$RUN_DIR/screenshots/blocked.png" 2>/dev/null || true
   exit 3
 fi
+echo "$TEST_PID" > "$TEST_PID_FILE"
 [[ -d "$STORAGE_ROOT" ]] || { echo "BLOCKED: isolated storage root was not created: $STORAGE_ROOT" >&2; screencapture -x "$RUN_DIR/screenshots/blocked.png" 2>/dev/null || true; exit 3; }
-sleep 1
+sleep 2
 
 cleanup() {
   if [[ -n "${TEST_PID:-}" ]] && kill -0 "$TEST_PID" 2>/dev/null; then

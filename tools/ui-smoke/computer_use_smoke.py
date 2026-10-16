@@ -121,13 +121,14 @@ class AXDriver:
 
     def windows(self) -> list[dict]:
         rows = Quartz.CGWindowListCopyWindowInfo(
-            Quartz.kCGWindowListOptionOnScreenOnly | Quartz.kCGWindowListExcludeDesktopElements,
+            Quartz.kCGWindowListOptionAll | Quartz.kCGWindowListExcludeDesktopElements,
             Quartz.kCGNullWindowID,
         )
         found = []
         for row in rows:
             owner = row.get("kCGWindowOwnerName", "")
-            if owner != APP_NAME or not row.get("kCGWindowBounds"):
+            owner_pid = int(row.get("kCGWindowOwnerPID", 0) or 0)
+            if (owner != APP_NAME and owner_pid != self.pid) or not row.get("kCGWindowBounds"):
                 continue
             bounds = dict(row["kCGWindowBounds"])
             found.append(
