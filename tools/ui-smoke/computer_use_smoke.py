@@ -250,7 +250,7 @@ def _activate_app() -> None:
 
 def _keystroke(key: str, modifiers: list[str]) -> None:
     from AppKit import NSEvent
-    from Quartz import CGEventCreateKeyboardEvent, CGEventPost, CGEventSourceCreate, kCGEventSourceStateHIDSystemState, kCGKeyboardEventKeyDown, kCGKeyboardEventKeyUp
+    from Quartz import CGEventCreateKeyboardEvent, CGEventPost, CGEventSourceCreate, kCGEventSourceStateHIDSystemState
     mask = NSEvent.ModifierFlags()
     for modifier in modifiers:
         mask |= {
@@ -261,8 +261,8 @@ def _keystroke(key: str, modifiers: list[str]) -> None:
         }[modifier]
     key_code = {" ": 49, "v": 9}.get(key.lower(), 0)
     source = CGEventSourceCreate(kCGEventSourceStateHIDSystemState)
-    for event_type in (kCGKeyboardEventKeyDown, kCGKeyboardEventKeyUp):
-        event = CGEventCreateKeyboardEvent(source, key_code, event_type == kCGKeyboardEventKeyDown)
+    for key_down in (True, False):
+        event = CGEventCreateKeyboardEvent(source, key_code, key_down)
         event.setFlags_(mask)
         CGEventPost(kCGEventSourceStateHIDSystemState, event)
         time.sleep(0.05)
