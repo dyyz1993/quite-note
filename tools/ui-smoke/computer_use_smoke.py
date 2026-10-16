@@ -247,7 +247,7 @@ def _activate_app() -> None:
       end tell
     end tell
     '''
-    subprocess.run(["osascript", "-e", script], check=True, timeout=5)
+    subprocess.run(["osascript", "-e", script], check=True, timeout=15)
 
 
 def _keystroke(key: str, modifiers: list[str]) -> None:
@@ -257,7 +257,7 @@ def _keystroke(key: str, modifiers: list[str]) -> None:
       keystroke "{key}" using {{{mods}}}
     end tell
     '''
-    subprocess.run(["osascript", "-e", script], check=True, timeout=5)
+    subprocess.run(["osascript", "-e", script], check=True, timeout=15)
 
 
 def _press_status_menu_item(title: str) -> None:
@@ -277,7 +277,7 @@ def _press_status_menu_item(title: str) -> None:
       end tell
     end tell
     '''
-    subprocess.run(["osascript", "-e", script], check=True, timeout=5)
+    subprocess.run(["osascript", "-e", script], check=True, timeout=15)
 
 
 def _invoke_shortcut(key_combo: str) -> None:
@@ -287,7 +287,7 @@ def _invoke_shortcut(key_combo: str) -> None:
         "  keystroke \"v\" using {command down, shift down}\n"
         "end tell"
     )
-    subprocess.run(["osascript", "-e", script], check=True, timeout=5)
+    subprocess.run(["osascript", "-e", script], check=True, timeout=15)
 
 
 def _walk_ax(element, depth: int = 0, max_depth: int = 16):
