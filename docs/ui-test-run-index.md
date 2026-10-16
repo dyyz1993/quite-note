@@ -33,6 +33,7 @@ gh run download <run-id> \
 |---|---|---|---|---|---|---|---|---|
 | 2026-10-16 | - | [a85901558b120dd026c9117d716903da61fe1089](https://github.com/dyyz1993/quite-note/actions/runs/38840392166) | `v1.3.0-53-ga859015` | 38840392166 | `ui-20261016-023329-a8590155` | fast | PASS | 首个真实菜单栏 AX 点击全绿；Clipboard/Launcher 面板断言通过 |
 | 2026-10-16 | - | [557f9f62067213cb2ca5ced9fe7e6be5563675db](https://github.com/dyyz1993/quite-note/actions/runs/38841532953) | `v1.3.0-54-g557f9f6` | 38841532953 | `ui-20261016-025233-557f9f62` | fast | PASS | AX 操作流程与选择器沉淀后复测全绿 |
+| 2026-10-16 | - | [6a0a66c6119b8703480613882db86b20b3c3f3f2](https://github.com/dyyz1993/quite-note/actions/runs/38843129826) | `v1.3.0-55-g6a0a66c` | 38843129826 | `ui-20261016-030856-6a0a66c6` | full | PASS | 首个逐步截图归档 run：8 个场景截图 + report/timeline/manifest |
 
 ## 当前验收范围
 
