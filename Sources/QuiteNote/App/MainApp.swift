@@ -23,6 +23,7 @@ struct MainApp: App {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusBarController: StatusBarController?
     private var floatingPanelController: FloatingPanelController?
+    private var devCoreServiceMonitor: DevCoreServiceMonitor?
     private var clipboard: ClipboardService?
     private var shortcuts: KeyboardShortcutManager?
     private var cancellables = Set<AnyCancellable>()
@@ -190,6 +191,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ClipboardHistoryStore.shared.loadIfNeeded()
         _ = ClipboardOCRQueue.shared
         ClipboardMonitor.shared.syncWithPreferences()
+
+        // Dev-only: observe the launchd-managed core. It never launches a second process.
+        devCoreServiceMonitor = DevCoreServiceMonitor()
+        devCoreServiceMonitor?.startObserving()
 
         // 观察配置变化，更新快捷键缓存
         PreferencesManager.shared.objectWillChange

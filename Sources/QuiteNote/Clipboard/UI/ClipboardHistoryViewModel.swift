@@ -6,7 +6,7 @@ import Combine
 /// 剪贴板历史面板的输入状态（搜索/筛选/选中）
 ///
 /// 用 class（引用语义）承载：struct View 捕获副本上的延迟回调写 @State
-/// 在 NSHostingView 场景不可靠（实测搜索过滤不生效），防抖 workItem 也需要稳定的持有者。
+/// 在 NSHostingView 场景不可靠（实测搜索过滤不生效），搜索状态也需要稳定的持有者。
 @MainActor
 final class ClipboardHistoryViewModel: ObservableObject {
     private typealias ClipboardIndex = SearchIndexService<SearchIndexDocument<ClipboardEntry>>
@@ -37,6 +37,8 @@ final class ClipboardHistoryViewModel: ObservableObject {
     private var visibleEntriesKey = ""
     private var storeCancellable: AnyCancellable?
     private let searchIndex = ClipboardIndex()
+    private var indexedStoreVersion = 0
+    private var indexedFilter: ClipboardFilter?
 
     /// 面板打开时接入 store。store 变化在事件回调里重算，避免 body 副作用。
     func bind(store: ClipboardHistoryStore) {
@@ -58,8 +60,6 @@ final class ClipboardHistoryViewModel: ObservableObject {
         guard key != visibleEntriesKey else { return }
         visibleEntriesKey = key
 
-        searchGeneration += 1
-        let generation = searchGeneration
         if query.isEmpty {
             visibleEntries = store.entries.filter { filter.matches($0) }
             isSearching = false
@@ -67,9 +67,21 @@ final class ClipboardHistoryViewModel: ObservableObject {
             return
         }
 
+        searchGeneration += 1
+        let generation = searchGeneration
         isSearching = true
         let token = DiagnosticCenter.beginMeasure("Clipboard", "历史搜索", threshold: 0.15)
-        DispatchQueue.global(qos: .userInitiated).async {
+        let storeVersionAtRequest = store.entriesVersion
+        // 同一 store 版本 + 筛选下，语料建档一次；连续输入复用索引。
+        if indexedStoreVersion == storeVersionAtRequest && indexedFilter == filter {
+            runSearch(
+                query: query,
+                filter: filter,
+                generation: generation,
+                store: store,
+                token: token
+            )
+        } else {
             store.loadAllEntriesInBackground { allEntries in
                 // 统一索引负责快照匹配/排序/分页；内存增量仍即时合并，保证搜索期间的新剪贴板可见。
                 DispatchQueue.main.async { [weak self] in
@@ -79,22 +91,41 @@ final class ClipboardHistoryViewModel: ObservableObject {
                             .filter { filter.matches($0) }
                             .map(Self.indexDocument)
                     }) { [weak self] _ in
-                        guard let self, self.searchGeneration == generation else { return }
-                        self.searchIndex.search(query, limit: 300) { [weak self] page in
-                            guard let self, self.searchGeneration == generation else { return }
-                            let results = page.documents.map(\.payload)
-                            let resultIDs = Set(results.map(\.id))
-                            let incremental = store.entries.filter {
-                                filter.matches($0) && !resultIDs.contains($0.id) &&
-                                ClipboardSearchService.matchScore(query: query, entry: $0) > 0
-                            }
-                            self.visibleEntries = results + incremental
-                            self.isSearching = false
-                            token.end()
-                        }
+                        guard let self else { return }
+                        self.indexedStoreVersion = storeVersionAtRequest
+                        self.indexedFilter = filter
+                        self.runSearch(
+                            query: query,
+                            filter: filter,
+                            generation: generation,
+                            store: store,
+                            token: token
+                        )
                     }
                 }
             }
+        }
+    }
+
+    private func runSearch(
+        query: String,
+        filter: ClipboardFilter,
+        generation: Int,
+        store: ClipboardHistoryStore,
+        token: DiagnosticCenter.MeasureToken
+    ) {
+        guard searchGeneration == generation else { return }
+        searchIndex.search(query, limit: 300) { [weak self] page in
+            guard let self, self.searchGeneration == generation else { return }
+            let results = page.documents.map(\.payload)
+            let resultIDs = Set(results.map(\.id))
+            let incremental = store.entries.filter {
+                filter.matches($0) && !resultIDs.contains($0.id) &&
+                ClipboardSearchService.matchScore(query: query, entry: $0) > 0
+            }
+            self.visibleEntries = results + incremental
+            self.isSearching = false
+            token.end()
         }
     }
 
@@ -121,13 +152,8 @@ final class ClipboardHistoryViewModel: ObservableObject {
         filter = all[next]
     }
 
-    private var workItem: DispatchWorkItem?
-    /// PRD 9.2：搜索输入 150–300ms 防抖
-    private let debounceInterval: TimeInterval = 0.2
-
     /// 重置输入（面板每次打开时调用）
     func resetInput() {
-        workItem?.cancel()
         searchText = ""
         commitQuery("")
         filter = .all
@@ -135,13 +161,7 @@ final class ClipboardHistoryViewModel: ObservableObject {
     }
 
     private func scheduleSearchDebounce() {
-        workItem?.cancel()
-        let text = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        let item = DispatchWorkItem { [weak self] in
-            self?.commitQuery(text)
-        }
-        workItem = item
-        DispatchQueue.main.asyncAfter(deadline: .now() + debounceInterval, execute: item)
+        commitQuery(searchText.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
     private func commitQuery(_ text: String) {

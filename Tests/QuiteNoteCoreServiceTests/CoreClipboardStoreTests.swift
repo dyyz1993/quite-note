@@ -4,20 +4,23 @@ import CoreData
 @testable import QuiteNoteSharedStorage
 
 final class CoreClipboardStoreTests: XCTestCase {
-    func testInsertDeduplicatesAndPersists() throws {
+    func testRepositoryWritesCoreConfiguredDatabaseAndPersists() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("quitenote-core-tests-\(UUID().uuidString)", isDirectory: true)
         let database = root.appendingPathComponent("ClipboardHistory.sqlite")
         defer { try? FileManager.default.removeItem(at: root) }
 
         let store = try CoreClipboardStore(databaseURL: database)
-        XCTAssertTrue(try store.insert(text: "hello core"))
-        XCTAssertFalse(try store.insert(text: "hello core"))
-        XCTAssertTrue(try store.insert(text: "https://example.com"))
-        XCTAssertEqual(try store.count(), 2)
+        let repository = ClipboardHistoryRepository(coreStore: store)
+        XCTAssertTrue(try repository.insertText("hello core").inserted)
+        XCTAssertFalse(try repository.insertText("hello core").inserted)
+        XCTAssertTrue(try repository.insertText("https://example.com").inserted)
+        XCTAssertEqual(repository.totalCount(), 2)
 
-        let reopened = try CoreClipboardStore(databaseURL: database)
-        XCTAssertEqual(try reopened.count(), 2)
+        let reopened = ClipboardHistoryRepository(
+            persistence: ClipboardHistoryPersistence(databaseURL: database)
+        )
+        XCTAssertEqual(reopened.totalCount(), 2)
     }
 
     func testCoreAndAppPersistenceUseSameManagedObjectModel() throws {
@@ -27,7 +30,7 @@ final class CoreClipboardStoreTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: root) }
 
         let core = try CoreClipboardStore(databaseURL: database)
-        XCTAssertTrue(try core.insert(text: "shared model"))
+        XCTAssertTrue(try ClipboardHistoryRepository(coreStore: core).insertText("shared model").inserted)
 
         let app = ClipboardHistoryPersistence(databaseURL: database)
         let context = app.context

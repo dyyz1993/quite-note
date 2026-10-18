@@ -22,7 +22,7 @@
       {"action": "wait", "condition": "window_760x520_visible_for_current_pid", "timeout_ms": 3000},
       {"action": "assert", "target": "focused_element", "selector": "clipboard.search_field"},
       {"action": "set_value", "selector": "clipboard.search_field", "value": "QNUI_SMOKE_CLIP"},
-      {"action": "wait", "condition": "debounce_200ms_and_search_idle", "timeout_ms": 1200},
+      {"action": "wait", "condition": "search_idle", "timeout_ms": 1200, "purpose": "clipboard search commits immediately; wait for async search completion"},
       {"action": "key", "selector": "clipboard.filter_bar", "keys": "ArrowRight", "iterations": 2},
       {"action": "key", "selector": "clipboard.list", "keys": "ArrowDown", "iterations": 2},
       {"action": "assert", "selector": "clipboard.detail", "condition": "matches selected row"},

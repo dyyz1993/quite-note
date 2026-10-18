@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.quitenote.app.dev.core</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/DEV/Library/Application Support/com.quitenote.app.dev/CoreService/quitenote-core</string>
+        <string>--database</string>
+        <string>/Users/DEV/Library/Application Support/QuiteNote-Debug/ClipboardHistory-Debug.sqlite</string>
+        <string>--state</string>
+        <string>/Users/DEV/Library/Application Support/com.quitenote.app.dev/CoreService/state.json</string>
+        <string>--interval</string>
+        <string>0.5</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>ProcessType</key>
+    <string>Background</string>
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+    <key>StandardOutPath</key>
+    <string>/Users/DEV/Library/Application Support/com.quitenote.app.dev/CoreService/launchd.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/DEV/Library/Application Support/com.quitenote.app.dev/CoreService/launchd.log</string>
+</dict>
+</plist>

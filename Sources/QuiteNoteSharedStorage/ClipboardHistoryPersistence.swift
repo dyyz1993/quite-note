@@ -13,6 +13,8 @@ public final class ClipboardHistoryPersistence {
     public let container: NSPersistentContainer
     /// 剪贴板库文件位置（占用统计用，含 -wal/-shm）
     public let storeURL: URL
+    /// Store load/migration failure description; nil means the SQLite store opened.
+    public private(set) var storageLoadErrorDescription: String?
 
     public init() {
         let model = Self.makeModel()
@@ -22,14 +24,12 @@ public final class ClipboardHistoryPersistence {
 
         try? FileManager.default.createDirectory(at: databaseURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         let desc = NSPersistentStoreDescription(url: databaseURL)
+        desc.setOption(true as NSNumber, forKey: NSPersistentHistoryTrackingKey)
+        desc.setOption(true as NSNumber, forKey: NSPersistentStoreRemoteChangeNotificationPostOptionKey)
         desc.shouldMigrateStoreAutomatically = true
         desc.shouldInferMappingModelAutomatically = true
         container.persistentStoreDescriptions = [desc]
-        container.loadPersistentStores { _, error in
-            if error != nil {
-                // SharedStorage 不能依赖 App target 的 DiagnosticCenter；错误仍由调用方通过 store 状态观察。
-            }
-        }
+        loadStores()
         container.viewContext.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy
         container.viewContext.automaticallyMergesChangesFromParent = true
     }
@@ -41,16 +41,24 @@ public final class ClipboardHistoryPersistence {
 
         try? FileManager.default.createDirectory(at: databaseURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         let desc = NSPersistentStoreDescription(url: databaseURL)
+        desc.setOption(true as NSNumber, forKey: NSPersistentHistoryTrackingKey)
+        desc.setOption(true as NSNumber, forKey: NSPersistentStoreRemoteChangeNotificationPostOptionKey)
         desc.shouldMigrateStoreAutomatically = true
         desc.shouldInferMappingModelAutomatically = true
         container.persistentStoreDescriptions = [desc]
-        container.loadPersistentStores { _, error in
-            if error != nil {
-                // SharedStorage 不能依赖 App target 的 DiagnosticCenter；错误仍由调用方通过 store 状态观察。
-            }
-        }
+        loadStores()
         container.viewContext.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy
         container.viewContext.automaticallyMergesChangesFromParent = true
+    }
+
+    private func loadStores() {
+        container.loadPersistentStores { [weak self] _, error in
+            self?.storageLoadErrorDescription = error.map {
+                ($0 as NSError).localizedDescription.isEmpty
+                    ? "ClipboardHistory store failed to open"
+                    : ($0 as NSError).localizedDescription
+            }
+        }
     }
 
     private static func defaultDatabaseURL() -> URL {

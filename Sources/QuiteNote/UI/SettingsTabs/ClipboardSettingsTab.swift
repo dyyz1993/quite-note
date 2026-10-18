@@ -5,6 +5,7 @@ import AppKit
 struct ClipboardSettingsTab: View {
     @ObservedObject private var prefs = PreferencesManager.shared
     @ObservedObject private var store = ClipboardHistoryStore.shared
+    @StateObject private var coreMonitor = DevCoreServiceMonitor()
     @State private var showClearAllConfirm = false
     @State private var showDeleteDataConfirm = false
     @State private var newExcludedApp = ""
@@ -14,6 +15,8 @@ struct ClipboardSettingsTab: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
+            devCoreSection
+            storageHealthSection
             masterSection
             if prefs.clipboardHistoryEnabled {
                 captureSection
@@ -25,9 +28,11 @@ struct ClipboardSettingsTab: View {
         }
         .onAppear {
             store.refreshDiskUsage()
+            coreMonitor.startObserving()
         }
         .onReceive(timer) { _ in
             store.refreshDiskUsage() // 占用随捕获/清理动态变化
+            coreMonitor.refresh()
         }
     }
 
@@ -90,6 +95,109 @@ struct ClipboardSettingsTab: View {
         }
         return "正在记录 · 当前 \(store.entries.count) 条"
     }
+
+    @ViewBuilder
+    private var storageHealthSection: some View {
+        if let storageError = store.storageErrorDescription {
+            section(title: "存储状态", icon: .database) {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 6) {
+                        LucideView(name: .alertTriangle, size: 12, color: .themeStatusError)
+                        Text("剪贴板历史存储不可用，已降级为只读/内存状态")
+                            .font(.themeCaption)
+                            .foregroundColor(.themeStatusError)
+                        Spacer()
+                    }
+                    Text(storageError)
+                        .font(.themeCaptionSmall)
+                        .monospaced()
+                        .foregroundColor(.themeTextSecondary)
+                        .textSelection(.enabled)
+                    Text("请检查磁盘空间、文件权限或数据库迁移错误；修复后重启 App。")
+                        .font(.themeCaptionSmall)
+                        .foregroundColor(.themeTextTertiary)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var devCoreSection: some View {
+        #if DEBUG
+        if coreMonitor.isDevBuild {
+            section(title: "常驻核心（Dev）", icon: .activity) {
+                VStack(alignment: .leading, spacing: 10) {
+                    if let snapshot = coreMonitor.snapshot, let pid = coreMonitor.launchdPID {
+                        coreStatusRow("状态", snapshot.running ? "运行中" : "已停止")
+                        coreStatusRow("PID", "\(pid)")
+                        coreStatusRow("已捕获", "\(snapshot.capturedCount) 条")
+                        coreStatusRow("最近捕获", snapshot.lastCapturedAt.map { Self.coreTimeFormatter.string(from: $0) } ?? "暂无")
+                        coreStatusRow("数据库", snapshot.databasePath)
+                        if let error = snapshot.lastError {
+                            coreStatusRow("写入错误", error)
+                        }
+                        if let checkedAt = coreMonitor.lastStateUpdatedAt {
+                            coreStatusRow("状态检查", Self.coreTimeFormatter.string(from: checkedAt))
+                        }
+                    } else {
+                        HStack(spacing: 6) {
+                            LucideView(name: .alertTriangle, size: 12, color: .themeStatusError)
+                            Text(coreMonitor.lastError ?? "核心未运行")
+                                .font(.themeCaption)
+                                .foregroundColor(.themeStatusError)
+                            Spacer()
+                        }
+                    }
+
+                    HStack(spacing: 8) {
+                        Button {
+                            coreMonitor.restart()
+                        } label: {
+                            if coreMonitor.isRestarting {
+                                ProgressView().controlSize(.small)
+                            } else {
+                                Text("重启核心")
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(coreMonitor.isRestarting)
+
+                        Button("刷新状态") { coreMonitor.refresh() }
+                            .buttonStyle(.bordered)
+                            .disabled(coreMonitor.isRefreshing)
+                        Spacer()
+                    }
+
+                    Text("核心由 LaunchAgent 托管，崩溃后自动恢复；这里只触发托管服务重启，不会启动第二个进程。")
+                        .font(.themeCaptionSmall)
+                        .foregroundColor(.themeTextTertiary)
+                }
+            }
+        }
+        #endif
+    }
+
+    private func coreStatusRow(_ title: String, _ value: String) -> some View {
+        HStack(alignment: .top) {
+            Text(title)
+                .font(.themeCaption)
+                .foregroundColor(.themeTextSecondary)
+                .frame(width: 64, alignment: .leading)
+            Text(value)
+                .font(.themeCaptionSmall)
+                .monospaced()
+                .foregroundColor(.themeTextPrimary)
+                .textSelection(.enabled)
+            Spacer()
+        }
+    }
+
+    private static let coreTimeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .short
+        formatter.timeStyle = .medium
+        return formatter
+    }()
 
     // MARK: - 8.2 记录内容
 

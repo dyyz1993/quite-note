@@ -61,6 +61,11 @@ let package = Package(
             name: "QuiteNoteCoreServiceTests",
             dependencies: ["QuiteNoteCoreService", "QuiteNoteSharedStorage"],
             path: "Tests/QuiteNoteCoreServiceTests"
+        ),
+        .testTarget(
+            name: "QuiteNoteSharedStorageTests",
+            dependencies: ["QuiteNoteSharedStorage"],
+            path: "Tests/QuiteNoteSharedStorageTests"
         )
     ]
 )

@@ -9,10 +9,12 @@ enum CoreServiceError: Error, Equatable {
 struct CoreServiceStatus: Codable, Equatable {
     var running: Bool
     var startedAt: Date
+    var heartbeatAt: Date?
     var capturedCount: Int
     var lastCapturedAt: Date?
     var databasePath: String
     var pid: Int32
+    var lastError: String?
 }
 
 /// 第三阶段最小核心配置。所有路径显式传入，避免 headless 进程误用 UI App 目录。

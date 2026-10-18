@@ -50,6 +50,19 @@ final class ClipboardSearchViewModelTests: XCTestCase {
         XCTAssertTrue(vm.isSearching, "旧查询结果落地前必须仍显示搜索中")
     }
 
+    func testSearchQueryCommitsImmediatelyWithoutDebounceDelay() {
+        let store = ClipboardHistoryStore()
+        store.deleteAllForTesting()
+        let vm = ClipboardHistoryViewModel()
+        vm.bind(store: store)
+
+        let start = Date()
+        vm.searchText = "instant"
+
+        XCTAssertEqual(vm.debouncedQuery, "instant")
+        XCTAssertLessThan(Date().timeIntervalSince(start), 0.05)
+    }
+
     func testConcurrentAddedEntryIsMergedIntoSearchResult() {
         let store = ClipboardHistoryStore()
         store.deleteAllForTesting()
@@ -96,6 +109,27 @@ final class ClipboardSearchViewModelTests: XCTestCase {
             XCTAssertFalse(vm.isSearching)
             delivered.fulfill()
         wait(for: [delivered], timeout: 3)
+    }
+
+    func testRemoteCoreInsertReloadsFirstPageWithoutManualRefresh() {
+        let store = ClipboardHistoryStore()
+        store.deleteAllForTesting()
+        _ = store.loadIfNeededForTesting()
+        let vm = ClipboardHistoryViewModel()
+        vm.bind(store: store)
+
+        let payload = "remote-core-visible-\(UUID().uuidString)"
+        let repository = ClipboardHistoryRepository(persistence: .shared)
+        XCTAssertTrue(try repository.insertText(payload).inserted)
+        store.reloadFromRemoteStoreForTesting()
+
+        XCTAssertTrue(store.entries.contains { $0.plainText == payload })
+        let refreshed = expectation(description: "remote reload reaches view model")
+        DispatchQueue.main.async {
+            XCTAssertTrue(vm.visibleEntries.contains { $0.plainText == payload })
+            refreshed.fulfill()
+        }
+        wait(for: [refreshed], timeout: 2)
     }
 }
 

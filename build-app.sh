@@ -132,6 +132,10 @@ if [ "$SKIP_BUILD" = false ]; then
     if [ "$APP_STORE_MODE" = true ]; then
         SWIFT_BUILD_ARGS+=(-Xswiftc -D -Xswiftc APP_STORE)
     fi
+    if [ "$BUNDLE_ID" = "com.quitenote.app.dev" ]; then
+        echo "开发变体将同时构建常驻核心..."
+        swift build -c release --product QuiteNoteCoreService
+    fi
     swift build "${SWIFT_BUILD_ARGS[@]}"
 else
     echo "使用已编译的二进制文件..."

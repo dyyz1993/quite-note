@@ -3,7 +3,7 @@ import AppKit
 import SwiftUI
 
 /// 剪贴板历史面板窗口按键动作（窗口内快捷键，PRD 6）
-enum ClipboardPanelKeyAction {
+enum ClipboardPanelKeyAction: Equatable {
     case moveUp
     case moveDown
     case switchFilterLeft   // ← 切换筛选类型
@@ -236,7 +236,11 @@ final class ClipboardHistoryPanelController {
         removeKeyMonitor()
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self, let window = event.window, window === self.panel, window.isKeyWindow else { return event }
-            guard let action = Self.mapKey(event) else { return event }
+            let isSearchFieldEditing = window.firstResponder is NSTextView
+                && searchFieldHandle?.currentEditor() === window.firstResponder
+            guard let action = Self.mapKey(event, isSearchFieldEditing: isSearchFieldEditing) else {
+                return event
+            }
             self.onKeyAction?(action)
             return nil // 消费事件
         }
@@ -250,7 +254,10 @@ final class ClipboardHistoryPanelController {
     }
 
     /// 按键映射（仅窗口聚焦时生效；⌘1–9 不注册全局，PRD 6）
-    private static func mapKey(_ event: NSEvent) -> ClipboardPanelKeyAction? {
+    static func mapKey(
+        _ event: NSEvent,
+        isSearchFieldEditing: Bool
+    ) -> ClipboardPanelKeyAction? {
         let flags = event.modifierFlags.intersection([.command, .option, .shift, .control])
         let keyCode = event.keyCode
 
@@ -272,8 +279,11 @@ final class ClipboardHistoryPanelController {
             switch keyCode {
             case 125: return .moveDown      // ↓
             case 126: return .moveUp        // ↑
-            case 123: return .switchFilterLeft  // ←
-            case 124: return .switchFilterRight // →
+            // 输入框内 ←/→ 是编辑键，必须交给 field editor 移动光标。
+            case 123:
+                return isSearchFieldEditing ? nil : .switchFilterLeft
+            case 124:
+                return isSearchFieldEditing ? nil : .switchFilterRight
             case 36, 76: return .pasteSelected // Return / 小键盘 Enter
             case 117: return .deleteSelected // fn+Delete（向前删除）
             case 53: return .escape         // Esc（焦点在搜索框时 field editor 会吞 cancelOperation，这里直接拦）

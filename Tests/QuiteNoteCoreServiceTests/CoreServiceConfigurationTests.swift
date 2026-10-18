@@ -26,4 +26,32 @@ final class CoreServiceConfigurationTests: XCTestCase {
             try CoreServiceConfiguration.parse(arguments: ["--database", "/tmp/qn.sqlite", "--interval", "0"], environment: [:])
         )
     }
+
+    func testCoreServiceStatusHeartbeatAndErrorFieldsRoundTrip() throws {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.sortedKeys]
+        let started = Date(timeIntervalSince1970: 1_791_973_496)
+        let heartbeat = Date(timeIntervalSince1970: 1_791_973_502)
+        let captured = Date(timeIntervalSince1970: 1_791_973_503)
+        let status = CoreServiceStatus(
+            running: true,
+            startedAt: started,
+            heartbeatAt: heartbeat,
+            capturedCount: 2,
+            lastCapturedAt: captured,
+            databasePath: "/tmp/ClipboardHistory-Debug.sqlite",
+            pid: 65_535,
+            lastError: nil
+        )
+
+        let data = try encoder.encode(status)
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let decoded = try decoder.decode(CoreServiceStatus.self, from: data)
+
+        XCTAssertEqual(decoded, status)
+        XCTAssertEqual(decoded.heartbeatAt.map(\.timeIntervalSince1970), heartbeat.timeIntervalSince1970)
+        XCTAssertNil(decoded.lastError)
+    }
 }

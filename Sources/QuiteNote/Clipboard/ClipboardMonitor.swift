@@ -158,7 +158,7 @@ final class ClipboardMonitor {
             sourceURL: urlText,
             sourceApp: appName,
             sourceBundleID: bundleID,
-            contentHash: ClipboardService.sha1(content),
+            contentHash: ClipboardContentHasher.hash(content),
             byteSize: Int64(content.utf8.count)
         )
         ClipboardHistoryStore.shared.insertOrUpdate(entry)
@@ -180,7 +180,7 @@ final class ClipboardMonitor {
             plainText: path,
             sourceApp: appName,
             sourceBundleID: bundleID,
-            contentHash: ClipboardService.sha1("file:\(path):\(size)"),
+            contentHash: ClipboardContentHasher.hash("file:\(path):\(size)"),
             byteSize: size
         )
         ClipboardHistoryStore.shared.insertOrUpdate(entry)
@@ -199,7 +199,7 @@ final class ClipboardMonitor {
                 return
             }
 
-            let hash = ClipboardService.sha1(png.baseEncodedString)
+            let hash = ClipboardContentHasher.hash(png.baseEncodedString)
             // 落盘原图（FileCoordinator 独立子目录）+ 预生成缩略图
             var virtualPath: String?
             if let stored = try? FileCoordinator.shared.storeImage(image, type: .clipboard) {

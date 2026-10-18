@@ -126,7 +126,7 @@
 1. 在 self-hosted runner 会话中用 `open -n` 启动 worktree 内的 `Quite Note Dev.app`，记录实际 pid。
 2. UI driver 必须绑定该 pid，不要按窗口标题或全局进程枚举猜。
 3. 面板唤起后先等 AX 稳定，再操作输入框。
-4. 剪贴板搜索有 200ms debounce，等待条件用 `search_idle`，不要固定 sleep。
+4. 剪贴板搜索即时提交，但结果仍为异步搜索；等待条件用 `search_idle`，不要固定 sleep。
 5. `Esc` 语义：启动器/剪贴板先清搜索，再按一次才关闭。
 6. 结束只退出 Dev 进程，绝不杀正式版 `com.quitenote.app`。
 
