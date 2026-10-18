@@ -474,11 +474,6 @@ def assert_production_process_untouched() -> str:
         production = [str(app.processIdentifier()) for app in NSWorkspace.sharedWorkspace().runningApplications() if app.bundleIdentifier() == "com.quitenote.app"]
     return "production pids: " + (",".join(production) or "none")
 
-
-    print(proc.pid)
-    return 0
-
-
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--run-dir", type=Path, required=True)
@@ -487,7 +482,6 @@ def main() -> int:
     parser.add_argument("--suites", nargs="+", required=True)
     parser.add_argument("--evidence", choices=("fast", "full"), default="fast")
     args = parser.parse_args()
-
 
     recorder = None
     run = Run(args.run_dir, args.evidence)
