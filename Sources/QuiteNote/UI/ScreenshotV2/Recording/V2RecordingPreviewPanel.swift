@@ -1700,8 +1700,8 @@ private struct TrackContent: View {
     private var captionLane: some View {
         if !captions.isEmpty {
             ForEach(captions) { cap in
-                let width = max(30, (cap.end - cap.start) * zoom)
-                let x = cap.start * zoom
+                let width = max(CGFloat(30), CGFloat(cap.end - cap.start) * CGFloat(zoom))
+                let x = CGFloat(cap.start) * CGFloat(zoom)
                 let y = 16 + 48 + CGFloat(waveforms.count) * 26
                     + (dubTakes.isEmpty ? 0 : 26) + 2
                 CaptionLaneItem(text: cap.text, width: width, color: capColor)
