@@ -1700,19 +1700,35 @@ private struct TrackContent: View {
     private var captionLane: some View {
         if !captions.isEmpty {
             ForEach(captions) { cap in
-                Text(cap.text)
-                    .font(.system(size: 9.5))
-                    .foregroundColor(Color(red: 169/255, green: 232/255, blue: 191/255))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .padding(.horizontal, 5)
-                    .frame(width: max(30, (cap.end - cap.start) * zoom), height: 22, alignment: .leading)
-                    .background(RoundedRectangle(cornerRadius: 4).fill(capColor.opacity(0.15)))
-                    .overlay(RoundedRectangle(cornerRadius: 4).stroke(capColor.opacity(0.55), lineWidth: 1))
-                    .offset(x: cap.start * zoom,
-                            y: 16 + 48 + CGFloat(waveforms.count) * 26 + (dubTakes.isEmpty ? 0 : 26) + 2)
+                let width = max(30, (cap.end - cap.start) * zoom)
+                let x = cap.start * zoom
+                let y = 16 + 48 + CGFloat(waveforms.count) * 26
+                    + (dubTakes.isEmpty ? 0 : 26) + 2
+                CaptionLaneItem(text: cap.text, width: width, color: capColor)
+                    .offset(x: x, y: y)
                     .onTapGesture { onCaptionTap?(cap) }
             }
+        }
+    }
+
+    private struct CaptionLaneItem: View {
+        let text: String
+        let width: CGFloat
+        let color: Color
+
+        var body: some View {
+            Text(text)
+                .font(.system(size: 9.5))
+                .foregroundColor(Color(red: 169 / 255, green: 232 / 255, blue: 191 / 255))
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .padding(.horizontal, 5)
+                .frame(width: width, height: 22, alignment: .leading)
+                .background(RoundedRectangle(cornerRadius: 4).fill(color.opacity(0.15)))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 4)
+                        .stroke(color.opacity(0.55), lineWidth: 1)
+                )
         }
     }
 
