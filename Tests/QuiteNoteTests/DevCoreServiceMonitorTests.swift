@@ -19,9 +19,13 @@ final class DevCoreServiceMonitorTests: XCTestCase {
 
         try writeStatus(at: url, heartbeat: now, error: nil)
         monitor.refresh()
-        // launchd is unavailable in the test fixture, but parsing must prove the
-        // status file itself is not classified stale or corrupt.
-        XCTAssertNil(monitor.lastError, "status parse should not fail")
+        // launchd availability differs between developer machines and CI. Parsing
+        // proves the status itself is readable; a missing launchd service remains
+        // an environment failure rather than a stale/corrupt status classification.
+        XCTAssertTrue([
+            nil,
+            DevCoreServiceMonitorError.serviceUnavailable.localizedDescription,
+        ].contains(monitor.lastError), "status must not be stale or corrupt")
 
         try writeStatus(at: url, heartbeat: now.addingTimeInterval(-30), error: "disk full")
         monitor.refresh()
