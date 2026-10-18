@@ -64,6 +64,10 @@
    - 非 PASS 的 `knowledge-candidate.md` 需要整理进错题本。
    - 按 Tag / Commit 归档和查看时，以 [UI 回归 Run 索引](ui-test-run-index.md) 为入口。
 
+> xyz-mac 的 Screen Recording TCC 需要绑定桌面上的 ad-hoc `QuitenoteRunnerPython.app`
+> 执行链；系统自带 Apple Python 无法稳定继承该授权。CI 通过
+> `--ui-python "$HOME/Desktop/QuitenoteRunnerPython.app/Contents/MacOS/Python"` 固定执行身份。
+
 ## 回归策略
 
 - 新 Tag、发布候选、`--mode release`：全量回归。

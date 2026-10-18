@@ -95,7 +95,8 @@ jobs:
           ./tools/ui-smoke/run_ui_smoke.sh \
             --local-artifact "$UI_ARTIFACT" \
             --mode full \
-            --evidence full
+            --evidence full \
+            --ui-python "$HOME/Desktop/QuitenoteRunnerPython.app/Contents/MacOS/Python"
 
       - name: Require video evidence
         run: |

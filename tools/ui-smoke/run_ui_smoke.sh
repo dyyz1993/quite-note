@@ -10,6 +10,7 @@ SINCE=""
 ALLOW_DIRTY=false
 KEEP_DATA=true
 EVIDENCE="fast"
+UI_PYTHON="python3"
 SKIP_BUILD=false
 DRY_RUN=false
 REMOTE_HOST=""
@@ -29,6 +30,7 @@ Options:
   --allow-dirty                 Include the current patch and record its SHA.
   --no-keep-data                Delete this run's isolated storage after execution.
   --evidence <fast|full>        fast keeps key/failure screenshots; full saves every step.
+  --ui-python <path>            Python executable used by the UI driver.
   --skip-build                  Reuse the worktree app bundle when it already exists.
   --remote <host>               Execute UI over SSH on the dedicated test Mac.
   --artifact-url <url>          Download a CI-produced .zip or .dmg artifact.
@@ -51,6 +53,7 @@ while [[ $# -gt 0 ]]; do
     --allow-dirty) ALLOW_DIRTY=true; shift ;;
     --no-keep-data) KEEP_DATA=false; shift ;;
     --evidence) EVIDENCE="${2:?missing evidence mode}"; shift 2 ;;
+    --ui-python) UI_PYTHON="${2:?missing Python path}"; shift 2 ;;
     --skip-build) SKIP_BUILD=true; shift ;;
     --remote) REMOTE_HOST="${2:?missing remote host}"; shift 2 ;;
     --artifact-url) ARTIFACT_URL="${2:?missing artifact URL}"; shift 2 ;;
@@ -503,7 +506,7 @@ if [[ ! -d "$STORAGE_ROOT" ]]; then
   exit 3
 fi
 
-python3 "$ROOT/tools/ui-smoke/computer_use_smoke.py" \
+"$UI_PYTHON" "$ROOT/tools/ui-smoke/computer_use_smoke.py" \
   --run-dir "$RUN_DIR" \
   --app-path "$APP_PATH" \
   --app-pid "$TEST_PID" \
