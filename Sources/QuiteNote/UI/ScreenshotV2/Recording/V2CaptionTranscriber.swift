@@ -5,7 +5,11 @@ import AVFoundation
 import CoreMedia
 import CoreVideo
 import CoreText
+// Speech is only imported on the production build; GitHub's macos-15 test SDK
+// predates SpeechAnalyzer and cannot resolve these types.
+#if !LEGACY_CI_SDK
 import Speech
+#endif
 
 /// 字幕识别：macOS 26 的设备端 SpeechAnalyzer/SpeechTranscriber（本地、带时间戳）
 /// 旧系统不可用，UI 侧按 available 隐藏入口。
@@ -18,14 +22,22 @@ enum V2CaptionTranscriber {
     }
 
     static var available: Bool {
+        #if LEGACY_CI_SDK
+        return false
+        #else
         if #available(macOS 26.0, *) {
             return true
         }
         return false
+        #endif
     }
 
     /// 识别一个音频文件；offset 用于把文件内时间平移到全片时间轴（配音分段用）
     static func transcribe(fileURL: URL, offset: Double = 0) async throws -> [Chunk] {
+        #if LEGACY_CI_SDK
+        throw NSError(domain: "QuiteNote.Caption", code: 1,
+                      userInfo: [NSLocalizedDescriptionKey: "CI SDK does not provide SpeechAnalyzer"])
+        #else
         guard #available(macOS 26.0, *) else {
             throw NSError(domain: "QuiteNote.Caption", code: 1,
                           userInfo: [NSLocalizedDescriptionKey: "自动字幕需要 macOS 26 或更高版本"])
@@ -52,6 +64,7 @@ enum V2CaptionTranscriber {
                                 text: text))
         }
         return chunks
+        #endif
     }
 }
 

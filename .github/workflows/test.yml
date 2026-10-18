@@ -19,7 +19,10 @@ jobs:
           key: swift-build-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
 
       - name: 运行全部单元测试
-        run: swift test
+        # SpeechAnalyzer/SpeechTranscriber require the macOS 26 SDK; GitHub's
+        # macos-15 runner stays on the older SDK. Compile the speech path down
+        # to an unavailable stub there while retaining production availability.
+        run: swift test -Xswiftc -D -Xswiftc LEGACY_CI_SDK
 
   feishu-notify:
     name: Feishu Notification
