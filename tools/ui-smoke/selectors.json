@@ -1,5 +1,5 @@
 {
-  "suite_version": "1.0.0",
+  "suite_version": "1.1.0",
   "identifier_policy": "AXIdentifier first; AXRole+AXLabel second; window-relative coordinates last",
   "app": {
     "bundle_id": "com.quitenote.app.dev",

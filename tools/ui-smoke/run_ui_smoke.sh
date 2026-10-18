@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-SUITE_VERSION="1.0.0"
+SUITE_VERSION="1.1.0"
 DEFAULT_BASELINE="v1.3.0"
 MODE="full"
 REF=""
@@ -133,6 +133,7 @@ STORAGE_ROOT="/tmp/quitenote-ui-smoke/$RUN_ID"
 WORKTREE="$ROOT/.ui-smoke-worktrees/$GIT_COMMIT"
 APP_PATH="$WORKTREE/Quite Note Dev.app"
 mkdir -p "$RUN_DIR/screenshots" "$STORAGE_ROOT"
+mkdir -p "$RUN_DIR/recordings"
 
 select_suites() {
   local since="$1" mode="$2"
@@ -228,6 +229,7 @@ cat > "$RUN_DIR/manifest.json" <<EOF
   "storage_root": $(json_escape "$STORAGE_ROOT"),
   "keep_data": $KEEP_DATA,
   "evidence": $(json_escape "$EVIDENCE"),
+  "video_evidence": $(json_escape "recordings/ui-recording.mov"),
   "suites": $SUITES_JSON,
   "macos_version": $(json_escape "$MACOS_VERSION"),
   "xcode_version": $(json_escape "$XCODE_VERSION"),

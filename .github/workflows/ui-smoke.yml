@@ -110,6 +110,7 @@ jobs:
             tools/ui-smoke/runs/ui-*/app.stdout.log
             tools/ui-smoke/runs/ui-*/app.stderr.log
             tools/ui-smoke/runs/ui-*/screenshots/
+            tools/ui-smoke/runs/ui-*/recordings/
             tools/ui-smoke/runs/ui-*/knowledge-candidate.md
           retention-days: 30
           if-no-files-found: warn

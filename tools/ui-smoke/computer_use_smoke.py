@@ -14,6 +14,7 @@ import os
 import subprocess
 import sys
 import time
+import signal
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -38,6 +39,38 @@ class BlockedError(RuntimeError):
     """A system prerequisite prevents meaningful UI execution."""
 
 
+class ScreenRecorder:
+    """Continuous click-visible screen recording for a smoke run."""
+
+    def __init__(self, run_dir: Path, name: str = "ui-recording.mov"):
+        self.path = run_dir / "recordings" / name
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        # -k renders clicks in the movie, which is essential when reviewing
+        # keyboard focus and transient panel interactions.
+        self.process = subprocess.Popen(
+            ["screencapture", "-v", "-k", str(self.path)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+        )
+        time.sleep(0.5)
+        if self.process.poll() is not None:
+            raise RuntimeError(f"screencapture failed: {self.process.stderr.read().decode(errors='replace').strip()}")
+
+    @property
+    def evidence_label(self) -> str:
+        return str(self.path.relative_to(self.path.parents[1]))
+
+    def stop(self) -> str:
+        if self.process.poll() is None:
+            self.process.send_signal(signal.SIGINT)
+            try:
+                self.process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                self.process.kill()
+                self.process.wait(timeout=5)
+        return self.evidence_label if self.path.exists() and self.path.stat().st_size > 0 else ""
+
+
 @dataclass
 class Step:
     name: str
@@ -49,9 +82,10 @@ class Step:
 
 
 class Run:
-    def __init__(self, run_dir: Path, evidence: str):
+    def __init__(self, run_dir: Path, evidence: str, video_recorder: ScreenRecorder | None = None):
         self.run_dir = run_dir
         self.evidence = evidence
+        self.video_recorder = video_recorder
         self.results: list[Step] = []
 
     def record(self, name: str, fn) -> None:
@@ -60,8 +94,10 @@ class Run:
         if self.evidence == "full":
             evidence = self.capture(name)
         try:
-            evidence = fn() or ""
-            result = Step(name, "PASS", int((time.monotonic() - started) * 1000), evidence=evidence)
+            detail = fn() or ""
+            if self.evidence == "full":
+                evidence = self.capture(name)
+            result = Step(name, "PASS", int((time.monotonic() - started) * 1000), reason=detail, evidence=evidence)
         except Exception as exc:  # Keep later suites independent.
             status = "BLOCKED" if isinstance(exc, BlockedError) else "FAIL"
             result = Step(
@@ -72,6 +108,8 @@ class Run:
             )
             evidence = self.capture(name)
             result.evidence = evidence
+        if not detail and self.video_recorder:
+            result.evidence = self.video_recorder.evidence_label
         self.results.append(result)
         self.write()
 
@@ -98,7 +136,7 @@ class Run:
         lines = ["# Quite Note UI Smoke Report", "", f"Result: **{overall}**", ""]
         lines += ["| Case | Result | ms | Selector | Evidence / reason |", "|---|---|---:|---|---|"]
         for r in self.results:
-            detail = r.evidence or r.reason
+            detail = f"{r.evidence} ({r.reason})" if r.evidence and r.reason else (r.evidence or r.reason)
             lines.append(f"| {r.name} | {r.status} | {r.duration_ms} | `{r.selector}` | {detail} |")
         (self.run_dir / "report.md").write_text("\n".join(lines) + "\n")
 
@@ -439,30 +477,37 @@ def main() -> int:
     parser.add_argument("--evidence", choices=("fast", "full"), default="fast")
     args = parser.parse_args()
 
+    recorder = None
     run = Run(args.run_dir, args.evidence)
-    run.record("permissions.accessibility", validate_accessibility)
     try:
-        driver = AXDriver(args.app_pid or app_pid())
-    except Exception as exc:
-        run.record("launch.app", lambda: (_ for _ in ()).throw(RuntimeError(str(exc))))
-        return 1
+        recorder = ScreenRecorder(args.run_dir)
+        run.video_recorder = recorder
+        run.record("permissions.accessibility", validate_accessibility)
+        try:
+            driver = AXDriver(args.app_pid or app_pid())
+        except Exception as exc:
+            run.record("launch.app", lambda: (_ for _ in ()).throw(RuntimeError(str(exc))))
+            return 1
 
-    global driver_global
-    driver_global = driver
+        global driver_global
+        driver_global = driver
 
-    suite_map = {
-        "launch": lambda: smoke_launch(run, driver),
-        "flash-notes": lambda: smoke_flash_notes(run, driver),
-        "clipboard": lambda: smoke_clipboard(run, driver),
-        "launcher": lambda: smoke_launcher(run, driver),
-        "settings": lambda: smoke_settings(run, driver),
-        "devcore": lambda: smoke_devcore(run, driver),
-        "cleanup": lambda: smoke_cleanup(run, driver),
-    }
-    for suite in args.suites:
-        append_timeline(args.run_dir, "suite.start", {"name": suite})
-        run.record(suite, suite_map.get(suite, lambda: (_ for _ in ()).throw(RuntimeError(f"unknown suite: {suite}"))))
-        append_timeline(args.run_dir, "suite.end", {"name": suite})
+        suite_map = {
+            "launch": lambda: smoke_launch(run, driver),
+            "flash-notes": lambda: smoke_flash_notes(run, driver),
+            "clipboard": lambda: smoke_clipboard(run, driver),
+            "launcher": lambda: smoke_launcher(run, driver),
+            "settings": lambda: smoke_settings(run, driver),
+            "devcore": lambda: smoke_devcore(run, driver),
+            "cleanup": lambda: smoke_cleanup(run, driver),
+        }
+        for suite in args.suites:
+            append_timeline(args.run_dir, "suite.start", {"name": suite})
+            run.record(suite, suite_map.get(suite, lambda: (_ for _ in ()).throw(RuntimeError(f"unknown suite: {suite}"))))
+            append_timeline(args.run_dir, "suite.end", {"name": suite})
+    finally:
+        video_evidence = recorder.stop() if recorder else ""
+        append_timeline(args.run_dir, "video.stop", {"evidence": video_evidence})
 
     report = json.loads((args.run_dir / "report.json").read_text())
     if report["status"] == "PASS":

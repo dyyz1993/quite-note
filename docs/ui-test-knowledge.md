@@ -38,6 +38,7 @@
 - `report.md` / `report.json`：人读和机器读结果。
 - `timeline.jsonl`：套件执行时间线。
 - `screenshots/`：关键证据和失败现场。
+- `recordings/ui-recording.mov`：整段 UI 执行录屏，带点击位置标记；即使单步截图为空，也能回看焦点和瞬时交互。
 - `knowledge-candidate.md`：非 PASS 时自动生成的错题本候选。
 
 目录 `tools/ui-smoke/runs/` 和 `.ui-smoke-worktrees/` 已忽略 Git；不要把运行证据提交进仓库。
@@ -55,11 +56,11 @@
    - runner 从 GitHub artifact 下载当前 Commit 的 Dev ZIP，校验 SHA-256。
    - runner 用 `--local-artifact` 解包安装到自己的隔离测试目录，使用一次性 `QN_TEST_STORAGE_ROOT` 启动 Dev App。
 4. **归档**
-   - 专用测试机生成 `report.json / report.md / timeline.jsonl / screenshots/`。
+   - 专用测试机生成 `report.json / report.md / timeline.jsonl / screenshots/ / recordings/`。
    - GitHub 把这些文件作为当前 Commit 的 artifact 保留 30 天。
 5. **复查**
    - 先看 `report.md` 的 PASS/FAIL/BLOCKED。
-   - 有问题时按 `manifest.json` 锁定版本，再看 `report.json` 的失败 reason 与 `screenshots/` 证据。
+   - 有问题时按 `manifest.json` 锁定版本，再看 `report.json` 的失败 reason、`screenshots/` 与 `recordings/ui-recording.mov` 证据。
    - 非 PASS 的 `knowledge-candidate.md` 需要整理进错题本。
    - 按 Tag / Commit 归档和查看时，以 [UI 回归 Run 索引](ui-test-run-index.md) 为入口。
 
