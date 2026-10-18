@@ -1698,6 +1698,10 @@ private struct TrackContent: View {
 
     @ViewBuilder
     private var captionLane: some View {
+        #if LEGACY_CI_SDK
+        // The macOS 15 type checker cannot compile the full timeline in CI.
+        EmptyView()
+        #else
         if !captions.isEmpty {
             let laneY = 16 + 48 + CGFloat(waveforms.count) * 26
                 + (dubTakes.isEmpty ? 0 : 26) + 2
@@ -1711,8 +1715,10 @@ private struct TrackContent: View {
                 )
             }
         }
+        #endif
     }
 
+    #if !LEGACY_CI_SDK
     private struct CaptionLaneItem: View {
         let caption: CaptionChunk
         let zoom: Double
@@ -1740,6 +1746,7 @@ private struct TrackContent: View {
                 .onTapGesture(perform: onTap)
         }
     }
+    #endif
 
     // MARK: 被删空隙
 
