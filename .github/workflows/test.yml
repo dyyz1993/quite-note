@@ -22,7 +22,10 @@ jobs:
         # SpeechAnalyzer/SpeechTranscriber require the macOS 26 SDK; GitHub's
         # macos-15 runner stays on the older SDK. Compile the speech path down
         # to an unavailable stub there while retaining production availability.
-        run: swift test -Xswiftc -D -Xswiftc LEGACY_CI_SDK
+        run: >-
+          swift test
+          -Xswiftc -D -Xswiftc LEGACY_CI_SDK
+          -Xswiftc -Xfrontend -Xswiftc -solver-expression-time-threshold=1000
 
   feishu-notify:
     name: Feishu Notification
