@@ -98,6 +98,7 @@ class Run:
     def record(self, name: str, fn) -> None:
         started = time.monotonic()
         evidence = ""
+        detail = ""
         if self.evidence == "full":
             evidence = self.capture(name)
         try:
