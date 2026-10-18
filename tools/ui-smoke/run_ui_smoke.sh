@@ -472,10 +472,17 @@ PY
 
 TEST_PID_FILE="$RUN_DIR/app.pid"
 defaults write com.quitenote.app.dev clipboardOnboarded -bool true
-# The LaunchAgent runner creates its own audit session. A direct child app is
-# registered with WindowServer but remains invisible to that session; ask
-# LaunchServices to place the app in the interactive login session instead.
-QN_TEST_STORAGE_ROOT="$STORAGE_ROOT" open -n "$APP_PATH" --args --ui-smoke-run "$RUN_ID"
+PYTHON_APP_PATH="$(cd "$(dirname "$UI_PYTHON")/../.." && pwd)"
+if [[ -d "$PYTHON_APP_PATH" && -f "$PYTHON_APP_PATH/Contents/Info.plist" ]]; then
+  # Screen Recording TCC follows the responsible GUI app. Launch the app that
+  # also owns the UI driver so both share one authorized audit context.
+  QN_TEST_STORAGE_ROOT="$STORAGE_ROOT" open -n "$PYTHON_APP_PATH" --args "$ROOT/tools/ui-smoke/computer_use_smoke.py" --launch-ui-app "$APP_PATH" --run-id "$RUN_ID"
+else
+  # The LaunchAgent runner creates its own audit session. A direct child app is
+  # registered with WindowServer but remains invisible to that session; ask
+  # LaunchServices to place the app in the interactive login session instead.
+  QN_TEST_STORAGE_ROOT="$STORAGE_ROOT" open -n "$APP_PATH" --args --ui-smoke-run "$RUN_ID"
+fi
 DEADLINE=$((SECONDS + 15))
 TEST_PID=""
 while (( SECONDS < DEADLINE )); do

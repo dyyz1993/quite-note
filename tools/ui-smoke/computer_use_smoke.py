@@ -14,6 +14,7 @@ import os
 import subprocess
 import sys
 import time
+import uuid
 import signal
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
@@ -475,6 +476,22 @@ def assert_production_process_untouched() -> str:
     return "production pids: " + (",".join(production) or "none")
 
 
+def launch_ui_app(app_path: Path, run_id: str) -> int:
+    """Relaunch the test app inside the authorized UI-driver GUI context."""
+    marker = Path("/tmp") / f"quitenote-ui-launched-{uuid.uuid4().hex}"
+    env = dict(os.environ)
+    env.setdefault("QN_TEST_STORAGE_ROOT", "")
+    proc = subprocess.Popen(
+        [str(app_path / "Contents/MacOS/QuiteNoteDev"), "--ui-smoke-run", run_id],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        env=env,
+    )
+    marker.write_text(str(proc.pid))
+    print(proc.pid)
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--run-dir", type=Path, required=True)
@@ -482,7 +499,14 @@ def main() -> int:
     parser.add_argument("--app-pid", type=int)
     parser.add_argument("--suites", nargs="+", required=True)
     parser.add_argument("--evidence", choices=("fast", "full"), default="fast")
+    parser.add_argument("--launch-ui-app", type=Path)
+    parser.add_argument("--run-id")
     args = parser.parse_args()
+
+    if args.launch_ui_app:
+        if not args.run_id:
+            parser.error("--launch-ui-app requires --run-id")
+        return launch_ui_app(args.launch_ui_app, args.run_id)
 
     recorder = None
     run = Run(args.run_dir, args.evidence)
