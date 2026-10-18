@@ -118,6 +118,10 @@ jobs:
             tools/ui-smoke/runs/ui-*/timeline.jsonl
             tools/ui-smoke/runs/ui-*/app.stdout.log
             tools/ui-smoke/runs/ui-*/app.stderr.log
+            tools/ui-smoke/runs/ui-*/driver.stdout.log
+            tools/ui-smoke/runs/ui-*/driver.stderr.log
+            tools/ui-smoke/runs/ui-*/launcher.stderr.log
+            tools/ui-smoke/runs/ui-*/launcher-error.txt
             tools/ui-smoke/runs/ui-*/screenshots/
             tools/ui-smoke/runs/ui-*/recordings/
             tools/ui-smoke/runs/ui-*/knowledge-candidate.md

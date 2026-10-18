@@ -474,14 +474,53 @@ TEST_PID_FILE="$RUN_DIR/app.pid"
 defaults write com.quitenote.app.dev clipboardOnboarded -bool true
 PYTHON_APP_PATH="$(cd "$(dirname "$UI_PYTHON")/../.." && pwd)"
 if [[ -d "$PYTHON_APP_PATH" && -f "$PYTHON_APP_PATH/Contents/Info.plist" ]]; then
-  # Screen Recording TCC follows the responsible GUI app. Launch the app that
-  # also owns the UI driver so both share one authorized audit context.
-  QN_TEST_STORAGE_ROOT="$STORAGE_ROOT" open -n "$PYTHON_APP_PATH" --args -c "import os, subprocess; p = subprocess.Popen(['$APP_PATH/Contents/MacOS/QuiteNoteDev', '--ui-smoke-run', '$RUN_ID'], env=dict(os.environ)); print(p.pid)"
+  # Screen Recording TCC follows the responsible GUI app. The launcher app
+  # owns both Dev app startup and the smoke driver, keeping AX and capture in
+  # one authorized audit context while GitHub's runner only waits for results.
+  LAUNCH_REQUEST="$RUN_DIR/gui-launch.request.json"
+  LAUNCH_RESPONSE="$RUN_DIR/gui-launch.response.json"
+  python3 - "$LAUNCH_REQUEST" "$RUN_DIR" "$APP_PATH" "$STORAGE_ROOT" "$RUN_ID" "$EVIDENCE" "${SUITES[@]}" <<'PY'
+import json, sys
+out, run_dir, app_path, storage, run_id, evidence, *suites = sys.argv[1:]
+request = {
+    "run_dir": run_dir,
+    "app_path": app_path,
+    "storage_root": storage,
+    "run_id": run_id,
+    "evidence": evidence,
+    "suites": suites,
+}
+open(out, "w").write(json.dumps(request, ensure_ascii=False, indent=2) + "\n")
+PY
+  open -n "$PYTHON_APP_PATH" --args "$ROOT/tools/ui-smoke/gui_smoke_launcher.py" "$LAUNCH_REQUEST" "$LAUNCH_RESPONSE"
+  DEADLINE=$((SECONDS + 180))
+  until [[ -f "$LAUNCH_RESPONSE" ]]; do
+    (( SECONDS < DEADLINE )) || break
+    sleep 0.5
+  done
+  python3 - "$LAUNCH_RESPONSE" "$RUN_DIR" <<'PY'
+import json, pathlib, sys
+response, run_dir = (pathlib.Path(value) for value in sys.argv[1:])
+if not response.exists():
+    raise SystemExit("BLOCKED: GUI smoke launcher did not finish")
+result = json.loads(response.read_text())
+if result.get("error"):
+    (run_dir / "launcher-error.txt").write_text(result["error"])
+if result.get("returncode") == 3:
+    raise SystemExit(3)
+raise SystemExit(result.get("returncode", 1))
+PY
+  GUI_STATUS=$?
 else
   # The LaunchAgent runner creates its own audit session. A direct child app is
   # registered with WindowServer but remains invisible to that session; ask
   # LaunchServices to place the app in the interactive login session instead.
   QN_TEST_STORAGE_ROOT="$STORAGE_ROOT" open -n "$APP_PATH" --args --ui-smoke-run "$RUN_ID"
+  GUI_STATUS=100
+fi
+
+if [[ "${GUI_STATUS:-100}" != 100 ]]; then
+  exit "$GUI_STATUS"
 fi
 DEADLINE=$((SECONDS + 15))
 TEST_PID=""

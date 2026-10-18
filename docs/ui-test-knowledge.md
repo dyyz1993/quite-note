@@ -67,6 +67,8 @@
 > xyz-mac 的 Screen Recording TCC 需要绑定桌面上的 ad-hoc `QuitenoteRunnerPython.app`
 > 执行链；系统自带 Apple Python 无法稳定继承该授权。CI 通过
 > `--ui-python "$HOME/Desktop/QuitenoteRunnerPython.app/Contents/MacOS/Python"` 固定执行身份。
+> Runner 只写入请求并等待响应；`gui_smoke_launcher.py` 由授权 GUI app 负责启动 Dev App、
+> 执行 AX driver 和 `screencapture`，避免 GitHub Runner audit session 拿不到 TCC 授权。
 
 ## 回归策略
 
