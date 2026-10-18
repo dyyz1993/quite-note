@@ -54,7 +54,12 @@ class ScreenRecorder:
         )
         time.sleep(0.5)
         if self.process.poll() is not None:
-            raise RuntimeError(f"screencapture failed: {self.process.stderr.read().decode(errors='replace').strip()}")
+            # Screen Recording TCC can lapse for a runner after a macOS update.
+            # Keep the deterministic AX smoke path usable while surfacing the loss.
+            detail = self.process.stderr.read().decode(errors="replace").strip()
+            print(f"WARNING: continuous UI recording unavailable: {detail}", file=sys.stderr)
+            self.path = run_dir / "recordings" / "ui-recording.unavailable.txt"
+            self.path.write_text(detail + "\n")
 
     @property
     def evidence_label(self) -> str:
@@ -68,6 +73,8 @@ class ScreenRecorder:
             except subprocess.TimeoutExpired:
                 self.process.kill()
                 self.process.wait(timeout=5)
+        if self.path.suffix == ".txt":
+            return self.evidence_label
         return self.evidence_label if self.path.exists() and self.path.stat().st_size > 0 else ""
 
 

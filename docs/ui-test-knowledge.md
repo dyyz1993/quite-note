@@ -140,6 +140,7 @@
 - 专用测试机使用一次性 `QN_TEST_STORAGE_ROOT`，只退出 `com.quitenote.app.dev`。
 - 专用测试机 Python 依赖为 PyObjC 10.3.2，无需 Xcode。
 - 若专用测试机报告 `BLOCKED`，优先检查辅助功能、屏幕录制、CI 产物签名/架构。
+- `recordings/ui-recording.unavailable.txt` 只代表录屏能力缺失，不满足 release/候选验收；必须恢复 Screen Recording 并重跑得到 `.mov`。
 - 当前专用测试机是 Intel Mac；CI 产物必须包含 x86_64 或 universal binary。
 
 ## 安全与权限红线

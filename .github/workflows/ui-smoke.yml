@@ -97,6 +97,14 @@ jobs:
             --mode full \
             --evidence full
 
+      - name: Require video evidence
+        run: |
+          RECORDING="$(find tools/ui-smoke/runs/ui-*/recordings -name 'ui-recording.mov' -size +0 -print -quit)"
+          [[ -n "$RECORDING" ]] || {
+            echo "UI recording evidence is missing or unavailable" >&2
+            exit 2
+          }
+
       - name: Upload UI evidence
         if: always()
         uses: actions/upload-artifact@v4

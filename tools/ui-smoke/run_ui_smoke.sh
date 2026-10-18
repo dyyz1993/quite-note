@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-SUITE_VERSION="1.1.0"
+SUITE_VERSION="1.2.0"
 DEFAULT_BASELINE="v1.3.0"
 MODE="full"
 REF=""
