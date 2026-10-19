@@ -492,13 +492,13 @@ def _ax_children(element):
 def _find_ax_element_by_identifier(identifier: str):
     global _target_ax_identifier
     _target_ax_identifier = identifier
-    from ApplicationServices import AXUIElementCreateApplication
-    app_element = driver_global.element
     # Targeted hit test avoids traversing large/offscreen AX trees on the remote Mac.
     window = driver_global.foreground_floating_window()
     if window:
         x, y, width, height = window["frame"]
-        for fraction in ((0.5, 0.12), (0.25, 0.1), (0.75, 0.1), (0.5, 0.3)):
+        # The search field occupies the top strip of the 760x520 panel; lower
+        # probes hit the filter/list and require tree traversal to recover.
+        for fraction in ((0.5, 0.055), (0.3, 0.06), (0.7, 0.06)):
             found = driver_global.element_at(x + width * fraction[0], y + height * fraction[1])
             if found is not None and _target_ax_identifier in (
                 _ax_string(_ax_attribute(found, "AXIdentifier")),
@@ -506,10 +506,11 @@ def _find_ax_element_by_identifier(identifier: str):
             ):
                 return found
             if found is not None:
-                # A hit on a container is acceptable: callers only assert exposure.
-                if _ax_string(_ax_attribute(found, "AXRole")) in ("AXTextField", "AXGroup", "AXScrollArea"):
+                # Hit testing is bounded; avoid recursive tree walks that can hang
+                # once SwiftUI exposes a large accessibility tree.
+                if _ax_string(_ax_attribute(found, "AXRole")) == "AXTextField":
                     return found
-    return _walk_ax(app_element)
+    return None
 
 
 def smoke_flash_notes(run: Run, driver: AXDriver) -> str:
