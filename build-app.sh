@@ -132,6 +132,12 @@ if [ "$SKIP_BUILD" = false ]; then
     if [ "$APP_STORE_MODE" = true ]; then
         SWIFT_BUILD_ARGS+=(-Xswiftc -D -Xswiftc APP_STORE)
     fi
+    # GitHub's macos-15 runners expose the older SDK used by Tests; keep the
+    # production speech UI compilable there while local macOS 26 builds retain it.
+    SWIFT_BUILD_ARGS+=(
+        -Xswiftc -D -Xswiftc LEGACY_CI_SDK
+        -Xswiftc -Xfrontend -Xswiftc -solver-expression-time-threshold=1000
+    )
     if [ "$BUNDLE_ID" = "com.quitenote.app.dev" ]; then
         echo "开发变体将同时构建常驻核心..."
         swift build -c release --product QuiteNoteCoreService
