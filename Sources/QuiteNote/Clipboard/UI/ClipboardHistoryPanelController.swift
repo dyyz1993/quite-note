@@ -222,6 +222,10 @@ final class ClipboardHistoryPanelController {
         // 崩溃红线：NSHostingView 禁止反向驱动窗口尺寸
         let hosting = NSHostingView(rootView: ClipboardHistoryView(controller: self))
         hosting.sizingOptions = []
+        // SwiftUI inside NSHostingView can otherwise remain opaque to AX unless a
+        // child explicitly becomes accessible; the isolated app process needs this
+        // for deterministic UI automation.
+        hosting.setAccessibilityEnabled(true)
         panel.contentView = hosting
 
         self.panel = panel
