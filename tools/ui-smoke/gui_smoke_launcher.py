@@ -65,7 +65,6 @@ def run_once(claim_path: Path) -> None:
     try:
         environment = os.environ.copy()
         environment["QN_TEST_STORAGE_ROOT"] = str(storage_root)
-        environment["QN_UI_EVIDENCE_DIR"] = str(run_dir / "recordings" / "frames")
         app = subprocess.Popen(
             [
                 str(app_path / "Contents/MacOS/QuiteNoteDev"),

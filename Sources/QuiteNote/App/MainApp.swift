@@ -138,12 +138,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NotificationCenter.default.addObserver(self, selector: #selector(onScreenshotTriggered), name: NSNotification.Name("qn.screenshot.trigger"), object: nil)
         // P2.2: 监听图标缓存清除请求
         NotificationCenter.default.addObserver(self, selector: #selector(onClearIconCache), name: NSNotification.Name("ClearIconCache"), object: nil)
-        DistributedNotificationCenter.default().addObserver(
-            self,
-            selector: #selector(onUIEvidenceCapture),
-            name: NSNotification.Name("qn.ui.evidence.capture"),
-            object: nil
-        )
 
         shortcuts = KeyboardShortcutManager()
         shortcuts?.recordStore = store
@@ -306,10 +300,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         print("[DEBUG] 快捷键/菜单栏触发截图")
         // 使用统一截图入口
         ScreenshotService.shared.startScreenshot()
-    }
-
-    @objc private func onUIEvidenceCapture() {
-        UIEvidenceCaptureService.captureIfNeeded()
     }
 
     // P2.2: 清除图标缓存
