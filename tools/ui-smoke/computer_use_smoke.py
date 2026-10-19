@@ -254,17 +254,10 @@ class AXDriver:
         size = self.attribute("AXSize", element)
         if position is None or size is None:
             return None
-        origin = position.COORDINATE_ATTRS if hasattr(position, "COORDINATE_ATTRS") else None
-        if origin is not None:
-            x = float(origin.X)
-            y = float(origin.Y)
-            width = float(size.WIDTH)
-            height = float(size.HEIGHT)
-        else:
-            x = float(position.x)
-            y = float(position.y)
-            width = float(size.width)
-            height = float(size.height)
+        x = float(position.x)
+        y = float(position.y)
+        width = float(size.width)
+        height = float(size.height)
         return x, y, width, height
 
     def element_at(self, x: float, y: float):
