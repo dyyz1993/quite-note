@@ -480,16 +480,17 @@ if [[ -d "$PYTHON_APP_PATH" && -f "$PYTHON_APP_PATH/Contents/Info.plist" ]]; the
   QUEUE_ROOT="/tmp/quitenote-ui-smoke-launcher"
   LAUNCH_REQUEST="$QUEUE_ROOT/requests/$RUN_ID.request.json"
   LAUNCH_RESPONSE="$QUEUE_ROOT/responses/$RUN_ID.response.json"
-  python3 - "$LAUNCH_REQUEST" "$RUN_DIR" "$APP_PATH" "$STORAGE_ROOT" "$RUN_ID" "$EVIDENCE" "${SUITES[@]}" <<'PY'
+  python3 - "$LAUNCH_REQUEST" "$RUN_DIR" "$APP_PATH" "$STORAGE_ROOT" "$RUN_ID" "$EVIDENCE" "$ROOT/tools/ui-smoke/computer_use_smoke.py" "${SUITES[@]}" <<'PY'
 import json, sys
 from pathlib import Path
-out, run_dir, app_path, storage, run_id, evidence, *suites = sys.argv[1:]
+out, run_dir, app_path, storage, run_id, evidence, driver_path, *suites = sys.argv[1:]
 Path(out).parent.mkdir(parents=True, exist_ok=True)
 request = {
     "run_dir": run_dir,
     "app_path": app_path,
     "storage_root": storage,
     "run_id": run_id,
+    "driver_path": driver_path,
     "evidence": evidence,
     "suites": suites,
 }

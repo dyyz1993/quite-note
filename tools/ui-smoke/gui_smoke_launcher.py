@@ -9,6 +9,7 @@ same trusted identity. GitHub's runner never becomes the responsible process.
 from __future__ import annotations
 
 import json
+import importlib.util
 import os
 import subprocess
 import sys
@@ -57,6 +58,16 @@ def response_for_claim(claim_path: Path) -> Path:
     return RESPONSE_ROOT / f"{name}.response.json"
 
 
+def load_smoke_main(driver_path: Path):
+    spec = importlib.util.spec_from_file_location("computer_use_smoke_run", driver_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Cannot load smoke driver: {driver_path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module.main
+
+
 def run_once(claim_path: Path) -> None:
     request = json.loads(claim_path.read_text())
     response_path = response_for_claim(claim_path)
@@ -87,9 +98,8 @@ def run_once(claim_path: Path) -> None:
         )
         pid_path.write_text(str(app.pid) + "\n")
 
-        tools_dir = Path(__file__).resolve().parent
-        sys.path.insert(0, str(tools_dir))
-        from computer_use_smoke import main as smoke_main
+        driver_path = Path(request.get("driver_path", Path(__file__).resolve().parent / "computer_use_smoke.py"))
+        smoke_main = load_smoke_main(driver_path)
 
         sys.argv = [
             "computer_use_smoke.py",

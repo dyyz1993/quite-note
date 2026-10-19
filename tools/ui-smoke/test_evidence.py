@@ -25,6 +25,9 @@ smoke = load_module("computer_use_smoke", "computer_use_smoke.py")
 
 
 class EvidenceTests(unittest.TestCase):
+    def test_launcher_loads_driver_from_checkout(self):
+        self.assertTrue(callable(launcher.load_smoke_main(ROOT / "computer_use_smoke.py")))
+
     def test_claim_response_matches_runner_wait_path(self):
         with tempfile.TemporaryDirectory() as temp:
             with patch.object(launcher, "RESPONSE_ROOT", Path(temp)):
