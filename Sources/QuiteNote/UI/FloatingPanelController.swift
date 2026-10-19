@@ -201,7 +201,9 @@ final class FloatingPanelController {
                 let timer = Timer(timeInterval: 0.3, repeats: false) { [weak self] _ in
                     guard let self = self else { return }
                     print("[DEBUG] 计时器触发, hoverActive: \(self.hoverActive)")
-                    if self.hoverActive {
+                    // A held button means the user is dragging; delayed focus
+                    // would cancel the window drag loop.
+                    if self.hoverActive && NSEvent.pressedMouseButtons == 0 {
                         self.requestRegularFocus(reason: "hover_delayed")
                     }
                 }

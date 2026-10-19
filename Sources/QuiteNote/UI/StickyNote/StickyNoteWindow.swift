@@ -35,7 +35,11 @@ class StickyNoteWindow: NSPanel, NSWindowDelegate {
             : [.fullScreenAuxiliary]
         self.titleVisibility = .hidden
         self.titlebarAppearsTransparent = true
-        self.isMovableByWindowBackground = true
+        // 拖动只由顶部原生拖拽区域的 performDrag 驱动，
+        // 避免背景拖动与失焦蒙层/SwiftUI 手势互相抢事件
+        self.isMovableByWindowBackground = false
+        self.isMovable = true
+        self.acceptsMouseMovedEvents = true
         self.backgroundColor = .clear
         self.hasShadow = true
         self.isOpaque = false
@@ -58,13 +62,21 @@ class StickyNoteWindow: NSPanel, NSWindowDelegate {
     // MARK: - NSWindowDelegate
     
     func windowDidMove(_ notification: Notification) {
-        note.frame = self.frame
-        StickyNoteManager.shared.updateNote(note)
+        persistFrameOnly()
     }
-    
+
     func windowDidResize(_ notification: Notification) {
+        persistFrameOnly()
+    }
+
+    /// 只把 frame 写回管理器中的最新模型；
+    /// 不能把窗口创建时缓存的旧 note（含旧 pages）传给 updateNote，否则会覆盖用户新编辑的内容
+    private func persistFrameOnly() {
         note.frame = self.frame
-        StickyNoteManager.shared.updateNote(note)
+        guard let index = StickyNoteManager.shared.notes.firstIndex(where: { $0.id == noteId }) else { return }
+        StickyNoteManager.shared.notes[index].frame = self.frame
+        StickyNoteManager.shared.saveNotes()
+        NotificationCenter.default.post(name: .stickyNoteFrameChanged, object: self)
     }
 
     /// 更新同步状态（当便签保存到记录后调用）
@@ -135,6 +147,7 @@ class StickyNoteHostingView<Content: View>: NSHostingView<Content> {
         // 关键修复：扩大追踪区域，包含窗口的所有边缘
         let options: NSTrackingArea.Options = [
             .mouseEnteredAndExited,
+            .mouseMoved,
             .activeAlways,
             .inVisibleRect
         ]
@@ -157,14 +170,39 @@ class StickyNoteHostingView<Content: View>: NSHostingView<Content> {
         blurWorkItem?.cancel()
         blurWorkItem = nil
 
-        focusTimer?.invalidate()
+        scheduleHoverFocus()
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        // A drag can leave the window key but its editor no longer first responder.
+        if window?.isKeyWindow != true || !(window?.firstResponder is NSTextView) {
+            scheduleHoverFocus()
+        }
+    }
+
+    private func scheduleHoverFocus() {
+        guard focusTimer == nil, NSEvent.pressedMouseButtons == 0 else { return }
+        // Focus normal hover immediately, but never while a mouse button is
+        // already held: that is a window drag, and stealing key focus cancels
+        // the AppKit drag loop.
         focusTimer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: false) { [weak self] _ in
             guard let self = self else { return }
+            self.focusTimer = nil
+            guard NSEvent.pressedMouseButtons == 0 else { return }
             print("[DEBUG StickyNoteWindow] Sending StickyNoteFocus - noteId: \(self.noteId)")
             self.window?.makeKeyAndOrderFront(nil)
+            if let editor = self.findEditor(in: self) {
+                self.window?.makeFirstResponder(editor)
+            }
+            DiagnosticCenter.info("StickyNoteHover", "hover focused note=\(self.noteId)")
             // 通知视图强制获取焦点，实现直接输入
             NotificationCenter.default.post(name: NSNotification.Name("StickyNoteFocus"), object: self.noteId)
         }
+    }
+
+    private func findEditor(in view: NSView) -> StickyNoteTextView? {
+        if let editor = view as? StickyNoteTextView { return editor }
+        return view.subviews.lazy.compactMap { self.findEditor(in: $0) }.first
     }
 
     override func mouseExited(with event: NSEvent) {

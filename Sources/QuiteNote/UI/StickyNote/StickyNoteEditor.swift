@@ -126,8 +126,9 @@ struct StickyNoteEditor: NSViewRepresentable {
         }
 
         // 焦点同步
-        if isFocused && textView.window?.firstResponder != textView {
+        if isFocused && NSEvent.pressedMouseButtons == 0 && textView.window?.firstResponder != textView {
             DispatchQueue.main.async {
+                guard NSEvent.pressedMouseButtons == 0 else { return }
                 if textView.window?.makeFirstResponder(textView) == true {
                     // 成功获取焦点后，确保光标可见
                     textView.scrollToEndOfDocument(nil)
