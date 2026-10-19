@@ -33,9 +33,12 @@ final class UIEvidenceCaptureService {
             let filename = request.deletingPathExtension().lastPathComponent
             guard filename.hasPrefix("frame-") else { continue }
             let output = frames.appendingPathComponent(filename + ".png")
-            if let window = NSApp.orderedWindows.first(where: {
+            let windows = NSApp.orderedWindows.filter {
                 $0.isVisible && $0.contentView != nil && $0.frame.width > 100 && $0.frame.height > 60
-            }), let content = window.contentView,
+            }
+            // Clipboard and launcher panels use .popUpMenu, above the main panel.
+            if let window = windows.max(by: { $0.level.rawValue < $1.level.rawValue }),
+               let content = window.contentView,
                let bitmap = content.bitmapImageRepForCachingDisplay(in: content.bounds) {
                 content.cacheDisplay(in: content.bounds, to: bitmap)
                 if let data = bitmap.representation(using: .png, properties: [:]) {
