@@ -249,6 +249,24 @@ class AXDriver:
             )
         return found
 
+    def bounding_frame(self, element):
+        position = self.attribute("AXPosition", element)
+        size = self.attribute("AXSize", element)
+        if position is None or size is None:
+            return None
+        origin = position.COORDINATE_ATTRS if hasattr(position, "COORDINATE_ATTRS") else None
+        if origin is not None:
+            x = float(origin.X)
+            y = float(origin.Y)
+            width = float(size.WIDTH)
+            height = float(size.HEIGHT)
+        else:
+            x = float(position.x)
+            y = float(position.y)
+            width = float(size.width)
+            height = float(size.height)
+        return x, y, width, height
+
     def element_at(self, x: float, y: float):
         error, element = AXUIElementCopyElementAtPosition(self.element, x, y, None)
         return element if error == 0 else None
@@ -510,6 +528,17 @@ def _find_ax_element_by_identifier(identifier: str):
                 # once SwiftUI exposes a large accessibility tree.
                 if _ax_string(_ax_attribute(found, "AXRole")) == "AXTextField":
                     return found
+                frame = driver_global.bounding_frame(found)
+                if frame:
+                    element_x, element_y, element_width, element_height = frame
+                    center_x = element_x + element_width / 2
+                    center_y = element_y + element_height / 2
+                    if x <= center_x <= x + width and y <= center_y <= y + height:
+                        print(
+                            f"AX hit candidate={identifier} role={_ax_string(_ax_attribute(found, 'AXRole'))} "
+                            f"frame={frame} window={(x, y, width, height)}",
+                            file=sys.stderr,
+                        )
     return None
 
 
