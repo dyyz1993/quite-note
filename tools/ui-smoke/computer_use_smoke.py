@@ -94,17 +94,20 @@ class ScreenRecorder:
         path = self.frame_root / f"{len(self.frames):04d}-{safe}-{time.time_ns()}.png"
         self.frame_root.mkdir(parents=True, exist_ok=True)
         before = sorted(self.frame_root.glob("*.png")) if self.frame_root.exists() else []
-        subprocess.run(
-            [
-                "osascript",
-                "-e",
-                'tell application id "com.quitenote.app.dev" to «event QNUICptr»',
-            ],
-            check=False,
-            timeout=0.2,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
+        try:
+            subprocess.run(
+                [
+                    "osascript",
+                    "-e",
+                    'tell application id "com.quitenote.app.dev" to «event QNUICptr»',
+                ],
+                check=False,
+                timeout=0.2,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except subprocess.TimeoutExpired:
+            pass
         deadline = time.monotonic() + 0.4
         while time.monotonic() < deadline:
             after = sorted(self.frame_root.glob("*.png")) if self.frame_root.exists() else []
