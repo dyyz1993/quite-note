@@ -95,7 +95,7 @@ class ScreenRecorder:
         self.frame_root.mkdir(parents=True, exist_ok=True)
         try:
             completed = subprocess.run(
-                ["screencapture", "-x", str(path)],
+                ["/usr/sbin/screencapture", "-x", str(path)],
                 check=False,
                 timeout=5,
                 stdout=subprocess.DEVNULL,
@@ -132,15 +132,15 @@ class Run:
         started = time.monotonic()
         evidence = ""
         detail = ""
+        if self.video_recorder is not None:
+            self.video_recorder.capture_fallback_frame(f"{name}-before")
         if self.evidence == "full":
-            if self.video_recorder is not None:
-                self.video_recorder.capture_fallback_frame(f"{name}-before")
             evidence = self.capture(name)
         try:
             detail = fn() or ""
             if self.evidence == "full":
                 evidence = self.capture(name)
-            if self.evidence == "full" and self.video_recorder is not None:
+            if self.video_recorder is not None:
                 self.video_recorder.capture_fallback_frame(f"{name}-after")
             result = Step(name, "PASS", int((time.monotonic() - started) * 1000), reason=detail, evidence=evidence)
         except Exception as exc:  # Keep later suites independent.
@@ -164,7 +164,7 @@ class Run:
         safe = "".join(c if c.isalnum() or c in "-_" else "-" for c in name)
         path = self.run_dir / "screenshots" / f"{safe}-{int(time.time())}.png"
         try:
-            subprocess.run(["screencapture", "-x", str(path)], check=False, timeout=5)
+            subprocess.run(["/usr/sbin/screencapture", "-x", str(path)], check=False, timeout=5)
             return str(path.relative_to(self.run_dir))
         except Exception:
             return ""
