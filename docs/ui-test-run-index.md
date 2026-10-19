@@ -36,6 +36,7 @@ gh run download <run-id> \
 | 2026-10-16 | - | [6a0a66c6119b8703480613882db86b20b3c3f3f2](https://github.com/dyyz1993/quite-note/actions/runs/38843129826) | `v1.3.0-55-g6a0a66c` | 38843129826 | `ui-20261016-030856-6a0a66c6` | full | PASS | 首个逐步截图归档 run：8 个场景截图 + report/timeline/manifest |
 | 2026-10-18 | - | [07a3755a0eaa060353a93e35638e9d23641c3d45](https://github.com/dyyz1993/quite-note/actions/runs/39128454712) | `v1.3.0-67-g07a3755` | 39128454712 | `ui-20261018-132725-07a3755a` | full | PASS | macOS 15 SDK CI 兼容修复后全量 Tests 绿；Dev 1.0.0 @ `com.quitenote.app.dev`，macOS 13.7.8，7 场景 + cleanup 全绿，生产进程无残留 |
 | 2026-10-19 | - | [47a2765cafe14ff104a7f5c0b8edbdc8a0640bba](https://github.com/dyyz1993/quite-note/actions/runs/39245202816) | `47a2765` | 39245202816 | `ui-20261019-114303-47a2765c` | full | PASS | Dev 1.0.0、套件 1.2.0、macOS 13.7.8；8/8 PASS，16 张非空时间线窗口 PNG。GitHub Artifact 已下载复验，目检剪贴板 760×520 与启动器 640×496 面板；连续录屏仍不可用。Tests run [39245203791](https://github.com/dyyz1993/quite-note/actions/runs/39245203791) 绿色 |
+| 2026-10-19 | - | [2451d26e2f430c2e52738b613fd9503c1b394059](https://github.com/dyyz1993/quite-note/actions/runs/39262438516) | `2451d26` | 39262438516 (attempt 2) | `ui-20261019-143453-2451d26e` | full | PASS | Dev 1.0.0、套件 1.2.0、macOS 13.7.8；8/8 PASS，16 张原始窗口 PNG + 16 帧 `recordings/ui-timeline.webp`（174,954 B）。Artifact 已下载，逐帧解码复验并目检剪贴板/启动器面板；动图为截图合成，非连续录屏。首次下载副本 SHA-256 不符，重跑后校验通过；Tests run [39262439757](https://github.com/dyyz1993/quite-note/actions/runs/39262439757) 绿色 |
 
 ## 当前验收范围
 

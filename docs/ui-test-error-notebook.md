@@ -18,6 +18,16 @@
 
 ## 已知问题
 
+### 2026-10-19 · Dev artifact 在专用 runner 的首次下载副本哈希不符
+
+- Version / Commit / Run: 2451d26e2f430c2e52738b613fd9503c1b394059 / 39262438516 attempt 1
+- Symptom: `Verify artifact` 的 `shasum -a 256 --check` 报 `computed checksum did NOT match`；UI 测试尚未启动。
+- Root cause: GitHub 原始 artifact 另行下载到开发机后 SHA-256 与随包清单完全匹配，ZIP 完整可解压；专用 runner 首次下载副本损坏，具体传输层原因未证实。
+- Fix: 保留 SHA-256 硬门禁，重跑失败的 UI job；attempt 2 校验通过且 UI 8/8、WebP 视觉证据门禁全绿。
+- Prevention: 不绕过哈希；若同类问题重复出现，再为 artifact 下载增加受控重试与下载副本哈希诊断。
+- Evidence: GitHub run 39262438516 attempt 1/2；`QuiteNoteUI-2451d26e2f430c2e52738b613fd9503c1b394059`。
+- Status: transient, monitor
+
 ### 2026-10-18 · xyz-mac Screen Recording 授权丢失导致录屏验收失败
 
 - Version / Commit / Run: 551c8bd8da9594786c761b92793f101885752444 / 39135127430
