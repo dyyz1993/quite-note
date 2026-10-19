@@ -98,7 +98,11 @@ jobs:
           echo "✅ 公证凭据就绪"
 
       - name: 运行全部单元测试
-        run: swift test
+        # Keep release tests on the same legacy-SDK guard as .github/workflows/test.yml.
+        run: >-
+          swift test
+          -Xswiftc -D -Xswiftc LEGACY_CI_SDK
+          -Xswiftc -Xfrontend -Xswiftc -solver-expression-time-threshold=1000
 
       - name: 构建签名公证 DMG（build-release.sh 全链路）
         run: ./build-release.sh "$VERSION"
