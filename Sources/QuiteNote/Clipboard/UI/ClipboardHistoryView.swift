@@ -89,6 +89,7 @@ struct ClipboardHistoryView: View {
         }
         .onAppear {
             vm.bind(store: store)
+            vm.preloadSearchIndex(store: store)
             wireKeyHandler()
         }
         .onDisappear {
@@ -98,6 +99,7 @@ struct ClipboardHistoryView: View {
             // 每次面板唤起：清空搜索 + 聚焦 + 重新接键盘处理器
             // （视图随面板常驻不销毁，onAppear 只触发一次，第二次唤起必须在此重接）
             vm.resetInput()
+            vm.preloadSearchIndex(store: store)
             wireKeyHandler()
         }
         .alert("启用直接粘贴？", isPresented: $showDirectPastePermissionDialog) {

@@ -162,7 +162,17 @@ final class DevCoreServiceMonitor: ObservableObject {
         } catch {
             return ""
         }
-        process.waitUntilExit()
+        // launchctl can block indefinitely if its service lookup wedges; keep UI
+        // and tests bounded rather than waiting on waitUntilExit.
+        let semaphore = DispatchSemaphore(value: 0)
+        DispatchQueue.global(qos: .utility).async {
+            process.waitUntilExit()
+            semaphore.signal()
+        }
+        guard semaphore.wait(timeout: .now() + 2) == .success else {
+            process.terminate()
+            throw DevCoreServiceMonitorError.serviceUnavailable
+        }
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
         let output = String(data: data, encoding: .utf8) ?? ""
         guard process.terminationStatus == 0 else {

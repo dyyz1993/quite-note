@@ -39,6 +39,8 @@ final class ClipboardHistoryViewModel: ObservableObject {
     private let searchIndex = ClipboardIndex()
     private var indexedStoreVersion = 0
     private var indexedFilter: ClipboardFilter?
+    private var indexPreloadGeneration = 0
+    private var indexPreloadVersions: Set<Int> = []
 
     /// 面板打开时接入 store。store 变化在事件回调里重算，避免 body 副作用。
     func bind(store: ClipboardHistoryStore) {
@@ -48,8 +50,31 @@ final class ClipboardHistoryViewModel: ObservableObject {
             .sink { [weak self, weak store] _ in
                 guard let self, let store else { return }
                 self.recomputeVisibleEntries(store: store)
+                self.preloadSearchIndex(store: store)
             }
         recomputeVisibleEntries(store: store)
+    }
+
+    /// Build the corpus index before typing so the first keystroke can reuse it.
+    func preloadSearchIndex(store: ClipboardHistoryStore) {
+        let storeVersion = store.entriesVersion
+        guard indexedStoreVersion != storeVersion || indexedFilter != filter else { return }
+        indexPreloadGeneration += 1
+        let generation = indexPreloadGeneration
+        let filter = filter
+        indexPreloadVersions.insert(storeVersion)
+        store.loadAllEntriesInBackground { [weak self] allEntries in
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.indexPreloadGeneration == generation else { return }
+                self.rebuildIndex(
+                    allEntries: allEntries,
+                    storeVersion: storeVersion,
+                    filter: filter,
+                    store: store
+                )
+                self.recomputeVisibleEntries(store: store)
+            }
+        }
     }
 
     func recomputeVisibleEntries(store: ClipboardHistoryStore? = nil) {
@@ -73,7 +98,8 @@ final class ClipboardHistoryViewModel: ObservableObject {
         let token = DiagnosticCenter.beginMeasure("Clipboard", "历史搜索", threshold: 0.15)
         let storeVersionAtRequest = store.entriesVersion
         // 同一 store 版本 + 筛选下，语料建档一次；连续输入复用索引。
-        if indexedStoreVersion == storeVersionAtRequest && indexedFilter == filter {
+        let indexIsReady = indexedStoreVersion == storeVersionAtRequest && indexedFilter == filter
+        if indexIsReady || indexPreloadVersions.contains(storeVersionAtRequest) {
             runSearch(
                 query: query,
                 filter: filter,
@@ -82,31 +108,49 @@ final class ClipboardHistoryViewModel: ObservableObject {
                 token: token
             )
         } else {
-            store.loadAllEntriesInBackground { allEntries in
+            store.loadAllEntriesInBackground { [weak self] allEntries in
                 // 统一索引负责快照匹配/排序/分页；内存增量仍即时合并，保证搜索期间的新剪贴板可见。
                 DispatchQueue.main.async { [weak self] in
                     guard let self else { return }
-                    self.searchIndex.rebuild(using: {
-                        allEntries
-                            .filter { filter.matches($0) }
-                            .map(Self.indexDocument)
-                    }) { [weak self] _ in
-                        guard let self else { return }
-                        self.indexedStoreVersion = storeVersionAtRequest
-                        self.indexedFilter = filter
-                        self.runSearch(
-                            query: query,
-                            filter: filter,
-                            generation: generation,
-                            store: store,
-                            token: token
-                        )
-                    }
+                    self.rebuildIndex(
+                        allEntries: allEntries,
+                        storeVersion: storeVersionAtRequest,
+                        filter: filter,
+                        store: store
+                    )
+                    self.runSearch(
+                        query: query,
+                        filter: filter,
+                        generation: generation,
+                        store: store,
+                        token: token
+                    )
                 }
             }
         }
     }
 
+    private func rebuildIndex(
+        allEntries: [ClipboardEntry],
+        storeVersion: Int,
+        filter: ClipboardFilter,
+        store: ClipboardHistoryStore
+    ) {
+        let currentStoreVersion = store.entriesVersion
+        guard currentStoreVersion == storeVersion else {
+            indexPreloadVersions.remove(storeVersion)
+            return
+        }
+        let documents = allEntries
+            .filter { filter.matches($0) }
+            .map(Self.indexDocument)
+        searchIndex.rebuild(documents: documents)
+        indexedStoreVersion = storeVersion
+        indexedFilter = filter
+        indexPreloadVersions.remove(storeVersion)
+    }
+
+    /// Only the current generation may publish results; stale background work is dropped.
     private func runSearch(
         query: String,
         filter: ClipboardFilter,
@@ -129,7 +173,7 @@ final class ClipboardHistoryViewModel: ObservableObject {
         }
     }
 
-    private nonisolated static func indexDocument(_ entry: ClipboardEntry) -> SearchIndexDocument<ClipboardEntry> {
+    nonisolated static func indexDocument(_ entry: ClipboardEntry) -> SearchIndexDocument<ClipboardEntry> {
         let fields = ClipboardSearchService.searchableFields(entry)
         let title = entry.plainText ?? entry.sourceURL ?? entry.sourceApp ?? ""
         return SearchIndexDocument(
@@ -150,6 +194,7 @@ final class ClipboardHistoryViewModel: ObservableObject {
         guard let idx = all.firstIndex(of: filter) else { return }
         let next = (idx + (forward ? 1 : -1) + all.count) % all.count
         filter = all[next]
+        preloadSearchIndex(store: ClipboardHistoryStore.shared)
     }
 
     /// 重置输入（面板每次打开时调用）

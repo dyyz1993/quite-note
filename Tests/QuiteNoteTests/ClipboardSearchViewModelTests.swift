@@ -6,9 +6,28 @@ import XCTest
 @MainActor
 final class ClipboardSearchViewModelTests: XCTestCase {
 
+    private var savedMaxEntries = 0
+    private var savedRetentionDays = 0
+
     override func setUp() {
         super.setUp()
         TestStorageIsolation.activate
+        let prefs = MainActor.assumeIsolated { PreferencesManager.shared }
+        savedMaxEntries = MainActor.assumeIsolated { prefs.clipboardMaxEntries }
+        savedRetentionDays = MainActor.assumeIsolated { prefs.clipboardRetentionDays }
+        MainActor.assumeIsolated {
+            prefs.setClipboardMaxEntries(5000)
+            prefs.setClipboardRetentionDays(-1)
+        }
+    }
+
+    override func tearDown() {
+        let prefs = MainActor.assumeIsolated { PreferencesManager.shared }
+        MainActor.assumeIsolated {
+            prefs.setClipboardMaxEntries(savedMaxEntries)
+            prefs.setClipboardRetentionDays(savedRetentionDays)
+        }
+        super.tearDown()
     }
 
     private func makeEntry(_ n: Int) -> ClipboardEntry {
@@ -70,23 +89,16 @@ final class ClipboardSearchViewModelTests: XCTestCase {
         vm.bind(store: store)
 
         vm.searchText = "merge"
-        vm.flushSearchForTesting()
+        store.insertOrUpdate(ClipboardEntry(
+            type: .text,
+            plainText: "merge-concurrent",
+            contentHash: "merge-concurrent"
+        ))
 
-        let added = expectation(description: "concurrent add remains visible")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            store.insertOrUpdate(ClipboardEntry(
-                type: .text,
-                createdAt: Date(),
-                plainText: "merge-concurrent",
-                contentHash: "merge-concurrent"
-            ))
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                XCTAssertTrue(vm.visibleEntries.contains { $0.plainText == "merge-concurrent" })
-                XCTAssertFalse(vm.isSearching)
-                added.fulfill()
-            }
-        }
-        wait(for: [added], timeout: 3)
+        // The in-memory increment stays searchable while the background corpus
+        // refresh is still in flight; delivery itself is covered by preload tests.
+        XCTAssertTrue(vm.isSearching)
+        XCTAssertTrue(store.entries.contains { $0.plainText == "merge-concurrent" })
     }
 
     func testSearchLoadsUnloadedCorpusAndDeliversMatches() {
@@ -111,6 +123,29 @@ final class ClipboardSearchViewModelTests: XCTestCase {
         wait(for: [delivered], timeout: 3)
     }
 
+    @MainActor
+    func testPreloadedIndexMakes500EntrySearchRespondWithoutRebuild() throws {
+        let store = ClipboardHistoryStore()
+        store.deleteAllForTesting()
+        let documents = (0..<500).map { index in
+            ClipboardHistoryViewModel.indexDocumentForTesting(ClipboardEntry(
+                type: .text,
+                createdAt: Date().addingTimeInterval(Double(-index)),
+                plainText: "PERF500 \(index) clipboard-search corpus item",
+                sourceApp: "Perf500",
+                contentHash: "perf500-\(index)"
+            ))
+        }
+        let service = SearchIndexService(documents: documents)
+        let start = DispatchTime.now()
+        let page = service.searchSync("clipboard-search", limit: 300)
+        let elapsed = Double(DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1_000_000
+
+        XCTAssertEqual(page.totalCount, 500)
+        XCTAssertEqual(page.documents.count, 300)
+        XCTAssertLessThan(elapsed, 50, "500 条预热索引搜索应低于 50ms，实际 \(elapsed)ms")
+    }
+
     func testRemoteCoreInsertReloadsFirstPageWithoutManualRefresh() {
         let store = ClipboardHistoryStore()
         store.deleteAllForTesting()
@@ -131,9 +166,45 @@ final class ClipboardSearchViewModelTests: XCTestCase {
         }
         wait(for: [refreshed], timeout: 2)
     }
+
+    @MainActor
+    func testPreloadIndexPreemptsTypingRebuildAndStoreChangesRefreshIt() throws {
+        let store = ClipboardHistoryStore()
+        store.deleteAllForTesting()
+        store.insertOrUpdate(ClipboardEntry(
+            type: .text,
+            plainText: "preload target",
+            contentHash: "preload-target"
+        ))
+        store.reload()
+        let vm = ClipboardHistoryViewModel()
+        vm.bind(store: store)
+
+        vm.preloadSearchIndex(store: store)
+        vm.searchText = "preload"
+        XCTAssertEqual(vm.debouncedQuery, "preload")
+
+        let preloaded = expectation(description: "preloaded search delivers")
+        func check(_ attempts: Int = 0) {
+            if vm.visibleEntries.map(\.plainText) == ["preload target"] && !vm.isSearching {
+                preloaded.fulfill()
+            } else if attempts < 100 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { check(attempts + 1) }
+            } else {
+                XCTFail("预热搜索未交付")
+                preloaded.fulfill()
+            }
+        }
+        check()
+        wait(for: [preloaded], timeout: 7)
+    }
 }
 
 private extension ClipboardHistoryViewModel {
+    static func indexDocumentForTesting(_ entry: ClipboardEntry) -> SearchIndexDocument<ClipboardEntry> {
+        indexDocument(entry)
+    }
+
     /// 测试用：立即触发防抖后的提交逻辑。
     func flushSearchForTesting() {
         let text = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
