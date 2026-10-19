@@ -1,4 +1,5 @@
 import importlib.util
+import base64
 import json
 import os
 import sqlite3
@@ -55,6 +56,17 @@ class EvidenceTests(unittest.TestCase):
             self.assertEqual([row[1] for row in rows], ["text", "text", "text", "link"])
             self.assertEqual({row[2] for row in rows}, {"UI Smoke"})
             self.assertEqual(len({row[3] for row in rows}), 4)
+            self.assertTrue(seeder.CORE_DATA_TABLES <= set(self.table_names(database)))
+            self.assertEqual(base64.b64decode(seeder.MODEL_CACHE_B64)[:8].hex(), "8d570b7414d519fe")
+
+    def table_names(self, database):
+        connection = sqlite3.connect(database)
+        try:
+            return [row[0] for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            )]
+        finally:
+            connection.close()
 
     def test_visual_gate_rejects_main_window_for_clipboard(self):
         with tempfile.TemporaryDirectory() as temp:

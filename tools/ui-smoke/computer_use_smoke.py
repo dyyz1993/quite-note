@@ -22,7 +22,12 @@ from pathlib import Path
 try:
     import Quartz
     from AppKit import NSWorkspace
-    from ApplicationServices import AXIsProcessTrusted, kAXValueAttribute
+    from ApplicationServices import (
+        AXUIElementCopyElementAtPosition,
+        AXUIElementSetAttributeValue,
+        AXIsProcessTrusted,
+        kAXValueAttribute,
+    )
 except ImportError:  # The remote test Mac boots before pip dependencies are installed.
     Quartz = None
     AXIsProcessTrusted = None
