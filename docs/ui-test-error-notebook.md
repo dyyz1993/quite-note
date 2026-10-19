@@ -23,7 +23,7 @@
 - Version / Commit / Run: 551c8bd8da9594786c761b92793f101885752444 / 39135127430
 - Symptom: AX smoke 全部场景 PASS，`screencapture -v` 返回 `capture error`；run 生成 `recordings/ui-recording.unavailable.txt`，CI 的 Require video evidence 步骤按预期失败。
 - Root cause: xyz-mac 当前 GUI 会话中 runner Python 会话 `CGPreflightScreenCaptureAccess() == false`，用户 TCC 库中已无 Screen Recording 授权记录；疑似系统更新/权限重置后授权丢失。
-- Interim fix: UI 回归先使用 `recordings/frames.json` + 非空整屏帧作为连续录屏降级证据；CI 仍会硬性校验证据存在且可读。
+- Interim fix: UI 回归使用 `recordings/frames.json` + Dev App 自绘的非空窗口帧作为连续录屏降级证据；CI 校验帧内容尺寸和每步证据，且人工目检关键面板。见绿色 run `39245202816`。这只能证明 App 窗口画面，不能当整屏录屏。
 - Final fix: 在 xyz-mac 登录会话为 runner 使用的 `actions-runner-quitenote/externals/node24/bin/node`（以及 runner 子进程可用的 `screencapture` 执行链）重新授予 Screen Recording，重启 `quitenote-ui-xyz` LaunchAgent 后复测，恢复非空 `recordings/ui-recording.mov`。
 - Prevention: 录屏证据链现在作为 CI 硬门禁；录屏能力缺失不能被 report PASS 掩盖。
 - Evidence: run artifact `QuiteNoteUI-551c8bd8.../recordings/ui-recording.unavailable.txt` 与 GitHub run `39135127430`。
@@ -37,7 +37,7 @@
 - Fix: 响应文件名按请求 ID 生成；每个请求显式传当前 checkout 的 driver 路径，launcher 动态加载。录屏失败时由隔离 Dev App 自绘可见前台面板 PNG，并验证帧索引。
 - Prevention: 回归报告的证据路径必须指向存在的非空图片；目检剪贴板和启动器帧，不能只看 UI assertion PASS。
 - Evidence: run `39235611588` 的报告和错名响应文件；run `39241779657` 的 PASS 报告与空 `recordings/`；后续绿色 run 见索引。
-- Status: pending green regression
+- Status: fixed by `47a2765` / green run `39245202816`；Screen Recording 授权问题仍按上条 open 跟踪
 
 ### 2026-10-15 · runner 工作区下载 artifact 后被误判为 dirty
 
