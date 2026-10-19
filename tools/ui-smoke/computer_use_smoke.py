@@ -226,7 +226,7 @@ class AXDriver:
         candidates = self.windows()
         if not candidates:
             return None
-        candidates.sort(key=lambda w: (w["frame"][3], w["frame"][2]), reverse=True)
+        candidates.sort(key=lambda w: (w["frame"][3] < 600, w["frame"][3], w["frame"][2]), reverse=True)
         return candidates[0]
 
     def windows(self) -> list[dict]:
