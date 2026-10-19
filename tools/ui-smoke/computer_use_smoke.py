@@ -95,16 +95,15 @@ class ScreenRecorder:
         self.frame_root.mkdir(parents=True, exist_ok=True)
         before = sorted(self.frame_root.glob("*.png")) if self.frame_root.exists() else []
         try:
+            env = os.environ.copy()
+            env["QN_UI_EVIDENCE_DIR"] = str(self.frame_root)
             subprocess.run(
-                [
-                    "osascript",
-                    "-e",
-                    'tell application id "com.quitenote.app.dev" to «event QNUICptr»',
-                ],
+                ["/usr/bin/osascript", "-e", 'do shell script "true"'],
                 check=False,
                 timeout=0.2,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
+                env=env,
             )
         except subprocess.TimeoutExpired:
             pass
