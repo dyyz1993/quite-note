@@ -49,8 +49,7 @@ def claim_request() -> Path | None:
 
 
 def run_once(claim_path: Path) -> None:
-    request = json.loads(request_path.read_text())
-    request_path = claim_path.with_suffix(".request.json")
+    request = json.loads(claim_path.read_text())
     response_path = RESPONSE_ROOT / f"{claim_path.stem}.response.json"
     run_dir = Path(request["run_dir"])
     app_path = Path(request["app_path"])
