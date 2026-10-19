@@ -95,9 +95,13 @@ class ScreenRecorder:
         self.frame_root.mkdir(parents=True, exist_ok=True)
         before = sorted(self.frame_root.glob("*.png")) if self.frame_root.exists() else []
         subprocess.run(
-            ["osascript", "-e", 'tell app "System Events" to tell application "Quite Note Dev" to «event QNUICptr»'],
+            [
+                "osascript",
+                "-e",
+                'tell application id "com.quitenote.app.dev" to «event QNUICptr»',
+            ],
             check=False,
-            timeout=5,
+            timeout=0.2,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
