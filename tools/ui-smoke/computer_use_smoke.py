@@ -388,7 +388,9 @@ def _activate_app() -> None:
     if NSWorkspace is not None:
         for app in NSWorkspace.sharedWorkspace().runningApplications():
             if app.processIdentifier() == driver_global.pid:
-                app.activateWithOptions_(0)
+                # macOS 13 can reject a normal activation for an accessory app in
+                # the GUI launcher session. ActivateAll is the deterministic path.
+                app.activateWithOptions_(0x00010000 | 0x00000010)
                 return
     raise RuntimeError("cannot activate the current Dev app process")
 
@@ -397,6 +399,8 @@ def _press_status_menu_item(title: str) -> None:
     if driver_global is None:
         raise RuntimeError("AX driver is unavailable")
     item = driver_global.status_menu_item(title)
+    _activate_app()
+    time.sleep(0.2)
     driver_global.press(item)
 
 
