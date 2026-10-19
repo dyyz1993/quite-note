@@ -33,6 +33,8 @@ except ImportError:  # The remote test Mac boots before pip dependencies are ins
     AXIsProcessTrusted = None
     NSWorkspace = None
     kAXValueAttribute = None
+    AXUIElementCopyElementAtPosition = None
+    AXUIElementSetAttributeValue = None
 
 
 APP_NAME = "Quite Note Dev"
@@ -351,6 +353,8 @@ def smoke_clipboard(run: Run, driver: AXDriver) -> str:
 
     if not panel_visible():
         _press_status_menu_item("剪贴板历史")
+        _activate_app()
+        time.sleep(0.1)
     deadline = time.monotonic() + 3
     while time.monotonic() < deadline:
         if panel_visible():
