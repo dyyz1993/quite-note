@@ -40,10 +40,14 @@ class BlockedError(RuntimeError):
 
 
 class ScreenRecorder:
-    """Continuous click-visible screen recording for a smoke run."""
+    """Continuous recording with a timestamped frame fallback."""
 
     def __init__(self, run_dir: Path, name: str = "ui-recording.mov"):
+        self.run_dir = run_dir
         self.path = run_dir / "recordings" / name
+        self.frame_root = run_dir / "recordings" / "frames"
+        self.frames: list[str] = []
+        self.unavailable_path = run_dir / "recordings" / "ui-recording.unavailable.txt"
         self.path.parent.mkdir(parents=True, exist_ok=True)
         # -k renders clicks in the movie, which is essential when reviewing
         # keyboard focus and transient panel interactions.
@@ -58,24 +62,53 @@ class ScreenRecorder:
             # Keep the deterministic AX smoke path usable while surfacing the loss.
             detail = self.process.stderr.read().decode(errors="replace").strip()
             print(f"WARNING: continuous UI recording unavailable: {detail}", file=sys.stderr)
-            self.path = run_dir / "recordings" / "ui-recording.unavailable.txt"
-            self.path.write_text(detail + "\n")
+            self.process = None
+            self.unavailable_path.write_text(detail + "\n")
+            self.frame_root.mkdir(parents=True, exist_ok=True)
 
     @property
     def evidence_label(self) -> str:
         return str(self.path.relative_to(self.path.parents[1]))
 
     def stop(self) -> str:
-        if self.process.poll() is None:
+        if self.process is not None and self.process.poll() is None:
             self.process.send_signal(signal.SIGINT)
             try:
                 self.process.wait(timeout=10)
             except subprocess.TimeoutExpired:
                 self.process.kill()
                 self.process.wait(timeout=5)
-        if self.path.suffix == ".txt":
+        if self.path.exists() and self.path.stat().st_size > 0:
             return self.evidence_label
-        return self.evidence_label if self.path.exists() and self.path.stat().st_size > 0 else ""
+        if self.frames:
+            index_path = self.run_dir / "recordings" / "frames.json"
+            index_path.write_text(json.dumps({"frames": self.frames}, ensure_ascii=False, indent=2) + "\n")
+            return str(index_path.relative_to(self.run_dir))
+        return self.unavailable_path.relative_to(self.run_dir).as_posix()
+
+    def capture_fallback_frame(self, event: str) -> None:
+        """Capture full-screen evidence when native recording is unavailable."""
+        if self.process is not None:
+            return
+        safe = "".join(c if c.isalnum() or c in "-_" else "-" for c in event)
+        path = self.frame_root / f"{len(self.frames):04d}-{safe}-{time.time_ns()}.png"
+        self.frame_root.mkdir(parents=True, exist_ok=True)
+        try:
+            completed = subprocess.run(
+                ["screencapture", "-x", str(path)],
+                check=False,
+                timeout=5,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except Exception:
+            return
+        if completed.returncode != 0 or not path.exists() or path.stat().st_size == 0:
+            return
+        path.parent.mkdir(parents=True, exist_ok=True)
+        relative = path.relative_to(self.run_dir).as_posix()
+        self.frames.append(relative)
+        append_timeline(self.run_dir, "evidence.frame", {"path": relative})
 
 
 @dataclass
@@ -100,11 +133,15 @@ class Run:
         evidence = ""
         detail = ""
         if self.evidence == "full":
+            if self.video_recorder is not None:
+                self.video_recorder.capture_fallback_frame(f"{name}-before")
             evidence = self.capture(name)
         try:
             detail = fn() or ""
             if self.evidence == "full":
                 evidence = self.capture(name)
+            if self.evidence == "full" and self.video_recorder is not None:
+                self.video_recorder.capture_fallback_frame(f"{name}-after")
             result = Step(name, "PASS", int((time.monotonic() - started) * 1000), reason=detail, evidence=evidence)
         except Exception as exc:  # Keep later suites independent.
             status = "BLOCKED" if isinstance(exc, BlockedError) else "FAIL"
@@ -115,6 +152,8 @@ class Run:
                 reason=f"{type(exc).__name__}: {exc}",
             )
             evidence = self.capture(name)
+            if self.video_recorder is not None:
+                self.video_recorder.capture_fallback_frame(f"{name}-failure")
             result.evidence = evidence
         if not detail and self.video_recorder:
             result.evidence = self.video_recorder.evidence_label
