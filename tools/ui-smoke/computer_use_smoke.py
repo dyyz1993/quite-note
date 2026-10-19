@@ -251,6 +251,11 @@ class AXDriver:
 
     def element_at(self, x: float, y: float):
         error, element = AXUIElementCopyElementAtPosition(self.element, x, y, None)
+        if error == 0:
+            return element
+        # AX coordinates are top-down while CGWindow frames are bottom-up.
+        screen_height = Quartz.CGDisplayBounds(Quartz.CGMainDisplayID()).size.height
+        error, element = AXUIElementCopyElementAtPosition(self.element, x, screen_height - y, None)
         return element if error == 0 else None
 
     def set_value(self, element, value: str) -> None:
