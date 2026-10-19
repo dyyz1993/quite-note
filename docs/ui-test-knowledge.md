@@ -69,6 +69,9 @@
 > `--ui-python "$HOME/Desktop/QuitenoteRunnerPython.app/Contents/MacOS/Python"` 固定执行身份。
 > Runner 只写入请求并等待响应；`gui_smoke_launcher.py` 由授权 GUI app 负责启动 Dev App、
 > 执行 AX driver 和 `screencapture`，避免 GitHub Runner audit session 拿不到 TCC 授权。
+> 常驻版通过 `tools/ui-smoke/install-quitenote-gui-launcher.sh` 安装为
+> `com.quitenote.ui-smoke-launcher` LaunchAgent；它监听
+> `/tmp/quitenote-ui-smoke-launcher/requests/`，并把结果原子写入 `responses/`。
 
 ## 回归策略
 

@@ -477,11 +477,14 @@ if [[ -d "$PYTHON_APP_PATH" && -f "$PYTHON_APP_PATH/Contents/Info.plist" ]]; the
   # Screen Recording TCC follows the responsible GUI app. The launcher app
   # owns both Dev app startup and the smoke driver, keeping AX and capture in
   # one authorized audit context while GitHub's runner only waits for results.
-  LAUNCH_REQUEST="$RUN_DIR/gui-launch.request.json"
-  LAUNCH_RESPONSE="$RUN_DIR/gui-launch.response.json"
+  QUEUE_ROOT="/tmp/quitenote-ui-smoke-launcher"
+  LAUNCH_REQUEST="$QUEUE_ROOT/requests/$RUN_ID.request.json"
+  LAUNCH_RESPONSE="$QUEUE_ROOT/responses/$RUN_ID.response.json"
   python3 - "$LAUNCH_REQUEST" "$RUN_DIR" "$APP_PATH" "$STORAGE_ROOT" "$RUN_ID" "$EVIDENCE" "${SUITES[@]}" <<'PY'
 import json, sys
+from pathlib import Path
 out, run_dir, app_path, storage, run_id, evidence, *suites = sys.argv[1:]
+Path(out).parent.mkdir(parents=True, exist_ok=True)
 request = {
     "run_dir": run_dir,
     "app_path": app_path,
@@ -492,8 +495,10 @@ request = {
 }
 open(out, "w").write(json.dumps(request, ensure_ascii=False, indent=2) + "\n")
 PY
-  open -n "$PYTHON_APP_PATH" --args "$ROOT/tools/ui-smoke/gui_smoke_launcher.py" "$LAUNCH_REQUEST" "$LAUNCH_RESPONSE"
-  DEADLINE=$((SECONDS + 180))
+  if ! pgrep -f "[g]ui_smoke_launcher.py" >/dev/null; then
+    open -n "$PYTHON_APP_PATH" --args "$ROOT/tools/ui-smoke/gui_smoke_launcher.py"
+  fi
+  DEADLINE=$((SECONDS + 300))
   until [[ -f "$LAUNCH_RESPONSE" ]]; do
     (( SECONDS < DEADLINE )) || break
     sleep 0.5

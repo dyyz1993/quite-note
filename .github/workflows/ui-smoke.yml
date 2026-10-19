@@ -98,6 +98,10 @@ jobs:
             --evidence full \
             --ui-python "$HOME/Desktop/QuitenoteRunnerPython.app/Contents/MacOS/Python"
 
+      - name: Check GUI launcher service
+        run: |
+          pgrep -f "[g]ui_smoke_launcher.py" >/dev/null
+
       - name: Require video evidence
         run: |
           RECORDING="$(find tools/ui-smoke/runs/ui-*/recordings -name 'ui-recording.mov' -size +0 -print -quit)"
