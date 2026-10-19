@@ -93,6 +93,26 @@ class ScreenRecorder:
         safe = "".join(c if c.isalnum() or c in "-_" else "-" for c in event)
         path = self.frame_root / f"{len(self.frames):04d}-{safe}-{time.time_ns()}.png"
         self.frame_root.mkdir(parents=True, exist_ok=True)
+        before = sorted(self.frame_root.glob("*.png")) if self.frame_root.exists() else []
+        subprocess.run(
+            ["osascript", "-e", 'tell app "System Events" to tell application "Quite Note Dev" to «event QNUICptr»'],
+            check=False,
+            timeout=5,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        deadline = time.monotonic() + 0.4
+        while time.monotonic() < deadline:
+            after = sorted(self.frame_root.glob("*.png")) if self.frame_root.exists() else []
+            if len(after) > len(before):
+                break
+            time.sleep(0.05)
+        after = sorted(self.frame_root.glob("*.png"))
+        if len(after) > len(before):
+            relative = after[-1].relative_to(self.run_dir).as_posix()
+            self.frames.append(relative)
+            append_timeline(self.run_dir, "evidence.frame", {"path": relative})
+            return
         try:
             completed = subprocess.run(
                 ["/usr/sbin/screencapture", "-x", str(path)],
