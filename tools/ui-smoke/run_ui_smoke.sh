@@ -498,9 +498,9 @@ PY
   if ! pgrep -f "[g]ui_smoke_launcher.py" >/dev/null; then
     open -n "$PYTHON_APP_PATH" --args "$ROOT/tools/ui-smoke/gui_smoke_launcher.py"
   fi
-  DEADLINE=$((SECONDS + 300))
+  LAUNCH_DEADLINE=$(( $(date +%s) + 300 ))
   until [[ -f "$LAUNCH_RESPONSE" ]]; do
-    (( SECONDS < DEADLINE )) || break
+    (( $(date +%s) < LAUNCH_DEADLINE )) || break
     sleep 0.5
   done
   python3 - "$LAUNCH_RESPONSE" "$RUN_DIR" <<'PY'
