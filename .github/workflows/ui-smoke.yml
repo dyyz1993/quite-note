@@ -107,27 +107,9 @@ jobs:
 
       - name: Require visual evidence
         run: |
-          RECORDING="$(find tools/ui-smoke/runs/ui-*/recordings -name 'ui-recording.mov' -size +0 -print -quit)"
-          FRAME_INDEX="$(find tools/ui-smoke/runs/ui-*/recordings -name 'frames.json' -size +0 -print -quit)"
-          if [[ -z "$RECORDING" && -z "$FRAME_INDEX" ]]; then
-            echo "UI visual evidence is missing or unavailable" >&2
-            exit 2
-          fi
-          if [[ -n "$FRAME_INDEX" && -z "$RECORDING" ]]; then
-            FRAME_COUNT="$(
-              python3 - "$FRAME_INDEX" <<'PY'
-              import json, pathlib, sys
-              index = json.loads(pathlib.Path(sys.argv[1]).read_text())
-              frames = index.get("frames", [])
-              run_dir = pathlib.Path(sys.argv[1]).parents[1]
-              valid = [name for name in frames if (run_dir / name).stat().st_size > 0]
-              print(len(valid))
-              if len(valid) != len(frames) or len(valid) < 2:
-                  raise SystemExit("Frame evidence is incomplete")
-              PY
-            )"
-            echo "Validated timestamped screenshot evidence: $FRAME_COUNT"
-          fi
+          RUN_DIR="$(find tools/ui-smoke/runs -maxdepth 1 -type d -name 'ui-*' -print -quit)"
+          [[ -n "$RUN_DIR" ]] || { echo "UI run directory missing" >&2; exit 2; }
+          python3 tools/ui-smoke/validate_evidence.py "$RUN_DIR"
 
       - name: Upload UI evidence
         if: always()

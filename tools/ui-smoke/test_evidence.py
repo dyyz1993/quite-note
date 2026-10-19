@@ -1,11 +1,14 @@
 import importlib.util
 import json
+import os
+import struct
 import tempfile
 import threading
 import time
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
 
 
 ROOT = Path(__file__).resolve().parent
@@ -22,9 +25,62 @@ def load_module(name, filename):
 
 launcher = load_module("gui_smoke_launcher", "gui_smoke_launcher.py")
 smoke = load_module("computer_use_smoke", "computer_use_smoke.py")
+validator = load_module("validate_evidence", "validate_evidence.py")
 
 
 class EvidenceTests(unittest.TestCase):
+    def test_visual_gate_rejects_main_window_for_clipboard(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            frames = root / "recordings/frames"
+            frames.mkdir(parents=True)
+            names = ["recordings/frames/before.png", "recordings/frames/clipboard.png"]
+            (root / "recordings/frames.json").write_text(json.dumps({"frames": names}))
+            (root / "manifest.json").write_text(json.dumps({
+                "app_bundle_id": "com.quitenote.app.dev",
+                "finished_at": "2026-10-19T00:00:00Z",
+                "video_evidence": "recordings/frames.json",
+            }))
+            (root / "report.json").write_text(json.dumps({
+                "status": "PASS", "results": [{"name": "clipboard", "evidence": names[1]}],
+            }))
+
+            def header(width, height):
+                return b"\x89PNG\r\n\x1a\n" + struct.pack(">I", 13) + b"IHDR" + struct.pack(">II", width, height)
+
+            (root / names[0]).write_bytes(header(1040, 1280))
+            (root / names[1]).write_bytes(header(1040, 1280))
+            with patch.dict(os.environ, {"GITHUB_SHA": ""}):
+                with self.assertRaisesRegex(ValueError, "wide panel"):
+                    validator.validate(root)
+                (root / names[1]).write_bytes(header(1520, 1040))
+                self.assertIn("2 timestamped frames", validator.validate(root))
+
+    def test_fallback_does_not_call_screencapture_before_app_frame(self):
+        with tempfile.TemporaryDirectory() as temp:
+            recorder = SimpleNamespace(process=None, capture_fallback_frame=Mock(return_value="recordings/frames/window.png"))
+            run = smoke.Run(Path(temp), "full", recorder)
+            with patch.object(smoke.subprocess, "run", side_effect=AssertionError("screencapture called")):
+                self.assertEqual(run.capture("clipboard"), "recordings/frames/window.png")
+            recorder.capture_fallback_frame.assert_called_once_with("clipboard")
+
+    def test_window_assertions_only_see_current_process_onscreen(self):
+        options = []
+        quartz = SimpleNamespace(
+            kCGWindowListOptionOnScreenOnly=1,
+            kCGWindowListExcludeDesktopElements=2,
+            kCGNullWindowID=0,
+            CGWindowListCopyWindowInfo=lambda option, _: options.append(option) or [
+                {"kCGWindowOwnerName": "Quite Note Dev", "kCGWindowOwnerPID": 456, "kCGWindowBounds": {"Width": 760, "Height": 520}},
+                {"kCGWindowOwnerName": "Quite Note Dev", "kCGWindowOwnerPID": 123, "kCGWindowBounds": {"Width": 520, "Height": 640}},
+            ],
+        )
+        driver = object.__new__(smoke.AXDriver)
+        driver.pid = 123
+        with patch.object(smoke, "Quartz", quartz):
+            self.assertEqual([window["frame"][2:] for window in driver.windows()], [[520.0, 640.0]])
+        self.assertEqual(options, [3])
+
     def test_launcher_loads_driver_from_checkout(self):
         self.assertTrue(callable(launcher.load_smoke_main(ROOT / "computer_use_smoke.py")))
 

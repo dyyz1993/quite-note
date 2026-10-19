@@ -39,7 +39,7 @@
 - `timeline.jsonl`：套件执行时间线。
 - `screenshots/`：关键证据和失败现场。
 - `recordings/ui-recording.mov`：优先保存整段 UI 执行录屏，带点击位置标记。
-- `recordings/frames/` + `recordings/frames.json`：录屏不可用时的降级证据；按时间线保存整屏帧，可用于复查和后续合成，缺失时验收失败。
+- `recordings/frames/` + `recordings/frames.json`：录屏不可用时的时间线截图；优先保存 Dev App 自身前台窗口的真实渲染图。可复查 App 面板和后续合成，但不代表整屏或系统弹窗；缺失时验收失败。
 - `knowledge-candidate.md`：非 PASS 时自动生成的错题本候选。
 
 目录 `tools/ui-smoke/runs/` 和 `.ui-smoke-worktrees/` 已忽略 Git；不要把运行证据提交进仓库。
@@ -150,7 +150,7 @@
 - 专用测试机使用一次性 `QN_TEST_STORAGE_ROOT`，只退出 `com.quitenote.app.dev`。
 - 专用测试机 Python 依赖为 PyObjC 10.3.2，无需 Xcode。
 - 若专用测试机报告 `BLOCKED`，优先检查辅助功能、屏幕录制、CI 产物签名/架构。
-- `recordings/ui-recording.unavailable.txt` 只代表连续录屏能力缺失；若 `frames.json` 及非空整屏帧完整，可作为时间线证据通过本次回归。Release/候选验收仍优先要求 `.mov`，连续录屏不可用时必须先记录这个降级状态。
+- `recordings/ui-recording.unavailable.txt` 只代表连续录屏能力缺失；若 `frames.json` 及非空窗口帧完整，可作为时间线证据通过本次回归。Release/候选验收仍优先要求 `.mov`，连续录屏不可用时必须先记录这个降级状态。窗口帧无法证明其他应用、系统弹窗或全桌面状态。
 - 当前专用测试机是 Intel Mac；CI 产物必须包含 x86_64 或 universal binary。
 
 ## 安全与权限红线

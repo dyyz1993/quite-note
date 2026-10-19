@@ -8,7 +8,7 @@
 2. 进入 Run URL 的 Artifacts 区域。
 3. 下载 `QuiteNoteUI-<full-commit>`。
 4. 先看 `report.md` 结论，再看 `manifest.json` 绑定信息。
-5. `evidence=full` 时逐步查看 `screenshots/`，并用 `recordings/ui-recording.mov` 复查焦点与瞬时交互；录屏不可用但 `recordings/frames.json` 与整屏帧完整时，明确标记为“时间线截图证据”，不得写成录屏证据。
+5. `evidence=full` 时逐步查看 `screenshots/`，并用 `recordings/ui-recording.mov` 复查焦点与瞬时交互；录屏不可用但 `recordings/frames.json` 与窗口帧完整时，明确标记为“时间线窗口截图证据”，不得写成整屏录屏证据。
 
 本地快速下载：
 

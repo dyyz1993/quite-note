@@ -29,6 +29,16 @@
 - Evidence: run artifact `QuiteNoteUI-551c8bd8.../recordings/ui-recording.unavailable.txt` 与 GitHub run `39135127430`。
 - Status: open
 
+### 2026-10-19 · GUI launcher 响应文件名与当前 driver 脱节
+
+- Version / Commit / Run: 68982b8 / 39235611588；990d0c0 / 39241779657
+- Symptom: 第一轮 8 个 UI 场景全 PASS，但 runner 等待 `*.response.json` 超时；下一轮响应成功，报告仍引用不存在的旧截图路径，视觉证据门禁失败。
+- Root cause: launcher 把 `*.request.claim` 的 stem 写成 `*.request.response.json`；修名后又从常驻安装目录导入旧 `computer_use_smoke.py`，未运行当前 checkout 的 fallback 逻辑。
+- Fix: 响应文件名按请求 ID 生成；每个请求显式传当前 checkout 的 driver 路径，launcher 动态加载。录屏失败时由隔离 Dev App 自绘可见前台面板 PNG，并验证帧索引。
+- Prevention: 回归报告的证据路径必须指向存在的非空图片；目检剪贴板和启动器帧，不能只看 UI assertion PASS。
+- Evidence: run `39235611588` 的报告和错名响应文件；run `39241779657` 的 PASS 报告与空 `recordings/`；后续绿色 run 见索引。
+- Status: pending green regression
+
 ### 2026-10-15 · runner 工作区下载 artifact 后被误判为 dirty
 
 - Version / Commit / Run: a73380e / 38774784730

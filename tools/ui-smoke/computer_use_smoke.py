@@ -175,6 +175,8 @@ class Run:
         self.write()
 
     def capture(self, name: str) -> str:
+        if self.video_recorder and self.video_recorder.process is None:
+            return self.video_recorder.capture_fallback_frame(name)
         safe = "".join(c if c.isalnum() or c in "-_" else "-" for c in name)
         path = self.run_dir / "screenshots" / f"{safe}-{int(time.time())}.png"
         try:
@@ -221,14 +223,13 @@ class AXDriver:
 
     def windows(self) -> list[dict]:
         rows = Quartz.CGWindowListCopyWindowInfo(
-            Quartz.kCGWindowListOptionAll | Quartz.kCGWindowListExcludeDesktopElements,
+            Quartz.kCGWindowListOptionOnScreenOnly | Quartz.kCGWindowListExcludeDesktopElements,
             Quartz.kCGNullWindowID,
         )
         found = []
         for row in rows:
-            owner = row.get("kCGWindowOwnerName", "")
             owner_pid = int(row.get("kCGWindowOwnerPID", 0) or 0)
-            if (owner != APP_NAME and owner_pid != self.pid) or not row.get("kCGWindowBounds"):
+            if owner_pid != self.pid or not row.get("kCGWindowBounds"):
                 continue
             bounds = dict(row["kCGWindowBounds"])
             found.append(

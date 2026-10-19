@@ -33,11 +33,24 @@ final class UIEvidenceCaptureService {
             let filename = request.deletingPathExtension().lastPathComponent
             guard filename.hasPrefix("frame-") else { continue }
             let output = frames.appendingPathComponent(filename + ".png")
-            let windows = NSApp.orderedWindows.filter {
+            let windows = NSApp.windows.filter {
                 $0.isVisible && $0.contentView != nil && $0.frame.width > 100 && $0.frame.height > 60
             }
-            // Clipboard and launcher panels use .popUpMenu, above the main panel.
-            if let window = windows.max(by: { $0.level.rawValue < $1.level.rawValue }),
+            let preferred = windows.first { window in
+                if filename.contains("clipboard") { return window.frame.width >= 700 }
+                if filename.contains("launcher") { return window.frame.width >= 620 && window.frame.width < 700 }
+                return false
+            }
+            let selected = preferred ?? windows.max(by: { $0.level.rawValue < $1.level.rawValue })
+            let inventory = windows.map { window -> [String: Any] in
+                ["number": window.windowNumber, "width": Double(window.frame.width),
+                 "height": Double(window.frame.height), "level": window.level.rawValue,
+                 "key": window.isKeyWindow, "selected": window === selected]
+            }
+            if let data = try? JSONSerialization.data(withJSONObject: inventory, options: [.prettyPrinted]) {
+                try? data.write(to: frames.appendingPathComponent(filename + ".windows.json"), options: .atomic)
+            }
+            if let window = selected,
                let content = window.contentView,
                let bitmap = content.bitmapImageRepForCachingDisplay(in: content.bounds) {
                 content.cacheDisplay(in: content.bounds, to: bitmap)
