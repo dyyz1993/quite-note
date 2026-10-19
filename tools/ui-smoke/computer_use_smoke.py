@@ -93,32 +93,6 @@ class ScreenRecorder:
         safe = "".join(c if c.isalnum() or c in "-_" else "-" for c in event)
         path = self.frame_root / f"{len(self.frames):04d}-{safe}-{time.time_ns()}.png"
         self.frame_root.mkdir(parents=True, exist_ok=True)
-        before = sorted(self.frame_root.glob("*.png")) if self.frame_root.exists() else []
-        try:
-            env = os.environ.copy()
-            env["QN_UI_EVIDENCE_DIR"] = str(self.frame_root)
-            subprocess.run(
-                ["/usr/bin/osascript", "-e", 'do shell script "true"'],
-                check=False,
-                timeout=0.2,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                env=env,
-            )
-        except subprocess.TimeoutExpired:
-            pass
-        deadline = time.monotonic() + 0.4
-        while time.monotonic() < deadline:
-            after = sorted(self.frame_root.glob("*.png")) if self.frame_root.exists() else []
-            if len(after) > len(before):
-                break
-            time.sleep(0.05)
-        after = sorted(self.frame_root.glob("*.png"))
-        if len(after) > len(before):
-            relative = after[-1].relative_to(self.run_dir).as_posix()
-            self.frames.append(relative)
-            append_timeline(self.run_dir, "evidence.frame", {"path": relative})
-            return
         try:
             completed = subprocess.run(
                 ["/usr/sbin/screencapture", "-x", str(path)],
@@ -131,7 +105,6 @@ class ScreenRecorder:
             return
         if completed.returncode != 0 or not path.exists() or path.stat().st_size == 0:
             return
-        path.parent.mkdir(parents=True, exist_ok=True)
         relative = path.relative_to(self.run_dir).as_posix()
         self.frames.append(relative)
         append_timeline(self.run_dir, "evidence.frame", {"path": relative})
