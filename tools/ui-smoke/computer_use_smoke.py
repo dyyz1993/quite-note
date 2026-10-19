@@ -22,11 +22,12 @@ from pathlib import Path
 try:
     import Quartz
     from AppKit import NSWorkspace
-    from ApplicationServices import AXIsProcessTrusted
+    from ApplicationServices import AXIsProcessTrusted, kAXValueAttribute
 except ImportError:  # The remote test Mac boots before pip dependencies are installed.
     Quartz = None
     AXIsProcessTrusted = None
     NSWorkspace = None
+    kAXValueAttribute = None
 
 
 APP_NAME = "Quite Note Dev"
@@ -348,6 +349,11 @@ def smoke_clipboard(run: Run, driver: AXDriver) -> str:
     deadline = time.monotonic() + 3
     while time.monotonic() < deadline:
         if panel_visible():
+            search = _find_ax_element_by_identifier("clipboard.search_field")
+            if search is None:
+                raise RuntimeError("clipboard search field is unavailable")
+            driver.set_value(search, "QNUI_SMOKE_CLIP")
+            time.sleep(0.2)
             return "clipboard 760x520 panel exposed"
         time.sleep(0.1)
     raise RuntimeError("clipboard panel not exposed after invoking menu")

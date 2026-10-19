@@ -86,6 +86,15 @@ def run_once(claim_path: Path) -> None:
         environment = os.environ.copy()
         environment["QN_TEST_STORAGE_ROOT"] = str(storage_root)
         environment["QN_UI_EVIDENCE_DIR"] = str(run_dir / "recordings")
+        # The installed launcher may be outside the checkout; requests explicitly
+        # point driver_path back to this run's source. Use that directory for data.
+        source_dir = Path(request.get("driver_path", Path(__file__).resolve())).resolve().parent
+        seed_path = source_dir / "seed_clipboard_history.py"
+        subprocess.run(
+            [sys.executable, str(seed_path), str(storage_root / "ClipboardHistory-Debug.sqlite")],
+            check=True,
+            timeout=10,
+        )
         app = subprocess.Popen(
             [
                 str(app_path / "Contents/MacOS/QuiteNoteDev"),

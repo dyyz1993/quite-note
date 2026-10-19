@@ -1,6 +1,7 @@
 import importlib.util
 import json
 import os
+import sqlite3
 import tempfile
 import threading
 import time
@@ -26,11 +27,35 @@ def load_module(name, filename):
 
 launcher = load_module("gui_smoke_launcher", "gui_smoke_launcher.py")
 smoke = load_module("computer_use_smoke", "computer_use_smoke.py")
+seeder = load_module("seed_clipboard_history", "seed_clipboard_history.py")
 composer = load_module("compose_timeline", "compose_timeline.py")
 validator = load_module("validate_evidence", "validate_evidence.py")
 
 
 class EvidenceTests(unittest.TestCase):
+    def test_clipboard_fixture_is_isolated_and_stable(self):
+        with tempfile.TemporaryDirectory() as temp:
+            database = Path(temp) / "nested" / "ClipboardHistory-Debug.sqlite"
+            self.assertEqual(seeder.seed(database), 4)
+            self.assertEqual(seeder.seed(database), 4)
+            connection = sqlite3.connect(database)
+            try:
+                rows = connection.execute(
+                    "SELECT ZPLAINTEXT, ZTYPE, ZSOURCEAPP, ZCONTENTHASH FROM ZCDCLIPBOARDENTRY "
+                    "ORDER BY ZCREATEDAT DESC"
+                ).fetchall()
+            finally:
+                connection.close()
+            self.assertEqual([row[0] for row in rows], [
+                seeder.FIXTURES[0][0],
+                seeder.FIXTURES[1][0],
+                seeder.FIXTURES[2][0],
+                seeder.FIXTURES[3][0],
+            ])
+            self.assertEqual([row[1] for row in rows], ["text", "text", "text", "link"])
+            self.assertEqual({row[2] for row in rows}, {"UI Smoke"})
+            self.assertEqual(len({row[3] for row in rows}), 4)
+
     def test_visual_gate_rejects_main_window_for_clipboard(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
