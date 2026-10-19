@@ -26,6 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var devCoreServiceMonitor: DevCoreServiceMonitor?
     private var clipboard: ClipboardService?
     private var shortcuts: KeyboardShortcutManager?
+    private var uiEvidenceCapture: UIEvidenceCaptureService?
     private var cancellables = Set<AnyCancellable>()
 
     // 公开的 store 和 bluetooth 属性供 PreferencesView 使用
@@ -51,6 +52,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         print("[DEBUG] Bundle ID: \(bundleID)")
 
         NSApp.setActivationPolicy(.accessory)
+        uiEvidenceCapture = UIEvidenceCaptureService()
+        uiEvidenceCapture?.start()
 
         let store = RecordStore()
         let bluetooth = BluetoothManager()

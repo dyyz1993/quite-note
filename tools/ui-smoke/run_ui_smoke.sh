@@ -503,7 +503,7 @@ PY
     (( $(date +%s) < LAUNCH_DEADLINE )) || break
     sleep 0.5
   done
-  python3 - "$LAUNCH_RESPONSE" "$RUN_DIR" <<'PY'
+  if python3 - "$LAUNCH_RESPONSE" "$RUN_DIR" <<'PY'
 import json, pathlib, sys
 response, run_dir = (pathlib.Path(value) for value in sys.argv[1:])
 if not response.exists():
@@ -515,7 +515,11 @@ if result.get("returncode") == 3:
     raise SystemExit(3)
 raise SystemExit(result.get("returncode", 1))
 PY
-  GUI_STATUS=$?
+  then
+    GUI_STATUS=0
+  else
+    GUI_STATUS=$?
+  fi
 else
   # The LaunchAgent runner creates its own audit session. A direct child app is
   # registered with WindowServer but remains invisible to that session; ask
@@ -525,6 +529,22 @@ else
 fi
 
 if [[ "${GUI_STATUS:-100}" != 100 ]]; then
+  python3 - "$RUN_DIR" <<'PY'
+import datetime, json, pathlib, sys
+run_dir = pathlib.Path(sys.argv[1])
+path = run_dir / "manifest.json"
+manifest = json.loads(path.read_text())
+manifest["finished_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z")
+recording = run_dir / "recordings/ui-recording.mov"
+frames = run_dir / "recordings/frames.json"
+if recording.exists() and recording.stat().st_size > 0:
+    manifest["video_evidence"] = "recordings/ui-recording.mov"
+elif frames.exists() and frames.stat().st_size > 0:
+    manifest["video_evidence"] = "recordings/frames.json"
+else:
+    manifest["video_evidence"] = None
+path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n")
+PY
   exit "$GUI_STATUS"
 fi
 DEADLINE=$((SECONDS + 15))

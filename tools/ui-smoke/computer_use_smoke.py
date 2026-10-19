@@ -86,13 +86,24 @@ class ScreenRecorder:
             return str(index_path.relative_to(self.run_dir))
         return self.unavailable_path.relative_to(self.run_dir).as_posix()
 
-    def capture_fallback_frame(self, event: str) -> None:
-        """Capture full-screen evidence when native recording is unavailable."""
-        if self.process is not None:
-            return
+    def capture_fallback_frame(self, event: str) -> str:
+        """Ask the isolated Dev app for its front window, then try desktop capture."""
         safe = "".join(c if c.isalnum() or c in "-_" else "-" for c in event)
-        path = self.frame_root / f"{len(self.frames):04d}-{safe}-{time.time_ns()}.png"
+        stem = f"frame-{len(self.frames):04d}-{safe}-{time.time_ns()}"
+        path = self.frame_root / f"{stem}.png"
         self.frame_root.mkdir(parents=True, exist_ok=True)
+        requests = self.path.parent / "requests"
+        requests.mkdir(parents=True, exist_ok=True)
+        request = requests / f"{stem}.request"
+        request.write_text(event + "\n")
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline:
+            if path.exists() and path.stat().st_size > 0:
+                break
+            time.sleep(0.05)
+        request.unlink(missing_ok=True)
+        if path.exists() and path.stat().st_size > 0:
+            return self._record_frame(path)
         try:
             completed = subprocess.run(
                 ["/usr/sbin/screencapture", "-x", str(path)],
@@ -102,13 +113,16 @@ class ScreenRecorder:
                 stderr=subprocess.DEVNULL,
             )
         except Exception:
-            return
+            return ""
         if completed.returncode != 0 or not path.exists() or path.stat().st_size == 0:
-            return
-        path.parent.mkdir(parents=True, exist_ok=True)
+            return ""
+        return self._record_frame(path)
+
+    def _record_frame(self, path: Path) -> str:
         relative = path.relative_to(self.run_dir).as_posix()
         self.frames.append(relative)
         append_timeline(self.run_dir, "evidence.frame", {"path": relative})
+        return relative
 
 
 @dataclass
@@ -132,15 +146,15 @@ class Run:
         started = time.monotonic()
         evidence = ""
         detail = ""
-        if self.video_recorder is not None:
-            self.video_recorder.capture_fallback_frame(f"{name}-before")
         if self.evidence == "full":
-            evidence = self.capture(name)
+            evidence = self.capture(f"{name}-before")
+        elif self.video_recorder is not None and self.video_recorder.process is None:
+            self.video_recorder.capture_fallback_frame(f"{name}-before")
         try:
             detail = fn() or ""
             if self.evidence == "full":
                 evidence = self.capture(name)
-            if self.video_recorder is not None:
+            if self.video_recorder is not None and self.evidence != "full" and self.video_recorder.process is None:
                 self.video_recorder.capture_fallback_frame(f"{name}-after")
             result = Step(name, "PASS", int((time.monotonic() - started) * 1000), reason=detail, evidence=evidence)
         except Exception as exc:  # Keep later suites independent.
@@ -152,10 +166,10 @@ class Run:
                 reason=f"{type(exc).__name__}: {exc}",
             )
             evidence = self.capture(name)
-            if self.video_recorder is not None:
+            if self.video_recorder is not None and self.evidence != "full" and self.video_recorder.process is None:
                 self.video_recorder.capture_fallback_frame(f"{name}-failure")
             result.evidence = evidence
-        if not detail and self.video_recorder:
+        if not detail and self.video_recorder and self.video_recorder.process is not None:
             result.evidence = self.video_recorder.evidence_label
         self.results.append(result)
         self.write()
@@ -164,10 +178,12 @@ class Run:
         safe = "".join(c if c.isalnum() or c in "-_" else "-" for c in name)
         path = self.run_dir / "screenshots" / f"{safe}-{int(time.time())}.png"
         try:
-            subprocess.run(["/usr/sbin/screencapture", "-x", str(path)], check=False, timeout=5)
-            return str(path.relative_to(self.run_dir))
+            completed = subprocess.run(["/usr/sbin/screencapture", "-x", str(path)], check=False, timeout=5, stderr=subprocess.DEVNULL)
+            if completed.returncode == 0 and path.exists() and path.stat().st_size > 0:
+                return str(path.relative_to(self.run_dir))
         except Exception:
-            return ""
+            pass
+        return self.video_recorder.capture_fallback_frame(name) if self.video_recorder else ""
 
     def write(self) -> None:
         statuses = [r.status for r in self.results]
@@ -554,6 +570,9 @@ def main() -> int:
     finally:
         video_evidence = recorder.stop() if recorder else ""
         append_timeline(args.run_dir, "video.stop", {"evidence": video_evidence})
+        if not video_evidence or video_evidence.endswith(".unavailable.txt"):
+            run.results.append(Step("evidence.capture", "BLOCKED", 0, reason="No readable video or timestamped window frames"))
+            run.write()
 
     report = json.loads((args.run_dir / "report.json").read_text())
     if report["status"] == "PASS":

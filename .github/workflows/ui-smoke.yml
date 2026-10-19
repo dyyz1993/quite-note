@@ -90,6 +90,9 @@ jobs:
           (cd "$RUNNER_TEMP/ui-artifact" && shasum -a 256 --check "$(basename "$CHECKSUM")")
           echo "UI_ARTIFACT=$ARTIFACT" >> "$GITHUB_ENV"
 
+      - name: Update GUI smoke launcher
+        run: ./tools/ui-smoke/install-quitenote-gui-launcher.sh
+
       - name: Run UI smoke from prebuilt artifact
         run: |
           ./tools/ui-smoke/run_ui_smoke.sh \

@@ -48,9 +48,18 @@ def claim_request() -> Path | None:
     return None
 
 
+def response_for_claim(claim_path: Path) -> Path:
+    name = claim_path.name
+    if name.endswith(".request.claim"):
+        name = name[: -len(".request.claim")]
+    else:
+        name = claim_path.stem
+    return RESPONSE_ROOT / f"{name}.response.json"
+
+
 def run_once(claim_path: Path) -> None:
     request = json.loads(claim_path.read_text())
-    response_path = RESPONSE_ROOT / f"{claim_path.stem}.response.json"
+    response_path = response_for_claim(claim_path)
     run_dir = Path(request["run_dir"])
     app_path = Path(request["app_path"])
     storage_root = Path(request["storage_root"])
@@ -65,6 +74,7 @@ def run_once(claim_path: Path) -> None:
     try:
         environment = os.environ.copy()
         environment["QN_TEST_STORAGE_ROOT"] = str(storage_root)
+        environment["QN_UI_EVIDENCE_DIR"] = str(run_dir / "recordings")
         app = subprocess.Popen(
             [
                 str(app_path / "Contents/MacOS/QuiteNoteDev"),
@@ -142,7 +152,7 @@ def compatibility_main() -> int:
     claim_path = REQUEST_ROOT / f"manual-{time.time_ns()}.claim"
     claim_path.write_text(request_path.read_text())
     run_once(claim_path)
-    atomic_write(response_path, json.loads((RESPONSE_ROOT / f"{claim_path.stem}.response.json").read_text()))
+    atomic_write(response_path, json.loads(response_for_claim(claim_path).read_text()))
     return 0
 
 
