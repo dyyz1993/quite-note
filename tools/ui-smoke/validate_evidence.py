@@ -7,6 +7,8 @@ import struct
 import sys
 from pathlib import Path
 
+from PIL import Image
+
 
 def png_size(path: Path) -> tuple[int, int]:
     with path.open("rb") as stream:
@@ -43,6 +45,13 @@ def validate(run_dir: Path) -> str:
             if width < 200 or height < 120:
                 raise ValueError(f"Frame too small: {relative}")
         count = len(frames)
+        timeline = run_dir / "recordings/ui-timeline.webp"
+        with Image.open(timeline) as animation:
+            if animation.format != "WEBP" or not animation.is_animated or animation.n_frames != count:
+                raise ValueError("Animated WebP does not match screenshot frame index")
+            for number in range(count):
+                animation.seek(number)
+                animation.load()
 
     if manifest.get("video_evidence") != evidence:
         raise ValueError("Manifest evidence path does not match actual artifact")

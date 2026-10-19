@@ -38,8 +38,9 @@
 - `report.md` / `report.json`：人读和机器读结果。
 - `timeline.jsonl`：套件执行时间线。
 - `screenshots/`：关键证据和失败现场。
-- `recordings/ui-recording.mov`：优先保存整段 UI 执行录屏，带点击位置标记。
-- `recordings/frames/` + `recordings/frames.json`：录屏不可用时的时间线截图；优先保存 Dev App 自身前台窗口的真实渲染图。可复查 App 面板和后续合成，但不代表整屏或系统弹窗；缺失时验收失败。
+- `recordings/frames/` + `recordings/frames.json`：按测试步骤保存的时间线截图；优先保存 Dev App 自身前台窗口的真实渲染图。它们不代表整屏、系统弹窗或两张截图之间的交互；缺失时验收失败。
+- `recordings/ui-timeline.webp`：按 `frames.json` 顺序合成的动态 WebP，方便一次查看全部截图检查点；原始 PNG 仍保留，CI 校验动图每帧可解码且帧数一致。它不是连续录屏。
+- `recordings/ui-recording.mov`：系统授权可用时另存的连续录屏，不是上述截图证据链的前置条件。
 - `knowledge-candidate.md`：非 PASS 时自动生成的错题本候选。
 
 目录 `tools/ui-smoke/runs/` 和 `.ui-smoke-worktrees/` 已忽略 Git；不要把运行证据提交进仓库。
@@ -61,7 +62,7 @@
    - GitHub 把这些文件作为当前 Commit 的 artifact 保留 30 天。
 5. **复查**
    - 先看 `report.md` 的 PASS/FAIL/BLOCKED。
-   - 有问题时按 `manifest.json` 锁定版本，再看 `report.json` 的失败 reason、`screenshots/`，以及 `recordings/ui-recording.mov` 或 `recordings/frames.json` 证据。
+   - 有问题时按 `manifest.json` 锁定版本，再看 `report.json` 的失败 reason、`screenshots/`，以及 `recordings/ui-timeline.webp` 和原始 `recordings/frames.json` / PNG 证据。
    - 非 PASS 的 `knowledge-candidate.md` 需要整理进错题本。
    - 按 Tag / Commit 归档和查看时，以 [UI 回归 Run 索引](ui-test-run-index.md) 为入口。
 
@@ -148,9 +149,9 @@
 - GitHub Actions workflow 为 `.github/workflows/ui-smoke.yml`：云端构建 universal Dev ZIP，`quitenote-ui` self-hosted runner 执行本地 UI，并上传报告/截图 artifact 保留 30 天。
 - GitHub 和 runner 都是主动连接 GitHub；仓库不含、也不需要公开任何局域网地址或 SSH 反向入口。
 - 专用测试机使用一次性 `QN_TEST_STORAGE_ROOT`，只退出 `com.quitenote.app.dev`。
-- 专用测试机 Python 依赖为 PyObjC 10.3.2，无需 Xcode。
+- 专用测试机 Python 依赖为 PyObjC 10.3.2、带 WebP 编码能力的 Pillow，无需 Xcode。
 - 若专用测试机报告 `BLOCKED`，优先检查辅助功能、屏幕录制、CI 产物签名/架构。
-- `recordings/ui-recording.unavailable.txt` 只代表连续录屏能力缺失；若 `frames.json` 及非空窗口帧完整，可作为时间线证据通过本次回归。Release/候选验收仍优先要求 `.mov`，连续录屏不可用时必须先记录这个降级状态。窗口帧无法证明其他应用、系统弹窗或全桌面状态。
+- `recordings/ui-recording.unavailable.txt` 只代表连续录屏能力缺失；若 `frames.json`、非空窗口帧和 `ui-timeline.webp` 完整，可作为截图时间线证据通过本次回归。Release/候选若要求连续录屏，须另行检查 `.mov`；窗口帧无法证明其他应用、系统弹窗或全桌面状态。
 - 当前专用测试机是 Intel Mac；CI 产物必须包含 x86_64 或 universal binary。
 
 ## 安全与权限红线

@@ -29,6 +29,8 @@
 - Evidence: run artifact `QuiteNoteUI-551c8bd8.../recordings/ui-recording.unavailable.txt` 与 GitHub run `39135127430`。
 - Status: open
 
+> 2026-10-19 更新：窗口截图现可合成为 `recordings/ui-timeline.webp`，不依赖 Screen Recording TCC；本条只跟踪可选的连续整屏录屏能力，不再阻塞截图时间线回归。
+
 ### 2026-10-19 · GUI launcher 响应文件名与当前 driver 脱节
 
 - Version / Commit / Run: 68982b8 / 39235611588；990d0c0 / 39241779657

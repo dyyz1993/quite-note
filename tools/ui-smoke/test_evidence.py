@@ -1,7 +1,6 @@
 import importlib.util
 import json
 import os
-import struct
 import tempfile
 import threading
 import time
@@ -9,6 +8,8 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
+
+from PIL import Image
 
 
 ROOT = Path(__file__).resolve().parent
@@ -25,6 +26,7 @@ def load_module(name, filename):
 
 launcher = load_module("gui_smoke_launcher", "gui_smoke_launcher.py")
 smoke = load_module("computer_use_smoke", "computer_use_smoke.py")
+composer = load_module("compose_timeline", "compose_timeline.py")
 validator = load_module("validate_evidence", "validate_evidence.py")
 
 
@@ -45,16 +47,37 @@ class EvidenceTests(unittest.TestCase):
                 "status": "PASS", "results": [{"name": "clipboard", "evidence": names[1]}],
             }))
 
-            def header(width, height):
-                return b"\x89PNG\r\n\x1a\n" + struct.pack(">I", 13) + b"IHDR" + struct.pack(">II", width, height)
-
-            (root / names[0]).write_bytes(header(1040, 1280))
-            (root / names[1]).write_bytes(header(1040, 1280))
+            Image.new("RGB", (1040, 1280), "#223344").save(root / names[0])
+            Image.new("RGB", (1040, 1280), "#445566").save(root / names[1])
+            output = composer.compose(root)
             with patch.dict(os.environ, {"GITHUB_SHA": ""}):
                 with self.assertRaisesRegex(ValueError, "wide panel"):
                     validator.validate(root)
-                (root / names[1]).write_bytes(header(1520, 1040))
+                Image.new("RGB", (1520, 1040), "#667788").save(root / names[1])
+                composer.compose(root)
                 self.assertIn("2 timestamped frames", validator.validate(root))
+                output.unlink()
+                with self.assertRaises(FileNotFoundError):
+                    validator.validate(root)
+
+    def test_animated_webp_preserves_order_and_mixed_frame_sizes(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            frame_dir = root / "recordings/frames"
+            frame_dir.mkdir(parents=True)
+            names = [f"recordings/frames/frame-{number:04d}-step-{number}.png" for number in range(3)]
+            for number, name in enumerate(names):
+                Image.new("RGB", (300 + number * 40, 240 + number * 20), (number * 90, 0, 0)).save(root / name)
+            (root / "recordings/frames.json").write_text(json.dumps({"frames": names}))
+            output = composer.compose(root)
+            self.assertTrue(all((root / name).is_file() for name in names))
+            with Image.open(output) as animation:
+                self.assertEqual(animation.format, "WEBP")
+                self.assertEqual(animation.n_frames, 3)
+                self.assertEqual(animation.size, (444, 384))
+                for number in range(3):
+                    animation.seek(number)
+                    self.assertEqual(animation.convert("RGB").getpixel((222, 172)), (number * 90, 0, 0))
 
     def test_fallback_does_not_call_screencapture_before_app_frame(self):
         with tempfile.TemporaryDirectory() as temp:
