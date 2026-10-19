@@ -5,6 +5,7 @@ import Combine
 struct StickyNoteView: View {
     @State var note: StickyNoteModel
     @State private var isHovered = false
+    @State private var isDragHandleHovered = false
     @FocusState private var isFocused: Bool
     @State private var showControlsOverride: Bool = false // 强制隐藏控制条
 
@@ -19,12 +20,13 @@ struct StickyNoteView: View {
                 ZStack(alignment: .topTrailing) {
                     Rectangle()
                         .fill(Color.themeBackground)
-                        .frame(height: 14)
+                        .frame(height: 24)
                         .overlay(
                             Capsule()
-                                .fill(Color.themeTextTertiary.opacity(0.3))
+                                .fill(isDragHandleHovered ? Color.themeBlue400 : Color.themeTextTertiary.opacity(0.3))
                                 .frame(width: 24, height: 3)
                         )
+                        .overlay(Color.themeBlue500.opacity(isDragHandleHovered ? 0.10 : 0))
                         .contentShape(Rectangle())
                         .onHover { hovering in
                             if hovering { isHovered = true }
@@ -86,6 +88,7 @@ struct StickyNoteView: View {
             .overlay(
                 RoundedRectangle(cornerRadius: ThemeRadius.lg.rawValue)
                     .stroke(borderColor, lineWidth: 1)
+                    .allowsHitTesting(false)
             )
 
             // 失焦蒙层 - 显示项目名
@@ -111,6 +114,7 @@ struct StickyNoteView: View {
                             }
                         }
                     }
+                    .allowsHitTesting(false)
                     .transition(.opacity)
                 }
             }
@@ -129,6 +133,12 @@ struct StickyNoteView: View {
             }
         }
         .frame(minWidth: 150, minHeight: 100)
+        // Keep the drag target above decorations and below the system resize edge.
+        .overlay(alignment: .top) {
+            StickyNoteDragRegion { isDragHandleHovered = $0 }
+                .frame(height: 20)
+                .padding(.top, 4)
+        }
         .onHover { hovering in
             withAnimation(.themeDuration300) {
                 isHovered = hovering
@@ -196,6 +206,11 @@ struct StickyNoteView: View {
                 if let updatedNote = StickyNoteManager.shared.notes.first(where: { $0.id == note.id }) {
                     note = updatedNote
                 }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .stickyNoteFrameChanged)) { notification in
+            if let window = notification.object as? StickyNoteWindow, window.id == note.id {
+                note.frame = window.frame
             }
         }
     }
@@ -465,6 +480,74 @@ struct ResizeHandle: View {
 
 extension Notification.Name {
     static let stickyNoteFrameChanged = Notification.Name("stickyNoteFrameChanged")
+}
+
+// MARK: - 原生拖拽区域
+
+/// 顶部拖拽手柄的原生封装
+struct StickyNoteDragRegion: NSViewRepresentable {
+    var onHoverChanged: (Bool) -> Void
+
+    func makeNSView(context: Context) -> StickyNoteDragHandleView {
+        let view = StickyNoteDragHandleView()
+        view.onHoverChanged = onHoverChanged
+        view.toolTip = "拖动以移动便签"
+        return view
+    }
+
+    func updateNSView(_ nsView: StickyNoteDragHandleView, context: Context) {
+        nsView.onHoverChanged = onHoverChanged
+    }
+}
+
+/// 把 mouseDown 直接转交给自身所在窗口执行拖动；
+/// 只用 self.window，不做全局/keyWindow 查找，避免操作到错误窗口
+class StickyNoteDragHandleView: NSView {
+    var onHoverChanged: ((Bool) -> Void)?
+    private var hoverArea: NSTrackingArea?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        setAccessibilityElement(true)
+        setAccessibilityLabel("Sticky note drag handle")
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    // 窗口未成为 key 时首击也要开始拖动，而不是被“激活窗口”消耗
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        true
+    }
+
+    // 拖动完全由 mouseDown 里的 performDrag 驱动，不走背景拖动路径
+    override var mouseDownCanMoveWindow: Bool {
+        false
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let hoverArea = hoverArea { removeTrackingArea(hoverArea) }
+        let area = NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self)
+        addTrackingArea(area)
+        hoverArea = area
+    }
+
+    override func mouseEntered(with event: NSEvent) { onHoverChanged?(true) }
+    override func mouseExited(with event: NSEvent) { onHoverChanged?(false) }
+
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: .openHand)
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        guard let window = window, window.isMovable else { return }
+        DiagnosticCenter.info("StickyNoteDrag", "begin frame=\(window.frame)")
+        NSCursor.closedHand.set()
+        window.performDrag(with: event)
+        window.invalidateCursorRects(for: self)
+    }
 }
 
 extension Animation {
