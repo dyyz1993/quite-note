@@ -223,10 +223,10 @@ class AXDriver:
         self.pid = pid
 
     def foreground_floating_window(self) -> dict | None:
-        candidates = [w for w in self.windows() if w["frame"][2] > 100 and w["frame"][3] > 60]
+        candidates = self.windows()
         if not candidates:
             return None
-        candidates.sort(key=lambda w: w["frame"][2] * w["frame"][3], reverse=True)
+        candidates.sort(key=lambda w: (w["frame"][3], w["frame"][2]), reverse=True)
         return candidates[0]
 
     def windows(self) -> list[dict]:
@@ -353,8 +353,8 @@ def smoke_clipboard(run: Run, driver: AXDriver) -> str:
 
     if not panel_visible():
         _press_status_menu_item("剪贴板历史")
-        _activate_app()
-        time.sleep(0.1)
+    _activate_app()
+    time.sleep(0.1)
     deadline = time.monotonic() + 3
     while time.monotonic() < deadline:
         if panel_visible():
