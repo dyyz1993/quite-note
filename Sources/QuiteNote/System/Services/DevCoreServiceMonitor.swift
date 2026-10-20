@@ -143,8 +143,8 @@ final class DevCoreServiceMonitor: ObservableObject {
         do {
             isRestarting = true
             defer { isRestarting = false }
-        _ = try Self.runLaunchctl(["print", "\(domain)/\(Self.label)"], queue: launchctlQueue)
-        _ = try Self.runLaunchctl(["kickstart", "-k", "\(domain)/\(Self.label)"], queue: launchctlQueue)
+            _ = try Self.runLaunchctl(["print", "\(domain)/\(Self.label)"], queue: launchctlQueue)
+            _ = try Self.runLaunchctl(["kickstart", "-k", "\(domain)/\(Self.label)"], queue: launchctlQueue)
             refresh()
         } catch {
             lastError = error.localizedDescription
@@ -191,11 +191,7 @@ final class DevCoreServiceMonitor: ObservableObject {
         } catch {
             return ""
         }
-        if let queue {
-            try queue.sync { try waitBounded(process: process) }
-        } else {
-            try waitBounded(process: process)
-        }
+        try waitBounded(process: process)
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
         let output = String(data: data, encoding: .utf8) ?? ""
         guard process.terminationStatus == 0 else {

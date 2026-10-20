@@ -24,6 +24,10 @@ cloud/feedback-worker/.admin-token
 .brainstorm/
 .zcode/
 .ui-smoke-worktrees/
+
+# 本地研究用 checkout；历史误提交为无 .gitmodules 的 gitlink，CI 会误判子模块
+/ScrollSnap/
+/scrollsnap-research/
 tools/ui-smoke/runs/
 tools/ui-smoke/__pycache__/
 .artifacts/*

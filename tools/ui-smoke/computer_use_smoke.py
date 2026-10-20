@@ -227,7 +227,18 @@ class AXDriver:
         if not candidates:
             return None
         candidates.sort(key=lambda w: (w["frame"][3] < 600, w["frame"][3], w["frame"][2]), reverse=True)
-        return candidates[0]
+        selected = candidates[0]
+        # CGWindow bounds are in scaled screen points; AX hit testing is in global
+        # points. Query the AX window frame at the CG center and replace the shell
+        # frame so probes land in the exact SwiftUI hosting-view coordinate space.
+        center_x = selected["frame"][0] + selected["frame"][2] / 2
+        center_y = selected["frame"][1] + selected["frame"][3] / 2
+        element = self.element_at(center_x, center_y)
+        if element is not None:
+            frame = self.bounding_frame(element)
+            if frame and frame[2] > 100 and frame[3] > 60:
+                return {"id": selected["id"], "title": selected["title"], "frame": list(frame)}
+        return selected
 
     def windows(self) -> list[dict]:
         rows = Quartz.CGWindowListCopyWindowInfo(
@@ -254,17 +265,10 @@ class AXDriver:
         size = self.attribute("AXSize", element)
         if position is None or size is None:
             return None
-        origin = position.COORDINATE_ATTRS if hasattr(position, "COORDINATE_ATTRS") else None
-        if origin is not None:
-            x = float(origin.X)
-            y = float(origin.Y)
-            width = float(size.WIDTH)
-            height = float(size.HEIGHT)
-        else:
-            x = float(position.x)
-            y = float(position.y)
-            width = float(size.width)
-            height = float(size.height)
+        x = float(position.x)
+        y = float(position.y)
+        width = float(size.width)
+        height = float(size.height)
         return x, y, width, height
 
     def element_at(self, x: float, y: float):
