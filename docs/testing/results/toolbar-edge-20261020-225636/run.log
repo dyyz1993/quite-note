@@ -1,0 +1,370 @@
+[DEBUG] StickyNoteManager setting up global shortcuts...
+[DEBUG] Successfully registered global hotkey: n (keyCode: 45) with modifiers: NSEventModifierFlags(rawValue: 1179648), id: 5001
+[DEBUG] Successfully registered global hotkey: p (keyCode: 35) with modifiers: NSEventModifierFlags(rawValue: 1572864), id: 5002
+[DEBUG] StickyNoteManager shortcut registration sent to GlobalHotkeyManager
+[DEBUG] 预加载符号配置...
+[SymbolConfigManager] ⚠️ bundle 中未找到 default.yaml
+[SymbolConfigManager] ⚠️ bundle 中未找到 english.yaml
+[SymbolConfigManager] ⚠️ bundle 中未找到 emoji.yaml
+[DEBUG] 应用启动中...
+[DEBUG] Bundle ID: unknown
+[CoreDataStack] 数据库已配置: QuiteNote-Debug.sqlite
+[CoreDataStack] Bundle ID: com.quitenote.app, isDebug: true
+[CoreDataStack] 调试存储隔离: 启用
+[DEBUG] Failed to explicitly load LucideIcons bundle from Contents/Frameworks.
+[DEBUG] 创建状态栏控制器...
+[DEBUG] 创建悬浮窗控制器...
+[DEBUG] FloatingPanelController created successfully
+[DEBUG] 自动显示悬浮窗...
+[DEBUG] Successfully registered global hotkey: s (keyCode: 1) with modifiers: NSEventModifierFlags(rawValue: 1179648), id: 1001
+[DEBUG] Successfully registered global hotkey: r (keyCode: 15) with modifiers: NSEventModifierFlags(rawValue: 1572864), id: 2001
+[DEBUG] Successfully registered global hotkey: a (keyCode: 0) with modifiers: NSEventModifierFlags(rawValue: 1572864), id: 2002
+[DEBUG] Successfully registered global hotkey: c (keyCode: 8) with modifiers: NSEventModifierFlags(rawValue: 1572864), id: 2003
+[DEBUG] Successfully registered global hotkey: e (keyCode: 14) with modifiers: NSEventModifierFlags(rawValue: 1572864), id: 2004
+[DEBUG] Successfully registered global hotkey: d (keyCode: 2) with modifiers: NSEventModifierFlags(rawValue: 1572864), id: 2005
+[DEBUG] Successfully registered global hotkey: . (keyCode: 47) with modifiers: NSEventModifierFlags(rawValue: 1572864), id: 2006
+[DEBUG] Successfully registered global hotkey: r (keyCode: 15) with modifiers: NSEventModifierFlags(rawValue: 1703936), id: 3001
+[DEBUG] Successfully registered global hotkey: a (keyCode: 0) with modifiers: NSEventModifierFlags(rawValue: 1703936), id: 3002
+[DEBUG] Successfully registered global hotkey: v (keyCode: 9) with modifiers: NSEventModifierFlags(rawValue: 1179648), id: 2007
+[DEBUG] Successfully registered global hotkey:   (keyCode: 49) with modifiers: NSEventModifierFlags(rawValue: 524288), id: 4001
+[DEBUG] 应用启动完成
+[DEBUG ScreenshotService] ========== 启动统一截图流程（V2 静态模式） ==========
+[DEBUG] Calling ensureVisibleOnLaunch from startup
+[DEBUG] ensureVisibleOnLaunch() called - Force showing window, forceCenter: false
+[DEBUG] 尝试恢复到屏幕: 1
+[DEBUG] 保存窗口位置(调整大小): (778.0, 282.0, 520.0, 640.0), 屏幕: 1
+[DEBUG] 恢复窗口位置: (778.0, 282.0, 520.0, 640.0), 屏幕: 1
+[DEBUG ScreenshotService] 启动 V2 截图流程
+[DEBUG AppDelegate] 截图即将开始，隐藏悬浮窗
+[FloatingPanel] hideImmediately() called - stack trace:
+  0   QuiteNote                           0x0000000104b16448 $s9QuiteNote23FloatingPanelControllerC15hideImmediatelyyyF + 236
+  1   QuiteNote                           0x00000001047d56dc $s9QuiteNote11AppDelegateC29applicationDidFinishLaunchingyy10Foundation12NotificationVFyycfU_ + 448
+  2   QuiteNote                           0x0000000104a35b0c $s9QuiteNote17ScreenshotServiceC07startV2C0yyF + 312
+  3   QuiteNote                           0x0000000104a359b4 $s9QuiteNote17ScreenshotServiceC05startC0yyFyyYaScMYccfU_TY0_ + 44
+  4   QuiteNote                           0x0000000104a3c031 $s9QuiteNote17ScreenshotServiceC05startC0yyFyyYaScMYccfU_TATQ0_ + 1
+  5   QuiteNote                           0x00000001047fa1e5 $sxIeAgHr_xs5Error_pIegHrzo_s8SendableRzs5NeverORs_r0_lTRTQ0_ + 1
+  6   QuiteNote                           0x00000001047fa335 $sxIeAgHr_xs5Error_pIegHrzo_s8SendableRzs5NeverORs_r0_lTRTATQ0_ + 1
+  7   libswift_Concurrency.dylib          0x00000002ada52d41 _ZL23completeTaskWithClosurePN5swift12AsyncContextEPNS_10SwiftErrorE + 1
+[FloatingPanel] hideInternal(withAnimation: false)
+[FloatingPanel] hideInternal - immediate orderOut
+[DEBUG] 强化后状态: visible=true, key=false, policy=NSApplicationActivationPolicy(rawValue: 1)
+🔍 [localSelectedArea] screen0
+   selectionScreen: Optional("Built-in Retina Display")
+   current screen: Built-in Retina Display
+   isSameScreen: true
+   selectedArea: Optional((0.0, 440.0, 300.0, 180.0))
+   result: Optional((0.0, 440.0, 300.0, 180.0))
+🔍 [localSelectedArea] screen0
+   selectionScreen: Optional("Built-in Retina Display")
+   current screen: Built-in Retina Display
+   isSameScreen: true
+   selectedArea: Optional((0.0, 440.0, 300.0, 180.0))
+   result: Optional((0.0, 440.0, 300.0, 180.0))
+🐛 [buildDragOverlay] Creating YellowWireframe for selected area: (0.0, 440.0, 300.0, 180.0)
+   screen0, localSelectedArea: (0.0, 440.0, 300.0, 180.0)
+🔍 [localSelectedArea] screen0
+   selectionScreen: Optional("Built-in Retina Display")
+   current screen: Built-in Retina Display
+   isSameScreen: true
+   selectedArea: Optional((0.0, 440.0, 300.0, 180.0))
+   result: Optional((0.0, 440.0, 300.0, 180.0))
+🔍 [localSelectedArea] screen0
+   selectionScreen: Optional("Built-in Retina Display")
+   current screen: Built-in Retina Display
+   isSameScreen: true
+   selectedArea: Optional((0.0, 440.0, 300.0, 180.0))
+   result: Optional((0.0, 440.0, 300.0, 180.0))
+🔍 [localSelectedArea] screen0
+   selectionScreen: Optional("Built-in Retina Display")
+   current screen: Built-in Retina Display
+   isSameScreen: true
+   selectedArea: Optional((0.0, 440.0, 300.0, 180.0))
+   result: Optional((0.0, 440.0, 300.0, 180.0))
+🔍 [localSelectedArea] screen0
+   selectionScreen: Optional("Built-in Retina Display")
+   current screen: Built-in Retina Display
+   isSameScreen: true
+   selectedArea: Optional((0.0, 440.0, 300.0, 180.0))
+   result: Optional((0.0, 440.0, 300.0, 180.0))
+🔍 [localSelectedArea] screen0
+   selectionScreen: Optional("Built-in Retina Display")
+   current screen: Built-in Retina Display
+   isSameScreen: true
+   selectedArea: Optional((0.0, 440.0, 300.0, 180.0))
+   result: Optional((0.0, 440.0, 300.0, 180.0))
+🐛 [buildDragOverlay] Creating YellowWireframe for selected area: (0.0, 440.0, 300.0, 180.0)
+   screen0, localSelectedArea: (0.0, 440.0, 300.0, 180.0)
+🔍 [localSelectedArea] screen0
+   selectionScreen: Optional("Built-in Retina Display")
+   current screen: Built-in Retina Display
+   isSameScreen: true
+   selectedArea: Optional((0.0, 440.0, 300.0, 180.0))
+   result: Optional((0.0, 440.0, 300.0, 180.0))
+🔍 [localSelectedArea] screen0
+   selectionScreen: Optional("Built-in Retina Display")
+   current screen: Built-in Retina Display
+   isSameScreen: true
+   selectedArea: Optional((0.0, 440.0, 300.0, 180.0))
+   result: Optional((0.0, 440.0, 300.0, 180.0))
+🔍 [localSelectedArea] screen0
+   selectionScreen: Optional("Built-in Retina Display")
+   current screen: Built-in Retina Display
+   isSameScreen: true
+   selectedArea: Optional((0.0, 440.0, 300.0, 180.0))
+   result: Optional((0.0, 440.0, 300.0, 180.0))
+🔍 [localSelectedArea] screen0
+   selectionScreen: Optional("Built-in Retina Display")
+   current screen: Built-in Retina Display
+   isSameScreen: true
+   selectedArea: Optional((0.0, 440.0, 300.0, 180.0))
+   result: Optional((0.0, 440.0, 300.0, 180.0))
+🐛 [buildDragOverlay] Creating YellowWireframe for selected area: (0.0, 440.0, 300.0, 180.0)
+   screen0, localSelectedArea: (0.0, 440.0, 300.0, 180.0)
+🔍 [localSelectedArea] screen0
+   selectionScreen: Optional("Built-in Retina Display")
+   current screen: Built-in Retina Display
+   isSameScreen: true
+   selectedArea: Optional((0.0, 440.0, 300.0, 180.0))
+   result: Optional((0.0, 440.0, 300.0, 180.0))
+🔍 [localSelectedArea] screen0
+   selectionScreen: Optional("Built-in Retina Display")
+   current screen: Built-in Retina Display
+   isSameScreen: true
+   selectedArea: Optional((0.0, 440.0, 300.0, 180.0))
+   result: Optional((0.0, 440.0, 300.0, 180.0))
+🔍 [localSelectedArea] screen0
+   selectionScreen: Optional("Built-in Retina Display")
+   current screen: Built-in Retina Display
+   isSameScreen: true
+   selectedArea: Optional((0.0, 440.0, 300.0, 180.0))
+   result: Optional((0.0, 440.0, 300.0, 180.0))
+🔍 [localSelectedArea] screen0
+   selectionScreen: Optional("Built-in Retina Display")
+   current screen: Built-in Retina Display
+   isSameScreen: true
+   selectedArea: Optional((0.0, 440.0, 300.0, 180.0))
+   result: Optional((0.0, 440.0, 300.0, 180.0))
+🐛 [buildDragOverlay] Creating YellowWireframe for selected area: (0.0, 440.0, 300.0, 180.0)
+   screen0, localSelectedArea: (0.0, 440.0, 300.0, 180.0)
+🔍 [localSelectedArea] screen0
+   selectionScreen: Optional("Built-in Retina Display")
+   current screen: Built-in Retina Display
+   isSameScreen: true
+   selectedArea: Optional((0.0, 440.0, 300.0, 180.0))
+   result: Optional((0.0, 440.0, 300.0, 180.0))
+🔍 [localSelectedArea] screen0
+   selectionScreen: Optional("Built-in Retina Display")
+   current screen: Built-in Retina Display
+   isSameScreen: true
+   selectedArea: Optional((0.0, 440.0, 300.0, 180.0))
+   result: Optional((0.0, 440.0, 300.0, 180.0))
+🔍 [localSelectedArea] screen0
+   selectionScreen: Optional("Built-in Retina Display")
+   current screen: Built-in Retina Display
+   isSameScreen: true
+   selectedArea: Optional((0.0, 440.0, 300.0, 180.0))
+   result: Optional((0.0, 440.0, 300.0, 180.0))
+🔍 [localSelectedArea] screen0
+   selectionScreen: Optional("Built-in Retina Display")
+   current screen: Built-in Retina Display
+   isSameScreen: true
+   selectedArea: Optional((0.0, 440.0, 300.0, 180.0))
+   result: Optional((0.0, 440.0, 300.0, 180.0))
+🐛 [buildDragOverlay] Creating YellowWireframe for selected area: (0.0, 440.0, 300.0, 180.0)
+   screen0, localSelectedArea: (0.0, 440.0, 300.0, 180.0)
+🔍 [localSelectedArea] screen0
+   selectionScreen: Optional("Built-in Retina Display")
+   current screen: Built-in Retina Display
+   isSameScreen: true
+   selectedArea: Optional((0.0, 440.0, 300.0, 180.0))
+   result: Optional((0.0, 440.0, 300.0, 180.0))
+🔍 [localSelectedArea] screen0
+   selectionScreen: Optional("Built-in Retina Display")
+   current screen: Built-in Retina Display
+   isSameScreen: true
+   selectedArea: Optional((0.0, 440.0, 300.0, 180.0))
+   result: Optional((0.0, 440.0, 300.0, 180.0))
+🔍 [localSelectedArea] screen0
+   selectionScreen: Optional("Built-in Retina Display")
+   current screen: Built-in Retina Display
+   isSameScreen: true
+   selectedArea: Optional((0.0, 440.0, 300.0, 180.0))
+   result: Optional((0.0, 440.0, 300.0, 180.0))
+🔍 [localSelectedArea] screen0
+   selectionScreen: Optional("Built-in Retina Display")
+   current screen: Built-in Retina Display
+   isSameScreen: true
+   selectedArea: Optional((0.0, 440.0, 300.0, 180.0))
+   result: Optional((0.0, 440.0, 300.0, 180.0))
+🐛 [buildDragOverlay] Creating YellowWireframe for selected area: (0.0, 440.0, 300.0, 180.0)
+   screen0, localSelectedArea: (0.0, 440.0, 300.0, 180.0)
+🔍 [localSelectedArea] screen0
+   selectionScreen: Optional("Built-in Retina Display")
+   current screen: Built-in Retina Display
+   isSameScreen: true
+   selectedArea: Optional((0.0, 440.0, 300.0, 180.0))
+   result: Optional((0.0, 440.0, 300.0, 180.0))
+🔍 [localSelectedArea] screen0
+   selectionScreen: Optional("Built-in Retina Display")
+   current screen: Built-in Retina Display
+   isSameScreen: true
+   selectedArea: Optional((0.0, 440.0, 300.0, 180.0))
+   result: Optional((0.0, 440.0, 300.0, 180.0))
+🔍 [localSelectedArea] screen0
+   selectionScreen: Optional("Built-in Retina Display")
+   current screen: Built-in Retina Display
+   isSameScreen: true
+   selectedArea: Optional((0.0, 440.0, 300.0, 180.0))
+   result: Optional((0.0, 440.0, 300.0, 180.0))
+🔍 [localSelectedArea] screen0
+   selectionScreen: Optional("Built-in Retina Display")
+   current screen: Built-in Retina Display
+   isSameScreen: true
+   selectedArea: Optional((0.0, 440.0, 300.0, 180.0))
+   result: Optional((0.0, 440.0, 300.0, 180.0))
+🐛 [buildDragOverlay] Creating YellowWireframe for selected area: (0.0, 440.0, 300.0, 180.0)
+   screen0, localSelectedArea: (0.0, 440.0, 300.0, 180.0)
+🔍 [localSelectedArea] screen0
+   selectionScreen: Optional("Built-in Retina Display")
+   current screen: Built-in Retina Display
+   isSameScreen: true
+   selectedArea: Optional((0.0, 440.0, 300.0, 180.0))
+   result: Optional((0.0, 440.0, 300.0, 180.0))
+🔍 [localSelectedArea] screen0
+   selectionScreen: Optional("Built-in Retina Display")
+   current screen: Built-in Retina Display
+   isSameScreen: true
+   selectedArea: Optional((0.0, 440.0, 300.0, 180.0))
+   result: Optional((0.0, 440.0, 300.0, 180.0))
+🔍 [localSelectedArea] screen0
+   selectionScreen: Optional("Built-in Retina Display")
+   current screen: Built-in Retina Display
+   isSameScreen: true
+   selectedArea: Optional((0.0, 440.0, 300.0, 180.0))
+   result: Optional((0.0, 440.0, 300.0, 180.0))
+🔍 [localSelectedArea] screen0
+   selectionScreen: Optional("Built-in Retina Display")
+   current screen: Built-in Retina Display
+   isSameScreen: true
+   selectedArea: Optional((0.0, 440.0, 300.0, 180.0))
+   result: Optional((0.0, 440.0, 300.0, 180.0))
+🐛 [buildDragOverlay] Creating YellowWireframe for selected area: (0.0, 440.0, 300.0, 180.0)
+   screen0, localSelectedArea: (0.0, 440.0, 300.0, 180.0)
+🔍 [localSelectedArea] screen0
+   selectionScreen: Optional("Built-in Retina Display")
+   current screen: Built-in Retina Display
+   isSameScreen: true
+   selectedArea: Optional((0.0, 440.0, 300.0, 180.0))
+   result: Optional((0.0, 440.0, 300.0, 180.0))
+🔍 [localSelectedArea] screen0
+   selectionScreen: Optional("Built-in Retina Display")
+   current screen: Built-in Retina Display
+   isSameScreen: true
+   selectedArea: Optional((1212.0, 440.0, 300.0, 180.0))
+   result: Optional((1212.0, 440.0, 300.0, 180.0))
+🔍 [localSelectedArea] screen0
+   selectionScreen: Optional("Built-in Retina Display")
+   current screen: Built-in Retina Display
+   isSameScreen: true
+   selectedArea: Optional((1212.0, 440.0, 300.0, 180.0))
+   result: Optional((1212.0, 440.0, 300.0, 180.0))
+🐛 [buildDragOverlay] Creating YellowWireframe for selected area: (1212.0, 440.0, 300.0, 180.0)
+   screen0, localSelectedArea: (1212.0, 440.0, 300.0, 180.0)
+🔍 [localSelectedArea] screen0
+   selectionScreen: Optional("Built-in Retina Display")
+   current screen: Built-in Retina Display
+   isSameScreen: true
+   selectedArea: Optional((1212.0, 440.0, 300.0, 180.0))
+   result: Optional((1212.0, 440.0, 300.0, 180.0))
+🔍 [localSelectedArea] screen0
+   selectionScreen: Optional("Built-in Retina Display")
+   current screen: Built-in Retina Display
+   isSameScreen: true
+   selectedArea: Optional((1212.0, 440.0, 300.0, 180.0))
+   result: Optional((1212.0, 440.0, 300.0, 180.0))
+🔍 [localSelectedArea] screen0
+   selectionScreen: Optional("Built-in Retina Display")
+   current screen: Built-in Retina Display
+   isSameScreen: true
+   selectedArea: Optional((1212.0, 440.0, 300.0, 180.0))
+   result: Optional((1212.0, 440.0, 300.0, 180.0))
+🔍 [localSelectedArea] screen0
+   selectionScreen: Optional("Built-in Retina Display")
+   current screen: Built-in Retina Display
+   isSameScreen: true
+   selectedArea: Optional((1212.0, 440.0, 300.0, 180.0))
+   result: Optional((1212.0, 440.0, 300.0, 180.0))
+🐛 [buildDragOverlay] Creating YellowWireframe for selected area: (1212.0, 440.0, 300.0, 180.0)
+   screen0, localSelectedArea: (1212.0, 440.0, 300.0, 180.0)
+🔍 [localSelectedArea] screen0
+   selectionScreen: Optional("Built-in Retina Display")
+   current screen: Built-in Retina Display
+   isSameScreen: true
+   selectedArea: Optional((1212.0, 440.0, 300.0, 180.0))
+   result: Optional((1212.0, 440.0, 300.0, 180.0))
+🔍 [localSelectedArea] screen0
+   selectionScreen: Optional("Built-in Retina Display")
+   current screen: Built-in Retina Display
+   isSameScreen: true
+   selectedArea: Optional((1212.0, 440.0, 300.0, 180.0))
+   result: Optional((1212.0, 440.0, 300.0, 180.0))
+🔍 [localSelectedArea] screen0
+   selectionScreen: Optional("Built-in Retina Display")
+   current screen: Built-in Retina Display
+   isSameScreen: true
+   selectedArea: Optional((1212.0, 440.0, 300.0, 180.0))
+   result: Optional((1212.0, 440.0, 300.0, 180.0))
+🔍 [localSelectedArea] screen0
+   selectionScreen: Optional("Built-in Retina Display")
+   current screen: Built-in Retina Display
+   isSameScreen: true
+   selectedArea: Optional((1212.0, 440.0, 300.0, 180.0))
+   result: Optional((1212.0, 440.0, 300.0, 180.0))
+🐛 [buildDragOverlay] Creating YellowWireframe for selected area: (1212.0, 440.0, 300.0, 180.0)
+   screen0, localSelectedArea: (1212.0, 440.0, 300.0, 180.0)
+🔍 [localSelectedArea] screen0
+   selectionScreen: Optional("Built-in Retina Display")
+   current screen: Built-in Retina Display
+   isSameScreen: true
+   selectedArea: Optional((1212.0, 440.0, 300.0, 180.0))
+   result: Optional((1212.0, 440.0, 300.0, 180.0))
+🔍 [localSelectedArea] screen0
+   selectionScreen: Optional("Built-in Retina Display")
+   current screen: Built-in Retina Display
+   isSameScreen: true
+   selectedArea: Optional((500.0, 760.0, 500.0, 180.0))
+   result: Optional((500.0, 760.0, 500.0, 180.0))
+🔍 [localSelectedArea] screen0
+   selectionScreen: Optional("Built-in Retina Display")
+   current screen: Built-in Retina Display
+   isSameScreen: true
+   selectedArea: Optional((500.0, 760.0, 500.0, 180.0))
+   result: Optional((500.0, 760.0, 500.0, 180.0))
+🐛 [buildDragOverlay] Creating YellowWireframe for selected area: (500.0, 760.0, 500.0, 180.0)
+   screen0, localSelectedArea: (500.0, 760.0, 500.0, 180.0)
+🔍 [localSelectedArea] screen0
+   selectionScreen: Optional("Built-in Retina Display")
+   current screen: Built-in Retina Display
+   isSameScreen: true
+   selectedArea: Optional((500.0, 760.0, 500.0, 180.0))
+   result: Optional((500.0, 760.0, 500.0, 180.0))
+🔍 [localSelectedArea] screen0
+   selectionScreen: Optional("Built-in Retina Display")
+   current screen: Built-in Retina Display
+   isSameScreen: true
+   selectedArea: Optional((900.0, 730.0, 500.0, 180.0))
+   result: Optional((900.0, 730.0, 500.0, 180.0))
+🔍 [localSelectedArea] screen0
+   selectionScreen: Optional("Built-in Retina Display")
+   current screen: Built-in Retina Display
+   isSameScreen: true
+   selectedArea: Optional((900.0, 730.0, 500.0, 180.0))
+   result: Optional((900.0, 730.0, 500.0, 180.0))
+🐛 [buildDragOverlay] Creating YellowWireframe for selected area: (900.0, 730.0, 500.0, 180.0)
+   screen0, localSelectedArea: (900.0, 730.0, 500.0, 180.0)
+🔍 [localSelectedArea] screen0
+   selectionScreen: Optional("Built-in Retina Display")
+   current screen: Built-in Retina Display
+   isSameScreen: true
+   selectedArea: Optional((900.0, 730.0, 500.0, 180.0))
+   result: Optional((900.0, 730.0, 500.0, 180.0))
