@@ -32,6 +32,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // 公开的 store 和 bluetooth 属性供 PreferencesView 使用
     var recordStore: RecordStore!
     var bluetoothManager: BluetoothManager!
+    private var toolbarSmokeTimer: Timer?
 
     /// 应用启动回调：初始化状态栏与悬浮窗
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -212,6 +213,56 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .store(in: &cancellables)
         
         print("[DEBUG] 应用启动完成")
+
+        if CommandLine.arguments.contains("--ui-smoke-run") {
+            startScreenshotToolbarSmoke()
+        }
+    }
+
+    /// The smoke runner is deliberately in-process: it drives observable
+    /// screenshot-overlay state and captures the overlay without system capture.
+    private func startScreenshotToolbarSmoke() {
+        guard let manifestPath = ProcessInfo.processInfo.environment["QN_TOOLBAR_SMOKE_CASES"],
+              let data = FileManager.default.contents(atPath: manifestPath),
+              let cases = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
+            print("[ToolbarSmoke] missing or invalid QN_TOOLBAR_SMOKE_CASES")
+            NSApp.terminate(nil)
+            return
+        }
+
+        ScreenshotService.shared.startScreenshot()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+            self.runToolbarSmokeCases(cases)
+        }
+    }
+
+    @MainActor
+    private func runToolbarSmokeCases(_ cases: [[String: Any]]) {
+        var queue = cases
+
+        func runNext() {
+            guard !queue.isEmpty else {
+                self.toolbarSmokeTimer?.invalidate()
+                V2ScreenshotController.close()
+                NSApp.terminate(nil)
+                return
+            }
+
+            let payload = queue.removeFirst()
+            var userInfo = payload
+            userInfo.removeValue(forKey: "command")
+            NotificationCenter.default.post(
+                name: NSNotification.Name("qn.screenshot.toolbar-smoke"),
+                object: nil,
+                userInfo: userInfo
+            )
+
+            toolbarSmokeTimer = Timer.scheduledTimer(withTimeInterval: 0.4, repeats: false) { _ in
+                runNext()
+            }
+        }
+
+        runNext()
     }
 
     /// 导出必须经过系统保存面板，确保 App Sandbox 获得用户选择的文件授权。
