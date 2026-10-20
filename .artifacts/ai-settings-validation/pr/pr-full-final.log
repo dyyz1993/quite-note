@@ -1,0 +1,1753 @@
+Building for debugging...
+[Computing dependencies]
+[1 / 3] LucideIcons
+Build complete! (0.66秒)
+Test Suite 'All tests' started at 2026-10-20 12:54:45.161.
+Test Suite 'QuiteNoteTests.xctest' started at 2026-10-20 12:54:45.162.
+Test Suite 'AIConnectionConfigTests' started at 2026-10-20 12:54:45.162.
+Test Case '-[QuiteNoteTests.AIConnectionConfigTests testChatRequestUsesCurrentSnapshot]' started.
+Test Case '-[QuiteNoteTests.AIConnectionConfigTests testChatRequestUsesCurrentSnapshot]' passed (0.001 seconds).
+Test Case '-[QuiteNoteTests.AIConnectionConfigTests testConnectionsKeepIndependentModels]' started.
+Test Case '-[QuiteNoteTests.AIConnectionConfigTests testConnectionsKeepIndependentModels]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.AIConnectionConfigTests testLegacyConfigurationMigratesToCustomOpenAI]' started.
+Test Case '-[QuiteNoteTests.AIConnectionConfigTests testLegacyConfigurationMigratesToCustomOpenAI]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.AIConnectionConfigTests testMagpieUsesGatewayTokenAndSeparateBaseURL]' started.
+Test Case '-[QuiteNoteTests.AIConnectionConfigTests testMagpieUsesGatewayTokenAndSeparateBaseURL]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.AIConnectionConfigTests testMissingModelPreventsRequests]' started.
+Test Case '-[QuiteNoteTests.AIConnectionConfigTests testMissingModelPreventsRequests]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.AIConnectionConfigTests testModelSearchMatchesIDAndDisplayName]' started.
+Test Case '-[QuiteNoteTests.AIConnectionConfigTests testModelSearchMatchesIDAndDisplayName]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.AIConnectionConfigTests testMultimodalChatRequestEncodesImageURLAndKeepsJSONMode]' started.
+Test Case '-[QuiteNoteTests.AIConnectionConfigTests testMultimodalChatRequestEncodesImageURLAndKeepsJSONMode]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.AIConnectionConfigTests testNewInstallationDefaultsToMagpie]' started.
+Test Case '-[QuiteNoteTests.AIConnectionConfigTests testNewInstallationDefaultsToMagpie]' passed (0.000 seconds).
+Test Suite 'AIConnectionConfigTests' passed at 2026-10-20 12:54:45.165.
+	 Executed 8 tests, with 0 failures (0 unexpected) in 0.002 (0.003) seconds
+Test Suite 'AnnotationTextHitBoxTests' started at 2026-10-20 12:54:45.165.
+Test Case '-[QuiteNoteTests.AnnotationTextHitBoxTests testChineseTextWidthUsesFullWidthRatio]' started.
+Test Case '-[QuiteNoteTests.AnnotationTextHitBoxTests testChineseTextWidthUsesFullWidthRatio]' passed (0.001 seconds).
+Test Case '-[QuiteNoteTests.AnnotationTextHitBoxTests testEnglishTextWidthKeepsNarrowRatio]' started.
+Test Case '-[QuiteNoteTests.AnnotationTextHitBoxTests testEnglishTextWidthKeepsNarrowRatio]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.AnnotationTextHitBoxTests testMixedTextWidthCombinesRatios]' started.
+Test Case '-[QuiteNoteTests.AnnotationTextHitBoxTests testMixedTextWidthCombinesRatios]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.AnnotationTextHitBoxTests testMultilineUsesWidestLineAndLineHeight]' started.
+Test Case '-[QuiteNoteTests.AnnotationTextHitBoxTests testMultilineUsesWidestLineAndLineHeight]' passed (0.000 seconds).
+Test Suite 'AnnotationTextHitBoxTests' passed at 2026-10-20 12:54:45.167.
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.002 (0.002) seconds
+Test Suite 'AppLauncherNavigationTests' started at 2026-10-20 12:54:45.167.
+Test Case '-[QuiteNoteTests.AppLauncherNavigationTests testOption残留仍可导航]' started.
+Test Case '-[QuiteNoteTests.AppLauncherNavigationTests testOption残留仍可导航]' passed (0.001 seconds).
+Test Case '-[QuiteNoteTests.AppLauncherNavigationTests test冲刷挂起重算并重置选中]' started.
+Test Case '-[QuiteNoteTests.AppLauncherNavigationTests test冲刷挂起重算并重置选中]' passed (0.106 seconds).
+Test Case '-[QuiteNoteTests.AppLauncherNavigationTests test命令与Shift修饰放行]' started.
+Test Case '-[QuiteNoteTests.AppLauncherNavigationTests test命令与Shift修饰放行]' passed (0.001 seconds).
+Test Case '-[QuiteNoteTests.AppLauncherNavigationTests test命令数字与命令W]' started.
+Test Case '-[QuiteNoteTests.AppLauncherNavigationTests test命令数字与命令W]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.AppLauncherNavigationTests test底部按下不回绕]' started.
+Test Case '-[QuiteNoteTests.AppLauncherNavigationTests test底部按下不回绕]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.AppLauncherNavigationTests test文件结果落地重置选中与版本]' started.
+Test Case '-[QuiteNoteTests.AppLauncherNavigationTests test文件结果落地重置选中与版本]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.AppLauncherNavigationTests test无挂起任务时冲刷零开销]' started.
+Test Case '-[QuiteNoteTests.AppLauncherNavigationTests test无挂起任务时冲刷零开销]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.AppLauncherNavigationTests test真实鼠标移动恢复hover选中]' started.
+Test Case '-[QuiteNoteTests.AppLauncherNavigationTests test真实鼠标移动恢复hover选中]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.AppLauncherNavigationTests test空列表导航安全]' started.
+Test Case '-[QuiteNoteTests.AppLauncherNavigationTests test空列表导航安全]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.AppLauncherNavigationTests test裸方向键导航]' started.
+Test Case '-[QuiteNoteTests.AppLauncherNavigationTests test裸方向键导航]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.AppLauncherNavigationTests test键盘导航后合成hover不抢选中]' started.
+Test Case '-[QuiteNoteTests.AppLauncherNavigationTests test键盘导航后合成hover不抢选中]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.AppLauncherNavigationTests test顶部按上不回绕]' started.
+Test Case '-[QuiteNoteTests.AppLauncherNavigationTests test顶部按上不回绕]' passed (0.000 seconds).
+Test Suite 'AppLauncherNavigationTests' passed at 2026-10-20 12:54:45.277.
+	 Executed 12 tests, with 0 failures (0 unexpected) in 0.109 (0.110) seconds
+Test Suite 'AppLauncherPinyinTests' started at 2026-10-20 12:54:45.277.
+Test Case '-[QuiteNoteTests.AppLauncherPinyinTests testCJK判定]' started.
+Test Case '-[QuiteNoteTests.AppLauncherPinyinTests testCJK判定]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.AppLauncherPinyinTests testü转v_键盘输入习惯]' started.
+Test Case '-[QuiteNoteTests.AppLauncherPinyinTests testü转v_键盘输入习惯]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.AppLauncherPinyinTests test中英混排_QQ音乐]' started.
+Test Case '-[QuiteNoteTests.AppLauncherPinyinTests test中英混排_QQ音乐]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.AppLauncherPinyinTests test带caron声调元音不被ü替换误伤]' started.
+Test Case '-[QuiteNoteTests.AppLauncherPinyinTests test带caron声调元音不被ü替换误伤]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.AppLauncherPinyinTests test空字符串]' started.
+Test Case '-[QuiteNoteTests.AppLauncherPinyinTests test空字符串]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.AppLauncherPinyinTests test纯中文_多音字按单字读音]' started.
+Test Case '-[QuiteNoteTests.AppLauncherPinyinTests test纯中文_多音字按单字读音]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.AppLauncherPinyinTests test纯中文_微信]' started.
+Test Case '-[QuiteNoteTests.AppLauncherPinyinTests test纯中文_微信]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.AppLauncherPinyinTests test纯英文_只取单词首字母]' started.
+Test Case '-[QuiteNoteTests.AppLauncherPinyinTests test纯英文_只取单词首字母]' passed (0.000 seconds).
+Test Suite 'AppLauncherPinyinTests' passed at 2026-10-20 12:54:45.279.
+	 Executed 8 tests, with 0 failures (0 unexpected) in 0.001 (0.002) seconds
+Test Suite 'AppLauncherSearchTests' started at 2026-10-20 12:54:45.279.
+Test Case '-[QuiteNoteTests.AppLauncherSearchTests testbundleID包含]' started.
+Test Case '-[QuiteNoteTests.AppLauncherSearchTests testbundleID包含]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.AppLauncherSearchTests testisSubsequence基础]' started.
+Test Case '-[QuiteNoteTests.AppLauncherSearchTests testisSubsequence基础]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.AppLauncherSearchTests testMRU_新启动插到最前并去重]' started.
+Test Case '-[QuiteNoteTests.AppLauncherSearchTests testMRU_新启动插到最前并去重]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.AppLauncherSearchTests testMRU_超限截断到十条]' started.
+Test Case '-[QuiteNoteTests.AppLauncherSearchTests testMRU_超限截断到十条]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.AppLauncherSearchTests testtokenize_空白分词归一]' started.
+Test Case '-[QuiteNoteTests.AppLauncherSearchTests testtokenize_空白分词归一]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.AppLauncherSearchTests test全拼前缀_搜weixin命中微信]' started.
+Test Case '-[QuiteNoteTests.AppLauncherSearchTests test全拼前缀_搜weixin命中微信]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.AppLauncherSearchTests test名称前缀优先于拼音前缀]' started.
+Test Case '-[QuiteNoteTests.AppLauncherSearchTests test名称前缀优先于拼音前缀]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.AppLauncherSearchTests test名称包含_搜chrome]' started.
+Test Case '-[QuiteNoteTests.AppLauncherSearchTests test名称包含_搜chrome]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.AppLauncherSearchTests test名称子序列_gch命中GoogleChrome]' started.
+Test Case '-[QuiteNoteTests.AppLauncherSearchTests test名称子序列_gch命中GoogleChrome]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.AppLauncherSearchTests test多词搜索_goo_chr命中GoogleChrome]' started.
+Test Case '-[QuiteNoteTests.AppLauncherSearchTests test多词搜索_goo_chr命中GoogleChrome]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.AppLauncherSearchTests test多词搜索_乱序同样命中]' started.
+Test Case '-[QuiteNoteTests.AppLauncherSearchTests test多词搜索_乱序同样命中]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.AppLauncherSearchTests test多词搜索_任一token失配则排除]' started.
+Test Case '-[QuiteNoteTests.AppLauncherSearchTests test多词搜索_任一token失配则排除]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.AppLauncherSearchTests test多词搜索_拼音分段_万云]' started.
+Test Case '-[QuiteNoteTests.AppLauncherSearchTests test多词搜索_拼音分段_万云]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.AppLauncherSearchTests test大小写与首尾空白归一]' started.
+Test Case '-[QuiteNoteTests.AppLauncherSearchTests test大小写与首尾空白归一]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.AppLauncherSearchTests test子序列_快于包含的仍排前面]' started.
+Test Case '-[QuiteNoteTests.AppLauncherSearchTests test子序列_快于包含的仍排前面]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.AppLauncherSearchTests test性能_2000应用单次搜索亚毫秒级]' started.
+Test Case '-[QuiteNoteTests.AppLauncherSearchTests test性能_2000应用单次搜索亚毫秒级]' passed (0.025 seconds).
+Test Case '-[QuiteNoteTests.AppLauncherSearchTests test拼音首字母_搜wx命中微信]' started.
+Test Case '-[QuiteNoteTests.AppLauncherSearchTests test拼音首字母_搜wx命中微信]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.AppLauncherSearchTests test无命中返回空]' started.
+Test Case '-[QuiteNoteTests.AppLauncherSearchTests test无命中返回空]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.AppLauncherSearchTests test最近使用加权_同档位recent靠前]' started.
+Test Case '-[QuiteNoteTests.AppLauncherSearchTests test最近使用加权_同档位recent靠前]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.AppLauncherSearchTests test目录缓存_损坏数据与版本不符返回nil]' started.
+Test Case '-[QuiteNoteTests.AppLauncherSearchTests test目录缓存_损坏数据与版本不符返回nil]' passed (0.003 seconds).
+Test Case '-[QuiteNoteTests.AppLauncherSearchTests test目录缓存编解码往返_预计算字段随缓存恢复]' started.
+Test Case '-[QuiteNoteTests.AppLauncherSearchTests test目录缓存编解码往返_预计算字段随缓存恢复]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.AppLauncherSearchTests test空查询返回MRU顺序并过滤已卸载]' started.
+Test Case '-[QuiteNoteTests.AppLauncherSearchTests test空查询返回MRU顺序并过滤已卸载]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.AppLauncherSearchTests test预计算字段_构造时生成]' started.
+Test Case '-[QuiteNoteTests.AppLauncherSearchTests test预计算字段_构造时生成]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.AppLauncherSearchTests test首字母子序列_wd命中微信读书]' started.
+Test Case '-[QuiteNoteTests.AppLauncherSearchTests test首字母子序列_wd命中微信读书]' passed (0.000 seconds).
+Test Suite 'AppLauncherSearchTests' passed at 2026-10-20 12:54:45.313.
+	 Executed 24 tests, with 0 failures (0 unexpected) in 0.032 (0.034) seconds
+Test Suite 'AppLocalizationTests' started at 2026-10-20 12:54:45.313.
+Test Case '-[QuiteNoteTests.AppLocalizationTests testChineseSystemLanguageResolvesToSimplifiedChinese]' started.
+Test Case '-[QuiteNoteTests.AppLocalizationTests testChineseSystemLanguageResolvesToSimplifiedChinese]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.AppLocalizationTests testEnglishSystemLanguageResolvesToEnglish]' started.
+Test Case '-[QuiteNoteTests.AppLocalizationTests testEnglishSystemLanguageResolvesToEnglish]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.AppLocalizationTests testUnsupportedSystemLanguageFallsBackToEnglish]' started.
+Test Case '-[QuiteNoteTests.AppLocalizationTests testUnsupportedSystemLanguageFallsBackToEnglish]' passed (0.000 seconds).
+Test Suite 'AppLocalizationTests' passed at 2026-10-20 12:54:45.314.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.000 (0.001) seconds
+Test Suite 'BallEdgeGeometryTests' started at 2026-10-20 12:54:45.314.
+Test Case '-[QuiteNoteTests.BallEdgeGeometryTests testClampDragKeepsWholeWindowInsideVisibleFrame]' started.
+Test Case '-[QuiteNoteTests.BallEdgeGeometryTests testClampDragKeepsWholeWindowInsideVisibleFrame]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.BallEdgeGeometryTests testClampDragLeavesInteriorUnchanged]' started.
+Test Case '-[QuiteNoteTests.BallEdgeGeometryTests testClampDragLeavesInteriorUnchanged]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.BallEdgeGeometryTests testScreenSelectionUsesContainingScreenThenNearest]' started.
+Test Case '-[QuiteNoteTests.BallEdgeGeometryTests testScreenSelectionUsesContainingScreenThenNearest]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.BallEdgeGeometryTests testSnapKeepsAtLeastVisualGapFromEveryEdge]' started.
+Test Case '-[QuiteNoteTests.BallEdgeGeometryTests testSnapKeepsAtLeastVisualGapFromEveryEdge]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.BallEdgeGeometryTests testSnapLeavesInteriorPositionUnchanged]' started.
+Test Case '-[QuiteNoteTests.BallEdgeGeometryTests testSnapLeavesInteriorPositionUnchanged]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.BallEdgeGeometryTests testSnapPullsCenterToMarginOnAllFourEdges]' started.
+Test Case '-[QuiteNoteTests.BallEdgeGeometryTests testSnapPullsCenterToMarginOnAllFourEdges]' passed (0.000 seconds).
+Test Suite 'BallEdgeGeometryTests' passed at 2026-10-20 12:54:45.315.
+	 Executed 6 tests, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'ClipboardImageAITests' started at 2026-10-20 12:54:45.315.
+Test Case '-[QuiteNoteTests.ClipboardImageAITests testBulkResummarizeRoutesReadableVisualRecordsToImageModel]' started.
+Test Case '-[QuiteNoteTests.ClipboardImageAITests testBulkResummarizeRoutesReadableVisualRecordsToImageModel]' passed (0.006 seconds).
+Test Case '-[QuiteNoteTests.ClipboardImageAITests testImageDecisionUsesTrimmedOCRText]' started.
+Test Case '-[QuiteNoteTests.ClipboardImageAITests testImageDecisionUsesTrimmedOCRText]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.ClipboardImageAITests testImagePayloadLoaderEncodesPNGAndRejectsMissingFile]' started.
+Test Case '-[QuiteNoteTests.ClipboardImageAITests testImagePayloadLoaderEncodesPNGAndRejectsMissingFile]' passed (0.020 seconds).
+Test Case '-[QuiteNoteTests.ClipboardImageAITests testLateOCRSuccessBackfillsSavedRecordAndBecomesSummarizable]' started.
+Test Case '-[QuiteNoteTests.ClipboardImageAITests testLateOCRSuccessBackfillsSavedRecordAndBecomesSummarizable]' passed (0.010 seconds).
+Test Case '-[QuiteNoteTests.ClipboardImageAITests testMissingImageWithoutOCRKeepsSkipAI]' started.
+Test Case '-[QuiteNoteTests.ClipboardImageAITests testMissingImageWithoutOCRKeepsSkipAI]' passed (0.003 seconds).
+Test Case '-[QuiteNoteTests.ClipboardImageAITests testReadableImageWithoutOCRStillBecomesSummarizable]' started.
+Test Case '-[QuiteNoteTests.ClipboardImageAITests testReadableImageWithoutOCRStillBecomesSummarizable]' passed (0.001 seconds).
+Test Case '-[QuiteNoteTests.ClipboardImageAITests testVisualRecordTypesCanBypassTextThreshold]' started.
+Test Case '-[QuiteNoteTests.ClipboardImageAITests testVisualRecordTypesCanBypassTextThreshold]' passed (0.000 seconds).
+Test Suite 'ClipboardImageAITests' passed at 2026-10-20 12:54:45.357.
+	 Executed 7 tests, with 0 failures (0 unexpected) in 0.041 (0.042) seconds
+Test Suite 'ClipboardPaginationTests' started at 2026-10-20 12:54:45.357.
+Test Case '-[QuiteNoteTests.ClipboardPaginationTests test小库_单页装下_无翻页]' started.
+CoreData: debug: WAL checkpoint: Database did checkpoint. Log size: 1007 checkpointed: 1007
+Test Case '-[QuiteNoteTests.ClipboardPaginationTests test小库_单页装下_无翻页]' passed (0.116 seconds).
+Test Case '-[QuiteNoteTests.ClipboardPaginationTests test搜索前补齐全量_覆盖未加载页]' started.
+CoreData: debug: WAL checkpoint: Database did checkpoint. Log size: 1000 checkpointed: 1000
+CoreData: debug: WAL checkpoint: Database did checkpoint. Log size: 1008 checkpointed: 1008
+CoreData: debug: WAL checkpoint: Database did checkpoint. Log size: 1008 checkpointed: 1008
+CoreData: debug: WAL checkpoint: Database did checkpoint. Log size: 1001 checkpointed: 1001
+CoreData: debug: WAL checkpoint: Database did checkpoint. Log size: 1001 checkpointed: 1001
+CoreData: debug: WAL checkpoint: Database did checkpoint. Log size: 1000 checkpointed: 1000
+CoreData: debug: WAL checkpoint: Database did checkpoint. Log size: 1008 checkpointed: 1008
+CoreData: debug: WAL checkpoint: Database did checkpoint. Log size: 1001 checkpointed: 1001
+CoreData: debug: WAL checkpoint: Database did checkpoint. Log size: 1004 checkpointed: 1004
+CoreData: debug: WAL checkpoint: Database did checkpoint. Log size: 1001 checkpointed: 1001
+CoreData: debug: WAL checkpoint: Database did checkpoint. Log size: 1013 checkpointed: 1013
+CoreData: debug: WAL checkpoint: Database did checkpoint. Log size: 1006 checkpointed: 1006
+CoreData: debug: WAL checkpoint: Database did checkpoint. Log size: 1000 checkpointed: 1000
+CoreData: debug: WAL checkpoint: Database did checkpoint. Log size: 1000 checkpointed: 1000
+CoreData: debug: WAL checkpoint: Database did checkpoint. Log size: 1007 checkpointed: 1007
+CoreData: debug: WAL checkpoint: Database did checkpoint. Log size: 1001 checkpointed: 1001
+Test Case '-[QuiteNoteTests.ClipboardPaginationTests test搜索前补齐全量_覆盖未加载页]' passed (4.790 seconds).
+Test Case '-[QuiteNoteTests.ClipboardPaginationTests test首页500_hasMore_翻页补齐]' started.
+CoreData: debug: PostSaveMaintenance: incremental_vacuum with freelist_count - 34 and pages_to_free 6
+CoreData: debug: WAL checkpoint: Database did checkpoint. Log size: 1002 checkpointed: 1002
+CoreData: debug: PostSaveMaintenance: incremental_vacuum with freelist_count - 28 and pages_to_free 5
+CoreData: debug: PostSaveMaintenance: incremental_vacuum with freelist_count - 23 and pages_to_free 4
+CoreData: debug: PostSaveMaintenance: incremental_vacuum with freelist_count - 16 and pages_to_free 3
+CoreData: debug: PostSaveMaintenance: incremental_vacuum with freelist_count - 13 and pages_to_free 2
+CoreData: debug: WAL checkpoint: Database did checkpoint. Log size: 1007 checkpointed: 1007
+CoreData: debug: WAL checkpoint: Database did checkpoint. Log size: 1001 checkpointed: 1001
+CoreData: debug: WAL checkpoint: Database did checkpoint. Log size: 1001 checkpointed: 1001
+CoreData: debug: WAL checkpoint: Database did checkpoint. Log size: 1010 checkpointed: 1010
+CoreData: debug: WAL checkpoint: Database did checkpoint. Log size: 1012 checkpointed: 1012
+CoreData: debug: WAL checkpoint: Database did checkpoint. Log size: 1007 checkpointed: 1007
+CoreData: debug: WAL checkpoint: Database did checkpoint. Log size: 1000 checkpointed: 1000
+CoreData: debug: WAL checkpoint: Database did checkpoint. Log size: 1010 checkpointed: 1010
+CoreData: debug: WAL checkpoint: Database did checkpoint. Log size: 1000 checkpointed: 1000
+CoreData: debug: WAL checkpoint: Database did checkpoint. Log size: 1004 checkpointed: 1004
+CoreData: debug: WAL checkpoint: Database did checkpoint. Log size: 1008 checkpointed: 1008
+CoreData: debug: WAL checkpoint: Database did checkpoint. Log size: 1005 checkpointed: 1005
+CoreData: debug: WAL checkpoint: Database did checkpoint. Log size: 1001 checkpointed: 1001
+CoreData: debug: WAL checkpoint: Database did checkpoint. Log size: 1003 checkpointed: 1003
+CoreData: debug: WAL checkpoint: Database did checkpoint. Log size: 1007 checkpointed: 1007
+CoreData: debug: WAL checkpoint: Database did checkpoint. Log size: 1011 checkpointed: 1011
+Test Case '-[QuiteNoteTests.ClipboardPaginationTests test首页500_hasMore_翻页补齐]' passed (5.249 seconds).
+Test Suite 'ClipboardPaginationTests' passed at 2026-10-20 12:54:55.512.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 10.155 (10.155) seconds
+Test Suite 'ClipboardPanelKeyMappingTests' started at 2026-10-20 12:54:55.512.
+Test Case '-[QuiteNoteTests.ClipboardPanelKeyMappingTests testArrowKeysRemainSearchFieldEditingKeysWhileFocused]' started.
+Test Case '-[QuiteNoteTests.ClipboardPanelKeyMappingTests testArrowKeysRemainSearchFieldEditingKeysWhileFocused]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.ClipboardPanelKeyMappingTests testArrowKeysStillSwitchFiltersWhenSearchFieldIsNotEditing]' started.
+Test Case '-[QuiteNoteTests.ClipboardPanelKeyMappingTests testArrowKeysStillSwitchFiltersWhenSearchFieldIsNotEditing]' passed (0.001 seconds).
+Test Suite 'ClipboardPanelKeyMappingTests' passed at 2026-10-20 12:54:55.513.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'ClipboardRetentionTests' started at 2026-10-20 12:54:55.513.
+Test Case '-[QuiteNoteTests.ClipboardRetentionTests testExpiredEntriesRemoved]' started.
+Test Case '-[QuiteNoteTests.ClipboardRetentionTests testExpiredEntriesRemoved]' passed (0.001 seconds).
+Test Case '-[QuiteNoteTests.ClipboardRetentionTests testMaxEntriesEvictsOldestUnpinned]' started.
+Test Case '-[QuiteNoteTests.ClipboardRetentionTests testMaxEntriesEvictsOldestUnpinned]' passed (0.001 seconds).
+Test Case '-[QuiteNoteTests.ClipboardRetentionTests testPinnedAndSavedNeverExpired]' started.
+Test Case '-[QuiteNoteTests.ClipboardRetentionTests testPinnedAndSavedNeverExpired]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.ClipboardRetentionTests testPinnedDoesNotCountAgainstLimit]' started.
+Test Case '-[QuiteNoteTests.ClipboardRetentionTests testPinnedDoesNotCountAgainstLimit]' passed (0.001 seconds).
+Test Case '-[QuiteNoteTests.ClipboardRetentionTests testZeroRetentionDaysMeansNever]' started.
+Test Case '-[QuiteNoteTests.ClipboardRetentionTests testZeroRetentionDaysMeansNever]' passed (0.000 seconds).
+Test Suite 'ClipboardRetentionTests' passed at 2026-10-20 12:54:55.518.
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.004 (0.004) seconds
+Test Suite 'ClipboardSearchRankingTests' started at 2026-10-20 12:54:55.518.
+Test Case '-[QuiteNoteTests.ClipboardSearchRankingTests testCaseAndDiacriticInsensitive]' started.
+Test Case '-[QuiteNoteTests.ClipboardSearchRankingTests testCaseAndDiacriticInsensitive]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.ClipboardSearchRankingTests testEmptyQuery直通不重排]' started.
+Test Case '-[QuiteNoteTests.ClipboardSearchRankingTests testEmptyQuery直通不重排]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.ClipboardSearchRankingTests testMatchScoreRanking]' started.
+Test Case '-[QuiteNoteTests.ClipboardSearchRankingTests testMatchScoreRanking]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.ClipboardSearchRankingTests testSameScoreSortedByRecency]' started.
+Test Case '-[QuiteNoteTests.ClipboardSearchRankingTests testSameScoreSortedByRecency]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.ClipboardSearchRankingTests testSearchCoversOCRDomainAndSourceApp]' started.
+Test Case '-[QuiteNoteTests.ClipboardSearchRankingTests testSearchCoversOCRDomainAndSourceApp]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.ClipboardSearchRankingTests testSearchOrderingFullBeforePrefixBeforeContains]' started.
+Test Case '-[QuiteNoteTests.ClipboardSearchRankingTests testSearchOrderingFullBeforePrefixBeforeContains]' passed (0.000 seconds).
+Test Suite 'ClipboardSearchRankingTests' passed at 2026-10-20 12:54:55.520.
+	 Executed 6 tests, with 0 failures (0 unexpected) in 0.002 (0.002) seconds
+Test Suite 'ClipboardSearchViewModelTests' started at 2026-10-20 12:54:55.520.
+Test Case '-[QuiteNoteTests.ClipboardSearchViewModelTests testConcurrentAddedEntryIsMergedIntoSearchResult]' started.
+Test Case '-[QuiteNoteTests.ClipboardSearchViewModelTests testConcurrentAddedEntryIsMergedIntoSearchResult]' passed (1.784 seconds).
+Test Case '-[QuiteNoteTests.ClipboardSearchViewModelTests testEmptyQueryUsesLoadedPageWithoutBackgroundCorpus]' started.
+CoreData: debug: PostSaveMaintenance: incremental_vacuum with freelist_count - 35 and pages_to_free 7
+Test Case '-[QuiteNoteTests.ClipboardSearchViewModelTests testEmptyQueryUsesLoadedPageWithoutBackgroundCorpus]' passed (0.008 seconds).
+Test Case '-[QuiteNoteTests.ClipboardSearchViewModelTests testNewerQuerySupersedesOldBackgroundResult]' started.
+Test Case '-[QuiteNoteTests.ClipboardSearchViewModelTests testNewerQuerySupersedesOldBackgroundResult]' passed (0.001 seconds).
+Test Case '-[QuiteNoteTests.ClipboardSearchViewModelTests testRemoteCoreInsertReloadsFirstPageWithoutManualRefresh]' started.
+Test Case '-[QuiteNoteTests.ClipboardSearchViewModelTests testRemoteCoreInsertReloadsFirstPageWithoutManualRefresh]' passed (0.008 seconds).
+Test Case '-[QuiteNoteTests.ClipboardSearchViewModelTests testSearchLoadsUnloadedCorpusAndDeliversMatches]' started.
+CoreData: debug: PostSaveMaintenance: incremental_vacuum with freelist_count - 28 and pages_to_free 5
+CoreData: debug: PostSaveMaintenance: incremental_vacuum with freelist_count - 23 and pages_to_free 4
+Test Case '-[QuiteNoteTests.ClipboardSearchViewModelTests testSearchLoadsUnloadedCorpusAndDeliversMatches]' passed (0.137 seconds).
+Test Case '-[QuiteNoteTests.ClipboardSearchViewModelTests testSearchQueryCommitsImmediatelyWithoutDebounceDelay]' started.
+Test Case '-[QuiteNoteTests.ClipboardSearchViewModelTests testSearchQueryCommitsImmediatelyWithoutDebounceDelay]' passed (0.001 seconds).
+Test Suite 'ClipboardSearchViewModelTests' passed at 2026-10-20 12:54:57.460.
+	 Executed 6 tests, with 0 failures (0 unexpected) in 1.939 (1.940) seconds
+Test Suite 'ClipboardTypeDetectionTests' started at 2026-10-20 12:54:57.460.
+Test Case '-[QuiteNoteTests.ClipboardTypeDetectionTests testDetectPriority]' started.
+Test Case '-[QuiteNoteTests.ClipboardTypeDetectionTests testDetectPriority]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.ClipboardTypeDetectionTests testDomainExtraction]' started.
+Test Case '-[QuiteNoteTests.ClipboardTypeDetectionTests testDomainExtraction]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.ClipboardTypeDetectionTests testPureURLDetection]' started.
+Test Case '-[QuiteNoteTests.ClipboardTypeDetectionTests testPureURLDetection]' passed (0.001 seconds).
+Test Suite 'ClipboardTypeDetectionTests' passed at 2026-10-20 12:54:57.462.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.002 (0.002) seconds
+Test Suite 'ClipboardTypingPerfTests' started at 2026-10-20 12:54:57.462.
+Test Case '-[QuiteNoteTests.ClipboardTypingPerfTests test查询过滤500条_30ms内]' started.
+Test Case '-[QuiteNoteTests.ClipboardTypingPerfTests test查询过滤500条_30ms内]' passed (0.017 seconds).
+Test Case '-[QuiteNoteTests.ClipboardTypingPerfTests test空查询保持传入顺序]' started.
+Test Case '-[QuiteNoteTests.ClipboardTypingPerfTests test空查询保持传入顺序]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.ClipboardTypingPerfTests test空查询免排序_500条亚毫秒]' started.
+Test Case '-[QuiteNoteTests.ClipboardTypingPerfTests test空查询免排序_500条亚毫秒]' passed (0.001 seconds).
+Test Case '-[QuiteNoteTests.ClipboardTypingPerfTests test详情面板按身份相等_大文本零成本]' started.
+Test Case '-[QuiteNoteTests.ClipboardTypingPerfTests test详情面板按身份相等_大文本零成本]' passed (0.012 seconds).
+Test Suite 'ClipboardTypingPerfTests' passed at 2026-10-20 12:54:57.492.
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.030 (0.030) seconds
+Test Suite 'DevCoreServiceMonitorTests' started at 2026-10-20 12:54:57.492.
+Test Case '-[QuiteNoteTests.DevCoreServiceMonitorTests testFreshHeartbeatIsAcceptedAndStaleHeartbeatFailsClosed]' started.
+Test Case '-[QuiteNoteTests.DevCoreServiceMonitorTests testFreshHeartbeatIsAcceptedAndStaleHeartbeatFailsClosed]' passed (0.003 seconds).
+Test Case '-[QuiteNoteTests.DevCoreServiceMonitorTests testMissingOrCorruptStateFailsClosed]' started.
+Test Case '-[QuiteNoteTests.DevCoreServiceMonitorTests testMissingOrCorruptStateFailsClosed]' passed (0.001 seconds).
+Test Case '-[QuiteNoteTests.DevCoreServiceMonitorTests testRecoveryErrorDistinguishesUnloadedServiceFromStaleState]' started.
+Test Case '-[QuiteNoteTests.DevCoreServiceMonitorTests testRecoveryErrorDistinguishesUnloadedServiceFromStaleState]' passed (0.067 seconds).
+Test Case '-[QuiteNoteTests.DevCoreServiceMonitorTests testStatusSnapshotDecodesCoreStateFile]' started.
+Test Case '-[QuiteNoteTests.DevCoreServiceMonitorTests testStatusSnapshotDecodesCoreStateFile]' passed (0.001 seconds).
+Test Suite 'DevCoreServiceMonitorTests' passed at 2026-10-20 12:54:57.564.
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.071 (0.072) seconds
+Test Suite 'DiagnosticLogTests' started at 2026-10-20 12:54:57.564.
+Test Case '-[QuiteNoteTests.DiagnosticLogTests test_abnormalPreviousSessionDetected]' started.
+Test Case '-[QuiteNoteTests.DiagnosticLogTests test_abnormalPreviousSessionDetected]' passed (0.002 seconds).
+Test Case '-[QuiteNoteTests.DiagnosticLogTests test_cleanupRemovesExpiredLogsButKeepsRecent]' started.
+Test Case '-[QuiteNoteTests.DiagnosticLogTests test_cleanupRemovesExpiredLogsButKeepsRecent]' passed (0.002 seconds).
+Test Case '-[QuiteNoteTests.DiagnosticLogTests test_log_writesLineWithTimestampLevelAndCategory]' started.
+Test Case '-[QuiteNoteTests.DiagnosticLogTests test_log_writesLineWithTimestampLevelAndCategory]' passed (0.001 seconds).
+Test Suite 'DiagnosticLogTests' passed at 2026-10-20 12:54:57.569.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.005 (0.005) seconds
+Test Suite 'DirectPastePermissionDecisionTests' started at 2026-10-20 12:54:57.569.
+Test Case '-[QuiteNoteTests.DirectPastePermissionDecisionTests testMissingAccessibilityCopiesBeforeOfferingPermission]' started.
+Test Case '-[QuiteNoteTests.DirectPastePermissionDecisionTests testMissingAccessibilityCopiesBeforeOfferingPermission]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.DirectPastePermissionDecisionTests testTrustedAccessibilityPastesDirectly]' started.
+Test Case '-[QuiteNoteTests.DirectPastePermissionDecisionTests testTrustedAccessibilityPastesDirectly]' passed (0.000 seconds).
+Test Suite 'DirectPastePermissionDecisionTests' passed at 2026-10-20 12:54:57.570.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.000 (0.000) seconds
+Test Suite 'GlobalHotkeyRecorderRouteTests' started at 2026-10-20 12:54:57.570.
+Test Case '-[QuiteNoteTests.GlobalHotkeyRecorderRouteTests test录制态热键路由到录制器而不执行原动作]' started.
+Test Case '-[QuiteNoteTests.GlobalHotkeyRecorderRouteTests test录制态热键路由到录制器而不执行原动作]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.GlobalHotkeyRecorderRouteTests test探针态下refresh守卫生效]' started.
+Test Case '-[QuiteNoteTests.GlobalHotkeyRecorderRouteTests test探针态下refresh守卫生效]' passed (0.005 seconds).
+Test Case '-[QuiteNoteTests.GlobalHotkeyRecorderRouteTests test探针注册与注销闭环]' started.
+Test Case '-[QuiteNoteTests.GlobalHotkeyRecorderRouteTests test探针注册与注销闭环]' passed (0.001 seconds).
+Test Suite 'GlobalHotkeyRecorderRouteTests' passed at 2026-10-20 12:54:57.576.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.006 (0.006) seconds
+Test Suite 'LauncherCalculatorTests' started at 2026-10-20 12:54:57.576.
+Test Case '-[QuiteNoteTests.LauncherCalculatorTests testFormatResult]' started.
+Test Case '-[QuiteNoteTests.LauncherCalculatorTests testFormatResult]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.LauncherCalculatorTests testLooksLikeExpression]' started.
+Test Case '-[QuiteNoteTests.LauncherCalculatorTests testLooksLikeExpression]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.LauncherCalculatorTests test一元正负与连续运算]' started.
+Test Case '-[QuiteNoteTests.LauncherCalculatorTests test一元正负与连续运算]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.LauncherCalculatorTests test上标平方立方]' started.
+Test Case '-[QuiteNoteTests.LauncherCalculatorTests test上标平方立方]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.LauncherCalculatorTests test全角运算符]' started.
+Test Case '-[QuiteNoteTests.LauncherCalculatorTests test全角运算符]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.LauncherCalculatorTests test加减乘除]' started.
+Test Case '-[QuiteNoteTests.LauncherCalculatorTests test加减乘除]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.LauncherCalculatorTests test小数]' started.
+Test Case '-[QuiteNoteTests.LauncherCalculatorTests test小数]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.LauncherCalculatorTests test常量e和π]' started.
+Test Case '-[QuiteNoteTests.LauncherCalculatorTests test常量e和π]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.LauncherCalculatorTests test幂优先级高于乘除与负号]' started.
+Test Case '-[QuiteNoteTests.LauncherCalculatorTests test幂优先级高于乘除与负号]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.LauncherCalculatorTests test幂右结合]' started.
+Test Case '-[QuiteNoteTests.LauncherCalculatorTests test幂右结合]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.LauncherCalculatorTests test幂运算]' started.
+Test Case '-[QuiteNoteTests.LauncherCalculatorTests test幂运算]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.LauncherCalculatorTests test平方根]' started.
+Test Case '-[QuiteNoteTests.LauncherCalculatorTests test平方根]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.LauncherCalculatorTests test括号改变优先级]' started.
+Test Case '-[QuiteNoteTests.LauncherCalculatorTests test括号改变优先级]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.LauncherCalculatorTests test残缺与非法表达式返回nil]' started.
+Test Case '-[QuiteNoteTests.LauncherCalculatorTests test残缺与非法表达式返回nil]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.LauncherCalculatorTests test混合高级表达式]' started.
+Test Case '-[QuiteNoteTests.LauncherCalculatorTests test混合高级表达式]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.LauncherCalculatorTests test运算符优先级]' started.
+Test Case '-[QuiteNoteTests.LauncherCalculatorTests test运算符优先级]' passed (0.000 seconds).
+Test Suite 'LauncherCalculatorTests' passed at 2026-10-20 12:54:57.581.
+	 Executed 16 tests, with 0 failures (0 unexpected) in 0.003 (0.004) seconds
+Test Suite 'LauncherCommandTests' started at 2026-10-20 12:54:57.581.
+Test Case '-[QuiteNoteTests.LauncherCommandTests test中文_搜关机]' started.
+Test Case '-[QuiteNoteTests.LauncherCommandTests test中文_搜关机]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.LauncherCommandTests test全拼_搜suoping命中锁屏]' started.
+Test Case '-[QuiteNoteTests.LauncherCommandTests test全拼_搜suoping命中锁屏]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.LauncherCommandTests test多token全命中才保留]' started.
+Test Case '-[QuiteNoteTests.LauncherCommandTests test多token全命中才保留]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.LauncherCommandTests test废纸篓首字母前缀_搜fzl]' started.
+Test Case '-[QuiteNoteTests.LauncherCommandTests test废纸篓首字母前缀_搜fzl]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.LauncherCommandTests test拼音首字母_搜sp命中锁屏]' started.
+Test Case '-[QuiteNoteTests.LauncherCommandTests test拼音首字母_搜sp命中锁屏]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.LauncherCommandTests test无命中返回空]' started.
+Test Case '-[QuiteNoteTests.LauncherCommandTests test无命中返回空]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.LauncherCommandTests test破坏性命令标记]' started.
+Test Case '-[QuiteNoteTests.LauncherCommandTests test破坏性命令标记]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.LauncherCommandTests test空查询不返回命令]' started.
+Test Case '-[QuiteNoteTests.LauncherCommandTests test空查询不返回命令]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.LauncherCommandTests test英文别名_搜sleep和trash]' started.
+Test Case '-[QuiteNoteTests.LauncherCommandTests test英文别名_搜sleep和trash]' passed (0.000 seconds).
+Test Suite 'LauncherCommandTests' passed at 2026-10-20 12:54:57.583.
+	 Executed 9 tests, with 0 failures (0 unexpected) in 0.001 (0.002) seconds
+Test Suite 'LauncherFileTests' started at 2026-10-20 12:54:57.583.
+Test Case '-[QuiteNoteTests.LauncherFileTests testLauncherItem文件身份]' started.
+Test Case '-[QuiteNoteTests.LauncherFileTests testLauncherItem文件身份]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.LauncherFileTests test兜底扫描_家目录Applications必命中]' started.
+Test Case '-[QuiteNoteTests.LauncherFileTests test兜底扫描_家目录Applications必命中]' passed (0.002 seconds).
+Test Case '-[QuiteNoteTests.LauncherFileTests test文件条目徽标与身份]' started.
+Test Case '-[QuiteNoteTests.LauncherFileTests test文件条目徽标与身份]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.LauncherFileTests test文件查询词提取]' started.
+Test Case '-[QuiteNoteTests.LauncherFileTests test文件查询词提取]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.LauncherFileTests test文件模式判定]' started.
+Test Case '-[QuiteNoteTests.LauncherFileTests test文件模式判定]' passed (0.000 seconds).
+Test Suite 'LauncherFileTests' passed at 2026-10-20 12:54:57.586.
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.003 (0.003) seconds
+Test Suite 'LauncherQuitServiceTests' started at 2026-10-20 12:54:57.586.
+Test Case '-[QuiteNoteTests.LauncherQuitServiceTests test无匹配返回空数组而非nil]' started.
+Test Case '-[QuiteNoteTests.LauncherQuitServiceTests test无匹配返回空数组而非nil]' passed (0.009 seconds).
+Test Case '-[QuiteNoteTests.LauncherQuitServiceTests test未触发返回nil]' started.
+Test Case '-[QuiteNoteTests.LauncherQuitServiceTests test未触发返回nil]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.LauncherQuitServiceTests test退出关键词触发]' started.
+Test Case '-[QuiteNoteTests.LauncherQuitServiceTests test退出关键词触发]' passed (0.000 seconds).
+Test Suite 'LauncherQuitServiceTests' passed at 2026-10-20 12:54:57.596.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.010 (0.010) seconds
+Test Suite 'LauncherScopeTests' started at 2026-10-20 12:54:57.596.
+Test Case '-[QuiteNoteTests.LauncherScopeTests test兜底扫描_第五层不递归]' started.
+Test Case '-[QuiteNoteTests.LauncherScopeTests test兜底扫描_第五层不递归]' passed (0.002 seconds).
+Test Case '-[QuiteNoteTests.LauncherScopeTests test兜底扫描_递归两层命中深层文件]' started.
+Test Case '-[QuiteNoteTests.LauncherScopeTests test兜底扫描_递归两层命中深层文件]' passed (0.003 seconds).
+Test Case '-[QuiteNoteTests.LauncherScopeTests test单独范围词_只亮行不进入]' started.
+Test Case '-[QuiteNoteTests.LauncherScopeTests test单独范围词_只亮行不进入]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.LauncherScopeTests test索引_损坏数据返回nil]' started.
+Test Case '-[QuiteNoteTests.LauncherScopeTests test索引_损坏数据返回nil]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.LauncherScopeTests test索引编解码往返与内存过滤_文件夹优先]' started.
+Test Case '-[QuiteNoteTests.LauncherScopeTests test索引编解码往返与内存过滤_文件夹优先]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.LauncherScopeTests test英文与拼音关键词]' started.
+Test Case '-[QuiteNoteTests.LauncherScopeTests test英文与拼音关键词]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.LauncherScopeTests test范围词加空格加词_直接进入]' started.
+Test Case '-[QuiteNoteTests.LauncherScopeTests test范围词加空格加词_直接进入]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.LauncherScopeTests test进入后term可转文件前缀]' started.
+Test Case '-[QuiteNoteTests.LauncherScopeTests test进入后term可转文件前缀]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.LauncherScopeTests test非范围词不误触]' started.
+Test Case '-[QuiteNoteTests.LauncherScopeTests test非范围词不误触]' passed (0.000 seconds).
+Test Suite 'LauncherScopeTests' passed at 2026-10-20 12:54:57.603.
+	 Executed 9 tests, with 0 failures (0 unexpected) in 0.006 (0.007) seconds
+Test Suite 'LauncherSymbolTests' started at 2026-10-20 12:54:57.603.
+Test Case '-[QuiteNoteTests.LauncherSymbolTests testSymbolItem身份与内容]' started.
+Test Case '-[QuiteNoteTests.LauncherSymbolTests testSymbolItem身份与内容]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.LauncherSymbolTests test符号库搜索_触发词反查必命中]' started.
+Test Case '-[QuiteNoteTests.LauncherSymbolTests test符号库搜索_触发词反查必命中]' passed (0.000 seconds).
+Test Suite 'LauncherSymbolTests' passed at 2026-10-20 12:54:57.604.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'LauncherTextItemTests' started at 2026-10-20 12:54:57.604.
+Test Case '-[QuiteNoteTests.LauncherTextItemTests testCollectCacheIsReusedUntilClipboardVersionChanges]' started.
+Test Case '-[QuiteNoteTests.LauncherTextItemTests testCollectCacheIsReusedUntilClipboardVersionChanges]' passed (0.002 seconds).
+Test Case '-[QuiteNoteTests.LauncherTextItemTests test内容包含兜底]' started.
+Test Case '-[QuiteNoteTests.LauncherTextItemTests test内容包含兜底]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.LauncherTextItemTests test单行内容详情为空]' started.
+Test Case '-[QuiteNoteTests.LauncherTextItemTests test单行内容详情为空]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.LauncherTextItemTests test图片复制到剪贴板]' started.
+Test Case '-[QuiteNoteTests.LauncherTextItemTests test图片复制到剪贴板]' passed (0.002 seconds).
+Test Case '-[QuiteNoteTests.LauncherTextItemTests test图片条目构造]' started.
+Test Case '-[QuiteNoteTests.LauncherTextItemTests test图片条目构造]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.LauncherTextItemTests test多token全命中才保留]' started.
+Test Case '-[QuiteNoteTests.LauncherTextItemTests test多token全命中才保留]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.LauncherTextItemTests test标题前缀与拼音匹配]' started.
+Test Case '-[QuiteNoteTests.LauncherTextItemTests test标题前缀与拼音匹配]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.LauncherTextItemTests test空token不匹配]' started.
+Test Case '-[QuiteNoteTests.LauncherTextItemTests test空token不匹配]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.LauncherTextItemTests test空白行被过滤]' started.
+Test Case '-[QuiteNoteTests.LauncherTextItemTests test空白行被过滤]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.LauncherTextItemTests test贴纸颜色标记剥离]' started.
+Test Case '-[QuiteNoteTests.LauncherTextItemTests test贴纸颜色标记剥离]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.LauncherTextItemTests test闪记_副标题带溯源信息_类型来源与相对时间]' started.
+Test Case '-[QuiteNoteTests.LauncherTextItemTests test闪记_副标题带溯源信息_类型来源与相对时间]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.LauncherTextItemTests test闪记_链接免点星全量收录_文本须点星]' started.
+Test Case '-[QuiteNoteTests.LauncherTextItemTests test闪记_链接免点星全量收录_文本须点星]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.LauncherTextItemTests test闪记收藏_空内容跳过]' started.
+Test Case '-[QuiteNoteTests.LauncherTextItemTests test闪记收藏_空内容跳过]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.LauncherTextItemTests test闪记收藏_链接标题即URL_可按域名搜索]' started.
+Test Case '-[QuiteNoteTests.LauncherTextItemTests test闪记收藏_链接标题即URL_可按域名搜索]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.LauncherTextItemTests test首行作标题_剩余作详情]' started.
+Test Case '-[QuiteNoteTests.LauncherTextItemTests test首行作标题_剩余作详情]' passed (0.000 seconds).
+Test Suite 'LauncherTextItemTests' passed at 2026-10-20 12:54:57.612.
+	 Executed 15 tests, with 0 failures (0 unexpected) in 0.006 (0.007) seconds
+Test Suite 'LauncherWebSearchTests' started at 2026-10-20 12:54:57.612.
+Test Case '-[QuiteNoteTests.LauncherWebSearchTests testURL转义中文]' started.
+Test Case '-[QuiteNoteTests.LauncherWebSearchTests testURL转义中文]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.LauncherWebSearchTests test中文关键词_Google搜索]' started.
+Test Case '-[QuiteNoteTests.LauncherWebSearchTests test中文关键词_Google搜索]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.LauncherWebSearchTests test中文关键词_百度]' started.
+Test Case '-[QuiteNoteTests.LauncherWebSearchTests test中文关键词_百度]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.LauncherWebSearchTests test无空格或无词不触发]' started.
+Test Case '-[QuiteNoteTests.LauncherWebSearchTests test无空格或无词不触发]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.LauncherWebSearchTests test英文关键词_github与npm]' started.
+Test Case '-[QuiteNoteTests.LauncherWebSearchTests test英文关键词_github与npm]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.LauncherWebSearchTests test英文词加空格触发搜索是预期行为]' started.
+Test Case '-[QuiteNoteTests.LauncherWebSearchTests test英文词加空格触发搜索是预期行为]' passed (0.000 seconds).
+Test Suite 'LauncherWebSearchTests' passed at 2026-10-20 12:54:57.613.
+	 Executed 6 tests, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'MagpieCatalogServiceTests' started at 2026-10-20 12:54:57.613.
+Test Case '-[QuiteNoteTests.MagpieCatalogServiceTests testLoadsCatalogAndSortsModels]' started.
+Test Case '-[QuiteNoteTests.MagpieCatalogServiceTests testLoadsCatalogAndSortsModels]' passed (0.006 seconds).
+Test Case '-[QuiteNoteTests.MagpieCatalogServiceTests testMissingModalitiesDefaultsToTextOnlyModel]' started.
+Test Case '-[QuiteNoteTests.MagpieCatalogServiceTests testMissingModalitiesDefaultsToTextOnlyModel]' passed (0.001 seconds).
+Test Case '-[QuiteNoteTests.MagpieCatalogServiceTests testRejectsInvalidURL]' started.
+Test Case '-[QuiteNoteTests.MagpieCatalogServiceTests testRejectsInvalidURL]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.MagpieCatalogServiceTests testRejectsNonMagpieService]' started.
+Test Case '-[QuiteNoteTests.MagpieCatalogServiceTests testRejectsNonMagpieService]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.MagpieCatalogServiceTests testReportsEmptyCatalog]' started.
+Test Case '-[QuiteNoteTests.MagpieCatalogServiceTests testReportsEmptyCatalog]' passed (0.001 seconds).
+Test Case '-[QuiteNoteTests.MagpieCatalogServiceTests testReportsHTTPFailure]' started.
+Test Case '-[QuiteNoteTests.MagpieCatalogServiceTests testReportsHTTPFailure]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.MagpieCatalogServiceTests testReportsUnreachableGatewayWithActionableMessage]' started.
+Test Case '-[QuiteNoteTests.MagpieCatalogServiceTests testReportsUnreachableGatewayWithActionableMessage]' passed (0.001 seconds).
+Test Suite 'MagpieCatalogServiceTests' passed at 2026-10-20 12:54:57.622.
+	 Executed 7 tests, with 0 failures (0 unexpected) in 0.009 (0.010) seconds
+Test Suite 'MosaicCropRectTests' started at 2026-10-20 12:54:57.623.
+Test Case '-[QuiteNoteTests.MosaicCropRectTests testMosaicOnBottomHalfSamplesBottomPixels]' started.
+Test Case '-[QuiteNoteTests.MosaicCropRectTests testMosaicOnBottomHalfSamplesBottomPixels]' passed (0.001 seconds).
+Test Case '-[QuiteNoteTests.MosaicCropRectTests testMosaicOnTopHalfSamplesTopPixels]' started.
+Test Case '-[QuiteNoteTests.MosaicCropRectTests testMosaicOnTopHalfSamplesTopPixels]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.MosaicCropRectTests testScaleConversionWithoutFlip]' started.
+Test Case '-[QuiteNoteTests.MosaicCropRectTests testScaleConversionWithoutFlip]' passed (0.000 seconds).
+Test Suite 'MosaicCropRectTests' passed at 2026-10-20 12:54:57.624.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'MosaicEndToEndTests' started at 2026-10-20 12:54:57.624.
+Test Case '-[QuiteNoteTests.MosaicEndToEndTests testMosaicOnBottomHalfRendersBottomContentColors]' started.
+Test Case '-[QuiteNoteTests.MosaicEndToEndTests testMosaicOnBottomHalfRendersBottomContentColors]' passed (0.020 seconds).
+Test Case '-[QuiteNoteTests.MosaicEndToEndTests testMosaicOnTopHalfRendersTopContentColors]' started.
+Test Case '-[QuiteNoteTests.MosaicEndToEndTests testMosaicOnTopHalfRendersTopContentColors]' passed (0.002 seconds).
+Test Case '-[QuiteNoteTests.MosaicEndToEndTests testZZDiagnostics]' started.
+Test Case '-[QuiteNoteTests.MosaicEndToEndTests testZZDiagnostics]' passed (0.007 seconds).
+Test Suite 'MosaicEndToEndTests' passed at 2026-10-20 12:54:57.653.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.028 (0.029) seconds
+Test Suite 'OCRIntegrationTests' started at 2026-10-20 12:54:57.653.
+Test Case '-[QuiteNoteTests.OCRIntegrationTests testRealRecognitionOnRenderedText]' started.
+Test Case '-[QuiteNoteTests.OCRIntegrationTests testRealRecognitionOnRenderedText]' passed (0.610 seconds).
+Test Suite 'OCRIntegrationTests' passed at 2026-10-20 12:54:58.263.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.610 (0.610) seconds
+Test Suite 'OCRTextAssemblyTests' started at 2026-10-20 12:54:58.263.
+Test Case '-[QuiteNoteTests.OCRTextAssemblyTests testEmptyInputReturnsEmpty]' started.
+Test Case '-[QuiteNoteTests.OCRTextAssemblyTests testEmptyInputReturnsEmpty]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.OCRTextAssemblyTests testLineGroupingTolerance]' started.
+Test Case '-[QuiteNoteTests.OCRTextAssemblyTests testLineGroupingTolerance]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.OCRTextAssemblyTests testMultipleLinesSortedTopToBottom]' started.
+Test Case '-[QuiteNoteTests.OCRTextAssemblyTests testMultipleLinesSortedTopToBottom]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.OCRTextAssemblyTests testSameLineFragmentsMergedLeftToRight]' started.
+Test Case '-[QuiteNoteTests.OCRTextAssemblyTests testSameLineFragmentsMergedLeftToRight]' passed (0.000 seconds).
+Test Suite 'OCRTextAssemblyTests' passed at 2026-10-20 12:54:58.264.
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'RecordSearcherTests' started at 2026-10-20 12:54:58.264.
+Test Case '-[QuiteNoteTests.RecordSearcherTests testCatastrophicRegexDoesNotHangForever]' started.
+Test Case '-[QuiteNoteTests.RecordSearcherTests testCatastrophicRegexDoesNotHangForever]' passed (1.006 seconds).
+Test Case '-[QuiteNoteTests.RecordSearcherTests testEmptyQueryReturnsAllRecords]' started.
+Test Case '-[QuiteNoteTests.RecordSearcherTests testEmptyQueryReturnsAllRecords]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.RecordSearcherTests testHeavySearchDoesNotBlockMainThread]' started.
+Test Case '-[QuiteNoteTests.RecordSearcherTests testHeavySearchDoesNotBlockMainThread]' passed (0.371 seconds).
+Test Case '-[QuiteNoteTests.RecordSearcherTests testNewSearchInvalidatesStaleResults]' started.
+Test Case '-[QuiteNoteTests.RecordSearcherTests testNewSearchInvalidatesStaleResults]' passed (1.208 seconds).
+Test Case '-[QuiteNoteTests.RecordSearcherTests testRegexSearchMatchesValidPatternAndFallsBackOnInvalid]' started.
+Test Case '-[QuiteNoteTests.RecordSearcherTests testRegexSearchMatchesValidPatternAndFallsBackOnInvalid]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.RecordSearcherTests testSearchFindsMatchesAcrossFieldsCaseInsensitive]' started.
+Test Case '-[QuiteNoteTests.RecordSearcherTests testSearchFindsMatchesAcrossFieldsCaseInsensitive]' passed (0.001 seconds).
+Test Suite 'RecordSearcherTests' passed at 2026-10-20 12:55:00.851.
+	 Executed 6 tests, with 0 failures (0 unexpected) in 2.586 (2.587) seconds
+Test Suite 'RecordStoreSearchTests' started at 2026-10-20 12:55:00.851.
+Test Case '-[QuiteNoteTests.RecordStoreSearchTests testDebouncedSearchRecordsOnlyExecutedQueryInHistory]' started.
+Test Case '-[QuiteNoteTests.RecordStoreSearchTests testDebouncedSearchRecordsOnlyExecutedQueryInHistory]' passed (0.105 seconds).
+Test Suite 'RecordStoreSearchTests' passed at 2026-10-20 12:55:00.956.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.105 (0.105) seconds
+Test Suite 'RecordingFileFinalizerTests' started at 2026-10-20 12:55:00.956.
+Test Case '-[QuiteNoteTests.RecordingFileFinalizerTests testFinalizeCreatesMissingDirectory]' started.
+Test Case '-[QuiteNoteTests.RecordingFileFinalizerTests testFinalizeCreatesMissingDirectory]' passed (0.002 seconds).
+Test Case '-[QuiteNoteTests.RecordingFileFinalizerTests testFinalizeDoesNotOverwriteExistingFile]' started.
+Test Case '-[QuiteNoteTests.RecordingFileFinalizerTests testFinalizeDoesNotOverwriteExistingFile]' passed (0.002 seconds).
+Test Case '-[QuiteNoteTests.RecordingFileFinalizerTests testFinalizeEditedDoesNotOverwritePreviousEdit]' started.
+Test Case '-[QuiteNoteTests.RecordingFileFinalizerTests testFinalizeEditedDoesNotOverwritePreviousEdit]' passed (0.001 seconds).
+Test Case '-[QuiteNoteTests.RecordingFileFinalizerTests testFinalizeEditedKeepsSourceAndUsesDistinctName]' started.
+Test Case '-[QuiteNoteTests.RecordingFileFinalizerTests testFinalizeEditedKeepsSourceAndUsesDistinctName]' passed (0.001 seconds).
+Test Case '-[QuiteNoteTests.RecordingFileFinalizerTests testFinalizeMovesFileWithRecordingName]' started.
+Test Case '-[QuiteNoteTests.RecordingFileFinalizerTests testFinalizeMovesFileWithRecordingName]' passed (0.001 seconds).
+Test Suite 'RecordingFileFinalizerTests' passed at 2026-10-20 12:55:00.964.
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.007 (0.007) seconds
+Test Suite 'RecordingGeometryTests' started at 2026-10-20 12:55:00.964.
+Test Case '-[QuiteNoteTests.RecordingGeometryTests testBitRate720p]' started.
+Test Case '-[QuiteNoteTests.RecordingGeometryTests testBitRate720p]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.RecordingGeometryTests testBitRateClampedToMaximum]' started.
+Test Case '-[QuiteNoteTests.RecordingGeometryTests testBitRateClampedToMaximum]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.RecordingGeometryTests testBitRateClampedToMinimum]' started.
+Test Case '-[QuiteNoteTests.RecordingGeometryTests testBitRateClampedToMinimum]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.RecordingGeometryTests testCrossScreenSelectionClampedToSingleScreen]' started.
+Test Case '-[QuiteNoteTests.RecordingGeometryTests testCrossScreenSelectionClampedToSingleScreen]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.RecordingGeometryTests testLocalToAppKitGlobalOnMainScreen]' started.
+Test Case '-[QuiteNoteTests.RecordingGeometryTests testLocalToAppKitGlobalOnMainScreen]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.RecordingGeometryTests testLocalToAppKitGlobalOnSecondaryScreen]' started.
+Test Case '-[QuiteNoteTests.RecordingGeometryTests testLocalToAppKitGlobalOnSecondaryScreen]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.RecordingGeometryTests testPixelSizeNeverBelowTwo]' started.
+Test Case '-[QuiteNoteTests.RecordingGeometryTests testPixelSizeNeverBelowTwo]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.RecordingGeometryTests testPixelSizeOneXDisplay]' started.
+Test Case '-[QuiteNoteTests.RecordingGeometryTests testPixelSizeOneXDisplay]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.RecordingGeometryTests testPixelSizeRetinaEvenRounding]' started.
+Test Case '-[QuiteNoteTests.RecordingGeometryTests testPixelSizeRetinaEvenRounding]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.RecordingGeometryTests testSelectionCompletelyOutsideReturnsZero]' started.
+Test Case '-[QuiteNoteTests.RecordingGeometryTests testSelectionCompletelyOutsideReturnsZero]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.RecordingGeometryTests testSelectionInsideScreenPassesThrough]' started.
+Test Case '-[QuiteNoteTests.RecordingGeometryTests testSelectionInsideScreenPassesThrough]' passed (0.000 seconds).
+Test Suite 'RecordingGeometryTests' passed at 2026-10-20 12:55:00.966.
+	 Executed 11 tests, with 0 failures (0 unexpected) in 0.001 (0.002) seconds
+Test Suite 'RecordingSnapTests' started at 2026-10-20 12:55:00.966.
+Test Case '-[QuiteNoteTests.RecordingSnapTests testDoesNotSnapOutsideThreshold]' started.
+Test Case '-[QuiteNoteTests.RecordingSnapTests testDoesNotSnapOutsideThreshold]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.RecordingSnapTests testIgnoresCandidatesOutsideLegalTrimRange]' started.
+Test Case '-[QuiteNoteTests.RecordingSnapTests testIgnoresCandidatesOutsideLegalTrimRange]' passed (0.001 seconds).
+Test Case '-[QuiteNoteTests.RecordingSnapTests testSnapsWhenDraggingTowardBoundaryFromLeftToRight]' started.
+Test Case '-[QuiteNoteTests.RecordingSnapTests testSnapsWhenDraggingTowardBoundaryFromLeftToRight]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.RecordingSnapTests testSnapsWhenDraggingTowardBoundaryFromRightToLeft]' started.
+Test Case '-[QuiteNoteTests.RecordingSnapTests testSnapsWhenDraggingTowardBoundaryFromRightToLeft]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.RecordingSnapTests testUsesNarrowSnapWindowToAvoidStickyDragging]' started.
+Test Case '-[QuiteNoteTests.RecordingSnapTests testUsesNarrowSnapWindowToAvoidStickyDragging]' passed (0.000 seconds).
+Test Suite 'RecordingSnapTests' passed at 2026-10-20 12:55:00.968.
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.001 (0.002) seconds
+Test Suite 'RecordingTimingTests' started at 2026-10-20 12:55:00.968.
+Test Case '-[QuiteNoteTests.RecordingTimingTests testAccumulatedPauseAddsGap]' started.
+Test Case '-[QuiteNoteTests.RecordingTimingTests testAccumulatedPauseAddsGap]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.RecordingTimingTests testAccumulatedPauseIgnoresInvalidClock]' started.
+Test Case '-[QuiteNoteTests.RecordingTimingTests testAccumulatedPauseIgnoresInvalidClock]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.RecordingTimingTests testEffectivePTSShiftsBackByPausedDuration]' started.
+Test Case '-[QuiteNoteTests.RecordingTimingTests testEffectivePTSShiftsBackByPausedDuration]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.RecordingTimingTests testPadPTSExcludesPausedHoles]' started.
+Test Case '-[QuiteNoteTests.RecordingTimingTests testPadPTSExcludesPausedHoles]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.RecordingTimingTests testTimelineIsContinuousAcrossPause]' started.
+Test Case '-[QuiteNoteTests.RecordingTimingTests testTimelineIsContinuousAcrossPause]' passed (0.000 seconds).
+Test Suite 'RecordingTimingTests' passed at 2026-10-20 12:55:00.969.
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'ScreenshotEscDecisionTests' started at 2026-10-20 12:55:00.969.
+Test Case '-[QuiteNoteTests.ScreenshotEscDecisionTests testAnnotationsRequireDoublePressWithinWindow]' started.
+Test Case '-[QuiteNoteTests.ScreenshotEscDecisionTests testAnnotationsRequireDoublePressWithinWindow]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.ScreenshotEscDecisionTests testElementsTakePrecedenceOverSelection]' started.
+Test Case '-[QuiteNoteTests.ScreenshotEscDecisionTests testElementsTakePrecedenceOverSelection]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.ScreenshotEscDecisionTests testFreshEntryWithoutSelectionExitsImmediately]' started.
+Test Case '-[QuiteNoteTests.ScreenshotEscDecisionTests testFreshEntryWithoutSelectionExitsImmediately]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.ScreenshotEscDecisionTests testSelectionStageStepsBackBeforeExit]' started.
+Test Case '-[QuiteNoteTests.ScreenshotEscDecisionTests testSelectionStageStepsBackBeforeExit]' passed (0.000 seconds).
+Test Suite 'ScreenshotEscDecisionTests' passed at 2026-10-20 12:55:00.970.
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'ScreenshotExportTests' started at 2026-10-20 12:55:00.970.
+Test Case '-[QuiteNoteTests.ScreenshotExportTests testExportCollisionDoesNotOverwrite]' started.
+Test Case '-[QuiteNoteTests.ScreenshotExportTests testExportCollisionDoesNotOverwrite]' passed (0.016 seconds).
+Test Case '-[QuiteNoteTests.ScreenshotExportTests testExportedFileIsReadableImage]' started.
+Test Case '-[QuiteNoteTests.ScreenshotExportTests testExportedFileIsReadableImage]' passed (0.005 seconds).
+Test Case '-[QuiteNoteTests.ScreenshotExportTests testExportWritesPNGIntoConfiguredDirectory]' started.
+Test Case '-[QuiteNoteTests.ScreenshotExportTests testExportWritesPNGIntoConfiguredDirectory]' passed (0.007 seconds).
+Test Case '-[QuiteNoteTests.ScreenshotExportTests testLegacyPathWithoutBookmarkIsRejectedInsteadOfFallingBack]' started.
+Test Case '-[QuiteNoteTests.ScreenshotExportTests testLegacyPathWithoutBookmarkIsRejectedInsteadOfFallingBack]' passed (0.002 seconds).
+Test Suite 'ScreenshotExportTests' passed at 2026-10-20 12:55:01.001.
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.030 (0.031) seconds
+Test Suite 'SearchIndexServiceTests' started at 2026-10-20 12:55:01.001.
+Test Case '-[QuiteNoteTests.SearchIndexServiceTests testAsyncSearchSupersedesOldResult]' started.
+Test Case '-[QuiteNoteTests.SearchIndexServiceTests testAsyncSearchSupersedesOldResult]' passed (0.304 seconds).
+Test Case '-[QuiteNoteTests.SearchIndexServiceTests testEmptyQueryKeepsPinnedThenRecency]' started.
+Test Case '-[QuiteNoteTests.SearchIndexServiceTests testEmptyQueryKeepsPinnedThenRecency]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.SearchIndexServiceTests testLargeIndexSearchStaysFast]' started.
+Test Case '-[QuiteNoteTests.SearchIndexServiceTests testLargeIndexSearchStaysFast]' passed (0.135 seconds).
+Test Case '-[QuiteNoteTests.SearchIndexServiceTests testPinyinAndBodyFallback]' started.
+Test Case '-[QuiteNoteTests.SearchIndexServiceTests testPinyinAndBodyFallback]' passed (0.002 seconds).
+Test Case '-[QuiteNoteTests.SearchIndexServiceTests testRebuildAndCancelAreAsync]' started.
+Test Case '-[QuiteNoteTests.SearchIndexServiceTests testRebuildAndCancelAreAsync]' passed (0.304 seconds).
+Test Case '-[QuiteNoteTests.SearchIndexServiceTests testRebuildThenBackToBackSearchSeesNewSnapshot]' started.
+Test Case '-[QuiteNoteTests.SearchIndexServiceTests testRebuildThenBackToBackSearchSeesNewSnapshot]' passed (0.001 seconds).
+Test Case '-[QuiteNoteTests.SearchIndexServiceTests testScoreBonusAndSubsequence]' started.
+Test Case '-[QuiteNoteTests.SearchIndexServiceTests testScoreBonusAndSubsequence]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.SearchIndexServiceTests testScoringAndPagination]' started.
+Test Case '-[QuiteNoteTests.SearchIndexServiceTests testScoringAndPagination]' passed (0.000 seconds).
+Test Suite 'SearchIndexServiceTests' passed at 2026-10-20 12:55:01.748.
+	 Executed 8 tests, with 0 failures (0 unexpected) in 0.746 (0.748) seconds
+Test Suite 'SearchPerformanceTests' started at 2026-10-20 12:55:01.748.
+Test Case '-[QuiteNoteTests.SearchPerformanceTests testDeepMatchesArriveInRefinedDelivery]' started.
+Test Case '-[QuiteNoteTests.SearchPerformanceTests testDeepMatchesArriveInRefinedDelivery]' passed (1.679 seconds).
+Test Case '-[QuiteNoteTests.SearchPerformanceTests testDeepScanRunsOnlyOnceAfterTypingSettles]' started.
+Test Case '-[QuiteNoteTests.SearchPerformanceTests testDeepScanRunsOnlyOnceAfterTypingSettles]' passed (1.307 seconds).
+Test Case '-[QuiteNoteTests.SearchPerformanceTests testFoldedTextCacheReuseInvalidationAndEviction]' started.
+Test Case '-[QuiteNoteTests.SearchPerformanceTests testFoldedTextCacheReuseInvalidationAndEviction]' passed (0.001 seconds).
+Test Case '-[QuiteNoteTests.SearchPerformanceTests testLargeContentSearchDeliversPrefixMatchesQuickly]' started.
+Test Case '-[QuiteNoteTests.SearchPerformanceTests testLargeContentSearchDeliversPrefixMatchesQuickly]' passed (0.344 seconds).
+Test Suite 'SearchPerformanceTests' passed at 2026-10-20 12:55:05.080.
+	 Executed 4 tests, with 0 failures (0 unexpected) in 3.331 (3.332) seconds
+Test Suite 'StateManagerTests' started at 2026-10-20 12:55:05.080.
+Test Case '-[QuiteNoteTests.StateManagerTests testNextStepNumberFillsGap]' started.
+Test Case '-[QuiteNoteTests.StateManagerTests testNextStepNumberFillsGap]' passed (0.001 seconds).
+Test Case '-[QuiteNoteTests.StateManagerTests testResetClearsToast]' started.
+Test Case '-[QuiteNoteTests.StateManagerTests testResetClearsToast]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.StateManagerTests testUndoLastElementClearsDanglingSelection]' started.
+Test Case '-[QuiteNoteTests.StateManagerTests testUndoLastElementClearsDanglingSelection]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.StateManagerTests testZUpdateElementSizeClampsOutOfRangeLevel]' started.
+Test Case '-[QuiteNoteTests.StateManagerTests testZUpdateElementSizeClampsOutOfRangeLevel]' passed (0.000 seconds).
+Test Suite 'StateManagerTests' passed at 2026-10-20 12:55:05.082.
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.002 (0.002) seconds
+Test Suite 'StorageIsolationTests' started at 2026-10-20 12:55:05.082.
+Test Case '-[QuiteNoteTests.StorageIsolationTests testDiagnosticCenterUsesIsolatedRoot]' started.
+Test Case '-[QuiteNoteTests.StorageIsolationTests testDiagnosticCenterUsesIsolatedRoot]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.StorageIsolationTests testFileCoordinatorUsesIsolatedRoot]' started.
+Test Case '-[QuiteNoteTests.StorageIsolationTests testFileCoordinatorUsesIsolatedRoot]' passed (0.000 seconds).
+Test Suite 'StorageIsolationTests' passed at 2026-10-20 12:55:05.083.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.000 (0.001) seconds
+Test Suite 'SymbolConfigManagerTests' started at 2026-10-20 12:55:05.083.
+Test Case '-[QuiteNoteTests.SymbolConfigManagerTests testCannotDeleteDefaultErrorCarriesReadableMessage]' started.
+Test Case '-[QuiteNoteTests.SymbolConfigManagerTests testCannotDeleteDefaultErrorCarriesReadableMessage]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.SymbolConfigManagerTests testDefaultSymbolsDirectoryHonorsTestRoot]' started.
+Test Case '-[QuiteNoteTests.SymbolConfigManagerTests testDefaultSymbolsDirectoryHonorsTestRoot]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.SymbolConfigManagerTests testDefaultSymbolsDirectorySeparatesDevVariant]' started.
+Test Case '-[QuiteNoteTests.SymbolConfigManagerTests testDefaultSymbolsDirectorySeparatesDevVariant]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.SymbolConfigManagerTests testDeleteBundleNamedConfigRemovesOriginalFile]' started.
+Test Case '-[QuiteNoteTests.SymbolConfigManagerTests testDeleteBundleNamedConfigRemovesOriginalFile]' passed (0.003 seconds).
+Test Case '-[QuiteNoteTests.SymbolConfigManagerTests testDeleteDefaultConfigThrowsCleanError]' started.
+Test Case '-[QuiteNoteTests.SymbolConfigManagerTests testDeleteDefaultConfigThrowsCleanError]' passed (0.003 seconds).
+Test Case '-[QuiteNoteTests.SymbolConfigManagerTests testDuplicateNameErrorCarriesReadableMessage]' started.
+Test Case '-[QuiteNoteTests.SymbolConfigManagerTests testDuplicateNameErrorCarriesReadableMessage]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.SymbolConfigManagerTests testImportDuplicateNameThrowsCleanErrorInsteadOfCrashing]' started.
+🧪 测试存储隔离已激活: /var/folders/j9/bv0n54t96556fycmy511r2rc0000gn/T/qn-isolated-storage-DBEDE4D3-9DE3-4524-B651-9F6950EB3A3A
+[DEBUG] StickyNoteManager setting up global shortcuts...
+[DEBUG] Successfully registered global hotkey: n (keyCode: 45) with modifiers: NSEventModifierFlags(rawValue: 1179648), id: 5001
+[DEBUG] Successfully registered global hotkey: p (keyCode: 35) with modifiers: NSEventModifierFlags(rawValue: 1572864), id: 5002
+[DEBUG] StickyNoteManager shortcut registration sent to GlobalHotkeyManager
+[SymbolConfigManager] ⚠️ bundle 中未找到 default.yaml
+[SymbolConfigManager] ⚠️ bundle 中未找到 english.yaml
+[SymbolConfigManager] ⚠️ bundle 中未找到 emoji.yaml
+[CoreDataStack] 数据库已配置: QuiteNote.sqlite
+[CoreDataStack] Bundle ID: com.apple.dt.xctest.tool, isDebug: false
+[CoreDataStack] 调试存储隔离: 关闭
+[DEBUG] RecordStore.addRecord 被调用，内容长度: 0, hash: test-image-no-ocr-3E8FB2B0-67E6-4463-9799-D440984C3751, type: image
+[DEBUG] 获取文件大小失败: 未能打开文件“missing.png”，因为它不存在。
+[DEBUG] 记录已插入数据库，ID: BB9AD979-157A-4DFA-837B-1944EA66E205
+[DEBUG] 记录已插入内存数组，当前 records.count: 1
+[DEBUG] Successfully registered global hotkey:   (keyCode: 49) with modifiers: NSEventModifierFlags(rawValue: 524288), id: 4001
+[DEBUG] Unregistered global hotkey ID: 4001
+[DEBUG] Successfully registered global hotkey:   (keyCode: 49) with modifiers: NSEventModifierFlags(rawValue: 1048576), id: 9000
+[DEBUG] Successfully registered global hotkey:   (keyCode: 49) with modifiers: NSEventModifierFlags(rawValue: 131072), id: 9001
+[DEBUG] Successfully registered global hotkey:   (keyCode: 49) with modifiers: NSEventModifierFlags(rawValue: 1179648), id: 9002
+[DEBUG] Successfully registered global hotkey:   (keyCode: 49) with modifiers: NSEventModifierFlags(rawValue: 262144), id: 9003
+[DEBUG] Successfully registered global hotkey:   (keyCode: 49) with modifiers: NSEventModifierFlags(rawValue: 1310720), id: 9004
+[DEBUG] Successfully registered global hotkey:   (keyCode: 49) with modifiers: NSEventModifierFlags(rawValue: 393216), id: 9005
+[DEBUG] Successfully registered global hotkey:   (keyCode: 49) with modifiers: NSEventModifierFlags(rawValue: 1441792), id: 9006
+[DEBUG] Successfully registered global hotkey:   (keyCode: 49) with modifiers: NSEventModifierFlags(rawValue: 524288), id: 9007
+[DEBUG] Successfully registered global hotkey:   (keyCode: 49) with modifiers: NSEventModifierFlags(rawValue: 1572864), id: 9008
+[DEBUG] Successfully registered global hotkey:   (keyCode: 49) with modifiers: NSEventModifierFlags(rawValue: 655360), id: 9009
+[DEBUG] Successfully registered global hotkey:   (keyCode: 49) with modifiers: NSEventModifierFlags(rawValue: 1703936), id: 9010
+[DEBUG] Successfully registered global hotkey:   (keyCode: 49) with modifiers: NSEventModifierFlags(rawValue: 786432), id: 9011
+[DEBUG] Successfully registered global hotkey:   (keyCode: 49) with modifiers: NSEventModifierFlags(rawValue: 1835008), id: 9012
+[DEBUG] Successfully registered global hotkey:   (keyCode: 49) with modifiers: NSEventModifierFlags(rawValue: 917504), id: 9013
+[DEBUG] Successfully registered global hotkey:   (keyCode: 49) with modifiers: NSEventModifierFlags(rawValue: 1966080), id: 9014
+[DEBUG] 录制快捷键：空格探针已注册 15/15
+[DEBUG] Unregistered global hotkey ID: 9000
+[DEBUG] Unregistered global hotkey ID: 9001
+[DEBUG] Unregistered global hotkey ID: 9002
+[DEBUG] Unregistered global hotkey ID: 9003
+[DEBUG] Unregistered global hotkey ID: 9004
+[DEBUG] Unregistered global hotkey ID: 9005
+[DEBUG] Unregistered global hotkey ID: 9006
+[DEBUG] Unregistered global hotkey ID: 9007
+[DEBUG] Unregistered global hotkey ID: 9008
+[DEBUG] Unregistered global hotkey ID: 9009
+[DEBUG] Unregistered global hotkey ID: 9010
+[DEBUG] Unregistered global hotkey ID: 9011
+[DEBUG] Unregistered global hotkey ID: 9012
+[DEBUG] Unregistered global hotkey ID: 9013
+[DEBUG] Unregistered global hotkey ID: 9014
+[DEBUG] Successfully registered global hotkey:   (keyCode: 49) with modifiers: NSEventModifierFlags(rawValue: 1048576), id: 9000
+[DEBUG] Successfully registered global hotkey:   (keyCode: 49) with modifiers: NSEventModifierFlags(rawValue: 131072), id: 9001
+[DEBUG] Successfully registered global hotkey:   (keyCode: 49) with modifiers: NSEventModifierFlags(rawValue: 1179648), id: 9002
+[DEBUG] Successfully registered global hotkey:   (keyCode: 49) with modifiers: NSEventModifierFlags(rawValue: 262144), id: 9003
+[DEBUG] Successfully registered global hotkey:   (keyCode: 49) with modifiers: NSEventModifierFlags(rawValue: 1310720), id: 9004
+[DEBUG] Successfully registered global hotkey:   (keyCode: 49) with modifiers: NSEventModifierFlags(rawValue: 393216), id: 9005
+[DEBUG] Successfully registered global hotkey:   (keyCode: 49) with modifiers: NSEventModifierFlags(rawValue: 1441792), id: 9006
+[DEBUG] Successfully registered global hotkey:   (keyCode: 49) with modifiers: NSEventModifierFlags(rawValue: 524288), id: 9007
+[DEBUG] Successfully registered global hotkey:   (keyCode: 49) with modifiers: NSEventModifierFlags(rawValue: 1572864), id: 9008
+[DEBUG] Successfully registered global hotkey:   (keyCode: 49) with modifiers: NSEventModifierFlags(rawValue: 655360), id: 9009
+[DEBUG] Successfully registered global hotkey:   (keyCode: 49) with modifiers: NSEventModifierFlags(rawValue: 1703936), id: 9010
+[DEBUG] Successfully registered global hotkey:   (keyCode: 49) with modifiers: NSEventModifierFlags(rawValue: 786432), id: 9011
+[DEBUG] Successfully registered global hotkey:   (keyCode: 49) with modifiers: NSEventModifierFlags(rawValue: 1835008), id: 9012
+[DEBUG] Successfully registered global hotkey:   (keyCode: 49) with modifiers: NSEventModifierFlags(rawValue: 917504), id: 9013
+[DEBUG] Successfully registered global hotkey:   (keyCode: 49) with modifiers: NSEventModifierFlags(rawValue: 1966080), id: 9014
+[DEBUG] 录制快捷键：空格探针已注册 15/15
+[DEBUG] Unregistered global hotkey ID: 9000
+[DEBUG] Unregistered global hotkey ID: 9001
+[DEBUG] Unregistered global hotkey ID: 9002
+[DEBUG] Unregistered global hotkey ID: 9003
+[DEBUG] Unregistered global hotkey ID: 9004
+[DEBUG] Unregistered global hotkey ID: 9005
+[DEBUG] Unregistered global hotkey ID: 9006
+[DEBUG] Unregistered global hotkey ID: 9007
+[DEBUG] Unregistered global hotkey ID: 9008
+[DEBUG] Unregistered global hotkey ID: 9009
+[DEBUG] Unregistered global hotkey ID: 9010
+[DEBUG] Unregistered global hotkey ID: 9011
+[DEBUG] Unregistered global hotkey ID: 9012
+[DEBUG] Unregistered global hotkey ID: 9013
+[DEBUG] Unregistered global hotkey ID: 9014
+[SymbolConfigManager] ⚠️ bundle 中未找到 default.yaml
+[SymbolConfigManager] ⚠️ bundle 中未找到 english.yaml
+[SymbolConfigManager] ⚠️ bundle 中未找到 emoji.yaml
+🧪 base.size=(40.0, 20.0), reps=1
+🧪 rep=NSCGImageSnapshotRep pixels=80x40
+🧪 NSImage.cgImage 40x20
+🧪 NSImage.cgImage 顶部行 R=255 B=0（红顶应为 R=255 B=0）
+🧪 成品像素分布（上半部打码）:
+🧪 y00 RRRRRRRRRRRRRRRRRRRR
+🧪 y01 RRRRRRRRRRRRRRRRRRRR
+🧪 y02 RRRRRRRRRRRRRRRRRRRR
+🧪 y03 RRRRRRRRRRRRRRRRRRRR
+🧪 y04 RRRRRRRRRRRRRRRRRRRR
+🧪 y05 RRRRRRRRRRRRRRRRRRRR
+🧪 y06 RRRRRRRRRRRRRRRRRRRR
+🧪 y07 RRRRRRRRRRRRRRRRRRRR
+🧪 y08 RRRRRRRRRRRRRRRRRRRR
+🧪 y09 RRRRRRRRRRRRRRRRRRRR
+🧪 y10 bbbbbbbbbbbbbbbbbbbb
+🧪 y11 bbbbbbbbbbbbbbbbbbbb
+🧪 y12 bbbbbbbbbbbbbbbbbbbb
+🧪 y13 bbbbbbbbbbbbbbbbbbbb
+🧪 y14 bbbbbbbbbbbbbbbbbbbb
+🧪 y15 bbbbbbbbbbbbbbbbbbbb
+🧪 y16 bbbbbbbbbbbbbbbbbbbb
+🧪 y17 bbbbbbbbbbbbbbbbbbbb
+🧪 y18 bbbbbbbbbbbbbbbbbbbb
+🧪 y19 bbbbbbbbbbbbbbbbbbbb
+🧪 OCR 识别结果:
+会议时间：明天下午三点
+QuiteNote OCR Test 1234
+版本 v1.3.0 已发布
+[DEBUG ScreenshotService] 截图已导出: QuiteNote_20261020_125500.png
+[DEBUG ScreenshotService] 截图已导出: QuiteNote_20261020_125500-2.png
+[DEBUG ScreenshotService] 截图已导出: QuiteNote_20261020_125500.png
+[DEBUG ScreenshotService] 截图已导出: QuiteNote_20261020_125500.png
+[SymbolConfig.parse] Starting to parse config dict
+[SymbolConfig.parse] ✅ Found metadata
+[SymbolConfig.parse] Metadata: 表情符号库, enabled: true
+[SymbolConfig.parse] ✅ Global config parsed
+[SymbolConfig.parse] ✅ Found 1 menus
+[SymbolConfig.parse]   Parsing menu: 笑脸, icon: 😊, sort: 1
+[SymbolConfig.parse]     Found 1 symbols
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse] ✅ Successfully parsed 1 menus
+[SymbolConfig.parse]   Menu[0]: 笑脸 | icon: 😊 | 1 symbols
+[SymbolConfig.parse] Starting to parse config dict
+[SymbolConfig.parse] ✅ Found metadata
+[SymbolConfig.parse] Metadata: 表情符号库, enabled: true
+[SymbolConfig.parse] ✅ Global config parsed
+[SymbolConfig.parse] ✅ Found 1 menus
+[SymbolConfig.parse]   Parsing menu: 笑脸, icon: 😊, sort: 1
+[SymbolConfig.parse]     Found 1 symbols
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse] ✅ Successfully parsed 1 menus
+[SymbolConfig.parse]   Menu[0]: 笑脸 | icon: 😊 | 1 symbols
+[SymbolConfig.parse] Starting to parse config dict
+[SymbolConfig.parse] ✅ Found metadata
+[SymbolConfig.parse] Metadata: 默认符号库, enabled: true
+[SymbolConfig.parse] ✅ Global config parsed
+[SymbolConfig.parse] ✅ Found 3 menus
+[SymbolConfig.parse]   Parsing menu: 核心高频, icon: ⭐, sort: 1
+[SymbolConfig.parse]     Found 6 symbols
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]   Parsing menu: 开发技术, icon: 👨‍💻, sort: 2
+[SymbolConfig.parse]     Found 6 symbols
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]   Parsing menu: 产品规划, icon: 📋, sort: 3
+[SymbolConfig.parse]     Found 4 symbols
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse] ✅ Successfully parsed 3 menus
+[SymbolConfig.parse]   Menu[0]: 核心高频 | icon: ⭐ | 6 symbols
+[SymbolConfig.parse]   Menu[1]: 开发技术 | icon: 👨‍💻 | 6 symbols
+[SymbolConfig.parse]   Menu[2]: 产品规划 | icon: 📋 | 4 symbols
+[SymbolConfig.parse] Starting to parse config dict
+[SymbolConfig.parse] ✅ Found metadata
+[SymbolConfig.parse] Metadata: 默认符号库, enabled: true
+[SymbolConfig.parse] ✅ Global config parsed
+[SymbolConfig.parse] ✅ Found 3 menus
+[SymbolConfig.parse]   Parsing menu: 核心高频, icon: ⭐, sort: 1
+[SymbolConfig.parse]     Found 6 symbols
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]   Parsing menu: 开发技术, icon: 👨‍💻, sort: 2
+[SymbolConfig.parse]     Found 6 symbols
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]   Parsing menu: 产品规划, icon: 📋, sort: 3
+[SymbolConfig.parse]     Found 4 symbols
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse] ✅ Successfully parsed 3 menus
+[SymbolConfig.parse]   Menu[0]: 核心高频 | icon: ⭐ | 6 symbols
+[SymbolConfig.parse]   Menu[1]: 开发技术 | icon: 👨‍💻 | 6 symbols
+[SymbolConfig.parse]   Menu[2]: 产品规划 | icon: 📋 | 4 symbols
+[SymbolConfigManager] ⚠️ bundle 中未找到 default.yaml
+[SymbolConfigManager] ⚠️ bundle 中未找到 english.yaml
+[SymbolConfigManager] ⚠️ bundle 中未找到 emoji.yaml
+[SymbolConfig.parse] Starting to parse config dict
+[SymbolConfig.parse] ✅ Found metadata
+[SymbolConfig.parse] Metadata: 默认符号库, enabled: true
+[SymbolConfig.parse] ✅ Global config parsed
+[SymbolConfig.parse] ✅ Found 3 menus
+[SymbolConfig.parse]   Parsing menu: 核心高频, icon: ⭐, sort: 1
+[SymbolConfig.parse]     Found 6 symbols
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]   Parsing menu: 开发技术, icon: 👨‍💻, sort: 2
+[SymbolConfig.parse]     Found 6 symbols
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]   Parsing menu: 产品规划, icon: 📋, sort: 3
+[SymbolConfig.parse]     Found 4 symbols
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse] ✅ Successfully parsed 3 menus
+[SymbolConfig.parse]   Menu[0]: 核心高频 | icon: ⭐ | 6 symbols
+[SymbolConfig.parse]   Menu[1]: 开发技术 | icon: 👨‍💻 | 6 symbols
+[SymbolConfig.parse]   Menu[2]: 产品规划 | icon: 📋 | 4 symbols
+[SymbolConfig.parse] Starting to parse config dict
+[SymbolConfig.parse] ✅ Found metadata
+[SymbolConfig.parse] Metadata: 默认符号库, enabled: true
+[SymbolConfig.parse] ✅ Global config parsed
+[SymbolConfig.parse] ✅ Found 3 menus
+[SymbolConfig.parse]   Parsing menu: 核心高频, icon: ⭐, sort: 1
+[SymbolConfig.parse]     Found 6 symbols
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]   Parsing menu: 开发技术, icon: 👨‍💻, sort: 2
+[SymbolConfig.parse]     Found 6 symbols
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]   Parsing menu: 产品规划, icon: 📋, sort: 3
+[SymbolConfig.parse]     Found 4 symbols
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse] ✅ Successfully parsed 3 menus
+[SymbolConfig.parse]   Menu[0]: 核心高频 | icon: ⭐ | 6 symbols
+[SymbolConfig.parse]   Menu[1]:Test Case '-[QuiteNoteTests.SymbolConfigManagerTests testImportDuplicateNameThrowsCleanErrorInsteadOfCrashing]' passed (0.003 seconds).
+Test Case '-[QuiteNoteTests.SymbolConfigManagerTests testLegacyPlistConfigLoads]' started.
+Test Case '-[QuiteNoteTests.SymbolConfigManagerTests testLegacyPlistConfigLoads]' passed (0.002 seconds).
+Test Case '-[QuiteNoteTests.SymbolConfigManagerTests testLoadConfigsOnEmptyDirectoryTerminatesWithFallback]' started.
+Test Case '-[QuiteNoteTests.SymbolConfigManagerTests testLoadConfigsOnEmptyDirectoryTerminatesWithFallback]' passed (0.001 seconds).
+Test Case '-[QuiteNoteTests.SymbolConfigManagerTests testSaveLoadedConfigOverwritesSameFileWithoutDuplicates]' started.
+Test Case '-[QuiteNoteTests.SymbolConfigManagerTests testSaveLoadedConfigOverwritesSameFileWithoutDuplicates]' passed (0.007 seconds).
+Test Case '-[QuiteNoteTests.SymbolConfigManagerTests testYamlRoundTripHandlesQuotesInContent]' started.
+Test Case '-[QuiteNoteTests.SymbolConfigManagerTests testYamlRoundTripHandlesQuotesInContent]' passed (0.001 seconds).
+Test Case '-[QuiteNoteTests.SymbolConfigManagerTests testYamlRoundTripPreservesConfig]' started.
+ 开发技术 | icon: 👨‍💻 | 6 symbols
+[SymbolConfig.parse]   Menu[2]: 产品规划 | icon: 📋 | 4 symbols
+[SymbolConfig.parse] Starting to parse config dict
+[SymbolConfig.parse] ✅ Found metadata
+[SymbolConfig.parse] Metadata: English Symbols, enabled: true
+[SymbolConfig.parse] ✅ Global config parsed
+[SymbolConfig.parse] ✅ Found 5 menus
+[SymbolConfig.parse]   Parsing menu: Status, icon: 📌, sort: 1
+[SymbolConfig.parse]     Found 8 symbols
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]   Parsing menu: Priority, icon: 🚨, sort: 2
+[SymbolConfig.parse]     Found 5 symbols
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]   Parsing menu: Development, icon: 💻, sort: 3
+[SymbolConfig.parse]     Found 11 symbols
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]   Parsing menu: Communication, icon: 💬, sort: 4
+[SymbolConfig.parse]     Found 10 symbols
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]   Parsing menu: Arrows, icon: ➡️, sort: 5
+[SymbolConfig.parse]     Found 8 symbols
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse] ✅ Successfully parsed 5 menus
+[SymbolConfig.parse]   Menu[0]: Status | icon: 📌 | 8 symbols
+[SymbolConfig.parse]   Menu[1]: Priority | icon: 🚨 | 5 symbols
+[SymbolConfig.parse]   Menu[2]: Development | icon: 💻 | 11 symbols
+[SymbolConfig.parse]   Menu[3]: Communication | icon: 💬 | 10 symbols
+[SymbolConfig.parse]   Menu[4]: Arrows | icon: ➡️ | 8 symbols
+[SymbolConfig.parse] Starting to parse config dict
+[SymbolConfig.parse] ✅ Found metadata
+[SymbolConfig.parse] Metadata: English Symbols, enabled: true
+[SymbolConfig.parse] ✅ Global config parsed
+[SymbolConfig.parse] ✅ Found 5 menus
+[SymbolConfig.parse]   Parsing menu: Status, icon: 📌, sort: 1
+[SymbolConfig.parse]     Found 8 symbols
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]   Parsing menu: Priority, icon: 🚨, sort: 2
+[SymbolConfig.parse]     Found 5 symbols
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]   Parsing menu: Development, icon: 💻, sort: 3
+[SymbolConfig.parse]     Found 11 symbols
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]   Parsing menu: Communication, icon: 💬, sort: 4
+[SymbolConfig.parse]     Found 10 symbols
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]   Parsing menu: Arrows, icon: ➡️, sort: 5
+[SymbolConfig.parse]     Found 8 symbols
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse]       Symbol trigger type: __NSArrayM
+[SymbolConfig.parse] ✅ Successfully parsed 5 menus
+[SymbolConfig.parse]   Menu[0]: Status | icon: 📌 | 8 symbols
+[SymbolConfig.parse]   Menu[1]: Priority | icon: 🚨 | 5 symbols
+[SymbolConfig.parse]   Menu[2]: Development | icon: 💻 | 11 symbols
+[SymbolConfig.parse]   Menu[3]: Communication | icon: 💬 | 10 symbols
+[SymbolConfig.parse]   Menu[4]: Arrows | icon: ➡️ | 8 symbols
+[SymbolConfigManager] ⚠️ bundle 中未找到 default.yaml
+[SymbolConfigManager] ⚠️ bundle 中未找到 english.yaml
+[SymbolConfigManager] ⚠️ bundle 中未找到 emoji.yaml
+[SymbolConfigManager] ⚠️ bundle 中未找到 default.yaml
+[SymbolConfigManager] ⚠️ bundle 中未找到 english.yaml
+[SymbolConfigManager] ⚠️ bundle 中未找到 emoji.yaml
+[SymbolConfig.parse] Starting to parse config dict
+[SymbolConfig.parse] ✅ Found metadata
+[SymbolConfig.parse] Metadata: English Symbols, enabled: true
+[SymbolConfig.parse] ✅ Global config parsed
+[SymbolConfig.parse] ✅ Found 5 menus
+[SymbolConfig.parse]   Parsing menu: Status, icon: 📌, sort: 1
+[SymbolConfig.parse]     Found 8 symbols
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]   Parsing menu: Priority, icon: 🚨, sort: 2
+[SymbolConfig.parse]     Found 5 symbols
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]   Parsing menu: Development, icon: 💻, sort: 3
+[SymbolConfig.parse]     Found 11 symbols
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]   Parsing menu: Communication, icon: 💬, sort: 4
+[SymbolConfig.parse]     Found 10 symbols
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]   Parsing menu: Arrows, icon: ➡️, sort: 5
+[SymbolConfig.parse]     Found 8 symbols
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse] ✅ Successfully parsed 5 menus
+[SymbolConfig.parse]   Menu[0]: Status | icon: 📌 | 8 symbols
+[SymbolConfig.parse]   Menu[1]: Priority | icon: 🚨 | 5 symbols
+[SymbolConfig.parse]   Menu[2]: Development | icon: 💻 | 11 symbols
+[SymbolConfig.parse]   Menu[3]: Communication | icon: 💬 | 10 symbols
+[SymbolConfig.parse]   Menu[4]: Arrows | icon: ➡️ | 8 symbols
+[SymbolConfig.parse] Starting to parse config dict
+[SymbolConfig.parse] ✅ Found metadata
+[SymbolConfig.parse] Metadata: English Symbols, enabled: true
+[SymbolConfig.parse] ✅ Global config parsed
+[SymbolConfig.parse] ✅ Found 5 menus
+[SymbolConfig.parse]   Parsing menu: Status, icon: 📌, sort: 1
+[SymbolConfig.parse]     Found 8 symbols
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]   Parsing menu: Priority, icon: 🚨, sort: 2
+[SymbolConfig.parse]     Found 5 symbols
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]   Parsing menu: Development, icon: 💻, sort: 3
+[SymbolConfig.parse]     Found 11 symbols
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]   Parsing menu: Communication, icon: 💬, sort: 4
+[SymbolConfig.parse]     Found 10 symbols
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]   Parsing menu: Arrows, icon: ➡️, sort: 5
+[SymbolConfig.parse]     Found 8 symbols
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse] ✅ Successfully parsed 5 menus
+[SymbolConfig.parse]   Menu[0]: Status | icon: 📌 | 8 symbols
+[SymbolConfig.parse]   Menu[1]: Priority | icon: 🚨 | 5 symbols
+[SymbolConfig.parse]   Menu[2]: Development | icon: 💻 | 11 symbols
+[SymbolConfig.parse]   Menu[3]: Communication | icon: 💬 | 10 symbols
+[SymbolConfig.parse]   Menu[4]: Arrows | icon: ➡️ | 8 symbols
+[SymbolConfig.from] 开始解析 YAML，长度: 401
+[SymbolConfig.from] ✅ Yams 解析成功，keys: ["metadata", "symbol_menus", "global"]
+[SymbolConfig.parse] Starting to parse config dict
+[SymbolConfig.parse] ✅ Found metadata
+[SymbolConfig.parse] Metadata: 引号库, enabled: true
+[SymbolConfig.parse] ✅ Global config parsed
+[SymbolConfig.parse] ✅ Found 1 menus
+[SymbolConfig.parse]   Parsing menu: 测试, icon: nil, sort: 1
+[SymbolConfig.parse]     Found 2 symbols
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse] ✅ Successfully parsed 1 menus
+[SymbolConfig.parse]   Menu[0]: 测试 | icon: nil | 2 symbols
+[SymbolConfig.from] 开始解析 YAML，长度: 1736
+[SymbolConfig.from] ✅ Yams 解析成功，keys: ["metadata", "symbol_menus", "global"]
+[SymbolConfig.parse] Starting to parse config dict
+[SymbolConfig.parse] ✅ Found metadata
+[SymbolConfig.parse] Metadata: 默认符号库, enabled: true
+[SymbolConfig.parse] ✅ Global config parsed
+[SymbolConfig.parse] ✅ Found 3 menus
+[SymbolConfig.parse]   Parsing menu: 核心高频, icon: ⭐, sort: 1
+[SymbolConfig.parse]     Found 6 symbols
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parsTest Case '-[QuiteNoteTests.SymbolConfigManagerTests testYamlRoundTripPreservesConfig]' passed (0.001 seconds).
+Test Suite 'SymbolConfigManagerTests' passed at 2026-10-20 12:55:05.105.
+	 Executed 12 tests, with 0 failures (0 unexpected) in 0.021 (0.022) seconds
+Test Suite 'SymbolTriggerDetectionTests' started at 2026-10-20 12:55:05.105.
+Test Case '-[QuiteNoteTests.SymbolTriggerDetectionTests testDetect_DefaultPrefixStillWorks]' started.
+Test Case '-[QuiteNoteTests.SymbolTriggerDetectionTests testDetect_DefaultPrefixStillWorks]' passed (0.001 seconds).
+Test Case '-[QuiteNoteTests.SymbolTriggerDetectionTests testDetect_EmojiPrefixChineseTrigger]' started.
+Test Case '-[QuiteNoteTests.SymbolTriggerDetectionTests testDetect_EmojiPrefixChineseTrigger]' passed (0.001 seconds).
+Test Case '-[QuiteNoteTests.SymbolTriggerDetectionTests testDetect_EmojiPrefixProducesSuggestions]' started.
+Test Case '-[QuiteNoteTests.SymbolTriggerDetectionTests testDetect_EmojiPrefixProducesSuggestions]' passed (0.001 seconds).
+Test Case '-[QuiteNoteTests.SymbolTriggerDetectionTests testDetect_EmptyTriggerListsSymbolsOfMatchingConfigOnly]' started.
+Test Case '-[QuiteNoteTests.SymbolTriggerDetectionTests testDetect_EmptyTriggerListsSymbolsOfMatchingConfigOnly]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.SymbolTriggerDetectionTests testDetect_ExactMatchRanksFirst]' started.
+Test Case '-[QuiteNoteTests.SymbolTriggerDetectionTests testDetect_ExactMatchRanksFirst]' passed (0.001 seconds).
+Test Case '-[QuiteNoteTests.SymbolTriggerDetectionTests testDetect_SameContentAcrossConfigsIsDeduplicated]' started.
+Test Case '-[QuiteNoteTests.SymbolTriggerDetectionTests testDetect_SameContentAcrossConfigsIsDeduplicated]' passed (0.001 seconds).
+Test Case '-[QuiteNoteTests.SymbolTriggerDetectionTests testDetect_URLOpeningDoesNotTriggerPanel]' started.
+Test Case '-[QuiteNoteTests.SymbolTriggerDetectionTests testDetect_URLOpeningDoesNotTriggerPanel]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.SymbolTriggerDetectionTests testInsertSymbol_AutoCleanDisabledKeepsMatchedPrefix]' started.
+Test Case '-[QuiteNoteTests.SymbolTriggerDetectionTests testInsertSymbol_AutoCleanDisabledKeepsMatchedPrefix]' passed (0.001 seconds).
+Test Case '-[QuiteNoteTests.SymbolTriggerDetectionTests testInsertSymbol_ReplacesTriggerAndPrefix_PutsCursorAfterSymbol]' started.
+Test Case '-[QuiteNoteTests.SymbolTriggerDetectionTests testInsertSymbol_ReplacesTriggerAndPrefix_PutsCursorAfterSymbol]' passed (0.001 seconds).
+Test Case '-[QuiteNoteTests.SymbolTriggerDetectionTests testLocateTrigger_CJKCharacterBeforePrefixStillTriggers]' started.
+Test Case '-[QuiteNoteTests.SymbolTriggerDetectionTests testLocateTrigger_CJKCharacterBeforePrefixStillTriggers]' passed (0.001 seconds).
+Test Case '-[QuiteNoteTests.SymbolTriggerDetectionTests testLocateTrigger_DigitBeforePrefixIsRejected]' started.
+Test Case '-[QuiteNoteTests.SymbolTriggerDetectionTests testLocateTrigger_DigitBeforePrefixIsRejected]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.SymbolTriggerDetectionTests testLocateTrigger_EmptyPrefixesReturnsNil]' started.
+Test Case '-[QuiteNoteTests.SymbolTriggerDetectionTests testLocateTrigger_EmptyPrefixesReturnsNil]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.SymbolTriggerDetectionTests testLocateTrigger_FindsNearestPrefixAmongMultiple]' started.
+Test Case '-[QuiteNoteTests.SymbolTriggerDetectionTests testLocateTrigger_FindsNearestPrefixAmongMultiple]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.SymbolTriggerDetectionTests testLocateTrigger_LongerPrefixWinsAtSameLocation]' started.
+Test Case '-[QuiteNoteTests.SymbolTriggerDetectionTests testLocateTrigger_LongerPrefixWinsAtSameLocation]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.SymbolTriggerDetectionTests testLocateTrigger_SkipsRejectedOccurrenceToEarlierValidOne]' started.
+Test Case '-[QuiteNoteTests.SymbolTriggerDetectionTests testLocateTrigger_SkipsRejectedOccurrenceToEarlierValidOne]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.SymbolTriggerDetectionTests testLocateTrigger_URLSchemeIsRejectedByWordBoundary]' started.
+Test Case '-[QuiteNoteTests.SymbolTriggerDetectionTests testLocateTrigger_URLSchemeIsRejectedByWordBoundary]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.SymbolTriggerDetectionTests testReplacementRangeMatchesDetectionPosition]' started.
+Test Case '-[QuiteNoteTests.SymbolTriggerDetectionTests testReplacementRangeMatchesDetectionPosition]' passed (0.001 seconds).
+Test Suite 'SymbolTriggerDetectionTests' passed at 2026-10-20 12:55:05.117.
+	 Executed 17 tests, with 0 failures (0 unexpected) in 0.011 (0.013) seconds
+Test Suite 'QuiteNoteTests.xctest' passed at 2026-10-20 12:55:05.118.
+	 Executed 284 tests, with 0 failures (0 unexpected) in 19.928 (19.956) seconds
+Test Suite 'All tests' passed at 2026-10-20 12:55:05.118.
+	 Executed 284 tests, with 0 failures (0 unexpected) in 19.928 (19.957) seconds
+e]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]   Parsing menu: 开发技术, icon: 👨‍💻, sort: 2
+[SymbolConfig.parse]     Found 6 symbols
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]   Parsing menu: 产品规划, icon: 📋, sort: 3
+[SymbolConfig.parse]     Found 4 symbols
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse]       Symbol trigger type: Array<Any>
+[SymbolConfig.parse] ✅ Successfully parsed 3 menus
+[SymbolConfig.parse]   Menu[0]: 核心高频 | icon: ⭐ | 6 symbols
+[SymbolConfig.parse]   Menu[1]: 开发技术 | icon: 👨‍💻 | 6 symbols
+[SymbolConfig.parse]   Menu[2]: 产品规划 | icon: 📋 | 4 symbols
+[SymbolConfigManager] ⚠️ bundle 中未找到 default.yaml
+[SymbolConfigManager] ⚠️ bundle 中未找到 english.yaml
+[SymbolConfigManager] ⚠️ bundle 中未找到 emoji.yaml
+[SymbolConfigManager] ⚠️ bundle 中未找到 default.yaml
+[SymbolConfigManager] ⚠️ bundle 中未找到 english.yaml
+[SymbolConfigManager] ⚠️ bundle 中未找到 emoji.yaml
+[SymbolConfigManager] ⚠️ bundle 中未找到 default.yaml
+[SymbolConfigManager] ⚠️ bundle 中未找到 english.yaml
+[SymbolConfigManager] ⚠️ bundle 中未找到 emoji.yaml
+[SymbolConfigManager] ⚠️ bundle 中未找到 default.yaml
+[SymbolConfigManager] ⚠️ bundle 中未找到 english.yaml
+[SymbolConfigManager] ⚠️ bundle 中未找到 emoji.yaml
+[SymbolConfigManager] ⚠️ bundle 中未找到 default.yaml
+[SymbolConfigManager] ⚠️ bundle 中未找到 english.yaml
+[SymbolConfigManager] ⚠️ bundle 中未找到 emoji.yaml
+[SymbolConfigManager] ⚠️ bundle 中未找到 default.yaml
+[SymbolConfigManager] ⚠️ bundle 中未找到 english.yaml
+[SymbolConfigManager] ⚠️ bundle 中未找到 emoji.yaml
+[SymbolConfigManager] ⚠️ bundle 中未找到 default.yaml
+[SymbolConfigManager] ⚠️ bundle 中未找到 english.yaml
+[SymbolConfigManager] ⚠️ bundle 中未找到 emoji.yaml
+[SymbolConfigManager] ⚠️ bundle 中未找到 default.yaml
+[SymbolConfigManager] ⚠️ bundle 中未找到 english.yaml
+[SymbolConfigManager] ⚠️ bundle 中未找到 emoji.yaml
+[SymbolConfigManager] ⚠️ bundle 中未找到 default.yaml
+[SymbolConfigManager] ⚠️ bundle 中未找到 english.yaml
+[SymbolConfigManager] ⚠️ bundle 中未找到 emoji.yaml
+[SymbolConfigManager] ⚠️ bundle 中未找到 default.yaml
+[SymbolConfigManager] ⚠️ bundle 中未找到 english.yaml
+[SymbolConfigManager] ⚠️ bundle 中未找到 emoji.yaml
+Test Suite 'All tests' started at 2026-10-20 12:55:05.245.
+Test Suite 'QuiteNoteSharedStorageTests.xctest' started at 2026-10-20 12:55:05.246.
+Test Suite 'ClipboardHistoryPersistenceTests' started at 2026-10-20 12:55:05.246.
+Test Case '-[QuiteNoteSharedStorageTests.ClipboardHistoryPersistenceTests testDatabaseOpenFailureIsReportedInsteadOfBeingSwallowed]' started.
+CoreData: error: Failed to stat path '/var/folders/j9/bv0n54t96556fycmy511r2rc0000gn/T/quitenote-persistence-open-error-0F5CDEC7-B9BD-491C-BB3C-A1629199CC46/nested/ClipboardHistory.sqlite', errno 20 / Not a directory.
+CoreData: error: Executing as effective user 501
+CoreData: error:   Sandbox access to file-write-create denied
+CoreData: error: Failed to statfs file; errno 20 / Not a directory.
+CoreData: error: Information for file system
+CoreData: error: ---------------------------
+CoreData: error:   File system type: 		0
+CoreData: error:   File system flags: 		0
+CoreData: error:   Total data blocks: 		0
+CoreData: error:   Free data blocks: 		0
+CoreData: error:   Free blocks for nonsuperuser:	0
+CoreData: error:   Total i-nodes: 			0
+CoreData: error:   File system ID: 		0, 0
+CoreData: error:   Free i-nodes: 			0
+CoreData: error:   Owner UID: 			0
+CoreData: error:   Filesystem type name: 		
+CoreData: error:   Mount on name: 			
+CoreData: error:   Mount from name: 		
+CoreData: error: Executing as effective user 501
+CoreData: error: Information for /var/folders/j9/bv0n54t96556fycmy511r2rc0000gn/T/quitenote-persistence-open-error-0F5CDEC7-B9BD-491C-BB3C-A1629199CC46/nested
+CoreData: error: ---------------------------
+CoreData: error:   File Device ID: 	0
+CoreData: error:   Device ID: 		16777233
+CoreData: error:   File Size: 		15 bytes
+CoreData: error:   File inode: 		1026855479
+CoreData: error:   File user ID: 		501
+CoreData: error:   File group ID: 		20
+CoreData: error:   File Permissions: 	
+CoreData: error: -
+CoreData: error:   644
+CoreData: error:   file is not a symbolic link
+CoreData: error:   Sandbox access to file-write-create allowed
+CoreData: error: Information for file system
+CoreData: error: ---------------------------
+CoreData: error:   File system type: 		0x1a
+CoreData: error:   File system flags: 		0x4909080
+CoreData: error:   MNT_JOURNALED
+CoreData: error:   Total data blocks: 		242837545
+CoreData: error:   Free data blocks: 		7434759
+CoreData: error:   Free blocks for nonsuperuser:	7434759
+CoreData: error:   Total i-nodes: 			307759112
+CoreData: error:   File system ID: 		0x1000011, 0x1a
+CoreData: error:   Free i-nodes: 			297390360
+CoreData: error:   Owner UID: 			0
+CoreData: error:   Filesystem type name: 		apfs
+CoreData: error:   Mount on name: 			/System/Volumes/Data
+CoreData: error:   Mount from name: 		/dev/disk3s5
+CoreData: error: Executing as effective user 501
+CoreData: error: Information for /var/folders/j9/bv0n54t96556fycmy511r2rc0000gn/T/quitenote-persistence-open-error-0F5CDEC7-B9BD-491C-BB3C-A1629199CC46
+CoreData: error: ---------------------------
+CoreData: error:   File Device ID: 	0
+CoreData: error:   Device ID: 		16777233
+CoreData: error:   File Size: 		96 bytes
+CoreData: error:   File inode: 		1026855478
+CoreData: error:   File user ID: 		501
+CoreData: error:   File group ID: 		20
+CoreData: error:   File Permissions: 	
+CoreData: error: d
+CoreData: error:   755
+CoreData: error:   file is not a symbolic link
+CoreData: error:   Sandbox access to file-write-create allowed
+CoreData: error: Executing as effective user 501
+CoreData: error: Information for /var/folders/j9/bv0n54t96556fycmy511r2rc0000gn/T
+CoreData: error: ---------------------------
+CoreData: error:   File Device ID: 	0
+CoreData: error:   Device ID: 		16777233
+CoreData: error:   File Size: 		352288 bytes
+CoreData: error:   File inode: 		255303
+CoreData: error:   File user ID: 		501
+CoreData: error:   File group ID: 		20
+CoreData: error:   File Permissions: 	
+CoreData: error: d
+CoreData: error:   700
+CoreData: error:   file is not a symbolic link
+CoreData: error:   Sandbox access to file-write-create denied
+CoreData: error: Executing as effective user 501
+CoreData: error: Information for /var/folders/j9/bv0n54t96556fycmy511r2rc0000gn
+CoreData: error: ---------------------------
+CoreData: error:   File Device ID: 	0
+CoreData: error:   Device ID: 		16777233
+CoreData: error:   File Size: 		288 bytes
+CoreData: error:   File inode: 		255300
+CoreData: error:   File user ID: 		501
+CoreData: error:   File group ID: 		20
+CoreData: error:   File Permissions: 	
+CoreData: error: d
+CoreData: error:   755
+CoreData: error:   file is not a symbolic link
+CoreData: error:   Sandbox access to file-write-create denied
+CoreData: error: Executing as effective user 501
+CoreData: error: Information for /var/folders/j9
+CoreData: error: ---------------------------
+CoreData: error:   File Device ID: 	0
+CoreData: error:   Device ID: 		16777233
+CoreData: error:   File Size: 		96 bytes
+CoreData: error:   File inode: 		255299
+CoreData: error:   File user ID: 		0
+CoreData: error:   File group ID: 		0
+CoreData: error:   File Permissions: 	
+CoreData: error: d
+CoreData: error:   755
+CoreData: error:   file is not a symbolic link
+CoreData: error:   Sandbox access to file-write-create denied
+CoreData: error: Executing as effective user 501
+CoreData: error: Information for /var/folders
+CoreData: error: ---------------------------
+CoreData: error:   File Device ID: 	0
+CoreData: error:   Device ID: 		16777233
+CoreData: error:   File Size: 		192 bytes
+CoreData: error:   File inode: 		1022019808
+CoreData: error:   File user ID: 		0
+CoreData: error:   File group ID: 		0
+CoreData: error:   File Permissions: 	
+CoreData: error: d
+CoreData: error:   755
+CoreData: error:   file is not a symbolic link
+CoreData: error:   Sandbox access to file-write-create denied
+CoreData: error: Executing as effective user 501
+CoreData: error: Information for /var
+CoreData: error: ---------------------------
+CoreData: error:   File Device ID: 	0
+CoreData: error:   Device ID: 		16777233
+CoreData: error:   File Size: 		1280 bytes
+CoreData: error:   File inode: 		1022004018
+CoreData: error:   File user ID: 		0
+CoreData: error:   File group ID: 		0
+CoreData: error:   File Permissions: 	
+CoreData: error: d
+CoreData: error:   755
+CoreData: error:   file is not a symbolic link
+CoreData: error:   Sandbox access to file-write-create denied
+CoreData: error: Executing as effective user 501
+CoreData: error: Information for /
+CoreData: error: ---------------------------
+CoreData: error:   File Device ID: 	0
+CoreData: error:   Device ID: 		16777233
+CoreData: error:   File Size: 		736 bytes
+CoreData: error:   File inode: 		2
+CoreData: error:   File user ID: 		0
+CoreData: error:   File group ID: 		0
+CoreData: error:   File Permissions: 	
+CoreData: error: d
+CoreData: error:   755
+CoreData: error:   file is not a symbolic link
+CoreData: error:   Sandbox access to file-write-create denied
+CoreData: error: addPersistentStoreWithType:configuration:URL:options:error: returned error NSCocoaErrorDomain (258)
+CoreData: error: userInfo:
+CoreData: error: 	NSFilePath : /var/folders/j9/bv0n54t96556fycmy511r2rc0000gn/T/quitenote-persistence-open-error-0F5CDEC7-B9BD-491C-BB3C-A1629199CC46/nested/ClipboardHistory.sqlite
+CoreData: error: 	reason : Component of path /var/folders/j9/bv0n54t96556fycmy511r2rc0000gn/T/quitenote-persistence-open-error-0F5CDEC7-B9BD-491C-BB3C-A1629199CC46/nested/ClipboardHistory.sqlite is not a directory
+CoreData: error: storeType: SQLite
+CoreData: error: configuration: (null)
+CoreData: error: URL: file:///var/folders/j9/bv0n54t96556fycmy511r2rc0000gn/T/quitenote-persistence-open-error-0F5CDEC7-B9BD-491C-BB3C-A1629199CC46/nested/ClipboardHistory.sqlite
+CoreData: annotation: options:
+CoreData: annotation: 	NSMigratePersistentStoresAutomaticallyOption : 1
+CoreData: annotation: 	NSInferMappingModelAutomaticallyOption : 1
+CoreData: annotation: 	NSPersistentStoreRemoteChangeNotificationOptionKey : 1
+CoreData: annotation: 	NSPersistentHistoryTrackingKey : 1
+CoreData: error: <NSPersistentStoreCoordinator: 0x781447f480>: Attempting recovery from error encountered during addPersistentStore: 0x78144351d0 Error Domain=NSCocoaErrorDomain Code=258 "未能打开该项目，因为文件名称“ClipboardHistory.sqlite”无效。" UserInfo={NSFilePath=/var/folders/j9/bv0n54t96556fycmy511r2rc0000gn/T/quitenote-persistence-open-error-0F5CDEC7-B9BD-491C-BB3C-A1629199CC46/nested/ClipboardHistory.sqlite, reason=Component of path /var/folders/j9/bv0n54t96556fycmy511r2rc0000gn/T/quitenote-persistence-open-error-0F5CDEC7-B9BD-491C-BB3C-A1629199CC46/nested/ClipboardHistory.sqlite is not a directory}
+CoreData: error: Failed to stat path '/var/folders/j9/bv0n54t96556fycmy511r2rc0000gn/T/quitenote-persistence-open-error-0F5CDEC7-B9BD-491C-BB3C-A1629199CC46/nested/ClipboardHistory.sqlite', errno 20 / Not a directory.
+CoreData: error: Executing as effective user 501
+CoreData: error:   Sandbox access to file-write-create denied
+CoreData: error: Failed to statfs file; errno 20 / Not a directory.
+CoreData: error: Information for file system
+CoreData: error: ---------------------------
+CoreData: error:   File system type: 		0
+CoreData: error:   File system flags: 		0
+CoreData: error:   Total data blocks: 		0
+CoreData: error:   Free data blocks: 		0
+CoreData: error:   Free blocks for nonsuperuser:	0
+CoreData: error:   Total i-nodes: 			0
+CoreData: error:   File system ID: 		0, 0
+CoreData: error:   Free i-nodes: 			0
+CoreData: error:   Owner UID: 			0
+CoreData: error:   Filesystem type name: 		
+CoreData: error:   Mount on name: 			
+CoreData: error:   Mount from name: 		
+CoreData: error: Executing as effective user 501
+CoreData: error: Information for /var/folders/j9/bv0n54t96556fycmy511r2rc0000gn/T/quitenote-persistence-open-error-0F5CDEC7-B9BD-491C-BB3C-A1629199CC46/nested
+CoreData: error: ---------------------------
+CoreData: error:   File Device ID: 	0
+CoreData: error:   Device ID: 		16777233
+CoreData: error:   File Size: 		15 bytes
+CoreData: error:   File inode: 		1026855479
+CoreData: error:   File user ID: 		501
+CoreData: error:   File group ID: 		20
+CoreData: error:   File Permissions: 	
+CoreData: error: -
+CoreData: error:   644
+CoreData: error:   file is not a symbolic link
+CoreData: error:   Sandbox access to file-write-create allowed
+CoreData: error: Information for file system
+CoreData: error: ---------------------------
+CoreData: error:   File system type: 		0x1a
+CoreData: error:   File system flags: 		0x4909080
+CoreData: error:   MNT_JOURNALED
+CoreData: error:   Total data blocks: 		242837545
+CoreData: error:   Free data blocks: 		7434759
+CoreData: error:   Free blocks for nonsuperuser:	7434759
+CoreData: error:   Total i-nodes: 			307759112
+CoreData: error:   File system ID: 		0x1000011, 0x1a
+CoreData: error:   Free i-nodes: 			297390360
+CoreData: error:   Owner UID: 			0
+CoreData: error:   Filesystem type name: 		apfs
+CoreData: error:   Mount on name: 			/System/Volumes/Data
+CoreData: error:   Mount from name: 		/dev/disk3s5
+CoreData: error: Executing as effective user 501
+CoreData: error: Information for /var/folders/j9/bv0n54t96556fycmy511r2rc0000gn/T/quitenote-persistence-open-error-0F5CDEC7-B9BD-491C-BB3C-A1629199CC46
+CoreData: error: ---------------------------
+CoreData: error:   File Device ID: 	0
+CoreData: error:   Device ID: 		16777233
+CoreData: error:   File Size: 		96 bytes
+CoreData: error:   File inode: 		1026855478
+CoreData: error:   File user ID: 		501
+CoreData: error:   File group ID: 		20
+CoreData: error:   File Permissions: 	
+CoreData: error: d
+CoreData: error:   755
+CoreData: error:   file is not a symbolic link
+CoreData: error:   Sandbox access to file-write-create allowed
+CoreData: error: Executing as effective user 501
+CoreData: error: Information for /var/folders/j9/bv0n54t96556fycmy511r2rc0000gn/T
+CoreData: error: ---------------------------
+CoreData: error:   File Device ID: 	0
+CoreData: error:   Device ID: 		16777233
+CoreData: error:   File Size: 		352288 bytes
+CoreData: error:   File inode: 		255303
+CoreData: error:   File user ID: 		501
+CoreData: error:   File group ID: 		20
+CoreData: error:   File Permissions: 	
+CoreData: error: d
+CoreData: error:   700
+CoreData: error:   file is not a symbolic link
+CoreData: error:   Sandbox access to file-write-create denied
+CoreData: error: Executing as effective user 501
+CoreData: error: Information for /var/folders/j9/bv0n54t96556fycmy511r2rc0000gn
+CoreData: error: ---------------------------
+CoreData: error:   File Device ID: 	0
+CoreData: error:   Device ID: 		16777233
+CoreData: error:   File Size: 		288 bytes
+CoreData: error:   File inode: 		255300
+CoreData: error:   File user ID: 		501
+CoreData: error:   File group ID: 		20
+CoreData: error:   File Permissions: 	
+CoreData: error: d
+CoreData: error:   755
+CoreData: error:   file is not a symbolic link
+CoreData: error:   Sandbox access to file-write-create denied
+CoreData: error: Executing as effective user 501
+CoreData: error: Information for /var/folders/j9
+CoreData: error: ---------------------------
+CoreData: error:   File Device ID: 	0
+CoreData: error:   Device ID: 		16777233
+CoreData: error:   File Size: 		96 bytes
+CoreData: error:   File inode: 		255299
+CoreData: error:   File user ID: 		0
+CoreData: error:   File group ID: 		0
+CoreData: error:   File Permissions: 	
+CoreData: error: d
+CoreData: error:   755
+CoreData: error:   file is not a symbolic link
+CoreData: error:   Sandbox access to file-write-create denied
+CoreData: error: Executing as effective user 501
+CoreData: error: Information for /var/folders
+CoreData: error: ---------------------------
+CoreData: error:   File Device ID: 	0
+CoreData: error:   Device ID: 		16777233
+CoreData: error:   File Size: 		192 bytes
+CoreData: error:   File inode: 		1022019808
+CoreData: error:   File user ID: 		0
+CoreData: error:   File group ID: 		0
+CoreData: error:   File Permissions: 	
+CoreData: error: d
+CoreData: error:   755
+CoreData: error:   file is not a symbolic link
+CoreData: error:   Sandbox access to file-write-create denied
+CoreData: error: Executing as effective user 501
+CoreData: error: Information for /var
+CoreData: error: ---------------------------
+CoreData: error:   File Device ID: 	0
+CoreData: error:   Device ID: 		16777233
+CoreData: error:   File Size: 		1280 bytes
+CoreData: error:   File inode: 		1022004018
+CoreData: error:   File user ID: 		0
+CoreData: error:   File group ID: 		0
+CoreData: error:   File Permissions: 	
+CoreData: error: d
+CoreData: error:   755
+CoreData: error:   file is not a symbolic link
+CoreData: error:   Sandbox access to file-write-create denied
+CoreData: error: Executing as effective user 501
+CoreData: error: Information for /
+CoreData: error: ---------------------------
+CoreData: error:   File Device ID: 	0
+CoreData: error:   Device ID: 		16777233
+CoreData: error:   File Size: 		736 bytes
+CoreData: error:   File inode: 		2
+CoreData: error:   File user ID: 		0
+CoreData: error:   File group ID: 		0
+CoreData: error:   File Permissions: 	
+CoreData: error: d
+CoreData: error:   755
+CoreData: error:   file is not a symbolic link
+CoreData: error:   Sandbox access to file-write-create denied
+CoreData: error: addPersistentStoreWithType:configuration:URL:options:error: returned error NSCocoaErrorDomain (258)
+CoreData: error: userInfo:
+CoreData: error: 	NSFilePath : /var/folders/j9/bv0n54t96556fycmy511r2rc0000gn/T/quitenote-persistence-open-error-0F5CDEC7-B9BD-491C-BB3C-A1629199CC46/nested/ClipboardHistory.sqlite
+CoreData: error: 	reason : Component of path /var/folders/j9/bv0n54t96556fycmy511r2rc0000gn/T/quitenote-persistence-open-error-0F5CDEC7-B9BD-491C-BB3C-A1629199CC46/nested/ClipboardHistory.sqlite is not a directory
+CoreData: error: storeType: SQLite
+CoreData: error: configuration: (null)
+CoreData: error: URL: file:///var/folders/j9/bv0n54t96556fycmy511r2rc0000gn/T/quitenote-persistence-open-error-0F5CDEC7-B9BD-491C-BB3C-A1629199CC46/nested/ClipboardHistory.sqlite
+CoreData: annotation: options:
+CoreData: annotation: 	NSMigratePersistentStoresAutomaticallyOption : 1
+CoreData: annotation: 	NSInferMappingModelAutomaticallyOption : 1
+CoreData: annotation: 	NSPersistentStoreRemoteChangeNotificationOptionKey : 1
+CoreData: annotation: 	NSPersistentHistoryTrackingKey : 1
+CoreData: error: <NSPersistentStoreCoordinator: 0x781447f480>: Attempting recovery from error encountered during addPersistentStore: 0x78144353e0 Error Domain=NSCocoaErrorDomain Code=258 "未能打开该项目，因为文件名称“ClipboardHistory.sqlite”无效。" UserInfo={NSFilePath=/var/folders/j9/bv0n54t96556fycmy511r2rc0000gn/T/quitenote-persistence-open-error-0F5CDEC7-B9BD-491C-BB3C-A1629199CC46/nested/ClipboardHistory.sqlite, reason=Component of path /var/folders/j9/bv0n54t96556fycmy511r2rc0000gn/T/quitenote-persistence-open-error-0F5CDEC7-B9BD-491C-BB3C-A1629199CC46/nested/ClipboardHistory.sqlite is not a directory}
+Test Case '-[QuiteNoteSharedStorageTests.ClipboardHistoryPersistenceTests testDatabaseOpenFailureIsReportedInsteadOfBeingSwallowed]' passed (0.007 seconds).
+Test Suite 'ClipboardHistoryPersistenceTests' passed at 2026-10-20 12:55:05.254.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.007 (0.008) seconds
+Test Suite 'QuiteNoteSharedStorageTests.xctest' passed at 2026-10-20 12:55:05.254.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.007 (0.008) seconds
+Test Suite 'All tests' passed at 2026-10-20 12:55:05.254.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.007 (0.009) seconds
+Test Suite 'All tests' started at 2026-10-20 12:55:05.358.
+Test Suite 'QuiteNoteCoreServiceTests.xctest' started at 2026-10-20 12:55:05.359.
+Test Suite 'ClipboardHistoryRepositoryTests' started at 2026-10-20 12:55:05.359.
+Test Case '-[QuiteNoteCoreServiceTests.ClipboardHistoryRepositoryTests testConcurrentUpsertsKeepOneRowPerContent]' started.
+Test Case '-[QuiteNoteCoreServiceTests.ClipboardHistoryRepositoryTests testConcurrentUpsertsKeepOneRowPerContent]' passed (0.041 seconds).
+Test Case '-[QuiteNoteCoreServiceTests.ClipboardHistoryRepositoryTests testInsertDeduplicateUpdateDeleteAndPaginate]' started.
+CoreData: warning: Multiple NSEntityDescriptions claim the NSManagedObject subclass 'QuiteNoteSharedStorage.CDClipboardEntry' so +entity is unable to disambiguate.
+CoreData: warning:  	 'CDClipboardEntry' (0x7a70164000) from NSManagedObjectModel (0x7a71144e10) claims 'QuiteNoteSharedStorage.CDClipboardEntry'.
+CoreData: warning:  	 'CDClipboardEntry' (0x7a70164480) from NSManagedObjectModel (0x7a71144f50) claims 'QuiteNoteSharedStorage.CDClipboardEntry'.
+Test Case '-[QuiteNoteCoreServiceTests.ClipboardHistoryRepositoryTests testInsertDeduplicateUpdateDeleteAndPaginate]' passed (0.009 seconds).
+Test Case '-[QuiteNoteCoreServiceTests.ClipboardHistoryRepositoryTests testRealCoreProcessWriteNotifiesRepositoryReader]' started.
+/Users/xuyingzhou/.codex/worktrees/de1c/quite-note/Tests/QuiteNoteCoreServiceTests/ClipboardHistoryRepositoryTests.swift:103: -[QuiteNoteCoreServiceTests.ClipboardHistoryRepositoryTests testRealCoreProcessWriteNotifiesRepositoryReader] : Test skipped - Set QN_CORE_CROSS_PROCESS_SMOKE=1 to run the pasteboard smoke
+Test Case '-[QuiteNoteCoreServiceTests.ClipboardHistoryRepositoryTests testRealCoreProcessWriteNotifiesRepositoryReader]' skipped (0.001 seconds).
+Test Case '-[QuiteNoteCoreServiceTests.ClipboardHistoryRepositoryTests testRetentionRemovesOnlyEvictableEntries]' started.
+Test Case '-[QuiteNoteCoreServiceTests.ClipboardHistoryRepositoryTests testRetentionRemovesOnlyEvictableEntries]' passed (0.008 seconds).
+Test Case '-[QuiteNoteCoreServiceTests.ClipboardHistoryRepositoryTests testTwoCoreProcessesConcurrentlyUpsertSameContentWithoutDuplicates]' started.
+/Users/xuyingzhou/.codex/worktrees/de1c/quite-note/Tests/QuiteNoteCoreServiceTests/ClipboardHistoryRepositoryTests.swift:84: -[QuiteNoteCoreServiceTests.ClipboardHistoryRepositoryTests testTwoCoreProcessesConcurrentlyUpsertSameContentWithoutDuplicates] : Test skipped - Set QN_CORE_CROSS_PROCESS_SMOKE=1 to run cross-process races
+Test Case '-[QuiteNoteCoreServiceTests.ClipboardHistoryRepositoryTests testTwoCoreProcessesConcurrentlyUpsertSameContentWithoutDuplicates]' skipped (0.000 seconds).
+Test Case '-[QuiteNoteCoreServiceTests.ClipboardHistoryRepositoryTests testTwoRepositoriesShareStoreAndNotify]' started.
+Test Case '-[QuiteNoteCoreServiceTests.ClipboardHistoryRepositoryTests testTwoRepositoriesShareStoreAndNotify]' passed (0.006 seconds).
+Test Suite 'ClipboardHistoryRepositoryTests' passed at 2026-10-20 12:55:05.426.
+	 Executed 6 tests, with 2 tests skipped and 0 failures (0 unexpected) in 0.066 (0.067) seconds
+Test Suite 'CoreClipboardStoreTests' started at 2026-10-20 12:55:05.426.
+Test Case '-[QuiteNoteCoreServiceTests.CoreClipboardStoreTests testCoreAndAppPersistenceUseSameManagedObjectModel]' started.
+Test Case '-[QuiteNoteCoreServiceTests.CoreClipboardStoreTests testCoreAndAppPersistenceUseSameManagedObjectModel]' passed (0.006 seconds).
+Test Case '-[QuiteNoteCoreServiceTests.CoreClipboardStoreTests testRepositoryWritesCoreConfiguredDatabaseAndPersists]' started.
+Test Case '-[QuiteNoteCoreServiceTests.CoreClipboardStoreTests testRepositoryWritesCoreConfiguredDatabaseAndPersists]' passed (0.008 seconds).
+Test Suite 'CoreClipboardStoreTests' passed at 2026-10-20 12:55:05.441.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.015 (0.015) seconds
+Test Suite 'CoreServiceConfigurationTests' started at 2026-10-20 12:55:05.441.
+Test Case '-[QuiteNoteCoreServiceTests.CoreServiceConfigurationTests testCoreServiceStatusHeartbeatAndErrorFieldsRoundTrip]' started.
+Test Case '-[QuiteNoteCoreServiceTests.CoreServiceConfigurationTests testCoreServiceStatusHeartbeatAndErrorFieldsRoundTrip]' passed (0.000 seconds).
+Test Case '-[QuiteNoteCoreServiceTests.CoreServiceConfigurationTests testMissingDatabaseAndBadIntervalFailClosed]' started.
+Test Case '-[QuiteNoteCoreServiceTests.CoreServiceConfigurationTests testMissingDatabaseAndBadIntervalFailClosed]' passed (0.000 seconds).
+Test Case '-[QuiteNoteCoreServiceTests.CoreServiceConfigurationTests testParseExplicitPathsAndInterval]' started.
+Test Case '-[QuiteNoteCoreServiceTests.CoreServiceConfigurationTests testParseExplicitPathsAndInterval]' passed (0.000 seconds).
+Test Case '-[QuiteNoteCoreServiceTests.CoreServiceConfigurationTests testStateFallsBackToEnvironment]' started.
+Test Case '-[QuiteNoteCoreServiceTests.CoreServiceConfigurationTests testStateFallsBackToEnvironment]' passed (0.000 seconds).
+Test Suite 'CoreServiceConfigurationTests' passed at 2026-10-20 12:55:05.443.
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.001 (0.002) seconds
+Test Suite 'DevCoreLaunchAgentTests' started at 2026-10-20 12:55:05.443.
+Test Case '-[QuiteNoteCoreServiceTests.DevCoreLaunchAgentTests testDevLaunchAgentTemplateUsesKeepAliveAndIsolatedDebugPaths]' started.
+Test Case '-[QuiteNoteCoreServiceTests.DevCoreLaunchAgentTests testDevLaunchAgentTemplateUsesKeepAliveAndIsolatedDebugPaths]' passed (0.001 seconds).
+Test Case '-[QuiteNoteCoreServiceTests.DevCoreLaunchAgentTests testManagerExposesMonitorAndReportCommands]' started.
+Test Case '-[QuiteNoteCoreServiceTests.DevCoreLaunchAgentTests testManagerExposesMonitorAndReportCommands]' passed (0.001 seconds).
+Test Suite 'DevCoreLaunchAgentTests' passed at 2026-10-20 12:55:05.444.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'DevCoreMonitorReportTests' started at 2026-10-20 12:55:05.444.
+Test Case '-[QuiteNoteCoreServiceTests.DevCoreMonitorReportTests testReportAcceptsCompleteHealthyEvidence]' started.
+Test Case '-[QuiteNoteCoreServiceTests.DevCoreMonitorReportTests testReportAcceptsCompleteHealthyEvidence]' passed (0.077 seconds).
+Test Case '-[QuiteNoteCoreServiceTests.DevCoreMonitorReportTests testReportRejectsPidChange]' started.
+Test Case '-[QuiteNoteCoreServiceTests.DevCoreMonitorReportTests testReportRejectsPidChange]' passed (0.069 seconds).
+Test Case '-[QuiteNoteCoreServiceTests.DevCoreMonitorReportTests testReportRejectsShortAndUnhealthyEvidence]' started.
+Test Case '-[QuiteNoteCoreServiceTests.DevCoreMonitorReportTests testReportRejectsShortAndUnhealthyEvidence]' passed (0.069 seconds).
+Test Suite 'DevCoreMonitorReportTests' passed at 2026-10-20 12:55:05.660.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.215 (0.216) seconds
+Test Suite 'QuiteNoteCoreServiceTests.xctest' passed at 2026-10-20 12:55:05.660.
+	 Executed 17 tests, with 2 tests skipped and 0 failures (0 unexpected) in 0.298 (0.301) seconds
+Test Suite 'All tests' passed at 2026-10-20 12:55:05.660.
+	 Executed 17 tests, with 2 tests skipped and 0 failures (0 unexpected) in 0.298 (0.302) seconds
+􀟈  Test run started.
+􀄵  Testing Library Version: 2084
+􀄵  Target Platform: arm64e-apple-macos14.0
+􁁛  Test run with 0 tests in 0 suites passed after 0.001 seconds.
+􀟈  Test run started.
+􀄵  Testing Library Version: 2084
+􀄵  Target Platform: arm64e-apple-macos14.0
+􁁛  Test run with 0 tests in 0 suites passed after 0.001 seconds.
+􀟈  Test run started.
+􀄵  Testing Library Version: 2084
+􀄵  Target Platform: arm64e-apple-macos14.0
+􁁛  Test run with 0 tests in 0 suites passed after 0.001 seconds.

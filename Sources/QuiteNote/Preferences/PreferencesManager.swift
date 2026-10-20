@@ -11,9 +11,24 @@ struct LastRecordingSelection {
 final class PreferencesManager: ObservableObject {
     static let shared = PreferencesManager()
     private let d = UserDefaults.standard
-    
+
     private init() {
         migratePromptsIfNeeded()
+        migrateAIConnectionIfNeeded()
+    }
+
+    private func migrateAIConnectionIfNeeded() {
+        guard d.object(forKey: "aiConnectionKind") == nil else { return }
+        // Existing users can have an unconfigured legacy model key but a saved
+        // Keychain credential, so both places must stay authoritative.
+        let hasLegacyModel = d.object(forKey: "openAIBaseURL") != nil ||
+            d.object(forKey: "openAIModel") != nil
+        let hasLegacyKey = KeychainHelper.shared.read(
+            service: "QuiteNote",
+            account: "openai_api_key"
+        ) != nil
+        let kind: AIConnectionKind = (hasLegacyModel || hasLegacyKey) ? .customOpenAI : .magpie
+        d.set(kind.rawValue, forKey: "aiConnectionKind")
     }
 
     private func migratePromptsIfNeeded() {
@@ -67,6 +82,18 @@ final class PreferencesManager: ObservableObject {
 
     var openAIBaseURL: String { d.string(forKey: "openAIBaseURL") ?? "https://api.openai.com/v1" }
     var openAIModel: String { d.string(forKey: "openAIModel") ?? "gpt-4o-mini" }
+    var magpieBaseURL: String {
+        let value = d.string(forKey: "magpieBaseURL") ?? "http://127.0.0.1:3425"
+        return value.isEmpty ? "http://127.0.0.1:3425" : value
+    }
+    var magpieModelID: String? {
+        let value = d.string(forKey: "magpieModelID")?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return (value?.isEmpty == false) ? value : nil
+    }
+    var aiConnectionKind: AIConnectionKind {
+        AIConnectionKind(rawValue: d.string(forKey: "aiConnectionKind") ?? "") ?? .magpie
+    }
     
     // AI 提示词配置
     var aiSystemPrompt: String { 
@@ -376,6 +403,18 @@ final class PreferencesManager: ObservableObject {
 
     func setOpenAIBaseURL(_ v: String) { d.set(v, forKey: "openAIBaseURL") }
     func setOpenAIModel(_ v: String) { d.set(v, forKey: "openAIModel") }
+    func setAIConnectionKind(_ v: AIConnectionKind) {
+        objectWillChange.send()
+        d.set(v.rawValue, forKey: "aiConnectionKind")
+    }
+    func setMagpieBaseURL(_ v: String) {
+        objectWillChange.send()
+        d.set(v, forKey: "magpieBaseURL")
+    }
+    func setMagpieModelID(_ v: String?) {
+        objectWillChange.send()
+        d.set(v, forKey: "magpieModelID")
+    }
     func setAISystemPrompt(_ v: String) { 
         objectWillChange.send()
         d.set(v, forKey: "aiSystemPrompt") 
@@ -405,7 +444,8 @@ final class PreferencesManager: ObservableObject {
             "dedupEnabled", "maxScreenshots", "debounceSeconds", "windowLock", 
             "animationsEnabled", "rememberWindowPosition", "attachmentsPath",
             "attachmentsDirectoryBookmark", "screenshotSaveDirectoryBookmark",
-            "screenshotSaveDirectory", "openAIBaseURL", "openAIModel", "aiSystemPrompt", "aiUserPrompt",
+            "screenshotSaveDirectory", "openAIBaseURL", "openAIModel", "aiConnectionKind",
+            "magpieBaseURL", "magpieModelID", "aiSystemPrompt", "aiUserPrompt",
             "preferredEditor", "preferredEditorBookmark", "recordingSystemAudio", "recordingMicrophone", "recordingCursorMode",
             "recordingCountdownSeconds", "lastRecordingSelection",
             "clipboardHistoryEnabled", "clipboardRecordText", "clipboardRecordImage", "clipboardRecordLink",

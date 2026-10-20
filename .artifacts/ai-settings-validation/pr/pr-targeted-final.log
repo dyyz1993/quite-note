@@ -1,0 +1,454 @@
+Building for debugging...
+[Computing dependencies]
+[1 / 43] LucideIcons_LucideIcons
+[4 / 14] QuiteNote-product
+[8 / 18] QuiteNote
+[14 / 24] QuiteNote-product
+/Users/xuyingzhou/.codex/worktrees/de1c/quite-note/Sources/QuiteNote/UI/SettingsTabs/ClipboardSettingsTab.swift:14:17: warning: cannot use generic class 'Autoconnect' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+ 12 | 
+ 13 |     /// 冲突状态轮询（偏好变化 → MainApp 延迟 0.1s refresh 后更新）
+ 14 |     private let timer = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
+    |                 `- warning: cannot use generic class 'Autoconnect' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+ 15 | 
+ 16 |     var body: some View {
+
+Combine.Publishers.Autoconnect:2:14: note: generic class declared here
+ 1 | enum Publishers {
+ 2 | public class Autoconnect<Upstream> : Publisher where Upstream : ConnectablePublisher {
+   |              `- note: generic class declared here
+ 3 |     public typealias Output = Upstream.Output
+ 4 |     public typealias Failure = Upstream.Failure
+
+/Users/xuyingzhou/.codex/worktrees/de1c/quite-note/Sources/QuiteNote/UI/SettingsTabs/ClipboardSettingsTab.swift:14:17: warning: cannot use enum 'Publishers' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+ 12 | 
+ 13 |     /// 冲突状态轮询（偏好变化 → MainApp 延迟 0.1s refresh 后更新）
+ 14 |     private let timer = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
+    |                 `- warning: cannot use enum 'Publishers' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+ 15 | 
+ 16 |     var body: some View {
+
+Combine.Publishers:2:13: note: enum declared here
+1 | @available(macOS 10.15, iOS 13.0, tvOS 13.0, watchOS 6.0, *)
+2 | public enum Publishers {
+  |             `- note: enum declared here
+3 | }
+/Users/xuyingzhou/.codex/worktrees/de1c/quite-note/Sources/QuiteNote/UI/SettingsTabs/ClipboardSettingsTab.swift:14:17: warning: cannot use generic class 'Autoconnect' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+ 12 | 
+ 13 |     /// 冲突状态轮询（偏好变化 → MainApp 延迟 0.1s refresh 后更新）
+ 14 |     private let timer = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
+    |                 `- warning: cannot use generic class 'Autoconnect' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+ 15 | 
+ 16 |     var body: some View {
+
+Combine.Publishers.Autoconnect:2:14: note: generic class declared here
+ 1 | enum Publishers {
+ 2 | public class Autoconnect<Upstream> : Publisher where Upstream : ConnectablePublisher {
+   |              `- note: generic class declared here
+ 3 |     public typealias Output = Upstream.Output
+ 4 |     public typealias Failure = Upstream.Failure
+
+/Users/xuyingzhou/.codex/worktrees/de1c/quite-note/Sources/QuiteNote/UI/SettingsTabs/ClipboardSettingsTab.swift:14:17: warning: cannot use enum 'Publishers' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+ 12 | 
+ 13 |     /// 冲突状态轮询（偏好变化 → MainApp 延迟 0.1s refresh 后更新）
+ 14 |     private let timer = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
+    |                 `- warning: cannot use enum 'Publishers' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+ 15 | 
+ 16 |     var body: some View {
+
+Combine.Publishers:2:13: note: enum declared here
+1 | @available(macOS 10.15, iOS 13.0, tvOS 13.0, watchOS 6.0, *)
+2 | public enum Publishers {
+  |             `- note: enum declared here
+3 | }
+/Users/xuyingzhou/.codex/worktrees/de1c/quite-note/Sources/QuiteNote/UI/PermissionGuide/PermissionGuidePanel.swift:111:17: warning: cannot use generic class 'Autoconnect' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+109 | 
+110 |     @State private var screenGranted = ScreenshotService.shared.checkScreenCapturePermission()
+111 |     private let timer = Timer.publish(every: 1.5, on: .main, in: .common).autoconnect()
+    |                 `- warning: cannot use generic class 'Autoconnect' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+112 | 
+113 |     var body: some View {
+
+Combine.Publishers.Autoconnect:2:14: note: generic class declared here
+ 1 | enum Publishers {
+ 2 | public class Autoconnect<Upstream> : Publisher where Upstream : ConnectablePublisher {
+   |              `- note: generic class declared here
+ 3 |     public typealias Output = Upstream.Output
+ 4 |     public typealias Failure = Upstream.Failure
+
+/Users/xuyingzhou/.codex/worktrees/de1c/quite-note/Sources/QuiteNote/UI/PermissionGuide/PermissionGuidePanel.swift:111:17: warning: cannot use enum 'Publishers' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+109 | 
+110 |     @State private var screenGranted = ScreenshotService.shared.checkScreenCapturePermission()
+111 |     private let timer = Timer.publish(every: 1.5, on: .main, in: .common).autoconnect()
+    |                 `- warning: cannot use enum 'Publishers' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+112 | 
+113 |     var body: some View {
+
+Combine.Publishers:2:13: note: enum declared here
+1 | @available(macOS 10.15, iOS 13.0, tvOS 13.0, watchOS 6.0, *)
+2 | public enum Publishers {
+  |             `- note: enum declared here
+3 | }
+
+/Users/xuyingzhou/.codex/worktrees/de1c/quite-note/Sources/QuiteNote/UI/ScreenshotV2/Views/Annotation/AnnotationTextEditorView.swift:16:17: warning: cannot use generic class 'Autoconnect' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+14 |     
+15 |     // 定时器用于光标闪烁
+16 |     private let timer = Timer.publish(every: 0.6, on: .main, in: .common).autoconnect()
+   |                 `- warning: cannot use generic class 'Autoconnect' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+17 |     
+18 |     var body: some View {
+
+Combine.Publishers.Autoconnect:2:14: note: generic class declared here
+ 1 | enum Publishers {
+ 2 | public class Autoconnect<Upstream> : Publisher where Upstream : ConnectablePublisher {
+   |              `- note: generic class declared here
+ 3 |     public typealias Output = Upstream.Output
+ 4 |     public typealias Failure = Upstream.Failure
+
+/Users/xuyingzhou/.codex/worktrees/de1c/quite-note/Sources/QuiteNote/UI/ScreenshotV2/Views/Annotation/AnnotationTextEditorView.swift:16:17: warning: cannot use enum 'Publishers' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+14 |     
+15 |     // 定时器用于光标闪烁
+16 |     private let timer = Timer.publish(every: 0.6, on: .main, in: .common).autoconnect()
+   |                 `- warning: cannot use enum 'Publishers' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+17 |     
+18 |     var body: some View {
+
+Combine.Publishers:2:13: note: enum declared here
+1 | @available(macOS 10.15, iOS 13.0, tvOS 13.0, watchOS 6.0, *)
+2 | public enum Publishers {
+  |             `- note: enum declared here
+3 | }
+
+/Users/xuyingzhou/.codex/worktrees/de1c/quite-note/Sources/QuiteNote/UI/SettingsTabs/ClipboardSettingsTab.swift:14:17: warning: cannot use generic class 'Autoconnect' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+ 12 | 
+ 13 |     /// 冲突状态轮询（偏好变化 → MainApp 延迟 0.1s refresh 后更新）
+ 14 |     private let timer = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
+    |                 `- warning: cannot use generic class 'Autoconnect' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+ 15 | 
+ 16 |     var body: some View {
+
+Combine.Publishers.Autoconnect:2:14: note: generic class declared here
+ 1 | enum Publishers {
+ 2 | public class Autoconnect<Upstream> : Publisher where Upstream : ConnectablePublisher {
+   |              `- note: generic class declared here
+ 3 |     public typealias Output = Upstream.Output
+ 4 |     public typealias Failure = Upstream.Failure
+
+/Users/xuyingzhou/.codex/worktrees/de1c/quite-note/Sources/QuiteNote/UI/SettingsTabs/ClipboardSettingsTab.swift:14:17: warning: cannot use enum 'Publishers' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+ 12 | 
+ 13 |     /// 冲突状态轮询（偏好变化 → MainApp 延迟 0.1s refresh 后更新）
+ 14 |     private let timer = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
+    |                 `- warning: cannot use enum 'Publishers' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+ 15 | 
+ 16 |     var body: some View {
+
+Combine.Publishers:2:13: note: enum declared here
+1 | @available(macOS 10.15, iOS 13.0, tvOS 13.0, watchOS 6.0, *)
+2 | public enum Publishers {
+  |             `- note: enum declared here
+3 | }
+
+/Users/xuyingzhou/.codex/worktrees/de1c/quite-note/Sources/QuiteNote/UI/SettingsTabs/LauncherSettingsTab.swift:9:17: warning: cannot use generic class 'Autoconnect' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+  7 | 
+  8 |     /// 冲突状态轮询（偏好变化 → MainApp 延迟 0.1s refresh 后更新，模式同剪贴板 Tab）
+  9 |     private let timer = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
+    |                 `- warning: cannot use generic class 'Autoconnect' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+ 10 |     /// 轮询到点的本地重绘触发器。⚠️ 不能用 prefs.objectWillChange.send() 触发重绘——
+ 11 |     /// 那会让 MainApp 的 sink 执行 shortcuts.refresh()，把录制期间挂起的全局热键
+
+Combine.Publishers.Autoconnect:2:14: note: generic class declared here
+ 1 | enum Publishers {
+ 2 | public class Autoconnect<Upstream> : Publisher where Upstream : ConnectablePublisher {
+   |              `- note: generic class declared here
+ 3 |     public typealias Output = Upstream.Output
+ 4 |     public typealias Failure = Upstream.Failure
+
+/Users/xuyingzhou/.codex/worktrees/de1c/quite-note/Sources/QuiteNote/UI/SettingsTabs/LauncherSettingsTab.swift:9:17: warning: cannot use enum 'Publishers' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+  7 | 
+  8 |     /// 冲突状态轮询（偏好变化 → MainApp 延迟 0.1s refresh 后更新，模式同剪贴板 Tab）
+  9 |     private let timer = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
+    |                 `- warning: cannot use enum 'Publishers' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+ 10 |     /// 轮询到点的本地重绘触发器。⚠️ 不能用 prefs.objectWillChange.send() 触发重绘——
+ 11 |     /// 那会让 MainApp 的 sink 执行 shortcuts.refresh()，把录制期间挂起的全局热键
+
+Combine.Publishers:2:13: note: enum declared here
+1 | @available(macOS 10.15, iOS 13.0, tvOS 13.0, watchOS 6.0, *)
+2 | public enum Publishers {
+  |             `- note: enum declared here
+3 | }
+
+/Users/xuyingzhou/.codex/worktrees/de1c/quite-note/Sources/QuiteNote/UI/SettingsTabs/ScreenshotSettingsTab.swift:10:17: warning: cannot use generic class 'Autoconnect' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+  8 | 
+  9 |     // 定时器，每 2 秒刷新一次权限状态
+ 10 |     private let timer = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
+    |                 `- warning: cannot use generic class 'Autoconnect' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+ 11 | 
+ 12 |     var body: some View {
+
+Combine.Publishers.Autoconnect:2:14: note: generic class declared here
+ 1 | enum Publishers {
+ 2 | public class Autoconnect<Upstream> : Publisher where Upstream : ConnectablePublisher {
+   |              `- note: generic class declared here
+ 3 |     public typealias Output = Upstream.Output
+ 4 |     public typealias Failure = Upstream.Failure
+
+/Users/xuyingzhou/.codex/worktrees/de1c/quite-note/Sources/QuiteNote/UI/SettingsTabs/ScreenshotSettingsTab.swift:10:17: warning: cannot use enum 'Publishers' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+  8 | 
+  9 |     // 定时器，每 2 秒刷新一次权限状态
+ 10 |     private let timer = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
+    |                 `- warning: cannot use enum 'Publishers' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+ 11 | 
+ 12 |     var body: some View {
+
+Combine.Publishers:2:13: note: enum declared here
+1 | @available(macOS 10.15, iOS 13.0, tvOS 13.0, watchOS 6.0, *)
+2 | public enum Publishers {
+  |             `- note: enum declared here
+3 | }
+/Users/xuyingzhou/.codex/worktrees/de1c/quite-note/Sources/QuiteNote/UI/PermissionGuide/PermissionGuidePanel.swift:111:17: warning: cannot use generic class 'Autoconnect' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+109 | 
+110 |     @State private var screenGranted = ScreenshotService.shared.checkScreenCapturePermission()
+111 |     private let timer = Timer.publish(every: 1.5, on: .main, in: .common).autoconnect()
+    |                 `- warning: cannot use generic class 'Autoconnect' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+112 | 
+113 |     var body: some View {
+
+Combine.Publishers.Autoconnect:2:14: note: generic class declared here
+ 1 | enum Publishers {
+ 2 | public class Autoconnect<Upstream> : Publisher where Upstream : ConnectablePublisher {
+   |              `- note: generic class declared here
+ 3 |     public typealias Output = Upstream.Output
+ 4 |     public typealias Failure = Upstream.Failure
+
+/Users/xuyingzhou/.codex/worktrees/de1c/quite-note/Sources/QuiteNote/UI/PermissionGuide/PermissionGuidePanel.swift:111:17: warning: cannot use enum 'Publishers' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+109 | 
+110 |     @State private var screenGranted = ScreenshotService.shared.checkScreenCapturePermission()
+111 |     private let timer = Timer.publish(every: 1.5, on: .main, in: .common).autoconnect()
+    |                 `- warning: cannot use enum 'Publishers' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+112 | 
+113 |     var body: some View {
+
+Combine.Publishers:2:13: note: enum declared here
+1 | @available(macOS 10.15, iOS 13.0, tvOS 13.0, watchOS 6.0, *)
+2 | public enum Publishers {
+  |             `- note: enum declared here
+3 | }
+
+/Users/xuyingzhou/.codex/worktrees/de1c/quite-note/Sources/QuiteNote/UI/ScreenshotV2/Views/Annotation/AnnotationTextEditorView.swift:16:17: warning: cannot use generic class 'Autoconnect' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+14 |     
+15 |     // 定时器用于光标闪烁
+16 |     private let timer = Timer.publish(every: 0.6, on: .main, in: .common).autoconnect()
+   |                 `- warning: cannot use generic class 'Autoconnect' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+17 |     
+18 |     var body: some View {
+
+Combine.Publishers.Autoconnect:2:14: note: generic class declared here
+ 1 | enum Publishers {
+ 2 | public class Autoconnect<Upstream> : Publisher where Upstream : ConnectablePublisher {
+   |              `- note: generic class declared here
+ 3 |     public typealias Output = Upstream.Output
+ 4 |     public typealias Failure = Upstream.Failure
+
+/Users/xuyingzhou/.codex/worktrees/de1c/quite-note/Sources/QuiteNote/UI/ScreenshotV2/Views/Annotation/AnnotationTextEditorView.swift:16:17: warning: cannot use enum 'Publishers' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+14 |     
+15 |     // 定时器用于光标闪烁
+16 |     private let timer = Timer.publish(every: 0.6, on: .main, in: .common).autoconnect()
+   |                 `- warning: cannot use enum 'Publishers' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+17 |     
+18 |     var body: some View {
+
+Combine.Publishers:2:13: note: enum declared here
+1 | @available(macOS 10.15, iOS 13.0, tvOS 13.0, watchOS 6.0, *)
+2 | public enum Publishers {
+  |             `- note: enum declared here
+3 | }
+
+/Users/xuyingzhou/.codex/worktrees/de1c/quite-note/Sources/QuiteNote/UI/SettingsTabs/ClipboardSettingsTab.swift:14:17: warning: cannot use generic class 'Autoconnect' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+ 12 | 
+ 13 |     /// 冲突状态轮询（偏好变化 → MainApp 延迟 0.1s refresh 后更新）
+ 14 |     private let timer = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
+    |                 `- warning: cannot use generic class 'Autoconnect' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+ 15 | 
+ 16 |     var body: some View {
+
+Combine.Publishers.Autoconnect:2:14: note: generic class declared here
+ 1 | enum Publishers {
+ 2 | public class Autoconnect<Upstream> : Publisher where Upstream : ConnectablePublisher {
+   |              `- note: generic class declared here
+ 3 |     public typealias Output = Upstream.Output
+ 4 |     public typealias Failure = Upstream.Failure
+
+/Users/xuyingzhou/.codex/worktrees/de1c/quite-note/Sources/QuiteNote/UI/SettingsTabs/ClipboardSettingsTab.swift:14:17: warning: cannot use enum 'Publishers' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+ 12 | 
+ 13 |     /// 冲突状态轮询（偏好变化 → MainApp 延迟 0.1s refresh 后更新）
+ 14 |     private let timer = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
+    |                 `- warning: cannot use enum 'Publishers' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+ 15 | 
+ 16 |     var body: some View {
+
+Combine.Publishers:2:13: note: enum declared here
+1 | @available(macOS 10.15, iOS 13.0, tvOS 13.0, watchOS 6.0, *)
+2 | public enum Publishers {
+  |             `- note: enum declared here
+3 | }
+
+/Users/xuyingzhou/.codex/worktrees/de1c/quite-note/Sources/QuiteNote/UI/SettingsTabs/LauncherSettingsTab.swift:9:17: warning: cannot use generic class 'Autoconnect' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+  7 | 
+  8 |     /// 冲突状态轮询（偏好变化 → MainApp 延迟 0.1s refresh 后更新，模式同剪贴板 Tab）
+  9 |     private let timer = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
+    |                 `- warning: cannot use generic class 'Autoconnect' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+ 10 |     /// 轮询到点的本地重绘触发器。⚠️ 不能用 prefs.objectWillChange.send() 触发重绘——
+ 11 |     /// 那会让 MainApp 的 sink 执行 shortcuts.refresh()，把录制期间挂起的全局热键
+
+Combine.Publishers.Autoconnect:2:14: note: generic class declared here
+ 1 | enum Publishers {
+ 2 | public class Autoconnect<Upstream> : Publisher where Upstream : ConnectablePublisher {
+   |              `- note: generic class declared here
+ 3 |     public typealias Output = Upstream.Output
+ 4 |     public typealias Failure = Upstream.Failure
+
+/Users/xuyingzhou/.codex/worktrees/de1c/quite-note/Sources/QuiteNote/UI/SettingsTabs/LauncherSettingsTab.swift:9:17: warning: cannot use enum 'Publishers' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+  7 | 
+  8 |     /// 冲突状态轮询（偏好变化 → MainApp 延迟 0.1s refresh 后更新，模式同剪贴板 Tab）
+  9 |     private let timer = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
+    |                 `- warning: cannot use enum 'Publishers' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+ 10 |     /// 轮询到点的本地重绘触发器。⚠️ 不能用 prefs.objectWillChange.send() 触发重绘——
+ 11 |     /// 那会让 MainApp 的 sink 执行 shortcuts.refresh()，把录制期间挂起的全局热键
+
+Combine.Publishers:2:13: note: enum declared here
+1 | @available(macOS 10.15, iOS 13.0, tvOS 13.0, watchOS 6.0, *)
+2 | public enum Publishers {
+  |             `- note: enum declared here
+3 | }
+
+/Users/xuyingzhou/.codex/worktrees/de1c/quite-note/Sources/QuiteNote/UI/SettingsTabs/ScreenshotSettingsTab.swift:10:17: warning: cannot use generic class 'Autoconnect' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+  8 | 
+  9 |     // 定时器，每 2 秒刷新一次权限状态
+ 10 |     private let timer = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
+    |                 `- warning: cannot use generic class 'Autoconnect' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+ 11 | 
+ 12 |     var body: some View {
+
+Combine.Publishers.Autoconnect:2:14: note: generic class declared here
+ 1 | enum Publishers {
+ 2 | public class Autoconnect<Upstream> : Publisher where Upstream : ConnectablePublisher {
+   |              `- note: generic class declared here
+ 3 |     public typealias Output = Upstream.Output
+ 4 |     public typealias Failure = Upstream.Failure
+
+/Users/xuyingzhou/.codex/worktrees/de1c/quite-note/Sources/QuiteNote/UI/SettingsTabs/ScreenshotSettingsTab.swift:10:17: warning: cannot use enum 'Publishers' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+  8 | 
+  9 |     // 定时器，每 2 秒刷新一次权限状态
+ 10 |     private let timer = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
+    |                 `- warning: cannot use enum 'Publishers' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+ 11 | 
+ 12 |     var body: some View {
+
+Combine.Publishers:2:13: note: enum declared here
+1 | @available(macOS 10.15, iOS 13.0, tvOS 13.0, watchOS 6.0, *)
+2 | public enum Publishers {
+  |             `- note: enum declared here
+3 | }
+[21 / 31] QuiteNote-product
+[23 / 33] QuiteNote
+[23 / 33] QuiteNote-product
+[24 / 33] QuiteNote-product
+[26 / 32] QuiteNoteTests-product
+[28 / 34] QuiteNoteTests-product
+[32 / 37] QuiteNoteTests-product
+[34 / 37] QuiteNoteTests-product
+Build complete! (8.87秒)
+Test Suite 'Selected tests' started at 2026-10-20 12:54:35.656.
+Test Suite 'QuiteNoteTests.xctest' started at 2026-10-20 12:54:35.659.
+Test Suite 'AIConnectionConfigTests' started at 2026-10-20 12:54:35.659.
+Test Case '-[QuiteNoteTests.AIConnectionConfigTests testChatRequestUsesCurrentSnapshot]' started.
+Test Case '-[QuiteNoteTests.AIConnectionConfigTests testChatRequestUsesCurrentSnapshot]' passed (0.002 seconds).
+Test Case '-[QuiteNoteTests.AIConnectionConfigTests testConnectionsKeepIndependentModels]' started.
+Test Case '-[QuiteNoteTests.AIConnectionConfigTests testConnectionsKeepIndependentModels]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.AIConnectionConfigTests testLegacyConfigurationMigratesToCustomOpenAI]' started.
+Test Case '-[QuiteNoteTests.AIConnectionConfigTests testLegacyConfigurationMigratesToCustomOpenAI]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.AIConnectionConfigTests testMagpieUsesGatewayTokenAndSeparateBaseURL]' started.
+Test Case '-[QuiteNoteTests.AIConnectionConfigTests testMagpieUsesGatewayTokenAndSeparateBaseURL]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.AIConnectionConfigTests testMissingModelPreventsRequests]' started.
+Test Case '-[QuiteNoteTests.AIConnectionConfigTests testMissingModelPreventsRequests]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.AIConnectionConfigTests testModelSearchMatchesIDAndDisplayName]' started.
+Test Case '-[QuiteNoteTests.AIConnectionConfigTests testModelSearchMatchesIDAndDisplayName]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.AIConnectionConfigTests testMultimodalChatRequestEncodesImageURLAndKeepsJSONMode]' started.
+Test Case '-[QuiteNoteTests.AIConnectionConfigTests testMultimodalChatRequestEncodesImageURLAndKeepsJSONMode]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.AIConnectionConfigTests testNewInstallationDefaultsToMagpie]' started.
+Test Case '-[QuiteNoteTests.AIConnectionConfigTests testNewInstallationDefaultsToMagpie]' passed (0.000 seconds).
+Test Suite 'AIConnectionConfigTests' passed at 2026-10-20 12:54:35.663.
+	 Executed 8 tests, with 0 failures (0 unexpected) in 0.004 (0.004) seconds
+Test Suite 'ClipboardImageAITests' started at 2026-10-20 12:54:35.663.
+Test Case '-[QuiteNoteTests.ClipboardImageAITests testBulkResummarizeRoutesReadableVisualRecordsToImageModel]' started.
+Test Case '-[QuiteNoteTests.ClipboardImageAITests testBulkResummarizeRoutesReadableVisualRecordsToImageModel]' passed (0.061 seconds).
+Test Case '-[QuiteNoteTests.ClipboardImageAITests testImageDecisionUsesTrimmedOCRText]' started.
+Test Case '-[QuiteNoteTests.ClipboardImageAITests testImageDecisionUsesTrimmedOCRText]' passed (0.001 seconds).
+Test Case '-[QuiteNoteTests.ClipboardImageAITests testImagePayloadLoaderEncodesPNGAndRejectsMissingFile]' started.
+Test Case '-[QuiteNoteTests.ClipboardImageAITests testImagePayloadLoaderEncodesPNGAndRejectsMissingFile]' passed (0.045 seconds).
+Test Case '-[QuiteNoteTests.ClipboardImageAITests testLateOCRSuccessBackfillsSavedRecordAndBecomesSummarizable]' started.
+Test Case '-[QuiteNoteTests.ClipboardImageAITests testLateOCRSuccessBackfillsSavedRecordAndBecomesSummarizable]' passed (0.027 seconds).
+Test Case '-[QuiteNoteTests.ClipboardImageAITests testMissingImageWithoutOCRKeepsSkipAI]' started.
+Test Case '-[QuiteNoteTests.ClipboardImageAITests testMissingImageWithoutOCRKeepsSkipAI]' passed (0.015 seconds).
+Test Case '-[QuiteNoteTests.ClipboardImageAITests testReadableImageWithoutOCRStillBecomesSummarizable]' started.
+Test Case '-[QuiteNoteTests.ClipboardImageAITests testReadableImageWithoutOCRStillBecomesSummarizable]' passed (0.001 seconds).
+Test Case '-[QuiteNoteTests.ClipboardImageAITests testVisualRecordTypesCanBypassTextThreshold]' started.
+Test Case '-[QuiteNoteTests.ClipboardImageAITests testVisualRecordTypesCanBypassTextThreshold]' passed (0.000 seconds).
+Test Suite 'ClipboardImageAITests' passed at 2026-10-20 12:54:35.814.
+	 Executed 7 tests, with 0 failures (0 unexpected) in 0.150 (0.151) seconds
+Test Suite 'MagpieCatalogServiceTests' started at 2026-10-20 12:54:35.814.
+Test Case '-[QuiteNoteTests.MagpieCatalogServiceTests testLoadsCatalogAndSortsModels]' started.
+Test Case '-[QuiteNoteTests.MagpieCatalogServiceTests testLoadsCatalogAndSortsModels]' passed (0.008 seconds).
+Test Case '-[QuiteNoteTests.MagpieCatalogServiceTests testMissingModalitiesDefaultsToTextOnlyModel]' started.
+Test Case '-[QuiteNoteTests.MagpieCatalogServiceTests testMissingModalitiesDefaultsToTextOnlyModel]' passed (0.001 seconds).
+Test Case '-[QuiteNoteTests.MagpieCatalogServiceTests testRejectsInvalidURL]' started.
+Test Case '-[QuiteNoteTests.MagpieCatalogServiceTests testRejectsInvalidURL]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.MagpieCatalogServiceTests testRejectsNonMagpieService]' started.
+Test Case '-[QuiteNoteTests.MagpieCatalogServiceTests testRejectsNonMagpieService]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.MagpieCatalogServiceTests testReportsEmptyCatalog]' started.
+Test Case '-[QuiteNoteTests.MagpieCatalogServiceTests testReportsEmptyCatalog]' passed (0.000 seconds).
+Test Case '-[QuiteNoteTests.MagpieCatalogServiceTests testReportsHTTPFailure]' started.
+Test Case '-[QuiteNoteTests.MagpieCatalogServiceTests testReportsHTTPFailure]' passed (0.001 seconds).
+Test Case '-[QuiteNoteTests.MagpieCatalogServiceTests testReportsUnreachableGatewayWithActionableMessage]' started.
+Test Case '-[QuiteNoteTests.MagpieCatalogServiceTests testReportsUnreachableGatewayWithActionableMessage]' passed (0.002 seconds).
+Test Suite 'MagpieCatalogServiceTests' passed at 2026-10-20 12:54:35.827.
+	 Executed 7 tests, with 0 failures (0 unexpected) in 0.012 (0.013) seconds
+Test Suite 'QuiteNoteTests.xctest' passed at 2026-10-20 12:54:35.827.
+	 Executed 22 tests, with 0 failures (0 unexpected) in 0.166 (0.168) seconds
+Test Suite 'Selected tests' passed at 2026-10-20 12:54:35.827.
+	 Executed 22 tests, with 0 failures (0 unexpected) in 0.166 (0.171) seconds
+🧪 测试存储隔离已激活: /var/folders/j9/bv0n54t96556fycmy511r2rc0000gn/T/qn-isolated-storage-F139CF06-BE96-4A36-83D7-BCC887F39DBE
+[CoreDataStack] 数据库已配置: QuiteNote.sqlite
+[CoreDataStack] Bundle ID: com.apple.dt.xctest.tool, isDebug: false
+[CoreDataStack] 调试存储隔离: 关闭
+[DEBUG] RecordStore.addRecord 被调用，内容长度: 0, hash: test-image-no-ocr-4475C59B-49C9-4513-A531-FFF69E7178A3, type: image
+[DEBUG] 获取文件大小失败: 未能打开文件“missing.png”，因为它不存在。
+[DEBUG] 记录已插入数据库，ID: 4E7BB809-58DD-4DF8-8088-B7B6DFEEA6E3
+[DEBUG] 记录已插入内存数组，当前 records.count: 1
+Test Suite 'Selected tests' started at 2026-10-20 12:54:35.927.
+Test Suite 'QuiteNoteSharedStorageTests.xctest' started at 2026-10-20 12:54:35.928.
+Test Suite 'QuiteNoteSharedStorageTests.xctest' passed at 2026-10-20 12:54:35.928.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.000) seconds
+Test Suite 'Selected tests' passed at 2026-10-20 12:54:35.928.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.001) seconds
+Test Suite 'Selected tests' started at 2026-10-20 12:54:36.026.
+Test Suite 'QuiteNoteCoreServiceTests.xctest' started at 2026-10-20 12:54:36.027.
+Test Suite 'DevCoreLaunchAgentTests' started at 2026-10-20 12:54:36.027.
+Test Case '-[QuiteNoteCoreServiceTests.DevCoreLaunchAgentTests testDevLaunchAgentTemplateUsesKeepAliveAndIsolatedDebugPaths]' started.
+Test Case '-[QuiteNoteCoreServiceTests.DevCoreLaunchAgentTests testDevLaunchAgentTemplateUsesKeepAliveAndIsolatedDebugPaths]' passed (0.004 seconds).
+Test Case '-[QuiteNoteCoreServiceTests.DevCoreLaunchAgentTests testManagerExposesMonitorAndReportCommands]' started.
+Test Case '-[QuiteNoteCoreServiceTests.DevCoreLaunchAgentTests testManagerExposesMonitorAndReportCommands]' passed (0.009 seconds).
+Test Suite 'DevCoreLaunchAgentTests' passed at 2026-10-20 12:54:36.041.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.013 (0.013) seconds
+Test Suite 'DevCoreMonitorReportTests' started at 2026-10-20 12:54:36.041.
+Test Case '-[QuiteNoteCoreServiceTests.DevCoreMonitorReportTests testReportAcceptsCompleteHealthyEvidence]' started.
+Test Case '-[QuiteNoteCoreServiceTests.DevCoreMonitorReportTests testReportAcceptsCompleteHealthyEvidence]' passed (0.601 seconds).
+Test Case '-[QuiteNoteCoreServiceTests.DevCoreMonitorReportTests testReportRejectsPidChange]' started.
+Test Case '-[QuiteNoteCoreServiceTests.DevCoreMonitorReportTests testReportRejectsPidChange]' passed (0.067 seconds).
+Test Case '-[QuiteNoteCoreServiceTests.DevCoreMonitorReportTests testReportRejectsShortAndUnhealthyEvidence]' started.
+Test Case '-[QuiteNoteCoreServiceTests.DevCoreMonitorReportTests testReportRejectsShortAndUnhealthyEvidence]' passed (0.069 seconds).
+Test Suite 'DevCoreMonitorReportTests' passed at 2026-10-20 12:54:36.778.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.737 (0.738) seconds
+Test Suite 'QuiteNoteCoreServiceTests.xctest' passed at 2026-10-20 12:54:36.778.
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.750 (0.751) seconds
+Test Suite 'Selected tests' passed at 2026-10-20 12:54:36.779.
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.750 (0.752) seconds

@@ -5,41 +5,36 @@ import os.log
 protocol AIServiceProtocol {
     /// 执行提炼任务：输入限制与原文；completion 返回结构化结果或错误
     func summarize(contextId: String?, titleLimit: Int, summaryLimit: Int, content: String, existingTags: [String], completion: @escaping (Result<SummaryResult, Error>) -> Void)
-    
+
     /// 使用自定义提示词执行提炼任务
     func summarize(contextId: String?, titleLimit: Int, summaryLimit: Int, content: String, existingTags: [String], systemPrompt: String?, userPrompt: String?, completion: @escaping (Result<SummaryResult, Error>) -> Void)
-    
+
     /// 为单个记录生成总结
     func summarizeSingle(contextId: String?, _ content: String, existingTags: [String], completion: @escaping (Result<SummaryResult, Error>) -> Void)
+
+    /// 图片记录总结：OCR 文本 + 原图一起参与模型理解
+    func summarizeImage(contextId: String?, titleLimit: Int, summaryLimit: Int, content: String, imagePath: String, existingTags: [String], completion: @escaping (Result<SummaryResult, Error>) -> Void)
 }
 
-/// AI 服务实现：仅支持 OpenAI
+/// AI 服务实现：Magpie 与自定义 API 共用 OpenAI Chat Completions 协议
 final class AIService: AIServiceProtocol {
     private static let logger = Logger(subsystem: "com.quitenote.app", category: "AIService")
-    var openAIBaseURL: String = "https://api.openai.com/v1"
-    var openAIModel: String = "gpt-4o-mini"
-    var timeout: TimeInterval = 60
-
-    /// 初始化即从用户设置读取配置——任何调用方 new 出来的实例都直接可用。
-    /// （修复 2026-08-17 的 OCR 401：新建实例曾只带写死的默认值打 openai.com，
-    /// 主实例靠 RecordStore 事后配置才正确，散装 new 的实例全部踩坑）
-    init() {
-        let prefs = PreferencesManager.shared
-        self.openAIBaseURL = prefs.openAIBaseURL
-        self.openAIModel = prefs.openAIModel
+    var openAIBaseURL: String { PreferencesManager.shared.openAIBaseURL }
+    var openAIModel: String {
+        PreferencesManager.shared.aiConnectionKind == .magpie
+            ? (PreferencesManager.shared.magpieModelID ?? "")
+            : PreferencesManager.shared.openAIModel
     }
+    var timeout: TimeInterval = 60
+    var multimodalTimeout: TimeInterval = 90
 
-    // 延迟加载：避免重复访问 Keychain
-    private var hasCheckedAPIKey = false
-    private var cachedAPIKey: String? = nil
-    
     // 请求队列管理
     private var requestQueue: [AIRequest] = []
     private var activeRequestIds: Set<String> = [] // 记录正在处理的 contextId
     private let maxConcurrentRequests = 3
     private var activeRequests = 0
     private let queueLock = NSLock()
-    
+
     /// 请求结构
     private struct AIRequest {
         let id = UUID()
@@ -50,10 +45,11 @@ final class AIService: AIServiceProtocol {
         let existingTags: [String]
         let systemPrompt: String?
         let userPrompt: String?
+        let images: [AIImageData]
         let completion: (Result<SummaryResult, Error>) -> Void
         let timestamp = Date()
     }
-    
+
     /// 析构函数，确保清理资源
     deinit {
         queueLock.lock()
@@ -61,20 +57,54 @@ final class AIService: AIServiceProtocol {
         activeRequestIds.removeAll()
         queueLock.unlock()
     }
-    
+
     /// 为单个记录生成总结
     func summarizeSingle(contextId: String?, _ content: String, existingTags: [String], completion: @escaping (Result<SummaryResult, Error>) -> Void) {
         // 使用默认限制值调用 summarize 方法
         summarize(contextId: contextId, titleLimit: 30, summaryLimit: 100, content: content, existingTags: existingTags, completion: completion)
     }
-    
+
+    /// 图片记录入口：原图必须加载成功才进入多模态请求；OCR 文本可为空。
+    func summarizeImage(contextId: String?, titleLimit: Int, summaryLimit: Int, content: String, imagePath: String, existingTags: [String], completion: @escaping (Result<SummaryResult, Error>) -> Void) {
+        guard let image = AIImagePayloadLoader.load(path: imagePath) else {
+            completion(.failure(AIValidationError.imageUnavailable))
+            return
+        }
+
+        summarize(
+            contextId: contextId,
+            titleLimit: titleLimit,
+            summaryLimit: summaryLimit,
+            content: content,
+            existingTags: existingTags,
+            systemPrompt: nil,
+            userPrompt: nil,
+            images: [image],
+            completion: completion
+        )
+    }
+
     /// 执行提炼任务，失败或超时时降级为前 15 字标题与空总结
     func summarize(contextId: String?, titleLimit: Int, summaryLimit: Int, content: String, existingTags: [String], completion: @escaping (Result<SummaryResult, Error>) -> Void) {
         summarize(contextId: contextId, titleLimit: titleLimit, summaryLimit: summaryLimit, content: content, existingTags: existingTags, systemPrompt: nil, userPrompt: nil, completion: completion)
     }
-    
+
     /// 执行提炼任务
     func summarize(contextId: String?, titleLimit: Int, summaryLimit: Int, content: String, existingTags: [String], systemPrompt: String?, userPrompt: String?, completion: @escaping (Result<SummaryResult, Error>) -> Void) {
+        summarize(
+            contextId: contextId,
+            titleLimit: titleLimit,
+            summaryLimit: summaryLimit,
+            content: content,
+            existingTags: existingTags,
+            systemPrompt: systemPrompt,
+            userPrompt: userPrompt,
+            images: [],
+            completion: completion
+        )
+    }
+
+    private func summarize(contextId: String?, titleLimit: Int, summaryLimit: Int, content: String, existingTags: [String], systemPrompt: String?, userPrompt: String?, images: [AIImageData], completion: @escaping (Result<SummaryResult, Error>) -> Void) {
         // 创建请求并加入队列
         let request = AIRequest(
             contextId: contextId,
@@ -84,78 +114,80 @@ final class AIService: AIServiceProtocol {
             existingTags: existingTags,
             systemPrompt: systemPrompt,
             userPrompt: userPrompt,
+            images: images,
             completion: completion
         )
-        
+
         queueLock.lock()
-        
+
         // 去重逻辑：如果队列中已存在相同 contextId 的请求，则移除旧的
         if let cid = contextId {
             if let index = requestQueue.firstIndex(where: { $0.contextId == cid }) {
                 print("[AI] 队列中已存在相同 ID (\(cid)) 的请求，移除旧请求")
                 requestQueue.remove(at: index)
             }
-            
+
             // 如果该 ID 正在处理中，我们也允许新请求入队，但处理时会再次检查
         }
-        
+
         requestQueue.append(request)
         queueLock.unlock()
-        
+
         // 异步触发队列处理，尝试填满并发槽位
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             self?.triggerQueueProcessing()
         }
     }
-    
+
     /// 触发队列处理，直到达到最大并发数
     private func triggerQueueProcessing() {
         while true {
             queueLock.lock()
-            
+
             // 如果正在处理请求数量已达上限，或者队列为空，则退出循环
             guard activeRequests < maxConcurrentRequests && !requestQueue.isEmpty else {
                 queueLock.unlock()
                 break
             }
-            
+
             // 取出下一个请求
             let request = requestQueue.removeFirst()
-            
+
             // 进一步检查 contextId：如果该 ID 正在处理中，则跳过此请求（避免同一记录并发执行）
             if let cid = request.contextId, activeRequestIds.contains(cid) {
                 print("[AI] ID (\(cid)) 正在处理中，跳过此队列请求")
                 queueLock.unlock()
                 continue
             }
-            
+
             if let cid = request.contextId {
                 activeRequestIds.insert(cid)
             }
-            
+
             activeRequests += 1
             queueLock.unlock()
-            
+
             // 处理单个请求
             processRequest(request)
         }
     }
-    
+
     /// 处理单个请求
     private func processRequest(_ request: AIRequest) {
         summarizeWithOpenAI(
-            titleLimit: request.titleLimit, 
-            summaryLimit: request.summaryLimit, 
+            titleLimit: request.titleLimit,
+            summaryLimit: request.summaryLimit,
             content: request.content,
             existingTags: request.existingTags,
             systemPrompt: request.systemPrompt,
-            userPrompt: request.userPrompt
+            userPrompt: request.userPrompt,
+            images: request.images
         ) { [weak self] result in
             request.completion(result)
             self?.requestCompleted(contextId: request.contextId)
         }
     }
-    
+
     /// 请求完成回调
     private func requestCompleted(contextId: String?) {
         queueLock.lock()
@@ -164,29 +196,19 @@ final class AIService: AIServiceProtocol {
             activeRequestIds.remove(cid)
         }
         queueLock.unlock()
-        
+
         // 继续处理队列
         triggerQueueProcessing()
-    }
-
-    /// 获取 OpenAI API 密钥（延迟加载，避免重复访问 Keychain）
-    private func getOpenAIAPIKey() -> String? {
-        queueLock.lock()
-        defer { queueLock.unlock() }
-
-        if !hasCheckedAPIKey {
-            cachedAPIKey = KeychainHelper.shared.read(service: "QuiteNote", account: "openai_api_key")
-            hasCheckedAPIKey = true
-            print("[AI] API密钥获取结果: \(cachedAPIKey != nil ? "成功" : "失败")")
-        }
-        return cachedAPIKey
     }
 
     // MARK: - 纯文本改写（OCR AI 整理等场景）
 
     /// 是否已配置 AI 密钥（UI 按钮可用性/引导判断用）
     func hasAPIKey() -> Bool {
-        getOpenAIAPIKey() != nil
+        if PreferencesManager.shared.aiConnectionKind == .magpie {
+            return PreferencesManager.shared.magpieModelID != nil
+        }
+        return KeychainHelper.shared.read(service: "QuiteNote", account: "openai_api_key") != nil
     }
 
     /// 纯文本改写：复用现有密钥/模型/BaseURL 配置，不要求 JSON 响应
@@ -203,30 +225,28 @@ final class AIService: AIServiceProtocol {
             if !hasCompleted { hasCompleted = true; completion(result) }
         }
 
-        guard let apiKey = getOpenAIAPIKey() else {
-            safeCompletion(.failure(AIRewriteError.notConfigured)); return
+        let snapshot: AIConnectionSnapshot
+        switch AIConnectionResolver.currentModelSnapshot(preferences: .shared) {
+        case .failure(let error):
+            safeCompletion(.failure(error)); return
+        case .success(let value):
+            snapshot = value
         }
-        guard let url = URL(string: "\(openAIBaseURL)/chat/completions") else {
+        let req: URLRequest
+        do {
+            req = try AIConnectionResolver.chatURLRequest(
+                snapshot: snapshot,
+                systemPrompt: system,
+                userPrompt: user,
+                temperature: 0.2,
+                maxTokens: 8000,
+                requiresJSON: false
+            )
+        } catch {
             safeCompletion(.failure(AIRewriteError.badURL)); return
         }
-
-        var req = URLRequest(url: url)
-        req.httpMethod = "POST"
-        req.addValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.addValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         // 不记录用户配置的完整端点，避免查询参数或私有网关地址进入诊断日志。
         DiagnosticCenter.info("OCR", "AI 请求已发起 | API key configured")
-
-        let body: [String: Any] = [
-            "model": openAIModel,
-            "messages": [
-                ["role": "system", "content": system],
-                ["role": "user", "content": user]
-            ],
-            "temperature": 0.2,
-            "max_tokens": 8000
-        ]
-        req.httpBody = try? JSONSerialization.data(withJSONObject: body)
 
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = timeout
@@ -278,8 +298,8 @@ final class AIService: AIServiceProtocol {
     }
 
     /// 使用 OpenAI Chat Completions 生成固定 JSON 输出
-    private func summarizeWithOpenAI(titleLimit: Int, summaryLimit: Int, content: String, existingTags: [String], systemPrompt: String? = nil, userPrompt: String? = nil, completion: @escaping (Result<SummaryResult, Error>) -> Void) {
-        
+    private func summarizeWithOpenAI(titleLimit: Int, summaryLimit: Int, content: String, existingTags: [String], systemPrompt: String? = nil, userPrompt: String? = nil, images: [AIImageData] = [], completion: @escaping (Result<SummaryResult, Error>) -> Void) {
+
         // 防止多次回调的标志
         var hasCompleted = false
         let safeCompletion: (Result<SummaryResult, Error>) -> Void = { result in
@@ -288,26 +308,15 @@ final class AIService: AIServiceProtocol {
                 completion(result)
             }
         }
-        
-        guard let apiKey = getOpenAIAPIKey() else {
-            let baseTitle = String(content.prefix(max(0, min(titleLimit, 15))))
-            let result = SummaryResult(title: baseTitle, summary: "", confidence: 0.0, tags: [], keywords: [])
-            completion(.success(result))
+
+        let snapshot: AIConnectionSnapshot
+        switch AIConnectionResolver.currentModelSnapshot(preferences: .shared) {
+        case .failure(let error):
+            completion(.failure(error))
             return
+        case .success(let value):
+            snapshot = value
         }
-        
-        guard let url = URL(string: "\(openAIBaseURL)/chat/completions") else {
-            print("[AI] 错误: 无效的 OpenAI Base URL")
-            let baseTitle = String(content.prefix(max(0, min(titleLimit, 15))))
-            let result = SummaryResult(title: baseTitle, summary: "", confidence: 0.0, tags: [], keywords: [])
-            completion(.success(result))
-            return
-        }
-        
-        var req = URLRequest(url: url)
-        req.httpMethod = "POST"
-        req.addValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.addValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
 
         // 准备现有标签提示
         let tagsPrompt = existingTags.isEmpty ? "" : "\n当前系统已有标签库: [\(existingTags.joined(separator: ", "))]。\n请遵循以下增强规则：\n1. **优先复用**: 检查内容是否属于已有标签的维度，如果是，必须优先使用已有标签。\n2. **多维度分类**: 即使复用了旧标签，也请尝试从内容属性、技术工具、业务场景等维度补齐缺失的分类。\n3. **新增策略**: 仅在已有标签完全无法覆盖该内容的某个重要维度时，才创建新标签。\n4. **简洁规范**: 标签通常为 2-4 字，避免句子形式。"
@@ -315,38 +324,44 @@ final class AIService: AIServiceProtocol {
         // 获取基础提示词
         let baseSys = systemPrompt ?? PreferencesManager.shared.aiSystemPrompt
         let baseUser = userPrompt ?? PreferencesManager.shared.aiUserPrompt
-        
+
         // 注入标签提示（如果是系统默认提示词，则注入 tagsPrompt）
         var sys = baseSys
         if sys.contains("识别内容的分类。") {
             sys = sys.replacingOccurrences(of: "识别内容的分类。", with: "识别内容的分类。\(tagsPrompt)")
         }
-        
+
         // 替换占位符
         sys = sys.replacingOccurrences(of: "{titleLimit}", with: "\(titleLimit)")
         sys = sys.replacingOccurrences(of: "{summaryLimit}", with: "\(summaryLimit)")
-        
-        let user = baseUser.replacingOccurrences(of: "{content}", with: content)
-        
-        let body: [String: Any] = [
-            "model": openAIModel,
-            "messages": [
-                ["role": "system", "content": sys],
-                ["role": "user", "content": user]
-            ],
-            "temperature": 0.3,
-            "max_tokens": 5000,
-            "response_format": ["type": "json_object"]
-        ]
 
+        let user = baseUser.replacingOccurrences(of: "{content}", with: content)
+
+        let req: URLRequest
         do {
-            let bodyData = try JSONSerialization.data(withJSONObject: body, options: .prettyPrinted)
-            req.httpBody = bodyData
+            if images.isEmpty {
+                req = try AIConnectionResolver.chatURLRequest(
+                    snapshot: snapshot,
+                    systemPrompt: sys,
+                    userPrompt: user,
+                    temperature: 0.3,
+                    maxTokens: 5000,
+                    requiresJSON: true
+                )
+            } else {
+                req = try AIConnectionResolver.multimodalChatURLRequest(
+                    snapshot: snapshot,
+                    systemPrompt: sys,
+                    userPrompt: user,
+                    images: images,
+                    temperature: 0.3,
+                    maxTokens: 5000,
+                    requiresJSON: true
+                )
+            }
         } catch {
-       
-            let baseTitle = String(content.prefix(max(0, min(titleLimit, 15))))
-            let result = SummaryResult(title: baseTitle, summary: "", confidence: 0.0, tags: [], keywords: [])
-            completion(.success(result))
+            print("[AI] 错误: 无效的 OpenAI Base URL")
+            completion(.failure(AIValidationError.badURL))
             return
         }
 
@@ -358,25 +373,19 @@ final class AIService: AIServiceProtocol {
 
         let task = session.dataTask(with: req) { data, response, error in
             if error != nil {
-                let baseTitle = String(content.prefix(max(0, min(titleLimit, 15))))
-                let result = SummaryResult(title: baseTitle, summary: "", confidence: 0.0, tags: [], keywords: [])
-                safeCompletion(.success(result))
+                safeCompletion(.failure(AIValidationError.network))
                 return
             }
 
             if let httpResponse = response as? HTTPURLResponse {
                 if httpResponse.statusCode != 200 {
-                    let baseTitle = String(content.prefix(max(0, min(titleLimit, 15))))
-                    let result = SummaryResult(title: baseTitle, summary: "", confidence: 0.0, tags: [], keywords: [])
-                    safeCompletion(.success(result))
+                    safeCompletion(.failure(AIValidationError.http(httpResponse.statusCode)))
                     return
                 }
             }
 
             guard let data = data else {
-                let baseTitle = String(content.prefix(max(0, min(titleLimit, 15))))
-                let result = SummaryResult(title: baseTitle, summary: "", confidence: 0.0, tags: [], keywords: [])
-                safeCompletion(.success(result))
+                safeCompletion(.failure(AIValidationError.emptyResponse))
                 return
             }
 
@@ -386,9 +395,9 @@ final class AIService: AIServiceProtocol {
                    let first = choices.first,
                    let message = first["message"] as? [String: Any],
                    let content = message["content"] as? String {
-                    
+
                     var trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
-                    
+
                     // 处理可能包含的 markdown 代码块
                     if trimmed.hasPrefix("```json") {
                         trimmed = trimmed.replacingOccurrences(of: "```json", with: "")
@@ -402,97 +411,55 @@ final class AIService: AIServiceProtocol {
                         }
                     }
                     trimmed = trimmed.trimmingCharacters(in: .whitespacesAndNewlines)
-                    
-                    
-                    
+
+
+
                     if let jsonData = trimmed.data(using: .utf8) {
                         do {
                             let summary = try JSONDecoder().decode(SummaryResult.self, from: jsonData)
-                            
+
                             safeCompletion(.success(summary))
                         } catch {
-                            
-                            // 尝试降级处理
-                            let baseTitle = String(content.prefix(max(0, min(titleLimit, 15))))
-                            let result = SummaryResult(title: baseTitle, summary: trimmed, confidence: 0.5, tags: [], keywords: [])
-                            safeCompletion(.success(result))
+                            safeCompletion(.failure(AIValidationError.invalidSchema))
                         }
                     } else {
-                        
-                        let baseTitle = String(content.prefix(max(0, min(titleLimit, 15))))
-                        let result = SummaryResult(title: baseTitle, summary: "", confidence: 0.0, tags: [], keywords: [])
-                        safeCompletion(.success(result))
+                        safeCompletion(.failure(AIValidationError.emptyResponse))
                     }
                 } else {
-                    
-                    let baseTitle = String(content.prefix(max(0, min(titleLimit, 15))))
-                    let result = SummaryResult(title: baseTitle, summary: "", confidence: 0.0, tags: [], keywords: [])
-                    safeCompletion(.success(result))
+                    safeCompletion(.failure(AIValidationError.invalidResponse))
                 }
             } catch {
-                
-                let baseTitle = String(content.prefix(max(0, min(titleLimit, 15))))
-                let result = SummaryResult(title: baseTitle, summary: "", confidence: 0.0, tags: [], keywords: [])
-                safeCompletion(.success(result))
+                safeCompletion(.failure(AIValidationError.invalidResponse))
             }
         }
 
         task.resume()
     }
 
-    /// 测试连接 - 仅测试OpenAI
-    func testConnection(completion: @escaping (Result<Bool, Error>) -> Void) {
-        print("[AI] 测试OpenAI连接")
-        
-        guard let apiKey = getOpenAIAPIKey() else {
-            completion(.failure(NSError(domain: "AIService", code: 401, userInfo: [NSLocalizedDescriptionKey: "未设置API密钥"])))
-            return
-        }
-
-        guard let testURL = URL(string: "\(openAIBaseURL)/models") else {
-            completion(.failure(NSError(domain: "AIService", code: 400, userInfo: [NSLocalizedDescriptionKey: "无效的API URL: \(openAIBaseURL)"])))
-            return
-        }
-
-        var req = URLRequest(url: testURL)
-        req.httpMethod = "GET"
-        req.addValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        req.timeoutInterval = timeout
-
-        let session = URLSession(configuration: .default)
-        let task = session.dataTask(with: req) { data, response, error in
-            if let error = error {
-                let nsError = error as NSError
-                var errorMessage = "连接失败"
-                
-                if nsError.code == NSURLErrorNotConnectedToInternet {
-                    errorMessage = "无网络连接"
-                } else if nsError.code == NSURLErrorTimedOut {
-                    errorMessage = "连接超时"
-                } else if nsError.code == 401 {
-                    errorMessage = "API密钥无效"
-                } else {
-                    errorMessage = error.localizedDescription
+    /// 用固定安全样例验证当前模型能完成真实的总结 JSON 请求。
+    func testModel(completion: @escaping (Result<SummaryResult, Error>) -> Void) {
+        let started = Date()
+        summarize(
+            contextId: "model-test",
+            titleLimit: 30,
+            summaryLimit: 100,
+            content: "周五检查 Quite Note 的剪贴板历史搜索。",
+            existingTags: [],
+            systemPrompt: "你是笔记整理助手。严格输出 JSON 对象，字段 title、summary、confidence、tags、keywords。title 不超过 {titleLimit} 字，summary 不超过 {summaryLimit} 字。",
+            userPrompt: "{content}"
+        ) { result in
+            switch result {
+            case .success(let summary):
+                guard !summary.title.isEmpty, summary.confidence > 0 else {
+                    completion(.failure(AIValidationError.emptyResponse))
+                    return
                 }
-                
-                completion(.failure(NSError(domain: "AIService", code: nsError.code, userInfo: [NSLocalizedDescriptionKey: errorMessage])))
-                return
-            }
-
-            if let httpResponse = response as? HTTPURLResponse {
-                if httpResponse.statusCode == 200 {
-                    print("[AI] OpenAI连接测试成功")
-                    completion(.success(true))
-                } else {
-                    let errorMsg = "HTTP错误 \(httpResponse.statusCode)"
-                    completion(.failure(NSError(domain: "AIService", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: errorMsg])))
-                }
-            } else {
-                completion(.failure(NSError(domain: "AIService", code: 0, userInfo: [NSLocalizedDescriptionKey: "无效的响应"])))
+                Self.logger.info("AI 模型验证成功，耗时 \(Date().timeIntervalSince(started)) 秒")
+                completion(.success(summary))
+            case .failure(let error):
+                completion(.failure(error))
             }
         }
-
-        task.resume()
     }
 }
 /// 纯文本改写（OCR AI 整理）的错误类型
@@ -512,6 +479,35 @@ enum AIRewriteError: LocalizedError {
             }
             return "AI 请求失败（HTTP \(code)）"
         case .emptyResponse: return "AI 返回内容为空"
+        }
+    }
+}
+
+enum AIValidationError: LocalizedError {
+    case emptyResponse
+    case badURL
+    case network
+    case http(Int)
+    case invalidResponse
+    case invalidSchema
+    case imageUnavailable
+
+    var errorDescription: String? {
+        switch self {
+        case .emptyResponse:
+            return "AI 返回了空内容或降级结果，所选模型未通过验证"
+        case .badURL:
+            return "无效的 AI Base URL"
+        case .network:
+            return "AI 网络请求失败"
+        case .http(let code):
+            return "AI 请求失败（HTTP \(code)）"
+        case .invalidResponse:
+            return "AI 返回的 Chat Completions 格式无效"
+        case .invalidSchema:
+            return "AI 未返回要求的总结 JSON 字段"
+        case .imageUnavailable:
+            return "图片文件不存在或无法编码，无法进行多模态总结"
         }
     }
 }

@@ -216,6 +216,21 @@ final class ClipboardHistoryStore: ObservableObject {
             entry.ocrStatus = status
         }) else { return }
         replaceEntry(updated)
+        syncSavedImageRecordWithOCR(entry: updated)
+    }
+
+    /// 图片加入闪记时可能仍在 OCR 队列。OCR 成功后需要把结果回填正式记录；
+    /// 如果 AI 开启且该记录原本因无文本跳过 AI，则回填后立即补触发提炼。
+    private func syncSavedImageRecordWithOCR(entry: ClipboardEntry) {
+        guard entry.type == .image,
+              entry.ocrStatus == .success,
+              let recordID = entry.savedRecordID,
+              let ocrText = entry.ocrText?.trimmingCharacters(in: .whitespacesAndNewlines),
+              let store = ClipboardFlashNoteService.shared.recordStore,
+              let record = store.record(id: recordID) else { return }
+
+        guard record.content.trimmingCharacters(in: .whitespacesAndNewlines) != ocrText else { return }
+        store.updateImageOCRContent(id: recordID, content: ocrText)
     }
 
     /// 加入闪记后记录关联

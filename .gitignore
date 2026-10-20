@@ -26,3 +26,9 @@ cloud/feedback-worker/.admin-token
 .ui-smoke-worktrees/
 tools/ui-smoke/runs/
 tools/ui-smoke/__pycache__/
+.artifacts/*
+!.artifacts/ai-settings-validation/
+.artifacts/ai-settings-validation/*
+!.artifacts/ai-settings-validation/pr/
+.artifacts/ai-settings-validation/pr/*
+!.artifacts/ai-settings-validation/pr/*

@@ -678,7 +678,7 @@ struct RecordCardView: View, Equatable {
 
     private var originalContentBody: some View {
         // 录屏记录的 sourceUrl 指向首帧图（FileCoordinator 存储），同截图走大图预览
-        let isImage = record.type == .image || record.type == .screenshot || record.type == .video
+        let isImage = record.type.isVisualRecord
         // 对于 note 类型，只显示第一页内容
         let displayContent = record.type == .note ? extractFirstPageContent(record.content) : record.content
 
@@ -764,7 +764,7 @@ struct RecordCardView: View, Equatable {
 
                         // 复制按钮（始终显示）
                         Button(action: {
-                            let isImageType = record.type == .image || record.type == .screenshot || record.type == .video
+                            let isImageType = record.type.isVisualRecord
                             if isImageType, let urlString = record.sourceUrl, let url = FileCoordinator.shared.resolveVirtualPath(urlString) {
                                 // 复制图片文件到剪贴板
                                 NSPasteboard.general.clearContents()
@@ -888,7 +888,7 @@ private extension RecordCardView {
         let existingTags = store.records.flatMap { $0.tags }
         let uniqueTags = Array(Set(existingTags)).sorted()
 
-        store.ai?.summarizeSingle(contextId: record.id.uuidString, record.content, existingTags: uniqueTags) { [weak store] (result: Result<SummaryResult, Error>) in
+        let completion: (Result<SummaryResult, Error>) -> Void = { [weak store] result in
             DispatchQueue.main.async {
                 switch result {
                 case .success(let summaryResult):
@@ -916,6 +916,20 @@ private extension RecordCardView {
                     store?.postToast("总结生成失败: \(error.localizedDescription)", type: "error")
                 }
             }
+        }
+
+        if record.type.isVisualRecord, let imagePath = record.sourceUrl {
+            store.ai?.summarizeImage(
+                    contextId: record.id.uuidString,
+                    titleLimit: 30,
+                    summaryLimit: 100,
+                    content: record.content,
+                    imagePath: imagePath,
+                    existingTags: uniqueTags,
+                    completion: completion
+                )
+        } else {
+            store.ai?.summarizeSingle(contextId: record.id.uuidString, record.content, existingTags: uniqueTags, completion: completion)
         }
     }
 

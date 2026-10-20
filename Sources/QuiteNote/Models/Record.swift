@@ -55,6 +55,14 @@ enum RecordType: String, Codable, CaseIterable {
     }
 }
 
+extension RecordType {
+    /// These records keep a readable still image in `Record.sourceUrl`, so they can
+    /// use the same multimodal summary path even when their text is only metadata.
+    var isVisualRecord: Bool {
+        self == .image || self == .screenshot || self == .video
+    }
+}
+
 /// 记录模型：标题、内容、创建时间与去重哈希
 struct Record: Identifiable, Equatable {
     let id: UUID

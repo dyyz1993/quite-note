@@ -1,0 +1,470 @@
+开始构建 Quite Note 应用...
+App Store 沙盒验证模式（本地签名，不代表可直接上传）
+构建完成后不重启应用...
+正在编译应用...
+Building for production...
+[Pre-planning 1 / 213]
+[Planning deferred tasks]
+[4 / 14] LucideIcons
+[10 / 27] Yams
+[13 / 29] LucideIcons
+[15 / 30] QuiteNoteSharedStorage
+[16 / 29] LucideIcons
+[18 / 25] Yams
+[23 / 27] QuiteNote-product
+[24 / 28] QuiteNote-product
+/Users/xuyingzhou/.codex/worktrees/de1c/quite-note/Sources/QuiteNote/AppLauncher/AppCatalogStore.swift:224:18: warning: weak variable 'weakQuery' was never mutated; consider changing to 'let' constant [#VariableNeverMutated::WeakMutability]
+222 |         var didFinish = false
+223 |         var observer: NSObjectProtocol?
+224 |         weak var weakQuery = query
+    |                  `- warning: weak variable 'weakQuery' was never mutated; consider changing to 'let' constant [#VariableNeverMutated::WeakMutability]
+225 | 
+226 |         func finish(_ apps: [LauncherApp]?) {
+
+/Users/xuyingzhou/.codex/worktrees/de1c/quite-note/Sources/QuiteNote/AppLauncher/AppCatalogStore.swift:237:24: warning: capture of 'query' with non-Sendable type 'NSMetadataQuery' in a '@Sendable' closure [#SendableClosureCaptures]
+235 |             forName: NSNotification.Name.NSMetadataQueryDidFinishGathering, object: query, queue: .main
+236 |         ) { _ in
+237 |             let apps = query.results.compactMap { result -> LauncherApp? in
+    |                        `- warning: capture of 'query' with non-Sendable type 'NSMetadataQuery' in a '@Sendable' closure [#SendableClosureCaptures]
+238 |                 guard let item = result as? NSMetadataItem,
+239 |                       let path = item.value(forAttribute: "kMDItemPath") as? String else { return nil }
+
+/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX27.0.sdk/System/Library/Frameworks/Foundation.framework/Headers/NSMetadata.h:36:12: note: class 'NSMetadataQuery' does not conform to the 'Sendable' protocol
+ 34 | /// You must set a predicate with the ``predicate`` property before starting a query.
+ 35 | API_AVAILABLE(macos(10.4), ios(5.0), watchos(2.0), tvos(9.0))
+ 36 | @interface NSMetadataQuery : NSObject {
+    |            `- note: class 'NSMetadataQuery' does not conform to the 'Sendable' protocol
+ 37 | @private
+ 38 |     NSUInteger _flags;
+
+/Users/xuyingzhou/.codex/worktrees/de1c/quite-note/Sources/QuiteNote/AppLauncher/AppCatalogStore.swift:249:13: warning: call to main actor-isolated local function 'finish' in a synchronous nonisolated context [#ActorIsolatedCall]
+224 |         weak var weakQuery = query
+225 | 
+226 |         func finish(_ apps: [LauncherApp]?) {
+    |              |- note: calls to local function 'finish' from outside of its actor context are implicitly asynchronous
+    |              `- note: main actor isolation inferred from enclosing context
+227 |             guard !didFinish else { return }
+228 |             didFinish = true
+    :
+247 |                                    isSystem: path.hasPrefix("/System/"))
+248 |             }
+249 |             finish(apps)
+    |             `- warning: call to main actor-isolated local function 'finish' in a synchronous nonisolated context [#ActorIsolatedCall]
+250 |         }
+251 | 
+
+/Users/xuyingzhou/.codex/worktrees/de1c/quite-note/Sources/QuiteNote/Clipboard/UI/ClipboardDetailPane.swift:137:27: warning: conformance of 'NSImage' to 'Sendable' is only available in macOS 14.0 or newer
+  4 | 
+  5 | /// 右栏详情：展示选中条目的完整内容（参考图双栏布局的右半区）
+  6 | struct ClipboardDetailPane: View, Equatable {
+    |        `- note: add '@available' attribute to enclosing struct
+  7 |     let entry: ClipboardEntry?
+  8 |     var onRetryOCR: (() -> Void)? = nil
+    :
+128 |     ///   （.task(id:) 换选中即取消）= 快速连按时**不发起任何全图解码**，
+129 |     ///   只有用户停下才加载，彻底消除解码并发抢主线程
+130 |     private func loadDetailImage(entry: ClipboardEntry, url: URL) async {
+    |                  `- note: add '@available' attribute to enclosing instance method
+131 |         guard loadedImageID != entry.id else { return }
+132 |         loadedImageID = entry.id
+    :
+135 | 
+136 |         // 阶段 ①：已有缩略图（512px 内解码，后台低开销）
+137 |         let thumb = await Task.detached(priority: .userInitiated) { () -> NSImage? in
+    |                           |- warning: conformance of 'NSImage' to 'Sendable' is only available in macOS 14.0 or newer
+    |                           `- note: add 'if #available' version check
+138 |             guard let thumbURL = ThumbnailGenerator.shared.existingThumbnailURL(for: url) else { return nil }
+139 |             return Self.decodeDownsampled(at: thumbURL, maxPixel: 512)
+
+/Users/xuyingzhou/.codex/worktrees/de1c/quite-note/Sources/QuiteNote/Clipboard/UI/ClipboardDetailPane.swift:137:32: warning: conformance of 'NSImage' to 'Sendable' is only available in macOS 14.0 or newer
+  4 | 
+  5 | /// 右栏详情：展示选中条目的完整内容（参考图双栏布局的右半区）
+  6 | struct ClipboardDetailPane: View, Equatable {
+    |        `- note: add '@available' attribute to enclosing struct
+  7 |     let entry: ClipboardEntry?
+  8 |     var onRetryOCR: (() -> Void)? = nil
+    :
+128 |     ///   （.task(id:) 换选中即取消）= 快速连按时**不发起任何全图解码**，
+129 |     ///   只有用户停下才加载，彻底消除解码并发抢主线程
+130 |     private func loadDetailImage(entry: ClipboardEntry, url: URL) async {
+    |                  `- note: add '@available' attribute to enclosing instance method
+131 |         guard loadedImageID != entry.id else { return }
+132 |         loadedImageID = entry.id
+    :
+135 | 
+136 |         // 阶段 ①：已有缩略图（512px 内解码，后台低开销）
+137 |         let thumb = await Task.detached(priority: .userInitiated) { () -> NSImage? in
+    |                                |- warning: conformance of 'NSImage' to 'Sendable' is only available in macOS 14.0 or newer
+    |                                `- note: add 'if #available' version check
+138 |             guard let thumbURL = ThumbnailGenerator.shared.existingThumbnailURL(for: url) else { return nil }
+139 |             return Self.decodeDownsampled(at: thumbURL, maxPixel: 512)
+
+/Users/xuyingzhou/.codex/worktrees/de1c/quite-note/Sources/QuiteNote/Clipboard/UI/ClipboardDetailPane.swift:140:11: warning: conformance of 'NSImage' to 'Sendable' is only available in macOS 14.0 or newer
+  4 | 
+  5 | /// 右栏详情：展示选中条目的完整内容（参考图双栏布局的右半区）
+  6 | struct ClipboardDetailPane: View, Equatable {
+    |        `- note: add '@available' attribute to enclosing struct
+  7 |     let entry: ClipboardEntry?
+  8 |     var onRetryOCR: (() -> Void)? = nil
+    :
+128 |     ///   （.task(id:) 换选中即取消）= 快速连按时**不发起任何全图解码**，
+129 |     ///   只有用户停下才加载，彻底消除解码并发抢主线程
+130 |     private func loadDetailImage(entry: ClipboardEntry, url: URL) async {
+    |                  `- note: add '@available' attribute to enclosing instance method
+131 |         guard loadedImageID != entry.id else { return }
+132 |         loadedImageID = entry.id
+    :
+138 |             guard let thumbURL = ThumbnailGenerator.shared.existingThumbnailURL(for: url) else { return nil }
+139 |             return Self.decodeDownsampled(at: thumbURL, maxPixel: 512)
+140 |         }.value
+    |           |- warning: conformance of 'NSImage' to 'Sendable' is only available in macOS 14.0 or newer
+    |           `- note: add 'if #available' version check
+141 |         if entryID == entry.id {
+142 |             detailImage = thumb   // 可能为 nil（无缩略图）→ 继续显示 ProgressView
+
+/Users/xuyingzhou/.codex/worktrees/de1c/quite-note/Sources/QuiteNote/Clipboard/UI/ClipboardDetailPane.swift:149:26: warning: conformance of 'NSImage' to 'Sendable' is only available in macOS 14.0 or newer
+  4 | 
+  5 | /// 右栏详情：展示选中条目的完整内容（参考图双栏布局的右半区）
+  6 | struct ClipboardDetailPane: View, Equatable {
+    |        `- note: add '@available' attribute to enclosing struct
+  7 |     let entry: ClipboardEntry?
+  8 |     var onRetryOCR: (() -> Void)? = nil
+    :
+128 |     ///   （.task(id:) 换选中即取消）= 快速连按时**不发起任何全图解码**，
+129 |     ///   只有用户停下才加载，彻底消除解码并发抢主线程
+130 |     private func loadDetailImage(entry: ClipboardEntry, url: URL) async {
+    |                  `- note: add '@available' attribute to enclosing instance method
+131 |         guard loadedImageID != entry.id else { return }
+132 |         loadedImageID = entry.id
+    :
+147 |         guard !Task.isCancelled, entryID == entry.id else { return }
+148 | 
+149 |         let full = await Task.detached(priority: .utility) {   // 低优先级，不抢主线程
+    |                          |- warning: conformance of 'NSImage' to 'Sendable' is only available in macOS 14.0 or newer
+    |                          `- note: add 'if #available' version check
+150 |             Self.decodeDownsampled(at: url, maxPixel: 1400)
+151 |         }.value
+
+/Users/xuyingzhou/.codex/worktrees/de1c/quite-note/Sources/QuiteNote/Clipboard/UI/ClipboardDetailPane.swift:149:31: warning: conformance of 'NSImage' to 'Sendable' is only available in macOS 14.0 or newer
+  4 | 
+  5 | /// 右栏详情：展示选中条目的完整内容（参考图双栏布局的右半区）
+  6 | struct ClipboardDetailPane: View, Equatable {
+    |        `- note: add '@available' attribute to enclosing struct
+  7 |     let entry: ClipboardEntry?
+  8 |     var onRetryOCR: (() -> Void)? = nil
+    :
+128 |     ///   （.task(id:) 换选中即取消）= 快速连按时**不发起任何全图解码**，
+129 |     ///   只有用户停下才加载，彻底消除解码并发抢主线程
+130 |     private func loadDetailImage(entry: ClipboardEntry, url: URL) async {
+    |                  `- note: add '@available' attribute to enclosing instance method
+131 |         guard loadedImageID != entry.id else { return }
+132 |         loadedImageID = entry.id
+    :
+147 |         guard !Task.isCancelled, entryID == entry.id else { return }
+148 | 
+149 |         let full = await Task.detached(priority: .utility) {   // 低优先级，不抢主线程
+    |                               |- warning: conformance of 'NSImage' to 'Sendable' is only available in macOS 14.0 or newer
+    |                               `- note: add 'if #available' version check
+150 |             Self.decodeDownsampled(at: url, maxPixel: 1400)
+151 |         }.value
+
+/Users/xuyingzhou/.codex/worktrees/de1c/quite-note/Sources/QuiteNote/Clipboard/UI/ClipboardDetailPane.swift:151:11: warning: conformance of 'NSImage' to 'Sendable' is only available in macOS 14.0 or newer
+  4 | 
+  5 | /// 右栏详情：展示选中条目的完整内容（参考图双栏布局的右半区）
+  6 | struct ClipboardDetailPane: View, Equatable {
+    |        `- note: add '@available' attribute to enclosing struct
+  7 |     let entry: ClipboardEntry?
+  8 |     var onRetryOCR: (() -> Void)? = nil
+    :
+128 |     ///   （.task(id:) 换选中即取消）= 快速连按时**不发起任何全图解码**，
+129 |     ///   只有用户停下才加载，彻底消除解码并发抢主线程
+130 |     private func loadDetailImage(entry: ClipboardEntry, url: URL) async {
+    |                  `- note: add '@available' attribute to enclosing instance method
+131 |         guard loadedImageID != entry.id else { return }
+132 |         loadedImageID = entry.id
+    :
+149 |         let full = await Task.detached(priority: .utility) {   // 低优先级，不抢主线程
+150 |             Self.decodeDownsampled(at: url, maxPixel: 1400)
+151 |         }.value
+    |           |- warning: conformance of 'NSImage' to 'Sendable' is only available in macOS 14.0 or newer
+    |           `- note: add 'if #available' version check
+152 |         if entryID == entry.id, full != nil {
+153 |             detailImage = full
+
+/Users/xuyingzhou/.codex/worktrees/de1c/quite-note/Sources/QuiteNote/Clipboard/UI/ClipboardHistoryViewModel.swift:87:50: warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+ 83 |             )
+ 84 |         } else {
+ 85 |             store.loadAllEntriesInBackground { allEntries in
+    |                                              |- note: 'self' implicitly strongly captured here
+    |                                              `- note: add 'self' as a capture list item to silence
+ 86 |                 // 统一索引负责快照匹配/排序/分页；内存增量仍即时合并，保证搜索期间的新剪贴板可见。
+ 87 |                 DispatchQueue.main.async { [weak self] in
+    |                                                  |- warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+    |                                                  `- note: explicitly assign the capture list item to silence
+ 88 |                     guard let self else { return }
+ 89 |                     self.searchIndex.rebuild(using: {
+
+/Users/xuyingzhou/.codex/worktrees/de1c/quite-note/Sources/QuiteNote/System/Diagnostics/DiagnosticCenter.swift:219:43: warning: left side of nil coalescing operator '??' has non-optional type 'String', so the right side is never used
+217 | 
+218 |         fileHandle?.synchronizeFile()
+219 |         let fileName = currentLogFileName ?? "app-\(Self.dayFormatter.string(from: Date())).log"
+    |                                           `- warning: left side of nil coalescing operator '??' has non-optional type 'String', so the right side is never used
+220 |         let url = logDirectory.appendingPathComponent(fileName)
+221 |         guard let data = try? Data(contentsOf: url), let text = String(data: data, encoding: .utf8) else { return "" }
+
+/Users/xuyingzhou/.codex/worktrees/de1c/quite-note/Sources/QuiteNote/UI/FloatingPanel/Views/FloatingBallView.swift:70:64: warning: 'weak' ownership of capture 'store' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+ 66 |         .frame(width: 80, height: 80) // Container matches window size
+ 67 |         .contentShape(Circle())
+ 68 |         .onDrop(of: [.item, .fileURL, .text, .url], isTargeted: $isTargeted) { providers in
+    |                                                                              |- note: 'store' implicitly strongly captured here
+    |                                                                              `- note: add 'store' as a capture list item to silence
+ 69 |             // 使用统一的拖拽解析器
+ 70 |             DragDropParser.parse(providers: providers) { [weak store] result in
+    |                                                                |- warning: 'weak' ownership of capture 'store' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+    |                                                                `- note: explicitly assign the capture list item to silence
+ 71 |                 guard let store = store else { return }
+ 72 | 
+
+/Users/xuyingzhou/.codex/worktrees/de1c/quite-note/Sources/QuiteNote/UI/FloatingPanel/Views/FloatingRootView.swift:512:68: warning: 'weak' ownership of capture 'store' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+499 |             }
+500 |         }
+501 |             .onDrop(of: [.item, .fileURL, .text, .url], isTargeted: $isDroppingFiles) { providers in
+    |                                                                                       |- note: 'store' implicitly strongly captured here
+    |                                                                                       `- note: add 'store' as a capture list item to silence
+502 |                 // 展开模式特有：拦截内部拖拽（防止拖拽记录卡片时触发导入蒙层）
+503 |                 if store.isInternalDragging {
+    :
+510 | 
+511 |                 // 使用统一的拖拽解析器
+512 |                 DragDropParser.parse(providers: providers) { [weak store] result in
+    |                                                                    |- warning: 'weak' ownership of capture 'store' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+    |                                                                    `- note: explicitly assign the capture list item to silence
+513 |                     guard let store = store else { return }
+514 | 
+
+/Users/xuyingzhou/.codex/worktrees/de1c/quite-note/Sources/QuiteNote/UI/PermissionGuide/PermissionGuidePanel.swift:111:17: warning: cannot use generic class 'Autoconnect' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+109 | 
+110 |     @State private var screenGranted = ScreenshotService.shared.checkScreenCapturePermission()
+111 |     private let timer = Timer.publish(every: 1.5, on: .main, in: .common).autoconnect()
+    |                 `- warning: cannot use generic class 'Autoconnect' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+112 | 
+113 |     var body: some View {
+
+Combine.Publishers.Autoconnect:2:14: note: generic class declared here
+ 1 | enum Publishers {
+ 2 | public class Autoconnect<Upstream> : Publisher where Upstream : ConnectablePublisher {
+   |              `- note: generic class declared here
+ 3 |     public typealias Output = Upstream.Output
+ 4 |     public typealias Failure = Upstream.Failure
+
+/Users/xuyingzhou/.codex/worktrees/de1c/quite-note/Sources/QuiteNote/UI/PermissionGuide/PermissionGuidePanel.swift:111:17: warning: cannot use enum 'Publishers' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+109 | 
+110 |     @State private var screenGranted = ScreenshotService.shared.checkScreenCapturePermission()
+111 |     private let timer = Timer.publish(every: 1.5, on: .main, in: .common).autoconnect()
+    |                 `- warning: cannot use enum 'Publishers' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+112 | 
+113 |     var body: some View {
+
+Combine.Publishers:2:13: note: enum declared here
+1 | @available(macOS 10.15, iOS 13.0, tvOS 13.0, watchOS 6.0, *)
+2 | public enum Publishers {
+  |             `- note: enum declared here
+3 | }
+
+/Users/xuyingzhou/.codex/worktrees/de1c/quite-note/Sources/QuiteNote/UI/ScreenshotV2/Views/Annotation/AnnotationTextEditorView.swift:16:17: warning: cannot use generic class 'Autoconnect' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+14 |     
+15 |     // 定时器用于光标闪烁
+16 |     private let timer = Timer.publish(every: 0.6, on: .main, in: .common).autoconnect()
+   |                 `- warning: cannot use generic class 'Autoconnect' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+17 |     
+18 |     var body: some View {
+
+Combine.Publishers.Autoconnect:2:14: note: generic class declared here
+ 1 | enum Publishers {
+ 2 | public class Autoconnect<Upstream> : Publisher where Upstream : ConnectablePublisher {
+   |              `- note: generic class declared here
+ 3 |     public typealias Output = Upstream.Output
+ 4 |     public typealias Failure = Upstream.Failure
+
+/Users/xuyingzhou/.codex/worktrees/de1c/quite-note/Sources/QuiteNote/UI/ScreenshotV2/Views/Annotation/AnnotationTextEditorView.swift:16:17: warning: cannot use enum 'Publishers' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+14 |     
+15 |     // 定时器用于光标闪烁
+16 |     private let timer = Timer.publish(every: 0.6, on: .main, in: .common).autoconnect()
+   |                 `- warning: cannot use enum 'Publishers' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+17 |     
+18 |     var body: some View {
+
+Combine.Publishers:2:13: note: enum declared here
+1 | @available(macOS 10.15, iOS 13.0, tvOS 13.0, watchOS 6.0, *)
+2 | public enum Publishers {
+  |             `- note: enum declared here
+3 | }
+
+/Users/xuyingzhou/.codex/worktrees/de1c/quite-note/Sources/QuiteNote/UI/ScreenshotV2/Views/V2ScreenshotView.swift:608:61: warning: call to main actor-isolated instance method 'show(onContinue:onCancel:on:)' in a synchronous nonisolated context [#ActorIsolatedCall]
+ 606 |                     proceed()
+ 607 |                 } else {
+ 608 |                     V2FeedbackPrivacyGuideController.shared.show(
+     |                                                             `- warning: call to main actor-isolated instance method 'show(onContinue:onCancel:on:)' in a synchronous nonisolated context [#ActorIsolatedCall]
+ 609 |                         onContinue: proceed,
+ 610 |                         onCancel: {
+
+/Users/xuyingzhou/.codex/worktrees/de1c/quite-note/Sources/QuiteNote/UI/ScreenshotV2/Panels/V2FeedbackPanel.swift:32:10: note: calls to instance method 'show(onContinue:onCancel:on:)' from outside of its actor context are implicitly asynchronous
+ 30 |     private var panel: NSPanel?
+ 31 | 
+ 32 |     func show(onContinue: @escaping () -> Void, onCancel: @escaping () -> Void, on screen: NSScreen? = nil) {
+    |          `- note: calls to instance method 'show(onContinue:onCancel:on:)' from outside of its actor context are implicitly asynchronous
+ 33 |         if panel == nil {
+ 34 |             let p = V2FeedbackGuidePanel(
+
+/Users/xuyingzhou/.codex/worktrees/de1c/quite-note/Sources/QuiteNote/UI/ScreenshotV2/Views/V2ScreenshotView.swift:608:54: warning: main actor-isolated static property 'shared' can not be referenced from a Sendable closure
+ 606 |                     proceed()
+ 607 |                 } else {
+ 608 |                     V2FeedbackPrivacyGuideController.shared.show(
+     |                                                      `- warning: main actor-isolated static property 'shared' can not be referenced from a Sendable closure
+ 609 |                         onContinue: proceed,
+ 610 |                         onCancel: {
+
+/Users/xuyingzhou/.codex/worktrees/de1c/quite-note/Sources/QuiteNote/UI/ScreenshotV2/Panels/V2FeedbackPanel.swift:29:16: note: static property declared here
+ 27 | @MainActor
+ 28 | final class V2FeedbackPrivacyGuideController {
+ 29 |     static let shared = V2FeedbackPrivacyGuideController()
+    |                `- note: static property declared here
+ 30 |     private var panel: NSPanel?
+ 31 | 
+
+/Users/xuyingzhou/.codex/worktrees/de1c/quite-note/Sources/QuiteNote/UI/SettingsTabs/ClipboardSettingsTab.swift:14:17: warning: cannot use generic class 'Autoconnect' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+ 12 | 
+ 13 |     /// 冲突状态轮询（偏好变化 → MainApp 延迟 0.1s refresh 后更新）
+ 14 |     private let timer = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
+    |                 `- warning: cannot use generic class 'Autoconnect' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+ 15 | 
+ 16 |     var body: some View {
+
+Combine.Publishers.Autoconnect:2:14: note: generic class declared here
+ 1 | enum Publishers {
+ 2 | public class Autoconnect<Upstream> : Publisher where Upstream : ConnectablePublisher {
+   |              `- note: generic class declared here
+ 3 |     public typealias Output = Upstream.Output
+ 4 |     public typealias Failure = Upstream.Failure
+
+/Users/xuyingzhou/.codex/worktrees/de1c/quite-note/Sources/QuiteNote/UI/SettingsTabs/ClipboardSettingsTab.swift:14:17: warning: cannot use enum 'Publishers' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+ 12 | 
+ 13 |     /// 冲突状态轮询（偏好变化 → MainApp 延迟 0.1s refresh 后更新）
+ 14 |     private let timer = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
+    |                 `- warning: cannot use enum 'Publishers' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+ 15 | 
+ 16 |     var body: some View {
+
+Combine.Publishers:2:13: note: enum declared here
+1 | @available(macOS 10.15, iOS 13.0, tvOS 13.0, watchOS 6.0, *)
+2 | public enum Publishers {
+  |             `- note: enum declared here
+3 | }
+
+/Users/xuyingzhou/.codex/worktrees/de1c/quite-note/Sources/QuiteNote/UI/SettingsTabs/FeedbackSettingsTab.swift:429:25: warning: initialization of immutable value 'mime' was never used; consider replacing with assignment to '_' or removing it [#NoUsage]
+427 |                 DispatchQueue.main.async {
+428 |                     let isJPEG = data.starts(with: [0xFF, 0xD8, 0xFF])
+429 |                     let mime = isJPEG ? "image/jpeg" : "image/png"
+    |                         `- warning: initialization of immutable value 'mime' was never used; consider replacing with assignment to '_' or removing it [#NoUsage]
+430 |                     let ext = isJPEG ? "jpg" : "png"
+431 |                     guard let image = NSImage(data: data),
+
+/Users/xuyingzhou/.codex/worktrees/de1c/quite-note/Sources/QuiteNote/UI/SettingsTabs/LauncherSettingsTab.swift:9:17: warning: cannot use generic class 'Autoconnect' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+  7 | 
+  8 |     /// 冲突状态轮询（偏好变化 → MainApp 延迟 0.1s refresh 后更新，模式同剪贴板 Tab）
+  9 |     private let timer = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
+    |                 `- warning: cannot use generic class 'Autoconnect' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+ 10 |     /// 轮询到点的本地重绘触发器。⚠️ 不能用 prefs.objectWillChange.send() 触发重绘——
+ 11 |     /// 那会让 MainApp 的 sink 执行 shortcuts.refresh()，把录制期间挂起的全局热键
+
+Combine.Publishers.Autoconnect:2:14: note: generic class declared here
+ 1 | enum Publishers {
+ 2 | public class Autoconnect<Upstream> : Publisher where Upstream : ConnectablePublisher {
+   |              `- note: generic class declared here
+ 3 |     public typealias Output = Upstream.Output
+ 4 |     public typealias Failure = Upstream.Failure
+
+/Users/xuyingzhou/.codex/worktrees/de1c/quite-note/Sources/QuiteNote/UI/SettingsTabs/LauncherSettingsTab.swift:9:17: warning: cannot use enum 'Publishers' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+  7 | 
+  8 |     /// 冲突状态轮询（偏好变化 → MainApp 延迟 0.1s refresh 后更新，模式同剪贴板 Tab）
+  9 |     private let timer = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
+    |                 `- warning: cannot use enum 'Publishers' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+ 10 |     /// 轮询到点的本地重绘触发器。⚠️ 不能用 prefs.objectWillChange.send() 触发重绘——
+ 11 |     /// 那会让 MainApp 的 sink 执行 shortcuts.refresh()，把录制期间挂起的全局热键
+
+Combine.Publishers:2:13: note: enum declared here
+1 | @available(macOS 10.15, iOS 13.0, tvOS 13.0, watchOS 6.0, *)
+2 | public enum Publishers {
+  |             `- note: enum declared here
+3 | }
+
+/Users/xuyingzhou/.codex/worktrees/de1c/quite-note/Sources/QuiteNote/UI/SettingsTabs/ScreenshotSettingsTab.swift:10:17: warning: cannot use generic class 'Autoconnect' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+  8 | 
+  9 |     // 定时器，每 2 秒刷新一次权限状态
+ 10 |     private let timer = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
+    |                 `- warning: cannot use generic class 'Autoconnect' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+ 11 | 
+ 12 |     var body: some View {
+
+Combine.Publishers.Autoconnect:2:14: note: generic class declared here
+ 1 | enum Publishers {
+ 2 | public class Autoconnect<Upstream> : Publisher where Upstream : ConnectablePublisher {
+   |              `- note: generic class declared here
+ 3 |     public typealias Output = Upstream.Output
+ 4 |     public typealias Failure = Upstream.Failure
+
+/Users/xuyingzhou/.codex/worktrees/de1c/quite-note/Sources/QuiteNote/UI/SettingsTabs/ScreenshotSettingsTab.swift:10:17: warning: cannot use enum 'Publishers' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+  8 | 
+  9 |     // 定时器，每 2 秒刷新一次权限状态
+ 10 |     private let timer = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
+    |                 `- warning: cannot use enum 'Publishers' in a property declaration member of a type not marked '@_implementationOnly'; 'Combine' was not imported by this file
+ 11 | 
+ 12 |     var body: some View {
+
+Combine.Publishers:2:13: note: enum declared here
+1 | @available(macOS 10.15, iOS 13.0, tvOS 13.0, watchOS 6.0, *)
+2 | public enum Publishers {
+  |             `- note: enum declared here
+3 | }
+
+[#ActorIsolatedCall]: <https://docs.swift.org/compiler/documentation/diagnostics/actor-isolated-call>
+[#ImplicitStrongCapture]: <https://docs.swift.org/compiler/documentation/diagnostics/implicit-strong-capture>
+[#NoUsage]: <https://docs.swift.org/compiler/documentation/diagnostics/no-usage>
+[#SendableClosureCaptures]: <https://docs.swift.org/compiler/documentation/diagnostics/sendable-closure-captures>
+[#VariableNeverMutated]: <https://docs.swift.org/compiler/documentation/diagnostics/variable-never-mutated>
+[#WeakMutability]: <https://docs.swift.org/compiler/documentation/diagnostics/weak-mutability>
+[26 / 28] QuiteNote-product
+[27 / 28] QuiteNote-product
+Build complete! (59.37秒)
+创建应用包结构...
+应用包已存在，更新内容（保留权限）...
+复制二进制文件...
+首次复制二进制文件
+复制应用图标...
+使用 Swift 脚本生成状态栏图标...
+Successfully generated StatusBarIcon.png with offset layout
+复制 LucideIcons 资源 bundle...
+在 .build/out/Products/Release/QuiteNote_QuiteNote.bundle 找到 QuiteNote 资源...
+已复制 default.yaml 到 Resources/Symbols/
+复制 Editor 资源到 Resources 目录...
+已复制 Editor 资源到 Resources/Editor/
+复制本地化资源到 Resources 目录...
+创建 Info.plist...
+二进制文件已变化，正在重新签名...
+Quite Note.app: replacing existing signature
+代码签名完成 (��权限可跨编译保留，含音频输入例外)
+正在检查应用权限...
+🔍 正在检查 com.quitenote.app 的权限状态...
+❌ 屏幕录制权限：未授权或需要手动确认
+❌ 辅助功能权限：未授权
+
+💡 提示：由于 macOS 安全机制，即使通过脚本申请权限，通常仍需手动开启：
+   1. 运行应用后，如果弹出权限请求，请点击「打开系统设置」
+   2. 在「隐私与安全性」中找到「屏幕录制」和「辅助功能」
+   3. 确保 'Quite Note' 的开关已开启
+   4. 如果开关已开启但功能无效，请尝试「关闭再重新开启」
+应用构建完成！
+应用位置: Quite Note.app
+open "Quite Note.app"
+
+已跳过应用重启（--no-launch）。

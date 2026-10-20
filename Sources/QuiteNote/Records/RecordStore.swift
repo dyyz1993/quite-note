@@ -100,6 +100,18 @@ final class RecordStore: ObservableObject {
         aiCoordinator.ai
     }
 
+    /// 读取内存中的记录（供剪贴板图片 OCR 完成后回填正式闪记）。
+    func record(id: UUID) -> Record? {
+        records.first { $0.id == id }
+    }
+
+    #if DEBUG
+    /// 测试辅助：注入最小内存记录，避免测试依赖异步加载。
+    func replaceRecordsForTesting(_ values: [Record]) {
+        records = values
+    }
+    #endif
+
     /// 隐藏确认对话框
     func dismissConfirm() {
         notifier.dismissConfirm()
@@ -185,7 +197,7 @@ final class RecordStore: ObservableObject {
                         sourceApp: "Web Drag",
                         sourceUrl: virtualPath,
                         type: .image,
-                        skipAI: true,
+                        skipAI: !AIImagePayloadLoader.canLoad(path: virtualPath),
                         fileName: fileName
                     )
                     
@@ -250,7 +262,7 @@ final class RecordStore: ObservableObject {
                 }
             }
             
-            let skipAI = isFolder || recordType == .image
+            let skipAI = isFolder || (recordType == .image && !AIImagePayloadLoader.canLoad(path: sourceUrlStr))
             
             // 处理内容显示
             var content = ""
@@ -536,7 +548,8 @@ final class RecordStore: ObservableObject {
             
             // 4. 触发 AI 总结 (如果启用)
             self.syncToAICoordinator()
-            let shouldAI = self.aiCoordinator.enableAI && !skipAI && content.count >= self.aiCoordinator.summaryTrigger
+            let isImage = type.isVisualRecord && sourceUrl != nil
+            let shouldAI = self.aiCoordinator.enableAI && !skipAI && (isImage || content.count >= self.aiCoordinator.summaryTrigger)
             
             if shouldAI {
                 recordWithStatus.aiStatus = "pending"
@@ -627,7 +640,8 @@ final class RecordStore: ObservableObject {
             self.notifier.postToast("已添加记录", type: "success")
 
             // 触发 AI 总结（如果需要）
-            if self.aiCoordinator.enableAI && !record.skipAI && record.content.count >= self.aiCoordinator.summaryTrigger {
+            let isImage = record.type.isVisualRecord && record.sourceUrl != nil
+            if self.aiCoordinator.enableAI && !record.skipAI && (isImage || record.content.count >= self.aiCoordinator.summaryTrigger) {
                 let existingTags = self.aiCoordinator.getAllUniqueTags(from: self.records)
                 self.aiCoordinator.summarize(record: record, existingTags: existingTags) { [weak self] update in
                     guard let self = self else { return }
@@ -865,10 +879,6 @@ final class RecordStore: ObservableObject {
         KeychainHelper.shared.write(service: "QuiteNote", account: "openai_api_key", value: apiKey)
         prefs.setOpenAIBaseURL(baseURL)
         prefs.setOpenAIModel(model)
-        if let s = aiCoordinator.ai as? AIService {
-            s.openAIBaseURL = baseURL
-            s.openAIModel = model
-        }
     }
 
     /// 批量对无标题记录触发重新提炼（每次最多处理 3 条）
@@ -930,6 +940,74 @@ final class RecordStore: ObservableObject {
             case .success(let title, let summary, let confidence, let tags, let keywords):
                 self.updateRecordAI(
                     id: record.id,
+                    title: title,
+                    summary: summary,
+                    confidence: confidence,
+                    aiStatus: "success",
+                    tags: tags,
+                    keywords: keywords
+                )
+                self.notifier.markAISuccess()
+                self.lastAISuccessAt = Date()
+            }
+        }
+    }
+
+    /// OCR 晚于“加入闪记”完成时，把识别文本写回图片记录，并按当前 AI 设置补触发提炼。
+    func updateImageOCRContent(id: UUID, content: String) {
+        guard let index = records.firstIndex(where: { $0.id == id }) else { return }
+        let old = records[index]
+        var updated = Record(
+            id: old.id,
+            title: old.title,
+            content: content,
+            createdAt: old.createdAt,
+            hash: old.hash,
+            aiStatus: old.aiStatus,
+            summary: old.summary,
+            summaryConfidence: old.summaryConfidence,
+            starred: old.starred,
+            copiedAt: old.copiedAt,
+            tags: old.tags,
+            keywords: old.keywords,
+            sourceApp: old.sourceApp,
+            sourceUrl: old.sourceUrl,
+            type: old.type,
+            skipAI: false,
+            fileCount: old.fileCount,
+            size: old.size,
+            noteFrame: old.noteFrame
+        )
+        updated.skipAI = false
+        records[index] = updated
+
+        do {
+            try repository.updateSync(updated)
+        } catch {
+            Self.logger.error("图片 OCR 结果回填失败: \(error.localizedDescription)")
+            return
+        }
+
+        syncToAICoordinator()
+        let isImage = updated.type.isVisualRecord && updated.sourceUrl != nil
+        if !aiCoordinator.enableAI || (!isImage && updated.content.count < aiCoordinator.summaryTrigger) {
+            Self.logger.info("图片 OCR 已回填，但 AI 未开启或文本长度不足，跳过总结")
+            return
+        }
+
+        updated.aiStatus = "pending"
+        records[index] = updated
+        let existingTags = aiCoordinator.getAllUniqueTags(from: records)
+        aiCoordinator.summarize(record: updated, existingTags: existingTags) { [weak self] update in
+            guard let self else { return }
+            switch update {
+            case .none:
+                break
+            case .failure:
+                self.updateRecordAI(id: id, title: nil, summary: nil, confidence: nil, aiStatus: "fail")
+            case .success(let title, let summary, let confidence, let tags, let keywords):
+                self.updateRecordAI(
+                    id: id,
                     title: title,
                     summary: summary,
                     confidence: confidence,
@@ -1549,8 +1627,6 @@ final class RecordStore: ObservableObject {
         if enableAI {
             Self.logger.info("正在初始化AI服务 (延迟加载Key)...")
             let aiService = AIService()
-            aiService.openAIBaseURL = prefs.openAIBaseURL
-            aiService.openAIModel = prefs.openAIModel
             attachAI(service: aiService)
             Self.logger.info("AI服务对象已创建，模型: \(aiService.openAIModel)")
         } else {

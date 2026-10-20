@@ -131,7 +131,7 @@ struct SettingsOverlayView: View {
                 if tab == "ai" {
                     HStack(spacing: 4) {
                         LucideView(name: .link, size: 10, color: .themeTextTertiary)
-                        Text("API: OpenAI")
+                        Text("连接: \(PreferencesManager.shared.aiConnectionKind == .magpie ? "Magpie" : "自定义 API")")
                             .font(.themeCaptionSmall)
                             .monospaced()
                             .foregroundColor(.themeTextTertiary)

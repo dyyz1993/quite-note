@@ -48,14 +48,30 @@ final class ClipboardTypingPerfTests: XCTestCase {
         let a = ClipboardEntry(type: .text, createdAt: Date(), plainText: big,
                                contentHash: "a")
         let b = a  // 同一条目，不同实例也行（值拷贝）
-        let start = Date()
-        XCTAssertTrue(ClipboardDetailPane(entry: a) == ClipboardDetailPane(entry: b))
-        XCTAssertEqual(ClipboardDetailPane(entry: a) == ClipboardDetailPane(entry: nil), false)
-        let ms = Date().timeIntervalSince(start) * 1000
-        // Hosted CI occasionally stalls the first SwiftUI/Equatable specialization.
-        // Correctness is identity-only; allow CI jitter while retaining the
-        // regression net against multi-millisecond field comparisons.
-        let budget = ProcessInfo.processInfo.environment["CI"] == nil ? 1.0 : 10.0
-        XCTAssertLessThan(ms, budget, "身份比较不得触碰 1MB 文本（\(ms)ms）")
+        let same = ClipboardDetailPane(entry: a)
+        let sameCopy = ClipboardDetailPane(entry: b)
+        let empty = ClipboardDetailPane(entry: nil)
+
+        // Warm up the SwiftUI/Equatable specialization before measuring; the first
+        // call can include one-time runtime setup that is unrelated to field access.
+        XCTAssertTrue(same == sameCopy)
+        XCTAssertFalse(same == empty)
+
+        var samples: [Double] = []
+        samples.reserveCapacity(21)
+        for _ in 0...20 {
+            let start = DispatchTime.now()
+            XCTAssertTrue(same == sameCopy)
+            XCTAssertFalse(same == empty)
+            let end = DispatchTime.now()
+            samples.append(Double(end.uptimeNanoseconds - start.uptimeNanoseconds) / 1_000_000)
+        }
+        samples.sort()
+        let median = samples[samples.count / 2]
+        let p95 = samples[(samples.count * 95) / 100]
+        // Identity equality must not traverse the 1MB text payload. A median/p95
+        // pair avoids failing the whole suite on a single scheduler scheduling blip.
+        XCTAssertLessThan(median, 0.1, "身份比较中位耗时不得接近文本扫描（median=\(median)ms）")
+        XCTAssertLessThan(p95, 1.0, "身份比较 p95 不得触碰 1MB 文本（p95=\(p95)ms, samples=\(samples)）")
     }
 }

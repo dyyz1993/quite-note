@@ -152,12 +152,14 @@ APP_PATH="$APP_NAME.app"
 CONTENTS="$APP_PATH/Contents"
 MACOS_DIR="$CONTENTS/MacOS"
 RESOURCES_DIR="$CONTENTS/Resources"
+FRAMEWORKS_DIR="$CONTENTS/Frameworks"
 
 echo "创建应用包结构..."
 
 # 确保目录存在
 mkdir -p "$MACOS_DIR"
 mkdir -p "$RESOURCES_DIR"
+mkdir -p "$FRAMEWORKS_DIR"
 
 # ⚠️ 关键修复：如果应用已存在，只更新二进制文件，不删除整个包
 # 这样可以保留 macOS 的权限设置
@@ -228,38 +230,32 @@ elif [ -f "AppIcon.svg" ]; then
     magick -background none AppIcon.svg -resize 36x36 "$RESOURCES_DIR/AppIcon.png" || convert -background none AppIcon.svg -resize 36x36 "$RESOURCES_DIR/AppIcon.png"
 fi
 
-# 复制 LucideIcons 资源
-# 直接复制资源文件到 Resources 目录，避免 bundle 签名问题
-LUCIDE_BUNDLE_PATH=$(find .build -name "LucideIcons_LucideIcons.bundle" -type d -path "*/release/*" | head -n 1)
+# SwiftPM emits compiled asset catalogs inside framework-shaped resource
+# bundles. Keep the bundle intact so Bundle.image(forResource:) can read Assets.car.
+LUCIDE_BUNDLE_NAME="LucideIcons_LucideIcons.bundle"
+LUCIDE_BUNDLE_PATH=$(find .build -type d -name "$LUCIDE_BUNDLE_NAME" | grep "/Release/" | head -n 1)
 
-if [ -n "$LUCIDE_BUNDLE_PATH" ] && [ -d "$LUCIDE_BUNDLE_PATH/icons.xcassets" ]; then
-    echo "在 $LUCIDE_BUNDLE_PATH 找到 LucideIcons 资源，复制到 Resources 目录..."
-    # 先删除旧的，避免权限问题
-    rm -rf "$RESOURCES_DIR/icons.xcassets"
-    cp -R "$LUCIDE_BUNDLE_PATH/icons.xcassets" "$RESOURCES_DIR/"
+if [ -n "$LUCIDE_BUNDLE_PATH" ]; then
+    echo "复制 LucideIcons 资源 bundle..."
+    rm -rf "$FRAMEWORKS_DIR/$LUCIDE_BUNDLE_NAME"
+    mkdir -p "$FRAMEWORKS_DIR/$LUCIDE_BUNDLE_NAME"
+    cp -R "$LUCIDE_BUNDLE_PATH/" "$FRAMEWORKS_DIR/$LUCIDE_BUNDLE_NAME/"
 else
     echo "警告：未找到 LucideIcons 资源，请检查构建配置。"
 fi
 
 # 复制 QuiteNote 资源文件（包括 YAML 配置文件）
-QUITENOTE_BUNDLE_PATH=$(find .build -name "QuiteNote_QuiteNote.bundle" -type d -path "*/release/*" | head -n 1)
+QUITENOTE_BUNDLE_PATH=$(find .build -type d -name "QuiteNote_QuiteNote.bundle" | grep "/Release/" | head -n 1)
 
 if [ -n "$QUITENOTE_BUNDLE_PATH" ]; then
-    echo "在 $QUITENOTE_BUNDLE_PATH 找到 QuiteNote 资源，复制到 Resources 目录..."
-    # 复制 Resources/Symbols 目录下的所有 YAML 文件
-    if [ -d "Resources/Symbols" ]; then
-        mkdir -p "$RESOURCES_DIR/Symbols"
-        cp -R Resources/Symbols/*.yaml "$RESOURCES_DIR/Symbols/" 2>/dev/null || true
-        echo "已复制 Symbols YAML 文件到 Resources/Symbols/"
+    echo "在 $QUITENOTE_BUNDLE_PATH 找到 QuiteNote 资源..."
+    mkdir -p "$RESOURCES_DIR/Symbols"
+    SYMBOL_SOURCE="$QUITENOTE_BUNDLE_PATH/Contents/Resources/default.yaml"
+    if [ -f "$SYMBOL_SOURCE" ]; then
+        cp "$SYMBOL_SOURCE" "$RESOURCES_DIR/Symbols/default.yaml"
+        echo "已复制 default.yaml 到 Resources/Symbols/"
     else
-        # 如果没有 Resources/Symbols，尝试从 bundle 复制 default.yaml
-        mkdir -p "$RESOURCES_DIR/Symbols"
-        if [ -f "$QUITENOTE_BUNDLE_PATH/default.yaml" ]; then
-            cp "$QUITENOTE_BUNDLE_PATH/default.yaml" "$RESOURCES_DIR/Symbols/"
-            echo "已复制 default.yaml 到 Resources/Symbols/"
-        else
-            echo "警告：未找到 Symbols 配置文件"
-        fi
+        echo "警告：未找到 Symbols 配置文件"
     fi
 else
     echo "警告：未找到 QuiteNote 资源 bundle"
@@ -325,6 +321,11 @@ cat > "$CONTENTS/Info.plist" << EOF
     <true/>
     <key>ITSAppUsesNonExemptEncryption</key>
     <false/>
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsLocalNetworking</key>
+        <true/>
+    </dict>
     <key>NSScreenCaptureUsageDescription</key>
     <string>Quite Note 需要屏幕录制权限来执行截图功能，帮助您快速截取和保存屏幕内容。</string>
     <key>NSAudioCaptureUsageDescription</key>

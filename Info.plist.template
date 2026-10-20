@@ -26,6 +26,11 @@
     <string>AppIcon.icns</string>
     <key>LSUIElement</key>
     <true/>
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsLocalNetworking</key>
+        <true/>
+    </dict>
     <key>NSScreenCaptureUsageDescription</key>
     <string>Quite Note 需要屏幕录制权限来执行截图功能。</string>
     <key>NSAudioCaptureUsageDescription</key>
