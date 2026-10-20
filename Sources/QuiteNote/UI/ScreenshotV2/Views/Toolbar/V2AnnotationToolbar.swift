@@ -103,6 +103,13 @@ private enum RecordingAudioPreset: CaseIterable, Identifiable {
 }
 
 /// V2 标注工具栏 - 完整的 11 种标注工具（精致的浮动子工具栏设计）
+private struct ToolbarGroupFrameKey: PreferenceKey {
+    static var defaultValue: [AnnotationToolGroup: CGRect] { [:] }
+    static func reduce(value: inout [AnnotationToolGroup: CGRect], nextValue: () -> [AnnotationToolGroup: CGRect]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, latest in latest })
+    }
+}
+
 struct V2AnnotationToolbar: View {
     @ObservedObject var stateManager: V2PrimaryScreenStateManager
     @Binding var expandedContentRect: CGRect?
@@ -126,6 +133,7 @@ struct V2AnnotationToolbar: View {
     @State private var showTooltip: Bool = false
     @State private var mainToolbarSize: CGSize = .zero
     @State private var secondaryToolbarSize: CGSize = .zero
+    @State private var groupButtonFrames: [AnnotationToolGroup: CGRect] = [:]
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -169,6 +177,7 @@ struct V2AnnotationToolbar: View {
             }
         }
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: stateManager.expandedToolbarGroup)
+        .coordinateSpace(name: "V2AnnotationToolbar")
         .frame(maxWidth: 650) // 恢复宽度，新交互更省空间
         .background(
             GeometryReader { geo in
@@ -180,6 +189,10 @@ struct V2AnnotationToolbar: View {
         .onAppear { updateExpandedContentRect() }
         .onChange(of: stateManager.expandedToolbarGroup) { _ in updateExpandedContentRect() }
         .onChange(of: stateManager.isAudioPickerVisible) { _ in updateExpandedContentRect() }
+        .onPreferenceChange(ToolbarGroupFrameKey.self) { frames in
+            groupButtonFrames = frames
+            updateExpandedContentRect()
+        }
         .onChange(of: mainToolbarSize) { _ in updateExpandedContentRect() }
         .onChange(of: secondaryToolbarSize) { _ in updateExpandedContentRect() }
     }
@@ -364,19 +377,47 @@ struct V2AnnotationToolbar: View {
             return
         }
 
-        // The sub-toolbar is anchored to its owning group button's center.
-        // A group button is 34pt wide, with 4pt inter-group and 4pt padding.
-        let groupIndex = AnnotationToolGroup.allCases.firstIndex(
-            of: stateManager.expandedToolbarGroup ?? .shape
-        ) ?? 0
-        let anchorX = 4 + 4 + 17 + CGFloat(groupIndex) * 38
-        let x = isSubToolbar
-            ? anchorX - secondaryToolbarSize.width / 2
-            : mainToolbarSize.width - secondaryToolbarSize.width
-        expandedContentRect = CGRect(
-            origin: CGPoint(x: x, y: isSubToolbar ? -60 : 54),
+        guard let group = stateManager.expandedToolbarGroup,
+              let anchorRect = groupButtonFrames[group] else {
+            if !isSubToolbar {
+                updateAudioContentRect()
+            } else if expandedContentRect != nil {
+                expandedContentRect = nil
+            }
+            return
+        }
+
+        // The sub-toolbar is anchored to its owning group button's center. Only
+        // the combined screen-edge constraint may move it away from that anchor.
+        let expandedRect = CGRect(
+            origin: CGPoint(
+                x: anchorRect.midX - secondaryToolbarSize.width / 2,
+                y: -60
+            ),
             size: secondaryToolbarSize
         )
+        expandedContentRect = clampedExpandedRect(expandedRect)
+    }
+
+    private func updateAudioContentRect() {
+        let expandedRect = CGRect(
+            origin: CGPoint(
+                x: mainToolbarSize.width - secondaryToolbarSize.width,
+                y: 54
+            ),
+            size: secondaryToolbarSize
+        )
+        expandedContentRect = clampedExpandedRect(expandedRect)
+    }
+
+    /// Preserve the primary requirement that every expanded control stays
+    /// reachable while waiting for the exact screen size in the floating shell.
+    private func clampedExpandedRect(_ expandedRect: CGRect) -> CGRect {
+        let screenMaxX = max(mainToolbarSize.width, 1512)
+        let minX: CGFloat = 0
+        let maxX = screenMaxX - expandedRect.width
+        let clampedX = min(max(expandedRect.minX, minX), max(minX, maxX))
+        return CGRect(origin: CGPoint(x: clampedX, y: expandedRect.minY), size: expandedRect.size)
     }
 
     private var toolSelectionGroup: some View {
@@ -509,6 +550,14 @@ struct V2AnnotationToolbar: View {
             .frame(width: 34, height: 34)
             .background(isSelected ? Color.blue.opacity(0.8) : Color.clear)
             .cornerRadius(8)
+            .background(
+                GeometryReader { geo in
+                    Color.clear.preference(
+                        key: ToolbarGroupFrameKey.self,
+                        value: [group: geo.frame(in: .named("V2AnnotationToolbar"))]
+                    )
+                }
+            )
         }
         .buttonStyle(.plain)
     }
