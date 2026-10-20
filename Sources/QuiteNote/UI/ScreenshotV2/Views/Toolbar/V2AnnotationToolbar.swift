@@ -40,6 +40,44 @@ private struct ToolbarHoverTooltip: ViewModifier {
     }
 }
 
+/// Pure geometry for toolbar placement. Keeping this separate from SwiftUI makes
+/// the edge cases testable without constructing a screenshot overlay.
+enum V2AnnotationToolbarGeometry {
+    static func mainToolbarCenter(
+        in screen: CGRect,
+        selection: CGRect,
+        toolbarSize: CGSize,
+        expandedContentRect: CGRect? = nil,
+        spacing: CGFloat,
+        margin: CGFloat
+    ) -> CGPoint {
+        // The hard screen constraint must include every visible layer. A toolbar
+        // centered in-bounds can still put its above/below popover out of bounds.
+        let mainRect = CGRect(origin: .zero, size: toolbarSize)
+        let expandedRect = expandedContentRect ?? mainRect
+        let contentMinX = min(mainRect.minX, expandedRect.minX)
+        let contentMinY = min(mainRect.minY, expandedRect.minY)
+        let contentMaxX = max(mainRect.maxX, expandedRect.maxX)
+        let contentMaxY = max(mainRect.maxY, expandedRect.maxY)
+        let idealX = selection.midX
+        let minX = screen.minX + margin + toolbarSize.width / 2 - contentMinX
+        let maxX = screen.maxX - margin - max(toolbarSize.width / 2, contentMaxX - toolbarSize.width / 2)
+        let x = min(max(idealX, minX), max(minX, maxX))
+
+        // Bounds for the main toolbar center, including any expanded layer.
+        let minY = screen.minY + margin + toolbarSize.height / 2 - contentMinY
+        let maxY = screen.maxY - margin - max(toolbarSize.height / 2, contentMaxY - toolbarSize.height / 2)
+        let belowY = selection.maxY + spacing + toolbarSize.height / 2
+        if belowY <= maxY {
+            return CGPoint(x: x, y: max(belowY, minY))
+        }
+
+        let aboveY = selection.minY - spacing - toolbarSize.height / 2
+        let clampedAboveY = min(max(aboveY, minY), max(minY, maxY))
+        return CGPoint(x: x, y: clampedAboveY)
+    }
+}
+
 private enum RecordingAudioPreset: CaseIterable, Identifiable {
     case demo, voiceover, meeting, silent
 
@@ -67,11 +105,18 @@ private enum RecordingAudioPreset: CaseIterable, Identifiable {
 /// V2 标注工具栏 - 完整的 11 种标注工具（精致的浮动子工具栏设计）
 struct V2AnnotationToolbar: View {
     @ObservedObject var stateManager: V2PrimaryScreenStateManager
+    @Binding var expandedContentRect: CGRect?
+
+    init(
+        stateManager: V2PrimaryScreenStateManager,
+        expandedContentRect: Binding<CGRect?> = .constant(nil)
+    ) {
+        self.stateManager = stateManager
+        self._expandedContentRect = expandedContentRect
+    }
 
     private let colors: [Color] = [.red, .yellow, .green, .blue, .white, .black]
-    @State private var expandedGroup: AnnotationToolGroup? = nil
     /// 录制音频快选弹层（▾）：两路独立开关，写入 PreferencesManager 与设置页共用
-    @State private var showAudioPicker = false
     @State private var audioSystem = PreferencesManager.shared.recordingSystemAudio
     @State private var audioMicrophone = PreferencesManager.shared.recordingMicrophone
     @State private var cursorMode: V2RecordingCursorMode =
@@ -79,12 +124,22 @@ struct V2AnnotationToolbar: View {
     // P2.1: 自定义 tooltip 状态（tooltip 由每个按钮的 overlay 自渲染）
     @State private var tooltipText: String = ""
     @State private var showTooltip: Bool = false
+    @State private var mainToolbarSize: CGSize = .zero
+    @State private var secondaryToolbarSize: CGSize = .zero
 
     var body: some View {
         ZStack(alignment: .top) {
             // 1. 子工具栏（浮动在主工具栏上方）
-            if let group = expandedGroup, let tools = getSubTools(for: group), tools.count > 1 {
+            if let group = stateManager.expandedToolbarGroup,
+               let tools = getSubTools(for: group), tools.count > 1 {
                 subToolbar(for: tools)
+                    .background(
+                        GeometryReader { geo in
+                            Color.clear
+                                .onAppear { secondaryToolbarSize = geo.size }
+                                .onChange(of: geo.size) { secondaryToolbarSize = $0 }
+                        }
+                    )
                     .offset(y: -60)
                     .onHover { hovering in
                         stateManager.isMouseOverUI = hovering
@@ -96,9 +151,16 @@ struct V2AnnotationToolbar: View {
             mainToolbarContent
 
             // 3. 音频快选弹层（浮动在主工具栏下方，右对齐录制按钮）
-            if showAudioPicker {
+            if stateManager.isAudioPickerVisible {
                 audioPickerPopover
                     .frame(maxWidth: .infinity, alignment: .trailing)
+                    .background(
+                        GeometryReader { geo in
+                            Color.clear
+                                .onAppear { secondaryToolbarSize = geo.size }
+                                .onChange(of: geo.size) { secondaryToolbarSize = $0 }
+                        }
+                    )
                     .offset(y: 54)
                     .onHover { hovering in
                         stateManager.isMouseOverUI = hovering
@@ -106,8 +168,20 @@ struct V2AnnotationToolbar: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
-        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: expandedGroup)
+        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: stateManager.expandedToolbarGroup)
         .frame(maxWidth: 650) // 恢复宽度，新交互更省空间
+        .background(
+            GeometryReader { geo in
+                Color.clear
+                    .onAppear { mainToolbarSize = geo.size }
+                    .onChange(of: geo.size) { mainToolbarSize = $0 }
+            }
+        )
+        .onAppear { updateExpandedContentRect() }
+        .onChange(of: stateManager.expandedToolbarGroup) { _ in updateExpandedContentRect() }
+        .onChange(of: stateManager.isAudioPickerVisible) { _ in updateExpandedContentRect() }
+        .onChange(of: mainToolbarSize) { _ in updateExpandedContentRect() }
+        .onChange(of: secondaryToolbarSize) { _ in updateExpandedContentRect() }
     }
 
     private var mainToolbarContent: some View {
@@ -218,7 +292,7 @@ struct V2AnnotationToolbar: View {
             // 音频快选 ▾：选择本次录制的音频来源（两路独立开关，与设置页共用存储）
             Button(action: {
                 withAnimation(.easeInOut(duration: 0.15)) {
-                    showAudioPicker.toggle()
+                    stateManager.isAudioPickerVisible.toggle()
                 }
             }) {
                 Image(systemName: "chevron.down")
@@ -270,6 +344,39 @@ struct V2AnnotationToolbar: View {
             return element.tool == .magnifier
         }
         return false
+    }
+
+    /// Popover bounds are in main-toolbar-local coordinates, so the floating
+    /// container can include them in its hard screen-edge constraint.
+    private func updateExpandedContentRect() {
+        guard mainToolbarSize.width > 0, secondaryToolbarSize.width > 0 else {
+            if expandedContentRect != nil {
+                expandedContentRect = nil
+            }
+            return
+        }
+
+        let isSubToolbar = stateManager.expandedToolbarGroup != nil
+        guard isSubToolbar || stateManager.isAudioPickerVisible else {
+            if expandedContentRect != nil {
+                expandedContentRect = nil
+            }
+            return
+        }
+
+        // The sub-toolbar is anchored to its owning group button's center.
+        // A group button is 34pt wide, with 4pt inter-group and 4pt padding.
+        let groupIndex = AnnotationToolGroup.allCases.firstIndex(
+            of: stateManager.expandedToolbarGroup ?? .shape
+        ) ?? 0
+        let anchorX = 4 + 4 + 17 + CGFloat(groupIndex) * 38
+        let x = isSubToolbar
+            ? anchorX - secondaryToolbarSize.width / 2
+            : mainToolbarSize.width - secondaryToolbarSize.width
+        expandedContentRect = CGRect(
+            origin: CGPoint(x: x, y: isSubToolbar ? -60 : 54),
+            size: secondaryToolbarSize
+        )
     }
 
     private var toolSelectionGroup: some View {
@@ -337,7 +444,7 @@ struct V2AnnotationToolbar: View {
                         stateManager.setEditing(true)
                     }
 
-                    expandedGroup = nil // 选中后关闭
+                    stateManager.expandedToolbarGroup = nil // 选中后关闭
                 }) {
                     LucideView(
                         name: IconName(rawValue: tool.rawValue) ?? .penTool,
@@ -385,13 +492,13 @@ struct V2AnnotationToolbar: View {
             }
 
             if tools.count > 1 {
-                if isSelected && expandedGroup == group {
-                    expandedGroup = nil
+                if isSelected && stateManager.expandedToolbarGroup == group {
+                    stateManager.expandedToolbarGroup = nil
                 } else {
-                    expandedGroup = group
+                    stateManager.expandedToolbarGroup = group
                 }
             } else {
-                expandedGroup = nil
+                stateManager.expandedToolbarGroup = nil
             }
         }) {
             LucideView(

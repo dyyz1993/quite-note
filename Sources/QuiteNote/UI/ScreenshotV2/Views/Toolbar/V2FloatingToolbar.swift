@@ -4,7 +4,7 @@ import SwiftUI
 ///
 /// 定位规则（用户定义 2026-09-15 终版）：
 ///   理想位置 = 选区下方，工具栏水平中心对齐选区水平中心
-///   硬约束   = **工具栏实际尺寸**不得超出屏幕（优先级最高，用 GeometryReader 实测宽度）
+///   硬约束   = **工具栏及展开层实际尺寸**不得超出屏幕（优先级最高，用 GeometryReader 实测）
 ///   Y 轴降级 = 下方没空间 → 上方 → 全屏时内部贴底
 struct V2FloatingToolbar: View {
     let selection: CGRect
@@ -15,11 +15,14 @@ struct V2FloatingToolbar: View {
     @State private var isBeingDragged = false
     /// 工具栏实际尺寸（GeometryReader 实测，首帧后回填）
     @State private var actualSize: CGSize = .zero
+    @State private var expandedContentRect: CGRect?
 
     private let estimatedWidth: CGFloat = 500
     private let estimatedHeight: CGFloat = 48
     private let spacing: CGFloat = 12
     private let margin: CGFloat = 8
+    private let contentHorizontalPadding: CGFloat = 12
+    private let contentVerticalPadding: CGFloat = 8
 
     var body: some View {
         toolbarContent
@@ -35,10 +38,13 @@ struct V2FloatingToolbar: View {
     }
 
     private var toolbarContent: some View {
-        V2AnnotationToolbar(stateManager: stateManager)
+        V2AnnotationToolbar(
+            stateManager: stateManager,
+            expandedContentRect: $expandedContentRect
+        )
             .fixedSize()
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.horizontal, contentHorizontalPadding)
+            .padding(.vertical, contentVerticalPadding)
             .onHover { hovering in
                 stateManager.isMouseOverUI = hovering
             }
@@ -73,27 +79,23 @@ struct V2FloatingToolbar: View {
     }
 
     private var clampedPosition: CGPoint {
-        let screenSize = screen.frame.size
         // 用实际尺寸（首帧前用估算值兜底）
-        let size = actualSize.width > 0 ? actualSize : CGSize(width: estimatedWidth, height: estimatedHeight)
-        let halfW = size.width / 2
-        let halfH = size.height / 2
-
-        // 硬约束优先：clamp X 不出屏
-        let idealX = selection.midX
-        let x = max(halfW + margin, min(screenSize.width - halfW - margin, idealX))
-
-        // Y：选区下方 → 上方 → 全屏内部贴底
-        let belowY = selection.maxY + spacing + halfH
-        if belowY + halfH < screenSize.height - margin {
-            return CGPoint(x: x, y: belowY)
+        let toolbarSize: CGSize
+        if actualSize.width > 0 {
+            toolbarSize = CGSize(
+                width: actualSize.width - contentHorizontalPadding * 2,
+                height: actualSize.height - contentVerticalPadding * 2
+            )
+        } else {
+            toolbarSize = CGSize(width: estimatedWidth, height: estimatedHeight)
         }
-
-        let aboveY = selection.minY - spacing - halfH
-        if aboveY - halfH > margin {
-            return CGPoint(x: x, y: aboveY)
-        }
-
-        return CGPoint(x: x, y: screenSize.height - halfH - margin)
+        return V2AnnotationToolbarGeometry.mainToolbarCenter(
+            in: CGRect(origin: .zero, size: screen.frame.size),
+            selection: selection,
+            toolbarSize: toolbarSize,
+            expandedContentRect: expandedContentRect,
+            spacing: spacing,
+            margin: margin
+        )
     }
 }
