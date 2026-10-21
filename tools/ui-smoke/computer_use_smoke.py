@@ -632,32 +632,29 @@ def _press_escape() -> None:
 
 
 def _capture_main_display(run: Run, name: str) -> Path:
+    """Capture the main display in-process via CGDisplayCreateImage.
+
+    The external /usr/sbin/screencapture binary does not inherit the GUI
+    launcher's TCC screen-recording grant ("could not create image from
+    display", error notebook 2026-10-15/2026-10-21); an in-process Quartz call
+    runs under the launcher's own trusted identity. Capturing by display ID
+    also avoids multi-display concatenation, so pixels map 1:1 to points.
+    """
+    from Quartz import CGMainDisplayID, CGDisplayCreateImage
+    from AppKit import NSBitmapImageRep, NSPNGFileType
+
     path = run.run_dir / "screenshots" / f"{name}.png"
     path.parent.mkdir(parents=True, exist_ok=True)
-    # Mirror ScreenRecorder's proven form: absolute path, "-x" only. The "-m"
-    # flag is unsupported on the dedicated test Mac's macOS and fails the capture.
-    completed = subprocess.run(
-        ["/usr/sbin/screencapture", "-x", str(path)],
-        check=False,
-        timeout=15,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
-    if completed.returncode != 0 or not path.exists() or path.stat().st_size == 0:
+    cg_image = CGDisplayCreateImage(CGMainDisplayID())
+    if cg_image is None:
         raise RuntimeError(
-            f"screencapture failed rc={completed.returncode} stderr={completed.stderr.strip()[:200]}"
+            "CGDisplayCreateImage returned nil: the GUI launcher session lacks "
+            "Screen Recording TCC (restart the quitenote-ui LaunchAgent)"
         )
-    # Multi-display hosts concatenate screens into one image; keep only the
-    # main display region so the point<->pixel scale stays correct.
-    from PIL import Image
-    image = Image.open(path)
-    captured_w, captured_h = image.size
-    display_w, display_h = _main_display_size()
-    expected_ratio = display_w / display_h
-    if abs(captured_w / captured_h - expected_ratio) > 0.05:
-        main_width = round(captured_h * expected_ratio)
-        image.crop((0, 0, main_width, captured_h)).save(path)
+    representation = NSBitmapImageRep.alloc().initWithCGImage_(cg_image)
+    data = representation.representationUsingType_properties_(NSPNGFileType, None)
+    if data is None or not data.writeToFile_atomically_(str(path), True):
+        raise RuntimeError(f"failed to write capture to {path}")
     return path
 
 
