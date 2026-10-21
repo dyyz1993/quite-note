@@ -107,7 +107,9 @@ final class UIEvidenceCaptureService {
         if #available(macOS 14.0, *) {
             let semaphore = DispatchSemaphore(value: 0)
             var succeeded = false
-            Task { @MainActor in
+            // SCShareableContent / SCScreenshotManager 是 nonisolated——Task 跑在
+            // 并发池即可；@MainActor 会与下方主线程 semaphore.wait 互锁。
+            Task {
                 defer { semaphore.signal() }
                 guard let content = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false),
                       let display = content.displays.first else { return }
