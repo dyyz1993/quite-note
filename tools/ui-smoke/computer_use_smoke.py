@@ -769,12 +769,6 @@ def smoke_screenshot_toolbar(run: Run, driver: AXDriver) -> str:
     width, height = _main_display_size()
     pid = driver.pid
 
-    # Cua captures may be scaled (e.g. 1366px for a 1440pt display); derive the
-    # px-per-pt factor once so input synthesis lands on the intended points.
-    from PIL import Image as PILImage
-    probe = _capture_main_display(run, "toolbar-scale-probe")
-    pt = PILImage.open(probe).size[0] / width
-
     _press_escape()  # clear any stale session
     _press_status_menu_item("捕获屏幕截图")
     deadline = time.monotonic() + 3
@@ -784,12 +778,19 @@ def smoke_screenshot_toolbar(run: Run, driver: AXDriver) -> str:
         raise RuntimeError("screenshot overlay did not appear")
     time.sleep(1.0)  # interaction layer settles after the window exists; early drags get dropped
 
+    # Derive the px-per-pt factor from a live frame now that the overlay exists.
+    # Probing before the session opened once measured an unrelated window
+    # (1416px instead of 2880px) and scaled every input off-target.
+    from PIL import Image as PILImage
+    probe = _capture_main_display(run, "toolbar-scale-probe")
+    pt = PILImage.open(probe).size[0] / width
+
     # Selection hugging the right edge of the main display (logical points).
     sel_x1, sel_y1, sel_x2, sel_y2 = width - 262, 300.0, width - 42, 480.0
     _mouse_drag(sel_x1 * pt, sel_y1 * pt, sel_x2 * pt, sel_y2 * pt)
 
     cap_default = _capture_main_display(run, "toolbar-right-default")
-    buttons_default = _find_toolbar_buttons(cap_default, width, sel_y2, sel_y2 + 90)
+    buttons_default = _find_toolbar_buttons(cap_default, width, sel_y2, sel_y2 + 250)
     if "red" not in buttons_default or "blue" not in buttons_default:
         raise RuntimeError(f"toolbar buttons not found in default state: {buttons_default}")
     red1 = buttons_default["red"]
@@ -803,7 +804,7 @@ def smoke_screenshot_toolbar(run: Run, driver: AXDriver) -> str:
     _mouse_click((blue1[0] + 76) * pt, blue1[1] * pt)
 
     cap_widened = _capture_main_display(run, "toolbar-right-widened")
-    buttons_widened = _find_toolbar_buttons(cap_widened, width, sel_y2, sel_y2 + 90)
+    buttons_widened = _find_toolbar_buttons(cap_widened, width, sel_y2, sel_y2 + 250)
     if "red" not in buttons_widened or "blue" not in buttons_widened:
         raise RuntimeError(f"toolbar buttons not found after widening: {buttons_widened}")
     red2 = buttons_widened["red"]
@@ -820,7 +821,7 @@ def smoke_screenshot_toolbar(run: Run, driver: AXDriver) -> str:
     _mouse_click((blue2[0] - 38) * pt, blue2[1] * pt)
 
     cap_expanded = _capture_main_display(run, "toolbar-subtoolbar-expanded")
-    buttons_expanded = _find_toolbar_buttons(cap_expanded, width, sel_y2, sel_y2 + 90)
+    buttons_expanded = _find_toolbar_buttons(cap_expanded, width, sel_y2, sel_y2 + 250)
     if "blue" not in buttons_expanded:
         raise RuntimeError("selected group button lost after expanding the sub-toolbar")
     blue3 = buttons_expanded["blue"]
