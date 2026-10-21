@@ -230,3 +230,11 @@
 - Prevention: 远端 UI 冒烟优先用窗口尺寸/层级做确定性面板存在性检查，避免递归遍历大 AX 树；AX 只用于输入和关键控件断言。
 - Evidence: 本地 run `ui-20261015-120913-f707fa55`；远端修复后 `clipboard/launcher/cleanup` PASS。
 - Status: fixed
+
+### 2026-10-21 · 测试机屏幕录制月度重验与 SwiftUI 离屏取图限制（screenshot-toolbar E2E）
+- 版本/Commit: codex/screenshot-toolbar-fix @ 0235bca；run ui-20261021-130554-0235bcac
+- Symptom: screenshot-toolbar 场景时通时阻——同一代码一轮出真帧跑断言，一轮纯色图 BLOCKED。
+- Root cause: ① macOS 15+ 屏幕录制"月度重验"：重验窗口期内每个 App/驱动**新会话首次抓屏**都弹系统确认，无人值守即挂起；CI 每轮重启 Dev App = 每轮可能触发。② macOS 26 SwiftUI hosting 内容**离屏取图四路径全灭**：cacheDisplay 纯背景 / CGWindowListCreateImage 纯黑 / layer.render 纯背景 / SCK 需 App 授权（受①制约）。③ 输入合成坐标空间：cliclick 吃逻辑 pt，cua 吃截图像素——换输入通道必须同步去掉缩放（本轮实锤：×2 坐标全打飞，红钮 1332→1332 假阴性）。
+- Fix/现状: 场景取图纯色时 raise BlockedError 报 BLOCKED 而非 FAIL（981fbb7）；取图成功时像素断言链已验证可用（ui-20261021-124850：按钮检测/断言逻辑/流程时序全通过）。
+- Prevention: ① 测试机取图只依赖"人点过确认的窗口期"，跑长 E2E 前先 `cua-driver call get_desktop_state` 探测一次；② 新增输入通道时核对坐标空间（逻辑 pt vs 像素）；③ SwiftUI 窗口的像素证据优先 ScreenCaptureKit（App 自身授权），离屏渲染路径一律不可信。
+- Evidence: runs/ui-20261021-124850-d012ec21（成功样本）、ui-20261021-130554-0235bcac（BLOCKED 样本）
