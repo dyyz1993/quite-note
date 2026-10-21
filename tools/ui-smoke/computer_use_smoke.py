@@ -675,10 +675,15 @@ def _capture_main_display(run: Run, name: str) -> Path:
     return path
 
 
-def _find_toolbar_buttons(capture: Path, display_width: float, y_lo: float, y_hi: float) -> dict:
+def _find_toolbar_buttons(capture: Path, display_width: float, y_lo: float, y_hi: float,
+                          row_y: float | None = None) -> dict:
     """Locate the record (red) and selected-group (blue) toolbar buttons via
     feature-color clustering inside the y band. Returns {"red": (cx, cy), "blue": (cx, cy)}
-    in display points; missing colors are omitted."""
+    in display points; missing colors are omitted.
+
+    row_y: when given, red clusters are restricted to this row (±15pt) — the
+    toolbar row is already known from the blue cluster, and unrelated red UI
+    elsewhere on screen (notification badges etc.) must not win."""
     try:
         from PIL import Image
     except ImportError as exc:
@@ -707,7 +712,7 @@ def _find_toolbar_buttons(capture: Path, display_width: float, y_lo: float, y_hi
     # 巨型混合簇被宽度过滤整簇拒掉（2026-10-21 实锤：红钮被隔壁蓝钮吞掉）。
     found = {}
     dbg = []
-    for color in ("red", "blue"):
+    for color in ("blue", "red"):
         color_cells = {k: v for k, v in cells.items() if all(p[2] == color for p in v)}
         visited = set()
         for key in list(color_cells):
@@ -732,9 +737,10 @@ def _find_toolbar_buttons(capture: Path, display_width: float, y_lo: float, y_hi
             if not 22 <= cluster_width <= 48:
                 dbg.append(info + " REJECT:width"); continue
             position = ((min(xs) + max(xs)) / 2 / scale, (min(ys) + max(ys)) / 2 / scale)
+            if color == "red" and row_y is not None and abs(position[1] - row_y) > 15:
+                dbg.append(info + f" REJECT:row(y={position[1]:.0f} vs {row_y:.0f})"); continue
             dbg.append(info + " KEEP")
-            # Keep the leftmost cluster: the selected group highlight sits left of
-            # the action buttons, and there is exactly one record button.
+            # Keep the leftmost cluster per color within the toolbar row.
             if color not in found or position[0] < found[color][0]:
                 found[color] = position
     try:
@@ -822,6 +828,9 @@ def smoke_screenshot_toolbar(run: Run, driver: AXDriver) -> str:
             "evidence capture produces solid blanks with the overlay on screen; "
             "layout assertions skipped")
     buttons_default = _find_toolbar_buttons(cap_default, width, 0.0, 760.0)
+    if "blue" in buttons_default:
+        buttons_default = _find_toolbar_buttons(cap_default, width, 0.0, 760.0,
+                                                row_y=buttons_default["blue"][1])
     if "red" not in buttons_default or "blue" not in buttons_default:
         raise RuntimeError(f"toolbar buttons not found in default state: {buttons_default}")
     red1 = buttons_default["red"]
@@ -835,7 +844,8 @@ def smoke_screenshot_toolbar(run: Run, driver: AXDriver) -> str:
     _mouse_click(blue1[0] + 76, blue1[1])
 
     cap_widened = _capture_main_display(run, "toolbar-right-widened")
-    buttons_widened = _find_toolbar_buttons(cap_widened, width, 0.0, 760.0)
+    buttons_widened = _find_toolbar_buttons(cap_widened, width, 0.0, 760.0,
+                                            row_y=red1[1])
     if "red" not in buttons_widened or "blue" not in buttons_widened:
         raise RuntimeError(f"toolbar buttons not found after widening: {buttons_widened}")
     red2 = buttons_widened["red"]
@@ -852,7 +862,8 @@ def smoke_screenshot_toolbar(run: Run, driver: AXDriver) -> str:
     _mouse_click(blue2[0] - 38, blue2[1])
 
     cap_expanded = _capture_main_display(run, "toolbar-subtoolbar-expanded")
-    buttons_expanded = _find_toolbar_buttons(cap_expanded, width, 0.0, 760.0)
+    buttons_expanded = _find_toolbar_buttons(cap_expanded, width, 0.0, 760.0,
+                                             row_y=red2[1])
     if "blue" not in buttons_expanded:
         raise RuntimeError("selected group button lost after expanding the sub-toolbar")
     blue3 = buttons_expanded["blue"]
