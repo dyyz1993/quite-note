@@ -17,7 +17,6 @@ class V2ScreenshotController {
     private static var resignActiveObserver: NSObjectProtocol?
     /// 焦点看门狗：截图会话存续期间，App 未活跃则每秒强制拉回
     private static var focusWatchdogTimer: Timer?
-    private static var toolbarSmokeObserver: NSObjectProtocol?
 
     /// ✨ 新增：互斥锁，确保同一时间只有一个截图流程在运行
     private static var isShowing = false
@@ -127,7 +126,6 @@ class V2ScreenshotController {
         }
 
         NSApp.activate(ignoringOtherApps: true)
-        setupToolbarSmokeObserver()
     }
 
     /// ✨ 内部清理逻辑，不重置 isShowing 锁
@@ -141,10 +139,6 @@ class V2ScreenshotController {
         // 停止焦点看门狗
         focusWatchdogTimer?.invalidate()
         focusWatchdogTimer = nil
-        if let observer = toolbarSmokeObserver {
-            NotificationCenter.default.removeObserver(observer)
-            toolbarSmokeObserver = nil
-        }
 
         // 移除失焦监听器（关键：不移除会在截图结束后触发"幽灵面板"重新弹出）
         if let observer = resignActiveObserver {
@@ -305,62 +299,6 @@ class V2ScreenshotController {
             manager.isLongScreenshotMode = false
         case .exitNow:
             close()
-        }
-    }
-
-    /// Smoke runs mutate observable toolbar state directly; synthetic mouse
-    /// events are unreliable against a non-activating full-screen overlay.
-    private static func setupToolbarSmokeObserver() {
-        toolbarSmokeObserver = NotificationCenter.default.addObserver(
-            forName: NSNotification.Name("qn.screenshot.toolbar-smoke"),
-            object: nil,
-            queue: .main
-        ) { note in
-            guard CommandLine.arguments.contains("--ui-smoke-run"),
-                  let payload = note.userInfo as? [String: Any],
-                  let caseName = payload["case"] as? String,
-                  let screenIndex = payload["screenIndex"] as? Int,
-                  NSScreen.screens.indices.contains(screenIndex),
-                  screenPanelMap.keys.contains(where: { $0.frame == NSScreen.screens[screenIndex].frame }),
-                  let screen = screenPanelMap.keys.first(where: { $0.frame == NSScreen.screens[screenIndex].frame }),
-                  let panel = screenPanelMap[screen],
-                  let content = panel.contentView,
-                  let directory = ProcessInfo.processInfo.environment["QN_UI_EVIDENCE_DIR"] else {
-                return
-            }
-
-            let manager = V2PrimaryScreenStateManager.shared
-            if let values = payload["selection"] as? [CGFloat], values.count == 4 {
-                manager.updatePrimaryScreen(screen)
-                manager.updateSelection(
-                    CGRect(x: values[0], y: values[1], width: values[2], height: values[3]),
-                    on: screen
-                )
-            }
-            manager.expandedToolbarGroup = (payload["expandedGroup"] as? String)
-                .flatMap(AnnotationToolGroup.init(rawValue:))
-            manager.isAudioPickerVisible = payload["audioPicker"] as? Bool ?? false
-
-            panel.orderFrontRegardless()
-            panel.becomeKey()
-            content.needsLayout = true
-            content.layoutSubtreeIfNeeded()
-
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                let output = URL(fileURLWithPath: directory, isDirectory: true)
-                    .appendingPathComponent("toolbar-\(caseName).png")
-                if let bitmap = content.bitmapImageRepForCachingDisplay(in: content.bounds) {
-                    content.cacheDisplay(in: content.bounds, to: bitmap)
-                    if let data = bitmap.representation(using: .png, properties: [:]) {
-                        try? data.write(to: output, options: .atomic)
-                    }
-                }
-                NotificationCenter.default.post(
-                    name: NSNotification.Name("qn.screenshot.toolbar-smoke.finished"),
-                    object: nil,
-                    userInfo: ["case": caseName, "path": output.path]
-                )
-            }
         }
     }
 

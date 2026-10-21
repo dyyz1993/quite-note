@@ -178,10 +178,6 @@ class V2PrimaryScreenStateManager: ObservableObject {
     @Published var globalHoveredLabel: String?
     /// 悬停所在的屏幕
     @Published var hoverScreen: NSScreen?
-    /// Smoke runs drive popovers directly because synthetic mouse events are
-    /// unreliable against a non-activating full-screen panel.
-    @Published var expandedToolbarGroup: AnnotationToolGroup?
-    @Published var isAudioPickerVisible = false
 
     private init() {}
 
@@ -219,8 +215,6 @@ class V2PrimaryScreenStateManager: ObservableObject {
         globalHoveredRect = nil
         globalHoveredLabel = nil
         hoverScreen = nil
-        expandedToolbarGroup = nil
-        isAudioPickerVisible = false
 
         // ✨ 新增：重置这些状态，避免残留
         magnifierPreviewPosition = nil
