@@ -60,11 +60,12 @@ final class UIEvidenceCaptureService {
                 //    纯黑图，需要拒绝并落到 layer 渲染层。
                 if let cg = CGWindowListCreateImage(
                     .null, .optionIncludingWindow, CGWindowID(window.windowNumber), [.bestResolution]),
-                   !Self.isSolidBlank(cg),
-                   let rep = NSBitmapImageRep(cgImage: cg),
-                   let data = rep.representation(using: .png, properties: [:]) {
-                    try? data.write(to: output, options: .atomic)
-                    wrote = true
+                   !Self.isSolidBlank(cg) {
+                    let rep = NSBitmapImageRep(cgImage: cg)
+                    if let data = rep.representation(using: .png, properties: [:]) {
+                        try? data.write(to: output, options: .atomic)
+                        wrote = true
+                    }
                 }
                 // 2) layer 树离屏渲染：cacheDisplay 只走 drawRect，SwiftUI 的
                 //    hosting 内容在 CA 层，离屏位图会得到纯背景色。
