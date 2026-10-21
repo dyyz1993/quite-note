@@ -130,7 +130,10 @@ struct V2AnnotationToolbar: View {
             }
         }
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: expandedGroup)
-        .frame(maxWidth: 650) // 恢复宽度，新交互更省空间
+        // 不设 maxWidth：内容理想宽 >上限时 frame 会按上限报告布局尺寸（fixedSize 只影响
+        // 渲染不改变 frame 报告值），GeometryReader 就会量到被钳的假宽度，主栏 clamp 随之
+        // 失真、右尾按钮实际溢出屏幕（2026-10-21 xyz-mac 实锤：size+color 组合 ~750pt）。
+        // 主栏宽度交给内容自适应，出界保护由 V2FloatingToolbar 的纯函数 clamp 负责。
         .onAppear { syncExpansionSpecs() }
     }
 
