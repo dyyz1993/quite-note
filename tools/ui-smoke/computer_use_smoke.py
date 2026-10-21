@@ -632,35 +632,33 @@ def _press_escape() -> None:
 
 
 def _capture_main_display(run: Run, name: str) -> Path:
-    """Snapshot through the Dev app's own UIEvidenceCaptureService request queue.
+    """Capture the full display through the CuaDriver daemon.
 
-    Neither /usr/sbin/screencapture nor in-process CGDisplayCreateImage has the
-    runner session's Screen Recording TCC (error notebook 2026-10-15/10-21).
-    The isolated Dev app renders its highest-level window — the screenSaver
-    screenshot overlay this scenario asserts on — off-screen into the evidence
-    directory without any TCC. The overlay covers the full display, so pixel
-    coordinates map 1:1 to display points. Stems must not contain
-    "clipboard"/"launcher": UIEvidenceCaptureService keys its window choice on
-    those substrings.
+    The runner session has no Screen Recording TCC for its own binaries
+    (screencapture, CGDisplayCreateImage — error notebook 2026-10-15/10-21),
+    and the in-app request chain cannot composite SwiftUI content (pure
+    background via cacheDisplay). The CuaDriver daemon
+    (com.trycua.driver, /Applications/CuaDriver.app) holds the screen
+    recording grant and exposes a full-display capture:
+      cua-driver call get_desktop_state --screenshot-out-file <path>
     """
-    recordings = run.run_dir / "recordings"
-    requests_dir = recordings / "requests"
-    frames_dir = recordings / "frames"
-    requests_dir.mkdir(parents=True, exist_ok=True)
-    # UIEvidenceCaptureService only serves "frame-"-prefixed stems; no
-    # clipboard/launcher substring keeps the highest-level-window fallback,
-    # which is the screenshot overlay this scenario asserts on.
-    stem = f"frame-toolbar-{name}-{time.time_ns()}"
-    request = requests_dir / f"{stem}.request"
-    request.write_text(name + "\n")
-    output = frames_dir / f"{stem}.png"
-    deadline = time.monotonic() + 5
-    while time.monotonic() < deadline and not (output.exists() and output.stat().st_size > 0):
-        time.sleep(0.05)
-    request.unlink(missing_ok=True)
-    if not (output.exists() and output.stat().st_size > 0):
-        raise RuntimeError(f"in-app evidence capture produced no frame for {name}")
-    return output
+    path = run.run_dir / "screenshots" / f"{name}.png"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    completed = subprocess.run(
+        ["/Applications/CuaDriver.app/Contents/MacOS/cua-driver", "call",
+         "get_desktop_state", "--screenshot-out-file", str(path)],
+        check=False,
+        timeout=30,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    if completed.returncode != 0 or not path.exists() or path.stat().st_size == 0:
+        raise RuntimeError(
+            f"cua-driver capture failed rc={completed.returncode} "
+            f"stderr={completed.stderr.strip()[:200]}"
+        )
+    return path
 
 
 def _find_toolbar_buttons(capture: Path, display_width: float, y_lo: float, y_hi: float) -> dict:
