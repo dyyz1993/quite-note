@@ -78,12 +78,20 @@ final class UIEvidenceCaptureService {
                     context.cgContext.scaleBy(x: 1, y: -1)
                     layer.render(in: context.cgContext)
                     context.cgContext.restoreGState()
-                    if let data = bitmap.representation(using: .png, properties: [:]) {
-                        try? data.write(to: output, options: .atomic)
-                        if let cg = bitmap.cgImage {
+                    if let data = bitmap.representation(using: .png, properties: [:]),
+                       let cg = bitmap.cgImage {
                         wrote = !Self.isSolidBlank(cg)
                     }
-                    }
+                }
+                // 2.5) App 进程内调系统 screencapture：macOS 13 上子进程继承父
+                //    进程的 Screen Recording 授权，且走真实 WindowServer 合成。
+                if !wrote {
+                    let proc = Process()
+                    proc.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+                    proc.arguments = ["-x", "-m", output.path]
+                    try? proc.run()
+                    proc.waitUntilExit()
+                    wrote = proc.terminationStatus == 0 && Self.checkNonBlank(output)
                 }
                 // 3) ScreenCaptureKit 全屏单帧：SwiftUI 内容只有 WindowServer 合成器
                 //    能拍出来；App 自身持有 Screen Recording 授权，SCK 走真实合成。
@@ -129,16 +137,28 @@ final class UIEvidenceCaptureService {
         return false
     }
 
+    /// 帧是否为纯色空内容（全黑/全背景都算）。
+    private static func checkNonBlank(_ path: URL) -> Bool {
+        guard let image = NSImage(contentsOf: path),
+              let tiff = image.tiffRepresentation,
+              let rep = NSBitmapImageRep(data: tiff) else { return false }
+        return !isSolidBlank(rep)
+    }
+
     /// CGWindowListCreateImage 偶发返回整幅同色（黑）的位图；抽样判断是否空内容。
-    private static func isSolidBlank(_ image: CGImage) -> Bool {        let width = image.width
-        let height = image.height
+    private static func isSolidBlank(_ image: CGImage) -> Bool {
+        isSolidBlank(NSBitmapImageRep(cgImage: image))
+    }
+
+    private static func isSolidBlank(_ rep: NSBitmapImageRep) -> Bool {
+        let width = rep.pixelsWide
+        let height = rep.pixelsHigh
         guard width > 0, height > 0 else { return true }
-        let rep = NSBitmapImageRep(cgImage: image)
         var minLuminance = Double.greatestFiniteMagnitude
         var maxLuminance = -Double.greatestFiniteMagnitude
         for i in 0..<64 {
-            let x = (i * 8 + 3) % max(width, 1)
-            let y = (i * 13 + 5) % max(height, 1)
+            let x = (i * 8 + 3) % width
+            let y = (i * 13 + 5) % height
             guard let color = rep.colorAt(x: x, y: y) else { continue }
             let r = Double(color.redComponent)
             let g = Double(color.greenComponent)
