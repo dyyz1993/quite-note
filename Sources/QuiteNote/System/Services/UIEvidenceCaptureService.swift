@@ -1,4 +1,5 @@
 import AppKit
+import ScreenCaptureKit
 
 // The isolated Dev smoke run can snapshot its own window without Screen Recording TCC.
 // Requests and output stay inside the run's evidence directory.
@@ -79,10 +80,17 @@ final class UIEvidenceCaptureService {
                     context.cgContext.restoreGState()
                     if let data = bitmap.representation(using: .png, properties: [:]) {
                         try? data.write(to: output, options: .atomic)
-                        wrote = data != nil
+                        if let cg = bitmap.cgImage {
+                        wrote = !Self.isSolidBlank(cg)
+                    }
                     }
                 }
-                // 3) 旧路径兜底（AppKit 自绘内容仍有效）
+                // 3) ScreenCaptureKit 全屏单帧：SwiftUI 内容只有 WindowServer 合成器
+                //    能拍出来；App 自身持有 Screen Recording 授权，SCK 走真实合成。
+                if !wrote {
+                    wrote = Self.captureDisplayWithScreenCaptureKit(to: output)
+                }
+                // 4) 旧路径兜底（AppKit 自绘内容仍有效）
                 if !wrote, let bitmap = content.bitmapImageRepForCachingDisplay(in: content.bounds) {
                     content.cacheDisplay(in: content.bounds, to: bitmap)
                     if let data = bitmap.representation(using: .png, properties: [:]) {
@@ -94,9 +102,33 @@ final class UIEvidenceCaptureService {
         }
     }
 
+    /// ScreenCaptureKit 全屏单帧（macOS 14+）。同步包装，超时 5 秒。
+    private static func captureDisplayWithScreenCaptureKit(to url: URL) -> Bool {
+        if #available(macOS 14.0, *) {
+            let semaphore = DispatchSemaphore(value: 0)
+            var succeeded = false
+            Task { @MainActor in
+                defer { semaphore.signal() }
+                guard let content = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false),
+                      let display = content.displays.first else { return }
+                let filter = SCContentFilter(display: display, excludingWindows: [])
+                let configuration = SCStreamConfiguration()
+                configuration.showsCursor = false
+                guard let image = try? await SCScreenshotManager.captureImage(contentFilter: filter, configuration: configuration) else { return }
+                let rep = NSBitmapImageRep(cgImage: image)
+                if let data = rep.representation(using: .png, properties: [:]) {
+                    try? data.write(to: url, options: .atomic)
+                    succeeded = true
+                }
+            }
+            _ = semaphore.wait(timeout: .now() + 5)
+            return succeeded
+        }
+        return false
+    }
+
     /// CGWindowListCreateImage 偶发返回整幅同色（黑）的位图；抽样判断是否空内容。
-    private static func isSolidBlank(_ image: CGImage) -> Bool {
-        let width = image.width
+    private static func isSolidBlank(_ image: CGImage) -> Bool {        let width = image.width
         let height = image.height
         guard width > 0, height > 0 else { return true }
         let rep = NSBitmapImageRep(cgImage: image)
