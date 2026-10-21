@@ -706,6 +706,7 @@ def _find_toolbar_buttons(capture: Path, display_width: float, y_lo: float, y_hi
     # 按颜色独立聚类：相邻的不同色按钮（如红录制紧挨蓝保存）不能连坐成
     # 巨型混合簇被宽度过滤整簇拒掉（2026-10-21 实锤：红钮被隔壁蓝钮吞掉）。
     found = {}
+    dbg = []
     for color in ("red", "blue"):
         color_cells = {k: v for k, v in cells.items() if all(p[2] == color for p in v)}
         visited = set()
@@ -722,18 +723,25 @@ def _find_toolbar_buttons(capture: Path, display_width: float, y_lo: float, y_hi
                 for dx in (-1, 0, 1):
                     for dy in (-1, 0, 1):
                         stack.append((current[0] + dx, current[1] + dy))
-            if len(group) < 40:
-                continue
             xs = [p[0] for p in group]
             ys = [p[1] for p in group]
             cluster_width = (max(xs) - min(xs)) / scale
+            info = f"{color} @{key} n={len(group)} w={cluster_width:.1f}pt x[{min(xs)/scale:.0f},{max(xs)/scale:.0f}]"
+            if len(group) < 40:
+                dbg.append(info + " REJECT:too-few"); continue
             if not 22 <= cluster_width <= 48:
-                continue
+                dbg.append(info + " REJECT:width"); continue
             position = ((min(xs) + max(xs)) / 2 / scale, (min(ys) + max(ys)) / 2 / scale)
+            dbg.append(info + " KEEP")
             # Keep the leftmost cluster: the selected group highlight sits left of
             # the action buttons, and there is exactly one record button.
             if color not in found or position[0] < found[color][0]:
                 found[color] = position
+    try:
+        with open("/tmp/qn-manual/tb_debug.txt", "w") as f:
+            f.write("\n".join(dbg))
+    except Exception:
+        pass
     return found
 
 
