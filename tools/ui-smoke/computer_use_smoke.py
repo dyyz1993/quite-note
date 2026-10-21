@@ -632,30 +632,32 @@ def _press_escape() -> None:
 
 
 def _capture_main_display(run: Run, name: str) -> Path:
-    """Capture the main display in-process via CGDisplayCreateImage.
+    """Snapshot through the Dev app's own UIEvidenceCaptureService request queue.
 
-    The external /usr/sbin/screencapture binary does not inherit the GUI
-    launcher's TCC screen-recording grant ("could not create image from
-    display", error notebook 2026-10-15/2026-10-21); an in-process Quartz call
-    runs under the launcher's own trusted identity. Capturing by display ID
-    also avoids multi-display concatenation, so pixels map 1:1 to points.
+    Neither /usr/sbin/screencapture nor in-process CGDisplayCreateImage has the
+    runner session's Screen Recording TCC (error notebook 2026-10-15/10-21).
+    The isolated Dev app renders its highest-level window — the screenSaver
+    screenshot overlay this scenario asserts on — off-screen into the evidence
+    directory without any TCC. The overlay covers the full display, so pixel
+    coordinates map 1:1 to display points. Stems must not contain
+    "clipboard"/"launcher": UIEvidenceCaptureService keys its window choice on
+    those substrings.
     """
-    from Quartz import CGMainDisplayID, CGDisplayCreateImage
-    from AppKit import NSBitmapImageRep, NSPNGFileType
-
-    path = run.run_dir / "screenshots" / f"{name}.png"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    cg_image = CGDisplayCreateImage(CGMainDisplayID())
-    if cg_image is None:
-        raise RuntimeError(
-            "CGDisplayCreateImage returned nil: the GUI launcher session lacks "
-            "Screen Recording TCC (restart the quitenote-ui LaunchAgent)"
-        )
-    representation = NSBitmapImageRep.alloc().initWithCGImage_(cg_image)
-    data = representation.representationUsingType_properties_(NSPNGFileType, None)
-    if data is None or not data.writeToFile_atomically_(str(path), True):
-        raise RuntimeError(f"failed to write capture to {path}")
-    return path
+    recordings = run.run_dir / "recordings"
+    requests_dir = recordings / "requests"
+    frames_dir = recordings / "frames"
+    requests_dir.mkdir(parents=True, exist_ok=True)
+    stem = f"toolbar-{name}-{time.time_ns()}"
+    request = requests_dir / f"{stem}.request"
+    request.write_text(name + "\n")
+    output = frames_dir / f"{stem}.png"
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline and not (output.exists() and output.stat().st_size > 0):
+        time.sleep(0.05)
+    request.unlink(missing_ok=True)
+    if not (output.exists() and output.stat().st_size > 0):
+        raise RuntimeError(f"in-app evidence capture produced no frame for {name}")
+    return output
 
 
 def _find_toolbar_buttons(capture: Path, display_width: float, y_lo: float, y_hi: float) -> dict:
