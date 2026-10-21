@@ -68,7 +68,7 @@ final class UIEvidenceCaptureService {
                 //    hosting 内容在 CA 层，离屏位图会得到纯背景色。
                 if !wrote, let layer = content.layer,
                    let bitmap = content.bitmapImageRepForCachingDisplay(in: content.bounds),
-                   let context = bitmap.graphicsContext {
+                   let context = NSGraphicsContext(bitmapImageRep: bitmap) {
                     context.cgContext.saveGState()
                     context.cgContext.translateBy(x: 0, y: content.bounds.height)
                     context.cgContext.scaleBy(x: 1, y: -1)
