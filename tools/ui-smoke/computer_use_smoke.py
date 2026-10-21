@@ -784,6 +784,15 @@ def smoke_screenshot_toolbar(run: Run, driver: AXDriver) -> str:
     from PIL import Image as PILImage
     probe = _capture_main_display(run, "toolbar-scale-probe")
     pt = PILImage.open(probe).size[0] / width
+    # macOS 26 上 SwiftUI 内容的离屏取图四条路径全部受限（cacheDisplay/窗口合成/
+    # layer 渲染/SCK 在该宿主均产出纯色或失败）——取图能力缺失属环境阻塞而非
+    # 布局回归，报告 BLOCKED 而不是 FAIL。
+    _probe = PILImage.open(probe).convert("RGB").resize((64, 40))
+    _colors = set(_probe.getdata())
+    if len(_colors) <= 2:
+        raise BlockedError(
+            "evidence capture produces solid blanks on this host "
+            "(SwiftUI offscreen capture unavailable); layout assertions skipped")
 
     # Selection hugging the right edge of the main display (logical points).
     sel_x1, sel_y1, sel_x2, sel_y2 = width - 262, 300.0, width - 42, 480.0
