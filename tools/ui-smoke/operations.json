@@ -1,66 +1,292 @@
 {
-  "suite_version": "1.2.0",
-  "strategy": "Use this cached operation sequence; do not rediscover UI paths when AX succeeds.",
-  "operations": {
-    "launch": [
-      {"action": "assert", "target": "process", "value": "com.quitenote.app.dev"},
-      {"action": "assert", "target": "storage_root", "value": "QN_TEST_STORAGE_ROOT must exist"},
-      {"action": "capture", "when": "full-evidence-or-failure"}
-    ],
-    "flash_notes": [
-      {"action": "shortcut", "keys": "option+command+shift+r", "purpose": "force main panel visible and centered"},
-      {"action": "focus", "selector": "flash_note.search_field"},
-      {"action": "set_value", "selector": "flash_note.search_field", "value": "QNUI_SMOKE_FLASH"},
-      {"action": "wait", "condition": "debounced_search_settled", "timeout_ms": 1000},
-      {"action": "assert", "selector": "flash_note.record_list", "condition": "contains QNUI_SMOKE_FLASH"},
-      {"action": "set_value", "selector": "flash_note.search_field", "value": ""},
-      {"action": "shortcut", "keys": "option+command+r", "purpose": "hide main panel"}
-    ],
-    "clipboard": [
-      {"action": "ax_press", "selector": "app.status_menu", "purpose": "open menu bar extra; tolerate actionFailed and verify AXChildren"},
-      {"action": "ax_press", "selector": "menu.clipboard_history", "value": "剪贴板历史"},
-      {"action": "wait", "condition": "window_760x520_visible_for_current_pid", "timeout_ms": 3000},
-      {"action": "assert", "target": "focused_element", "selector": "clipboard.search_field"},
-      {"action": "set_value", "selector": "clipboard.search_field", "value": "QNUI_SMOKE_CLIP"},
-      {"action": "wait", "condition": "search_idle", "timeout_ms": 1200, "purpose": "clipboard search commits immediately; wait for async search completion"},
-      {"action": "key", "selector": "clipboard.filter_bar", "keys": "ArrowRight", "iterations": 2},
-      {"action": "key", "selector": "clipboard.list", "keys": "ArrowDown", "iterations": 2},
-      {"action": "assert", "selector": "clipboard.detail", "condition": "matches selected row"},
-      {"action": "key", "keys": "Escape", "expect": "clear search first"},
-      {"action": "key", "keys": "Escape", "expect": "close panel"}
-    ],
-    "launcher": [
-      {"action": "ax_press", "selector": "app.status_menu", "purpose": "open menu bar extra; tolerate actionFailed and verify AXChildren"},
-      {"action": "ax_press", "selector": "menu.app_launcher", "value": "应用启动器"},
-      {"action": "wait", "condition": "window_640x498_visible_for_current_pid", "timeout_ms": 3000},
-      {"action": "focus", "selector": "launcher.search_field"},
-      {"action": "set_value", "selector": "launcher.search_field", "value": "finder"},
-      {"action": "wait", "condition": "results_nonempty", "timeout_ms": 1200},
-      {"action": "key", "keys": "ArrowDown", "iterations": 2},
-      {"action": "assert", "selector": "launcher.result_list", "condition": "selection_changes"},
-      {"action": "key", "keys": "Escape"}
-    ],
-    "settings": [
-      {"action": "open", "selector": "settings.panel"},
-      {"action": "iterate_tabs", "selector": "settings.tab_bar", "policy": "read-only"},
-      {"action": "assert", "condition": "no_error_dialog", "capture_on_failure": true},
-      {"action": "close", "selector": "settings.close"}
-    ],
-    "devcore": [
-      {"action": "open", "selector": "settings.panel"},
-      {"action": "open", "selector": "settings.tab_bar", "value": "clipboard"},
-      {"action": "assert", "condition": "DevCore status visible and isolated storage reported"},
-      {"action": "close", "selector": "settings.close"}
-    ],
-    "cleanup": [
-      {"action": "terminate_only", "target": "com.quitenote.app.dev"},
-      {"action": "assert", "condition": "production com.quitenote.app process remains running"}
-    ]
-  },
-  "selector_priority": [
-    "accessibilityIdentifier from selectors.json",
-    "AXRole + stable AXLabel",
-    "window-relative coordinate with fresh window frame",
-    "screenshot/model review only for failure diagnosis"
+ "suite_version": "1.3.0",
+ "strategy": "Use this cached operation sequence; do not rediscover UI paths when AX succeeds.",
+ "operations": {
+  "launch": [
+   {
+    "action": "assert",
+    "target": "process",
+    "value": "com.quitenote.app.dev"
+   },
+   {
+    "action": "assert",
+    "target": "storage_root",
+    "value": "QN_TEST_STORAGE_ROOT must exist"
+   },
+   {
+    "action": "capture",
+    "when": "full-evidence-or-failure"
+   }
+  ],
+  "flash_notes": [
+   {
+    "action": "shortcut",
+    "keys": "option+command+shift+r",
+    "purpose": "force main panel visible and centered"
+   },
+   {
+    "action": "focus",
+    "selector": "flash_note.search_field"
+   },
+   {
+    "action": "set_value",
+    "selector": "flash_note.search_field",
+    "value": "QNUI_SMOKE_FLASH"
+   },
+   {
+    "action": "wait",
+    "condition": "debounced_search_settled",
+    "timeout_ms": 1000
+   },
+   {
+    "action": "assert",
+    "selector": "flash_note.record_list",
+    "condition": "contains QNUI_SMOKE_FLASH"
+   },
+   {
+    "action": "set_value",
+    "selector": "flash_note.search_field",
+    "value": ""
+   },
+   {
+    "action": "shortcut",
+    "keys": "option+command+r",
+    "purpose": "hide main panel"
+   }
+  ],
+  "clipboard": [
+   {
+    "action": "ax_press",
+    "selector": "app.status_menu",
+    "purpose": "open menu bar extra; tolerate actionFailed and verify AXChildren"
+   },
+   {
+    "action": "ax_press",
+    "selector": "menu.clipboard_history",
+    "value": "剪贴板历史"
+   },
+   {
+    "action": "wait",
+    "condition": "window_760x520_visible_for_current_pid",
+    "timeout_ms": 3000
+   },
+   {
+    "action": "assert",
+    "target": "focused_element",
+    "selector": "clipboard.search_field"
+   },
+   {
+    "action": "set_value",
+    "selector": "clipboard.search_field",
+    "value": "QNUI_SMOKE_CLIP"
+   },
+   {
+    "action": "wait",
+    "condition": "search_idle",
+    "timeout_ms": 1200,
+    "purpose": "clipboard search commits immediately; wait for async search completion"
+   },
+   {
+    "action": "key",
+    "selector": "clipboard.filter_bar",
+    "keys": "ArrowRight",
+    "iterations": 2
+   },
+   {
+    "action": "key",
+    "selector": "clipboard.list",
+    "keys": "ArrowDown",
+    "iterations": 2
+   },
+   {
+    "action": "assert",
+    "selector": "clipboard.detail",
+    "condition": "matches selected row"
+   },
+   {
+    "action": "key",
+    "keys": "Escape",
+    "expect": "clear search first"
+   },
+   {
+    "action": "key",
+    "keys": "Escape",
+    "expect": "close panel"
+   }
+  ],
+  "launcher": [
+   {
+    "action": "ax_press",
+    "selector": "app.status_menu",
+    "purpose": "open menu bar extra; tolerate actionFailed and verify AXChildren"
+   },
+   {
+    "action": "ax_press",
+    "selector": "menu.app_launcher",
+    "value": "应用启动器"
+   },
+   {
+    "action": "wait",
+    "condition": "window_640x498_visible_for_current_pid",
+    "timeout_ms": 3000
+   },
+   {
+    "action": "focus",
+    "selector": "launcher.search_field"
+   },
+   {
+    "action": "set_value",
+    "selector": "launcher.search_field",
+    "value": "finder"
+   },
+   {
+    "action": "wait",
+    "condition": "results_nonempty",
+    "timeout_ms": 1200
+   },
+   {
+    "action": "key",
+    "keys": "ArrowDown",
+    "iterations": 2
+   },
+   {
+    "action": "assert",
+    "selector": "launcher.result_list",
+    "condition": "selection_changes"
+   },
+   {
+    "action": "key",
+    "keys": "Escape"
+   }
+  ],
+  "settings": [
+   {
+    "action": "open",
+    "selector": "settings.panel"
+   },
+   {
+    "action": "iterate_tabs",
+    "selector": "settings.tab_bar",
+    "policy": "read-only"
+   },
+   {
+    "action": "assert",
+    "condition": "no_error_dialog",
+    "capture_on_failure": true
+   },
+   {
+    "action": "close",
+    "selector": "settings.close"
+   }
+  ],
+  "devcore": [
+   {
+    "action": "open",
+    "selector": "settings.panel"
+   },
+   {
+    "action": "open",
+    "selector": "settings.tab_bar",
+    "value": "clipboard"
+   },
+   {
+    "action": "assert",
+    "condition": "DevCore status visible and isolated storage reported"
+   },
+   {
+    "action": "close",
+    "selector": "settings.close"
+   }
+  ],
+  "cleanup": [
+   {
+    "action": "terminate_only",
+    "target": "com.quitenote.app.dev"
+   },
+   {
+    "action": "assert",
+    "condition": "production com.quitenote.app process remains running"
+   }
+  ],
+  "screenshot-toolbar": [
+   {
+    "action": "key",
+    "keys": "Escape",
+    "purpose": "clear any stale screenshot session"
+   },
+   {
+    "action": "ax_press",
+    "selector": "app.status_menu",
+    "purpose": "open menu bar extra"
+   },
+   {
+    "action": "ax_press",
+    "selector": "screenshot.trigger_menu",
+    "value": "捕获屏幕截图"
+   },
+   {
+    "action": "wait",
+    "condition": "overlay_window_layer>=1000_visible",
+    "timeout_ms": 3000
+   },
+   {
+    "action": "wait",
+    "condition": "interaction_layer_settled",
+    "timeout_ms": 1000,
+    "purpose": "overlay window exists != interaction ready; early synthetic drags get dropped (verified 2026-10-21)"
+   },
+   {
+    "action": "drag",
+    "selector": "screenshot.selection_area",
+    "value": "right-edge selection: (W-262,300)->(W-42,480) on main display"
+   },
+   {
+    "action": "assert",
+    "selector": "screenshot.toolbar_record_button",
+    "condition": "pixel cluster found; cx+17+8 <= display width"
+   },
+   {
+    "action": "assert",
+    "selector": "screenshot.toolbar_selected_group_button",
+    "condition": "blue highlight cluster on toolbar row"
+   },
+   {
+    "action": "click",
+    "selector": "screenshot.group_button_2_text",
+    "value": "selected_group.cx + 76 (38pt group stride)"
+   },
+   {
+    "action": "assert",
+    "selector": "screenshot.toolbar_record_button",
+    "condition": "still fully on screen after color controls widen the toolbar (the widening-clamp regression)",
+    "note": "main toolbar must yield left as a whole; record cx decreases >= 20pt"
+   },
+   {
+    "action": "click",
+    "selector": "screenshot.group_button_1_shape",
+    "value": "selected_group.cx - 38"
+   },
+   {
+    "action": "assert",
+    "selector": "screenshot.sub_toolbar",
+    "condition": "diff region above main toolbar exists; within [8, W-8]; center within 30pt of group button (anchoring)"
+   },
+   {
+    "action": "key",
+    "keys": "Escape"
+   },
+   {
+    "action": "assert",
+    "condition": "overlay_window_count == 0",
+    "selector": "screenshot.overlay_windows",
+    "note": "no leftover overlay windows"
+   }
   ]
+ },
+ "selector_priority": [
+  "accessibilityIdentifier from selectors.json",
+  "AXRole + stable AXLabel",
+  "window-relative coordinate with fresh window frame",
+  "screenshot/model review only for failure diagnosis"
+ ]
 }

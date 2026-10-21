@@ -572,6 +572,248 @@ def smoke_cleanup(run: Run, driver: AXDriver) -> str:
     return assert_production_process_untouched()
 
 
+# ---------------------------------------------------------------------------
+# Screenshot toolbar edge-layout regression (added 2026-10-21 with the
+# ScreenshotToolbarLayout rewrite). All assertions are pixel-level: the
+# overlay renders at screenSaver level and is not reachable through AX.
+# ---------------------------------------------------------------------------
+
+def _overlay_window_count(pid: int) -> int:
+    from Quartz import CGWindowListCopyWindowInfo, kCGWindowListOptionOnScreenOnly, kCGNullWindowID
+    windows = CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly, kCGNullWindowID)
+    return sum(1 for w in windows if w.get("kCGWindowOwnerPID") == pid and w.get("kCGWindowLayer", 0) >= 1000)
+
+
+def _main_display_size() -> tuple[float, float]:
+    from Quartz import CGMainDisplayID, CGDisplayBounds
+    bounds = CGDisplayBounds(CGMainDisplayID())
+    return bounds.size.width, bounds.size.height
+
+
+def _mouse_click(x: float, y: float) -> None:
+    from Quartz import (
+        CGEventCreateMouseEvent, CGEventPost, CGEventSourceCreate,
+        kCGEventSourceStateHIDSystemState, kCGEventLeftMouseDown, kCGEventLeftMouseUp, CGPoint,
+    )
+    source = CGEventSourceCreate(kCGEventSourceStateHIDSystemState)
+    point = CGPoint(x, y)
+    CGEventPost(kCGEventSourceStateHIDSystemState, CGEventCreateMouseEvent(source, kCGEventLeftMouseDown, point, 0))
+    CGEventPost(kCGEventSourceStateHIDSystemState, CGEventCreateMouseEvent(source, kCGEventLeftMouseUp, point, 0))
+    time.sleep(0.7)
+
+
+def _mouse_drag(x1: float, y1: float, x2: float, y2: float) -> None:
+    from Quartz import (
+        CGEventCreateMouseEvent, CGEventPost, CGEventSourceCreate,
+        kCGEventSourceStateHIDSystemState, kCGEventLeftMouseDown,
+        kCGEventLeftMouseDragged, kCGEventLeftMouseUp, CGPoint,
+    )
+    source = CGEventSourceCreate(kCGEventSourceStateHIDSystemState)
+    CGEventPost(kCGEventSourceStateHIDSystemState, CGEventCreateMouseEvent(source, kCGEventLeftMouseDown, CGPoint(x1, y1), 0))
+    for step in range(1, 9):
+        t = step / 8.0
+        point = CGPoint(x1 + (x2 - x1) * t, y1 + (y2 - y1) * t)
+        CGEventPost(kCGEventSourceStateHIDSystemState, CGEventCreateMouseEvent(source, kCGEventLeftMouseDragged, point, 0))
+        time.sleep(0.03)
+    CGEventPost(kCGEventSourceStateHIDSystemState, CGEventCreateMouseEvent(source, kCGEventLeftMouseUp, CGPoint(x2, y2), 0))
+    time.sleep(0.7)
+
+
+def _press_escape() -> None:
+    from Quartz import (
+        CGEventCreateKeyboardEvent, CGEventPost, CGEventSourceCreate,
+        kCGEventSourceStateHIDSystemState,
+    )
+    source = CGEventSourceCreate(kCGEventSourceStateHIDSystemState)
+    for key_down in (True, False):
+        CGEventPost(kCGEventSourceStateHIDSystemState, CGEventCreateKeyboardEvent(source, 53, key_down))
+        time.sleep(0.05)
+    time.sleep(0.5)
+
+
+def _capture_main_display(run: Run, name: str) -> Path:
+    path = run.run_dir / "screenshots" / f"{name}.png"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["screencapture", "-x", "-m", str(path)], check=True, timeout=15)
+    return path
+
+
+def _find_toolbar_buttons(capture: Path, display_width: float, y_lo: float, y_hi: float) -> dict:
+    """Locate the record (red) and selected-group (blue) toolbar buttons via
+    feature-color clustering inside the y band. Returns {"red": (cx, cy), "blue": (cx, cy)}
+    in display points; missing colors are omitted."""
+    try:
+        from PIL import Image
+    except ImportError as exc:
+        raise BlockedError(f"Pillow unavailable for toolbar pixel checks: {exc}")
+
+    image = Image.open(capture).convert("RGB")
+    width, height = image.size
+    scale = width / display_width
+    pixels = image.load()
+
+    def classify(r: float, g: float, b: float):
+        if r > 170 and 40 < g < 130 and b < 110:
+            return "red"     # record button gradient (themeRed500)
+        if r < 80 and 90 < g < 150 and b > 170:
+            return "blue"    # selected group button highlight (~49,109,200)
+        return None
+
+    cells = {}
+    for y in range(int(y_lo * scale), min(int(y_hi * scale), height), 2):
+        for x in range(0, width, 2):
+            color = classify(*pixels[x, y])
+            if color:
+                cells.setdefault((x // 34, y // 34), []).append((x, y, color))
+
+    visited = set()
+    found = {}
+    for key in list(cells):
+        if key in visited:
+            continue
+        stack, group = [key], []
+        while stack:
+            current = stack.pop()
+            if current in visited or current not in cells:
+                continue
+            visited.add(current)
+            group += cells[current]
+            for dx in (-1, 0, 1):
+                for dy in (-1, 0, 1):
+                    stack.append((current[0] + dx, current[1] + dy))
+        if len(group) < 40:
+            continue
+        xs = [p[0] for p in group]
+        ys = [p[1] for p in group]
+        cluster_width = (max(xs) - min(xs)) / scale
+        if not 22 <= cluster_width <= 48:
+            continue
+        counts = {}
+        for p in group:
+            counts[p[2]] = counts.get(p[2], 0) + 1
+        dominant = max(counts, key=counts.get)
+        if counts[dominant] < len(group) * 0.55:
+            continue
+        position = ((min(xs) + max(xs)) / 2 / scale, (min(ys) + max(ys)) / 2 / scale)
+        # Keep the leftmost cluster per color: the selected group highlight sits
+        # left of the action buttons, and there is exactly one record button.
+        if dominant not in found or position[0] < found[dominant][0]:
+            found[dominant] = position
+    return found
+
+
+def _diff_region(capture_before: Path, capture_after: Path, display_width: float, y_above: float):
+    """Bounding box (display points) of changed pixels above y_above — used to
+    detect the sub-toolbar floating above the main toolbar."""
+    try:
+        from PIL import Image, ImageChops
+    except ImportError as exc:
+        raise BlockedError(f"Pillow unavailable for toolbar diff checks: {exc}")
+
+    before = Image.open(capture_before).convert("RGB")
+    after = Image.open(capture_after).convert("RGB")
+    diff = ImageChops.difference(before, after).convert("L")
+    width, height = after.size
+    scale = width / display_width
+    changed = diff.load()
+    xs, ys = [], []
+    for y in range(0, min(int(y_above * scale), height), 2):
+        for x in range(0, width, 2):
+            if changed[x, y] > 24:
+                xs.append(x)
+                ys.append(y)
+    if len(xs) < 200:
+        return None
+    return (min(xs) / scale, min(ys) / scale, max(xs) / scale, max(ys) / scale)
+
+
+def smoke_screenshot_toolbar(run: Run, driver: AXDriver) -> str:
+    """Regression for the screenshot toolbar edge layout (2026-10-21 rewrite).
+
+    Scenario chain, pinned to the product requirements:
+      1. right-edge selection, default state: record button fully on screen;
+      2. click the text tool group -> color controls widen the main toolbar:
+         the whole toolbar must yield left and the record button must stay
+         fully visible (the reported "button pushed off screen" bug);
+      3. click the shape tool group -> sub-toolbar expands above the main
+         toolbar, stays on screen, and centers on the group button;
+      4. Escape closes the overlay with no leftover windows.
+    """
+    width, height = _main_display_size()
+    pid = driver.pid
+
+    _press_escape()  # clear any stale session
+    _press_status_menu_item("捕获屏幕截图")
+    deadline = time.monotonic() + 3
+    while time.monotonic() < deadline and _overlay_window_count(pid) == 0:
+        time.sleep(0.05)
+    if _overlay_window_count(pid) == 0:
+        raise RuntimeError("screenshot overlay did not appear")
+    time.sleep(1.0)  # interaction layer settles after the window exists; early drags get dropped
+
+    # Selection hugging the right edge of the main display.
+    sel_x1, sel_y1, sel_x2, sel_y2 = width - 262, 300.0, width - 42, 480.0
+    _mouse_drag(sel_x1, sel_y1, sel_x2, sel_y2)
+
+    cap_default = _capture_main_display(run, "toolbar-right-default")
+    buttons_default = _find_toolbar_buttons(cap_default, width, sel_y2, sel_y2 + 90)
+    if "red" not in buttons_default or "blue" not in buttons_default:
+        raise RuntimeError(f"toolbar buttons not found in default state: {buttons_default}")
+    red1 = buttons_default["red"]
+    blue1 = buttons_default["blue"]
+    if abs(blue1[1] - red1[1]) > 10:
+        raise RuntimeError(f"selected group button not on the toolbar row: blue={blue1} red={red1}")
+    if red1[0] + 17 + 8 > width:
+        raise RuntimeError(f"record button clipped at right edge in default state: cx={red1[0]:.0f} width={width:.0f}")
+
+    # Click the text tool group (third group button: +2 * 38pt from the selected group).
+    _mouse_click(blue1[0] + 76, blue1[1])
+
+    cap_widened = _capture_main_display(run, "toolbar-right-widened")
+    buttons_widened = _find_toolbar_buttons(cap_widened, width, sel_y2, sel_y2 + 90)
+    if "red" not in buttons_widened or "blue" not in buttons_widened:
+        raise RuntimeError(f"toolbar buttons not found after widening: {buttons_widened}")
+    red2 = buttons_widened["red"]
+    blue2 = buttons_widened["blue"]
+    if red2[0] + 17 + 8 > width:
+        raise RuntimeError(
+            f"record button pushed off screen after text tool widened the toolbar: "
+            f"cx {red1[0]:.0f} -> {red2[0]:.0f}, right edge {red2[0] + 25:.0f} > {width:.0f}"
+        )
+    if red2[0] >= red1[0] - 20:
+        raise RuntimeError(f"toolbar did not yield left after widening: record cx {red1[0]:.0f} -> {red2[0]:.0f}")
+
+    # Click the shape tool group (left neighbor of the selected text group) to expand the sub-toolbar.
+    _mouse_click(blue2[0] - 38, blue2[1])
+
+    cap_expanded = _capture_main_display(run, "toolbar-subtoolbar-expanded")
+    buttons_expanded = _find_toolbar_buttons(cap_expanded, width, sel_y2, sel_y2 + 90)
+    if "blue" not in buttons_expanded:
+        raise RuntimeError("selected group button lost after expanding the sub-toolbar")
+    blue3 = buttons_expanded["blue"]
+    region = _diff_region(cap_widened, cap_expanded, width, y_above=blue3[1] - 45)
+    if region is None:
+        raise RuntimeError("sub-toolbar did not appear above the main toolbar")
+    region_left, _, region_right, _ = region
+    if region_left < 8 or region_right > width - 8:
+        raise RuntimeError(f"sub-toolbar exceeds screen bounds: [{region_left:.0f}, {region_right:.0f}] vs [8, {width - 8:.0f}]")
+    region_center = (region_left + region_right) / 2
+    if abs(region_center - blue3[0]) > 30:
+        raise RuntimeError(f"sub-toolbar not anchored to the group button: center={region_center:.0f} button={blue3[0]:.0f}")
+
+    _press_escape()
+    deadline = time.monotonic() + 3
+    while time.monotonic() < deadline and _overlay_window_count(pid) > 0:
+        time.sleep(0.1)
+    if _overlay_window_count(pid) > 0:
+        raise RuntimeError("overlay windows remain after Escape")
+
+    return (
+        f"edge layout ok: default red cx={red1[0]:.0f}, widened red cx={red2[0]:.0f} (yielded left), "
+        f"sub-toolbar center={region_center:.0f} anchored to button={blue3[0]:.0f}"
+    )
+
+
 def append_timeline(run_dir: Path, event: str, data: dict | None = None) -> None:
     row = {"timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"), "event": event, **(data or {})}
     with (run_dir / "timeline.jsonl").open("a") as f:
@@ -615,6 +857,7 @@ def main() -> int:
             "launcher": lambda: smoke_launcher(run, driver),
             "settings": lambda: smoke_settings(run, driver),
             "devcore": lambda: smoke_devcore(run, driver),
+            "screenshot-toolbar": lambda: smoke_screenshot_toolbar(run, driver),
             "cleanup": lambda: smoke_cleanup(run, driver),
         }
         for suite in args.suites:

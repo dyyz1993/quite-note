@@ -144,21 +144,22 @@ select_suites() {
 import json, subprocess, sys
 since, mode = sys.argv[1:]
 if mode in ("full", "release"):
-    print(json.dumps(["launch", "flash-notes", "clipboard", "launcher", "settings", "devcore", "cleanup"]))
+    print(json.dumps(["launch", "flash-notes", "clipboard", "launcher", "settings", "devcore", "screenshot-toolbar", "cleanup"]))
     raise SystemExit
 if not since:
-    print(json.dumps(["launch", "flash-notes", "clipboard", "launcher", "settings", "devcore", "cleanup"]))
+    print(json.dumps(["launch", "flash-notes", "clipboard", "launcher", "settings", "devcore", "screenshot-toolbar", "cleanup"]))
     raise SystemExit
 try:
     changed = subprocess.check_output(["git", "diff", "--name-only", f"{since}..HEAD"], text=True).splitlines()
 except subprocess.CalledProcessError:
-    print(json.dumps(["launch", "flash-notes", "clipboard", "launcher", "settings", "devcore", "cleanup"]))
+    print(json.dumps(["launch", "flash-notes", "clipboard", "launcher", "settings", "devcore", "screenshot-toolbar", "cleanup"]))
     raise SystemExit
 mapping = {
     "clipboard": {"Sources/QuiteNote/Clipboard/", "Sources/QuiteNoteSharedStorage/", "Sources/QuiteNoteCoreService/"},
     "flash-notes": {"Sources/QuiteNote/Records/", "Sources/QuiteNote/Search/", "Sources/QuiteNote/UI/FloatingPanel/"},
     "launcher": {"Sources/QuiteNote/AppLauncher/"},
     "settings": {"Sources/QuiteNote/UI/SettingsTabs/", "Sources/QuiteNote/Preferences/"},
+    "screenshot-toolbar": {"Sources/QuiteNote/UI/ScreenshotV2/"},
 }
 suites = {"launch", "cleanup"}
 for path in changed:
@@ -175,7 +176,7 @@ PY
 
 SUITES_JSON="$(select_suites "$SINCE" "$MODE")"
 read -r -a SUITES <<<"$(python3 -c 'import json,sys; print(" ".join(json.loads(sys.argv[1])))' "$SUITES_JSON")"
-[[ ${#SUITES[@]} -gt 0 ]] || SUITES=(launch flash-notes clipboard launcher settings devcore cleanup)
+[[ ${#SUITES[@]} -gt 0 ]] || SUITES=(launch flash-notes clipboard launcher settings devcore screenshot-toolbar cleanup)
 
 MACOS_VERSION="$(sw_vers -productVersion)"
 XCODE_VERSION="not-required"

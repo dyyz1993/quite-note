@@ -1,41 +1,75 @@
 {
-  "suite_version": "1.2.0",
-  "identifier_policy": "AXIdentifier first; AXRole+AXLabel second; window-relative coordinates last",
-  "app": {
-    "bundle_id": "com.quitenote.app.dev",
-    "process_name": "QuiteNoteDev",
-    "menu_bar_item": "Quite Note Dev",
-    "status_menu_ax": "last AXMenuBar child of AXApplication; first AXMenuBarItem",
-    "status_menu_open_wait_ms": 300
+ "suite_version": "1.3.0",
+ "identifier_policy": "AXIdentifier first; AXRole+AXLabel second; window-relative coordinates last",
+ "app": {
+  "bundle_id": "com.quitenote.app.dev",
+  "process_name": "QuiteNoteDev",
+  "menu_bar_item": "Quite Note Dev",
+  "status_menu_ax": "last AXMenuBar child of AXApplication; first AXMenuBarItem",
+  "status_menu_open_wait_ms": 300
+ },
+ "shortcuts": {
+  "show_hide_flash_note": "option+command+r",
+  "force_center_flash_note": "option+command+shift+r",
+  "capture_clipboard": "option+command+c",
+  "clipboard_history": "command+shift+v",
+  "app_launcher": "option+space"
+ },
+ "controls": {
+  "flash_note.search_field": "flash_note.search_field",
+  "flash_note.record_list": "flash_note.record_list",
+  "flash_note.status_bar": "flash_note.status_bar",
+  "menu.clipboard_history": "剪贴板历史",
+  "menu.app_launcher": "应用启动器",
+  "clipboard.search_field": "clipboard.search_field",
+  "clipboard.filter_bar": "clipboard.filter_bar",
+  "clipboard.list": "clipboard.list",
+  "clipboard.detail": "clipboard.detail",
+  "clipboard.count": "clipboard.count",
+  "launcher.panel": "launcher.panel",
+  "launcher.search_field": "launcher.search_field",
+  "launcher.result_list": "launcher.result_list",
+  "settings.panel": "settings.panel",
+  "settings.tab_bar": "settings.tab_bar",
+  "settings.close": "settings.close"
+ },
+ "fallback_labels": {
+  "clipboard.search_field": "输入以搜索剪贴板内容…",
+  "clipboard.filter_all": "全部",
+  "settings.clipboard_tab": "剪贴板"
+ },
+ "screenshot": {
+  "trigger_menu": {
+   "type": "ax_menu_item",
+   "title": "捕获屏幕截图",
+   "note": "menu bar extra -> first menu; same discovery path as menu.clipboard_history"
   },
-  "shortcuts": {
-    "show_hide_flash_note": "option+command+r",
-    "force_center_flash_note": "option+command+shift+r",
-    "capture_clipboard": "option+command+c",
-    "clipboard_history": "command+shift+v",
-    "app_launcher": "option+space"
+  "overlay_windows": {
+   "type": "cgwindow",
+   "layer": ">=1000",
+   "owner_pid": "current",
+   "note": "screenshot overlay renders at screenSaver level; AX cannot reach its content"
   },
-  "controls": {
-    "flash_note.search_field": "flash_note.search_field",
-    "flash_note.record_list": "flash_note.record_list",
-    "flash_note.status_bar": "flash_note.status_bar",
-    "menu.clipboard_history": "剪贴板历史",
-    "menu.app_launcher": "应用启动器",
-    "clipboard.search_field": "clipboard.search_field",
-    "clipboard.filter_bar": "clipboard.filter_bar",
-    "clipboard.list": "clipboard.list",
-    "clipboard.detail": "clipboard.detail",
-    "clipboard.count": "clipboard.count",
-    "launcher.panel": "launcher.panel",
-    "launcher.search_field": "launcher.search_field",
-    "launcher.result_list": "launcher.result_list",
-    "settings.panel": "settings.panel",
-    "settings.tab_bar": "settings.tab_bar",
-    "settings.close": "settings.close"
+  "toolbar_record_button": {
+   "type": "pixel_cluster",
+   "color": "red ~ (199,74,68) themeRed500 gradient",
+   "cluster_width_pt": "22-48",
+   "note": "leftmost red cluster in the band below selection"
   },
-  "fallback_labels": {
-    "clipboard.search_field": "输入以搜索剪贴板内容…",
-    "clipboard.filter_all": "全部",
-    "settings.clipboard_tab": "剪贴板"
+  "toolbar_selected_group_button": {
+   "type": "pixel_cluster",
+   "color": "blue ~ (49,109,200) 0.8 opacity highlight",
+   "note": "selected AnnotationToolGroup button; cluster shares the toolbar row with the record button"
+  },
+  "group_button_stride": {
+   "type": "derived_geometry",
+   "value_pt": 38,
+   "note": "primary group buttons are 34pt wide with 4pt spacing; index i center = selected.cx + 38*(i - selected_index)"
+  },
+  "sub_toolbar": {
+   "type": "diff_region",
+   "y": "above main toolbar (group button y - 45)",
+   "note": "appears above the clicked group button; anchor center must match the group button center"
   }
+ }
 }
