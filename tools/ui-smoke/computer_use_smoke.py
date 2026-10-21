@@ -418,7 +418,9 @@ def _activate_app() -> None:
                 # the GUI launcher session. ActivateAll is the deterministic path.
                 app.activateWithOptions_(0x00010000 | 0x00000010)
                 return
-    raise RuntimeError("cannot activate the current Dev app process")
+    # 进程未出现在 NSWorkspace 清单（注册延迟）时不再硬失败：AXPress 菜单
+    # 触发不强依赖 frontmost，让后续步骤自行验证效果。
+    print("[activate] app not yet in runningApplications; continuing", file=sys.stderr)
 
 
 def _press_status_menu_item(title: str) -> None:
@@ -603,19 +605,29 @@ def _cua_call(tool: str, args: str) -> str:
 
 
 def _mouse_click(x: float, y: float) -> None:
-    out = _cua_call("click", f'{{"scope":"desktop","delivery_mode":"foreground","x":{x},"y":{y}}}')
+    # cua 的 desktop click 带真实指针路径（hover 前置），SwiftUI 按钮可可靠响应；
+    # 坐标为截图像素（×px/pt 因子）
+    pt = 1366 / 1440
+    out = _cua_call("click", (
+        f'{{"scope":"desktop","delivery_mode":"foreground",'
+        f'"x":{round(x * pt)},"y":{round(y * pt)}}}'))
     if "error" in out or "pending" in out:
         raise RuntimeError(f"cua click failed at ({x:.0f},{y:.0f}): {out.strip()[:160]}")
-    time.sleep(0.7)
+    time.sleep(0.9)
 
 
 def _mouse_drag(x1: float, y1: float, x2: float, y2: float) -> None:
-    out = _cua_call("drag", (
-        f'{{"scope":"desktop","delivery_mode":"foreground","from_x":{x1},"from_y":{y1},'
-        f'"to_x":{x2},"to_y":{y2},"duration_ms":400,"steps":12}}'))
-    if "error" in out or "pending" in out:
-        raise RuntimeError(f"cua drag failed ({x1:.0f},{y1:.0f})->({x2:.0f},{y2:.0f}): {out.strip()[:160]}")
-    time.sleep(0.7)
+    # cliclick 逻辑 pt 拖拽（此前"进不了 overlay"的结论采集于锁屏状态，作废）
+    steps = 12
+    cmds = [f"dd:{round(x1)},{round(y1)}"]
+    for i in range(1, steps + 1):
+        t = i / steps
+        cmds.append(f"dm:{round(x1 + (x2 - x1) * t)},{round(y1 + (y2 - y1) * t)}")
+        time.sleep(0.03)
+    cmds.append(f"du:{round(x2)},{round(y2)}")
+    subprocess.run(["/usr/local/bin/cliclick", *cmds], check=False, timeout=30,
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    time.sleep(1.0)
 
 
 def _press_escape() -> None:
@@ -648,21 +660,19 @@ def _capture_main_display(run: Run, name: str) -> Path:
     kicks them off). Stems must be frame--prefixed and must not contain
     clipboard/launcher, which key the service's window choice.
     """
-    recordings = run.run_dir / "recordings"
-    requests_dir = recordings / "requests"
-    frames_dir = recordings / "frames"
-    requests_dir.mkdir(parents=True, exist_ok=True)
-    stem = f"frame-toolbar-{name}-{time.time_ns()}"
-    request = requests_dir / f"{stem}.request"
-    request.write_text(name + "\n")
-    output = frames_dir / f"{stem}.png"
-    deadline = time.monotonic() + 6
-    while time.monotonic() < deadline and not (output.exists() and output.stat().st_size > 0):
-        time.sleep(0.05)
-    request.unlink(missing_ok=True)
-    if not (output.exists() and output.stat().st_size > 0):
-        raise RuntimeError(f"in-app evidence capture produced no frame for {name}")
-    return output
+    # 显示器睡眠会让一切截屏 API 失效（2026-10-21 实锤）；先唤醒再走 cua
+    subprocess.Popen(["caffeinate", "-u", "-t", "20"],
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    time.sleep(1.5)
+    path = run.run_dir / "screenshots" / f"{name}.png"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    completed = subprocess.run(
+        ["/Applications/CuaDriver.app/Contents/MacOS/cua-driver", "call",
+         "get_desktop_state", "--screenshot-out-file", str(path)],
+        check=False, timeout=45, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+    if completed.returncode != 0 or not path.exists() or path.stat().st_size == 0:
+        raise RuntimeError(f"cua capture failed rc={completed.returncode} {completed.stderr.strip()[:120]}")
+    return path
 
 
 def _find_toolbar_buttons(capture: Path, display_width: float, y_lo: float, y_hi: float) -> dict:
@@ -693,39 +703,37 @@ def _find_toolbar_buttons(capture: Path, display_width: float, y_lo: float, y_hi
             if color:
                 cells.setdefault((x // 34, y // 34), []).append((x, y, color))
 
-    visited = set()
+    # 按颜色独立聚类：相邻的不同色按钮（如红录制紧挨蓝保存）不能连坐成
+    # 巨型混合簇被宽度过滤整簇拒掉（2026-10-21 实锤：红钮被隔壁蓝钮吞掉）。
     found = {}
-    for key in list(cells):
-        if key in visited:
-            continue
-        stack, group = [key], []
-        while stack:
-            current = stack.pop()
-            if current in visited or current not in cells:
+    for color in ("red", "blue"):
+        color_cells = {k: v for k, v in cells.items() if all(p[2] == color for p in v)}
+        visited = set()
+        for key in list(color_cells):
+            if key in visited:
                 continue
-            visited.add(current)
-            group += cells[current]
-            for dx in (-1, 0, 1):
-                for dy in (-1, 0, 1):
-                    stack.append((current[0] + dx, current[1] + dy))
-        if len(group) < 40:
-            continue
-        xs = [p[0] for p in group]
-        ys = [p[1] for p in group]
-        cluster_width = (max(xs) - min(xs)) / scale
-        if not 22 <= cluster_width <= 48:
-            continue
-        counts = {}
-        for p in group:
-            counts[p[2]] = counts.get(p[2], 0) + 1
-        dominant = max(counts, key=counts.get)
-        if counts[dominant] < len(group) * 0.55:
-            continue
-        position = ((min(xs) + max(xs)) / 2 / scale, (min(ys) + max(ys)) / 2 / scale)
-        # Keep the leftmost cluster per color: the selected group highlight sits
-        # left of the action buttons, and there is exactly one record button.
-        if dominant not in found or position[0] < found[dominant][0]:
-            found[dominant] = position
+            stack, group = [key], []
+            while stack:
+                current = stack.pop()
+                if current in visited or current not in color_cells:
+                    continue
+                visited.add(current)
+                group += color_cells[current]
+                for dx in (-1, 0, 1):
+                    for dy in (-1, 0, 1):
+                        stack.append((current[0] + dx, current[1] + dy))
+            if len(group) < 40:
+                continue
+            xs = [p[0] for p in group]
+            ys = [p[1] for p in group]
+            cluster_width = (max(xs) - min(xs)) / scale
+            if not 22 <= cluster_width <= 48:
+                continue
+            position = ((min(xs) + max(xs)) / 2 / scale, (min(ys) + max(ys)) / 2 / scale)
+            # Keep the leftmost cluster: the selected group highlight sits left of
+            # the action buttons, and there is exactly one record button.
+            if color not in found or position[0] < found[color][0]:
+                found[color] = position
     return found
 
 
@@ -769,6 +777,11 @@ def smoke_screenshot_toolbar(run: Run, driver: AXDriver) -> str:
     width, height = _main_display_size()
     pid = driver.pid
 
+    # 显示器睡眠会拦截一切输入合成与截屏（2026-10-21 实锤）：场景全程保活
+    subprocess.Popen(["caffeinate", "-u", "-t", "300"],
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    time.sleep(1.0)
+
     _press_escape()  # clear any stale session
     _press_status_menu_item("捕获屏幕截图")
     deadline = time.monotonic() + 3
@@ -787,18 +800,19 @@ def smoke_screenshot_toolbar(run: Run, driver: AXDriver) -> str:
     # macOS 26 上 SwiftUI 内容的离屏取图四条路径全部受限（cacheDisplay/窗口合成/
     # layer 渲染/SCK 在该宿主均产出纯色或失败）——取图能力缺失属环境阻塞而非
     # 布局回归，报告 BLOCKED 而不是 FAIL。
-    _probe = PILImage.open(probe).convert("RGB").resize((64, 40))
-    _colors = set(_probe.getdata())
-    if len(_colors) <= 2:
-        raise BlockedError(
-            "evidence capture produces solid blanks on this host "
-            "(SwiftUI offscreen capture unavailable); layout assertions skipped")
+    def _is_blank(path):
+        im = PILImage.open(path).convert("RGB").resize((64, 40))
+        return len(set(im.getdata())) <= 2
 
     # Selection hugging the right edge of the main display (logical points).
     sel_x1, sel_y1, sel_x2, sel_y2 = width - 262, 300.0, width - 42, 480.0
     _mouse_drag(sel_x1, sel_y1, sel_x2, sel_y2)
 
     cap_default = _capture_main_display(run, "toolbar-right-default")
+    if _is_blank(cap_default):
+        raise BlockedError(
+            "evidence capture produces solid blanks with the overlay on screen; "
+            "layout assertions skipped")
     buttons_default = _find_toolbar_buttons(cap_default, width, sel_y2, sel_y2 + 250)
     if "red" not in buttons_default or "blue" not in buttons_default:
         raise RuntimeError(f"toolbar buttons not found in default state: {buttons_default}")

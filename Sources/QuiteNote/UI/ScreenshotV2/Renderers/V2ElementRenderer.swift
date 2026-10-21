@@ -44,7 +44,7 @@ struct RendererConfig {
 struct ElementRendererFactory {
     static func renderer(for tool: AnnotationTool) -> any ElementRenderer {
         switch tool {
-        case .rectangle, .circle, .line:
+        case .rectangle, .circle, .line, .dashedLine:
             return ShapeRenderer()
         case .arrow:
             return ArrowRenderer()

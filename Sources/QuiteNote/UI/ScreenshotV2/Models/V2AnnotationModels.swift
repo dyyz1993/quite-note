@@ -18,6 +18,7 @@ enum AnnotationTool: String, CaseIterable {
     case text = "type"
     case arrow = "arrow-up-right"
     case line = "minus"
+    case dashedLine = "slash"
     case pen = "pen-tool"
     case mosaic = "grid-3x3"
     case spotlight = "focus"
@@ -30,7 +31,7 @@ enum AnnotationTool: String, CaseIterable {
         case .cursor: return .select
         case .rectangle, .circle: return .shape
         case .text: return .text
-        case .arrow, .line: return .line
+        case .arrow, .line, .dashedLine: return .line
         case .pen: return .draw
         case .mosaic, .spotlight, .magnifier, .steps: return .effect
         }
@@ -41,7 +42,7 @@ enum AnnotationTool: String, CaseIterable {
         switch self {
         case .cursor, .mosaic, .spotlight:
             return false
-        case .rectangle, .circle, .arrow, .line, .pen, .steps, .text, .magnifier:
+        case .rectangle, .circle, .arrow, .line, .dashedLine, .pen, .steps, .text, .magnifier:
             return true
         }
     }
@@ -51,7 +52,7 @@ enum AnnotationTool: String, CaseIterable {
         switch self {
         case .cursor, .spotlight, .steps:
             return false
-        case .rectangle, .circle, .arrow, .line, .pen, .text, .mosaic, .magnifier:
+        case .rectangle, .circle, .arrow, .line, .dashedLine, .pen, .text, .mosaic, .magnifier:
             return true
         }
     }

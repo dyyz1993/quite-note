@@ -94,42 +94,47 @@ struct V2AnnotationToolbar: View {
     @State private var showTooltip: Bool = false
 
     var body: some View {
-        ZStack(alignment: .top) {
-            // 1. 子工具栏（水平中心锚定被点击的一级工具组按钮，悬浮主栏上方；边界冲突由父层布局最小让位）
-            if let group = expandedGroup,
-               let tools = getSubTools(for: group), tools.count > 1,
-               let offset = expansionPlacements.subToolbar {
-                subToolbar(for: tools)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .offset(offset)
-                    .onHover { hovering in
-                        stateManager.isMouseOverUI = hovering
-                    }
-                    .transition(.move(edge: .top).combined(with: .opacity))
-            }
-
-            // 2. 主工具栏
-            mainToolbarContent
-
-            // 3. 音频快选弹层（右对齐主栏、悬浮下方；贴底放不下时由父层布局翻转到主栏上方）
-            if showAudioPicker, let offset = expansionPlacements.audioPicker {
-                audioPickerPopover
-                    .background(
-                        GeometryReader { geo in
-                            Color.clear
-                                .onAppear { audioPickerSizeUpdated(geo.size) }
-                                .onChange(of: geo.size) { audioPickerSizeUpdated($0) }
+        // 二级/弹层用 overlay 挂载而非 ZStack 成员：offset 内容若参与布局，弹层的
+        // 高度会撑大本视图 → V2FloatingToolbar 的 actualSize 随之变化 → 主栏 position
+        // 跳动（"点录制配置工具栏会跑"的根因）。overlay 不参与布局，主栏位置恒定。
+        mainToolbarContent
+            .overlay(alignment: .topLeading) {
+                // 子工具栏（水平中心锚定被点击的一级工具组按钮，悬浮主栏上方；边界冲突由父层布局最小让位）
+                if let group = expandedGroup,
+                   let tools = getSubTools(for: group), tools.count > 1,
+                   let offset = expansionPlacements.subToolbar {
+                    subToolbar(for: tools)
+                        .fixedSize()
+                        .offset(offset)
+                        .onHover { hovering in
+                            stateManager.isMouseOverUI = hovering
                         }
-                    )
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .offset(offset)
-                    .onHover { hovering in
-                        stateManager.isMouseOverUI = hovering
-                    }
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
             }
-        }
-        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: expandedGroup)
+            .overlay(alignment: .topLeading) {
+                // 音频快选弹层（右对齐主栏、悬浮下方；贴底放不下时由父层布局翻转到主栏上方）
+                if showAudioPicker, let offset = expansionPlacements.audioPicker {
+                    audioPickerPopover
+                        .background(
+                            GeometryReader { geo in
+                                Color.clear
+                                    .onAppear { audioPickerSizeUpdated(geo.size) }
+                                    .onChange(of: geo.size) { audioPickerSizeUpdated($0) }
+                            }
+                        )
+                        .fixedSize()
+                        .offset(offset)
+                        .onHover { hovering in
+                            stateManager.isMouseOverUI = hovering
+                        }
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+            }
+            .onHover { hovering in
+                stateManager.isMouseOverUI = hovering
+            }
+            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: expandedGroup)
         // 不设 maxWidth：内容理想宽 >上限时 frame 会按上限报告布局尺寸（fixedSize 只影响
         // 渲染不改变 frame 报告值），GeometryReader 就会量到被钳的假宽度，主栏 clamp 随之
         // 失真、右尾按钮实际溢出屏幕（2026-10-21 xyz-mac 实锤：size+color 组合 ~750pt）。
@@ -227,16 +232,12 @@ struct V2AnnotationToolbar: View {
             }) {
                 ZStack {
                     Circle()
-                        .fill(LinearGradient(
-                            colors: [Color.themeRed500.opacity(0.85), Color.themeRed500],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ))
+                        .fill(Color.white.opacity(0.12))
                         .frame(width: 34, height: 34)
 
-                    Image(systemName: "record.circle")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundColor(.white)
+                    Circle()
+                        .fill(Color.themeRed500)
+                        .frame(width: 14, height: 14)
                 }
             }
             .buttonStyle(.plain)

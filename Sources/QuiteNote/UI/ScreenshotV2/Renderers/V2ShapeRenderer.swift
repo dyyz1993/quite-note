@@ -19,13 +19,15 @@ struct ShapeRenderer: ElementRenderer {
             renderCircle(from: start, to: end, element: element, in: &context)
         case .line:
             renderLine(from: start, to: end, element: element, in: &context)
+        case .dashedLine:
+            renderLine(from: start, to: end, element: element, in: &context, dashed: true)
         default:
             break
         }
     }
 
     static func supports(_ tool: AnnotationTool) -> Bool {
-        return tool == .rectangle || tool == .circle || tool == .line
+        return tool == .rectangle || tool == .circle || tool == .line || tool == .dashedLine
     }
 
     // MARK: - Private Rendering Methods
@@ -64,11 +66,18 @@ struct ShapeRenderer: ElementRenderer {
         from start: CGPoint,
         to end: CGPoint,
         element: DrawingElement,
-        in context: inout GraphicsContext
+        in context: inout GraphicsContext,
+        dashed: Bool = false
     ) {
         var path = Path()
         path.move(to: start)
         path.addLine(to: end)
-        context.stroke(path, with: .color(element.color), lineWidth: element.lineWidth)
+        if dashed {
+            let style = StrokeStyle(lineWidth: element.lineWidth, lineCap: .round,
+                                    dash: [element.lineWidth * 3, element.lineWidth * 2.2])
+            context.stroke(path, with: .color(element.color), style: style)
+        } else {
+            context.stroke(path, with: .color(element.color), lineWidth: element.lineWidth)
+        }
     }
 }
