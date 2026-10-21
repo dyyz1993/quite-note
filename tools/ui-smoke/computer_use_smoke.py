@@ -813,7 +813,7 @@ def smoke_screenshot_toolbar(run: Run, driver: AXDriver) -> str:
         raise BlockedError(
             "evidence capture produces solid blanks with the overlay on screen; "
             "layout assertions skipped")
-    buttons_default = _find_toolbar_buttons(cap_default, width, sel_y2, sel_y2 + 250)
+    buttons_default = _find_toolbar_buttons(cap_default, width, 0.0, 760.0)
     if "red" not in buttons_default or "blue" not in buttons_default:
         raise RuntimeError(f"toolbar buttons not found in default state: {buttons_default}")
     red1 = buttons_default["red"]
@@ -827,7 +827,7 @@ def smoke_screenshot_toolbar(run: Run, driver: AXDriver) -> str:
     _mouse_click(blue1[0] + 76, blue1[1])
 
     cap_widened = _capture_main_display(run, "toolbar-right-widened")
-    buttons_widened = _find_toolbar_buttons(cap_widened, width, sel_y2, sel_y2 + 250)
+    buttons_widened = _find_toolbar_buttons(cap_widened, width, 0.0, 760.0)
     if "red" not in buttons_widened or "blue" not in buttons_widened:
         raise RuntimeError(f"toolbar buttons not found after widening: {buttons_widened}")
     red2 = buttons_widened["red"]
@@ -844,7 +844,7 @@ def smoke_screenshot_toolbar(run: Run, driver: AXDriver) -> str:
     _mouse_click(blue2[0] - 38, blue2[1])
 
     cap_expanded = _capture_main_display(run, "toolbar-subtoolbar-expanded")
-    buttons_expanded = _find_toolbar_buttons(cap_expanded, width, sel_y2, sel_y2 + 250)
+    buttons_expanded = _find_toolbar_buttons(cap_expanded, width, 0.0, 760.0)
     if "blue" not in buttons_expanded:
         raise RuntimeError("selected group button lost after expanding the sub-toolbar")
     blue3 = buttons_expanded["blue"]
