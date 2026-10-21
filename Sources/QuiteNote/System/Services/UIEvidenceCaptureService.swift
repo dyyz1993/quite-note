@@ -56,13 +56,15 @@ final class UIEvidenceCaptureService {
                 //    本 App 自己的窗口，不依赖 Screen Recording TCC——runner 会话
                 //    没有 TCC，外部 screencapture 与 CGDisplayCreateImage 全部
                 //    返回 nil（错题本 2026-10-15/10-21）。
+                //    CGWindowListCreateImage 对 layer-backed 面板可能返回非 nil 的
+                //    纯黑图，需要拒绝并落到 layer 渲染层。
                 if let cg = CGWindowListCreateImage(
-                    .null, .optionIncludingWindow, CGWindowID(window.windowNumber), [.bestResolution]) {
-                    let rep = NSBitmapImageRep(cgImage: cg)
-                    if let data = rep.representation(using: .png, properties: [:]) {
-                        try? data.write(to: output, options: .atomic)
-                        wrote = data != nil
-                    }
+                    .null, .optionIncludingWindow, CGWindowID(window.windowNumber), [.bestResolution]),
+                   !Self.isSolidBlank(cg),
+                   let rep = NSBitmapImageRep(cgImage: cg),
+                   let data = rep.representation(using: .png, properties: [:]) {
+                    try? data.write(to: output, options: .atomic)
+                    wrote = true
                 }
                 // 2) layer 树离屏渲染：cacheDisplay 只走 drawRect，SwiftUI 的
                 //    hosting 内容在 CA 层，离屏位图会得到纯背景色。
@@ -89,5 +91,27 @@ final class UIEvidenceCaptureService {
             }
             try? FileManager.default.removeItem(at: request)
         }
+    }
+
+    /// CGWindowListCreateImage 偶发返回整幅同色（黑）的位图；抽样判断是否空内容。
+    private static func isSolidBlank(_ image: CGImage) -> Bool {
+        let width = image.width
+        let height = image.height
+        guard width > 0, height > 0 else { return true }
+        let rep = NSBitmapImageRep(cgImage: image)
+        var minLuminance = Double.greatestFiniteMagnitude
+        var maxLuminance = -Double.greatestFiniteMagnitude
+        for i in 0..<64 {
+            let x = (i * 8 + 3) % max(width, 1)
+            let y = (i * 13 + 5) % max(height, 1)
+            guard let color = rep.colorAt(x: x, y: y) else { continue }
+            let r = Double(color.redComponent)
+            let g = Double(color.greenComponent)
+            let b = Double(color.blueComponent)
+            let luminance = 0.299 * r + 0.587 * g + 0.114 * b
+            minLuminance = min(minLuminance, luminance)
+            maxLuminance = max(maxLuminance, luminance)
+        }
+        return (maxLuminance - minLuminance) < 0.02
     }
 }
