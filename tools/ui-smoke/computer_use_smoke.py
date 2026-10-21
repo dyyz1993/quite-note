@@ -808,9 +808,61 @@ def smoke_screenshot_toolbar(run: Run, driver: AXDriver) -> str:
     if _overlay_window_count(pid) > 0:
         raise RuntimeError("overlay windows remain after Escape")
 
+    # --- Vertical-edge selections: with the main toolbar near the top or the
+    # bottom of the screen, expanding a sub-toolbar must never leave the screen. ---
+    for label, sel_y1, sel_y2, band_lo, band_hi in (
+        ("top", 8.0, 120.0, 120.0, 210.0),          # selection at the very top; toolbar below it
+        ("bottom", height - 102.0, height - 22.0, height - 192.0, height - 102.0),  # at the bottom; toolbar above it
+    ):
+        _press_escape()
+        _press_status_menu_item("捕获屏幕截图")
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline and _overlay_window_count(pid) == 0:
+            time.sleep(0.05)
+        if _overlay_window_count(pid) == 0:
+            raise RuntimeError(f"screenshot overlay did not appear ({label} selection)")
+        time.sleep(1.0)
+
+        _mouse_drag(width * 0.3, sel_y1, width * 0.55, sel_y2)
+        cap_edge = _capture_main_display(run, f"toolbar-{label}-selection")
+        buttons_edge = _find_toolbar_buttons(cap_edge, width, band_lo, band_hi)
+        if "blue" not in buttons_edge:
+            raise RuntimeError(f"selected group button not found ({label} selection): {buttons_edge}")
+        blue_edge = buttons_edge["blue"]
+
+        # Expand the shape sub-toolbar (right neighbor of the selected select group).
+        _mouse_click(blue_edge[0] + 38, blue_edge[1])
+        cap_edge_expanded = _capture_main_display(run, f"toolbar-{label}-subtoolbar")
+        buttons_edge_expanded = _find_toolbar_buttons(cap_edge_expanded, width, band_lo, band_hi)
+        if "blue" not in buttons_edge_expanded:
+            raise RuntimeError(f"selected group button lost after expansion ({label})")
+        blue_edge_expanded = buttons_edge_expanded["blue"]
+        region_edge = _diff_region(cap_edge, cap_edge_expanded, width, y_above=blue_edge_expanded[1] - 45)
+        if region_edge is None:
+            raise RuntimeError(f"sub-toolbar did not appear above the main toolbar ({label} selection)")
+        left, _, right, _ = region_edge
+        if left < 8 or right > width - 8:
+            raise RuntimeError(
+                f"sub-toolbar off screen with {label}-edge selection: "
+                f"[{left:.0f}, {right:.0f}] vs [8, {width - 8:.0f}]"
+            )
+        center_edge = (left + right) / 2
+        if abs(center_edge - blue_edge_expanded[0]) > 30:
+            raise RuntimeError(
+                f"sub-toolbar not anchored with {label}-edge selection: "
+                f"center={center_edge:.0f} button={blue_edge_expanded[0]:.0f}"
+            )
+        _press_escape()
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline and _overlay_window_count(pid) > 0:
+            time.sleep(0.1)
+        if _overlay_window_count(pid) > 0:
+            raise RuntimeError(f"overlay windows remain after Escape ({label} selection)")
+
     return (
         f"edge layout ok: default red cx={red1[0]:.0f}, widened red cx={red2[0]:.0f} (yielded left), "
-        f"sub-toolbar center={region_center:.0f} anchored to button={blue3[0]:.0f}"
+        f"sub-toolbar center={region_center:.0f} anchored to button={blue3[0]:.0f}, "
+        f"top/bottom sub-toolbars on screen"
     )
 
 

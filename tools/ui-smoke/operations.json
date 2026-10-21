@@ -280,6 +280,41 @@
     "condition": "overlay_window_count == 0",
     "selector": "screenshot.overlay_windows",
     "note": "no leftover overlay windows"
+   },
+   {
+    "action": "drag",
+    "selector": "screenshot.selection_area",
+    "value": "top-edge selection: (0.3W,8)->(0.55W,120); toolbar lands below"
+   },
+   {
+    "action": "click",
+    "selector": "screenshot.group_button_1_shape",
+    "value": "selected.cx + 38"
+   },
+   {
+    "action": "assert",
+    "selector": "screenshot.sub_toolbar",
+    "condition": "diff region on screen [8, W-8], anchored to group button (top-edge)"
+   },
+   {
+    "action": "drag",
+    "selector": "screenshot.selection_area",
+    "value": "bottom-edge selection: (0.3W,H-102)->(0.55W,H-22); toolbar lands above"
+   },
+   {
+    "action": "click",
+    "selector": "screenshot.group_button_1_shape",
+    "value": "selected.cx + 38"
+   },
+   {
+    "action": "assert",
+    "selector": "screenshot.sub_toolbar",
+    "condition": "diff region on screen [8, W-8], anchored to group button (bottom-edge)"
+   },
+   {
+    "action": "key",
+    "keys": "Escape",
+    "note": "final cleanup, overlay count == 0"
    }
   ]
  },
