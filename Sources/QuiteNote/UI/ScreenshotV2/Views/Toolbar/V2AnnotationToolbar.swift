@@ -68,10 +68,23 @@ private enum RecordingAudioPreset: CaseIterable, Identifiable {
 struct V2AnnotationToolbar: View {
     @ObservedObject var stateManager: V2PrimaryScreenStateManager
 
+    /// 父层（V2FloatingToolbar）算好的展开层 offset（本视图 ZStack 局部坐标）。
+    /// 展开动作闭包里同步上报规格、父层算好回传，同一渲染事务更新，无中间帧。
+    struct ExpansionPlacements {
+        let subToolbar: CGSize?
+        let audioPicker: CGSize?
+    }
+
+    var expansionPlacements: ExpansionPlacements
+    /// 展开状态变化时向父层上报展开层规格（尺寸/锚点/挂载位），父层据此做 union clamp
+    var onExpansionChange: (ScreenshotToolbarLayout.Specs) -> Void
+
     private let colors: [Color] = [.red, .yellow, .green, .blue, .white, .black]
     @State private var expandedGroup: AnnotationToolGroup? = nil
     /// 录制音频快选弹层（▾）：两路独立开关，写入 PreferencesManager 与设置页共用
     @State private var showAudioPicker = false
+    /// 音频弹层实测尺寸（探针回填；宽固定 240，高度用于贴底翻转判断，实测前用保守估算）
+    @State private var audioPickerSize: CGSize? = nil
     @State private var audioSystem = PreferencesManager.shared.recordingSystemAudio
     @State private var audioMicrophone = PreferencesManager.shared.recordingMicrophone
     @State private var cursorMode: V2RecordingCursorMode =
@@ -82,10 +95,13 @@ struct V2AnnotationToolbar: View {
 
     var body: some View {
         ZStack(alignment: .top) {
-            // 1. 子工具栏（浮动在主工具栏上方）
-            if let group = expandedGroup, let tools = getSubTools(for: group), tools.count > 1 {
+            // 1. 子工具栏（水平中心锚定被点击的一级工具组按钮，悬浮主栏上方；边界冲突由父层布局最小让位）
+            if let group = expandedGroup,
+               let tools = getSubTools(for: group), tools.count > 1,
+               let offset = expansionPlacements.subToolbar {
                 subToolbar(for: tools)
-                    .offset(y: -60)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .offset(offset)
                     .onHover { hovering in
                         stateManager.isMouseOverUI = hovering
                     }
@@ -95,11 +111,18 @@ struct V2AnnotationToolbar: View {
             // 2. 主工具栏
             mainToolbarContent
 
-            // 3. 音频快选弹层（浮动在主工具栏下方，右对齐录制按钮）
-            if showAudioPicker {
+            // 3. 音频快选弹层（右对齐主栏、悬浮下方；贴底放不下时由父层布局翻转到主栏上方）
+            if showAudioPicker, let offset = expansionPlacements.audioPicker {
                 audioPickerPopover
-                    .frame(maxWidth: .infinity, alignment: .trailing)
-                    .offset(y: 54)
+                    .background(
+                        GeometryReader { geo in
+                            Color.clear
+                                .onAppear { audioPickerSizeUpdated(geo.size) }
+                                .onChange(of: geo.size) { audioPickerSizeUpdated($0) }
+                        }
+                    )
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .offset(offset)
                     .onHover { hovering in
                         stateManager.isMouseOverUI = hovering
                     }
@@ -108,6 +131,7 @@ struct V2AnnotationToolbar: View {
         }
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: expandedGroup)
         .frame(maxWidth: 650) // 恢复宽度，新交互更省空间
+        .onAppear { syncExpansionSpecs() }
     }
 
     private var mainToolbarContent: some View {
@@ -220,6 +244,7 @@ struct V2AnnotationToolbar: View {
                 withAnimation(.easeInOut(duration: 0.15)) {
                     showAudioPicker.toggle()
                 }
+                syncExpansionSpecs()
             }) {
                 Image(systemName: "chevron.down")
                     .font(.system(size: 9, weight: .semibold))
@@ -338,6 +363,7 @@ struct V2AnnotationToolbar: View {
                     }
 
                     expandedGroup = nil // 选中后关闭
+                    syncExpansionSpecs()
                 }) {
                     LucideView(
                         name: IconName(rawValue: tool.rawValue) ?? .penTool,
@@ -368,6 +394,39 @@ struct V2AnnotationToolbar: View {
         return tools.count > 1 ? tools : nil
     }
 
+    // MARK: - 展开层规格上报（在展开状态变更的同一动作闭包内调用，不经 onChange/PreferenceKey 探测布局）
+
+    private func syncExpansionSpecs() {
+        var sub: ScreenshotToolbarLayout.Expansion?
+        if let group = expandedGroup, let tools = getSubTools(for: group), tools.count > 1 {
+            let index = AnnotationToolGroup.allCases.firstIndex(of: group) ?? 0
+            sub = ScreenshotToolbarLayout.Expansion(
+                size: ScreenshotToolbarLayout.subToolbarSize(toolCount: tools.count),
+                anchor: .buttonCenter(xInMain: ScreenshotToolbarLayout.primaryButtonCenterX(groupIndex: index)),
+                attachY: ScreenshotToolbarLayout.FixedGeometry.subToolbarAttachY
+            )
+        }
+
+        var audio: ScreenshotToolbarLayout.Expansion?
+        if showAudioPicker {
+            audio = ScreenshotToolbarLayout.Expansion(
+                size: audioPickerSize ?? CGSize(width: 240, height: 320), // 实测前的保守估算
+                anchor: .mainTrailing,
+                attachY: ScreenshotToolbarLayout.FixedGeometry.audioPickerAttachY
+            )
+        }
+
+        onExpansionChange(ScreenshotToolbarLayout.Specs(subToolbar: sub, audioPicker: audio))
+    }
+
+    /// 弹层尺寸探针回填：尺寸与位置无关（宽固定 240），收敛后不再触发；
+    /// 实测高度修正首开时的保守估算，避免贴底翻转判断失真
+    private func audioPickerSizeUpdated(_ size: CGSize) {
+        guard size != audioPickerSize else { return }
+        audioPickerSize = size
+        if showAudioPicker { syncExpansionSpecs() }
+    }
+
     /// 工具组按钮
     @ViewBuilder
     private func groupButton(_ group: AnnotationToolGroup) -> some View {
@@ -393,6 +452,7 @@ struct V2AnnotationToolbar: View {
             } else {
                 expandedGroup = nil
             }
+            syncExpansionSpecs()
         }) {
             LucideView(
                 name: IconName(rawValue: isSelected ? stateManager.selectedTool.rawValue : lastTool.rawValue) ?? .penTool,

@@ -15,6 +15,8 @@ struct V2FloatingToolbar: View {
     @State private var isBeingDragged = false
     /// 工具栏实际尺寸（GeometryReader 实测，首帧后回填）
     @State private var actualSize: CGSize = .zero
+    /// 子视图上报的展开层规格（二级工具栏 / 音频弹层），参与主栏 union clamp
+    @State private var expansionSpecs: ScreenshotToolbarLayout.Specs = .none
 
     private let estimatedWidth: CGFloat = 500
     private let estimatedHeight: CGFloat = 48
@@ -35,13 +37,17 @@ struct V2FloatingToolbar: View {
     }
 
     private var toolbarContent: some View {
-        V2AnnotationToolbar(stateManager: stateManager)
-            .fixedSize()
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .onHover { hovering in
-                stateManager.isMouseOverUI = hovering
-            }
+        V2AnnotationToolbar(
+            stateManager: stateManager,
+            expansionPlacements: expansionPlacements,
+            onExpansionChange: { expansionSpecs = $0 }
+        )
+        .fixedSize()
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .onHover { hovering in
+            stateManager.isMouseOverUI = hovering
+        }
     }
 
     private var dragHandle: some View {
@@ -73,27 +79,36 @@ struct V2FloatingToolbar: View {
     }
 
     private var clampedPosition: CGPoint {
-        let screenSize = screen.frame.size
+        layoutOutput.mainCenter
+    }
+
+    /// 纯函数布局：垂直沿用「下方 → 上方 → 贴底」，水平把展开层纳入 union clamp；
+    /// 拖拽偏移只参与展开层贴边判断（position 处自行叠加），主栏基准不受拖拽影响
+    private var layoutOutput: ScreenshotToolbarLayout.Output {
         // 用实际尺寸（首帧前用估算值兜底）
         let size = actualSize.width > 0 ? actualSize : CGSize(width: estimatedWidth, height: estimatedHeight)
-        let halfW = size.width / 2
-        let halfH = size.height / 2
+        return ScreenshotToolbarLayout.compute(.init(
+            screen: CGRect(origin: .zero, size: screen.frame.size),
+            selection: selection,
+            mainSize: size,
+            specs: expansionSpecs,
+            margin: margin,
+            spacing: spacing,
+            mainDisplacement: CGPoint(x: dragOffset.width, y: dragOffset.height)
+        ))
+    }
 
-        // 硬约束优先：clamp X 不出屏
-        let idealX = selection.midX
-        let x = max(halfW + margin, min(screenSize.width - halfW - margin, idealX))
-
-        // Y：选区下方 → 上方 → 全屏内部贴底
-        let belowY = selection.maxY + spacing + halfH
-        if belowY + halfH < screenSize.height - margin {
-            return CGPoint(x: x, y: belowY)
+    /// 展开层 offset（V2AnnotationToolbar ZStack 局部坐标）：主栏局部 frame 扣除外层 padding
+    private var expansionPlacements: V2AnnotationToolbar.ExpansionPlacements {
+        func toOffset(_ frame: CGRect?) -> CGSize? {
+            frame.map {
+                CGSize(width: $0.minX - ScreenshotToolbarLayout.FixedGeometry.toolbarOuterPadding,
+                       height: $0.minY - ScreenshotToolbarLayout.FixedGeometry.toolbarOuterVerticalPadding)
+            }
         }
-
-        let aboveY = selection.minY - spacing - halfH
-        if aboveY - halfH > margin {
-            return CGPoint(x: x, y: aboveY)
-        }
-
-        return CGPoint(x: x, y: screenSize.height - halfH - margin)
+        return .init(
+            subToolbar: toOffset(layoutOutput.subToolbarFrameInMain),
+            audioPicker: toOffset(layoutOutput.audioPickerFrameInMain)
+        )
     }
 }
