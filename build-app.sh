@@ -230,19 +230,36 @@ fi
 
 # 复制 LucideIcons 资源
 # 直接复制资源文件到 Resources 目录，避免 bundle 签名问题
-LUCIDE_BUNDLE_PATH=$(find .build -name "LucideIcons_LucideIcons.bundle" -type d -path "*/release/*" | head -n 1)
+# 注意：-path 匹配必须兼容 "[Rr]elease"——Xcode 布局的产物在 .build/out/Products/Release/（大写 R），
+# 且 .build/release 只是符号链接（find 默认不跟随，靠 -path 永远匹配不到）。
+LUCIDE_BUNDLE_PATH=$(find .build -name "LucideIcons_LucideIcons.bundle" -type d -path "*/[Rr]elease/*" | head -n 1)
+if [ -z "$LUCIDE_BUNDLE_PATH" ]; then
+    LUCIDE_BUNDLE_PATH=$(find .build -name "LucideIcons_LucideIcons.bundle" -type d | head -n 1)
+fi
 
 if [ -n "$LUCIDE_BUNDLE_PATH" ] && [ -d "$LUCIDE_BUNDLE_PATH/icons.xcassets" ]; then
+    # 旧 SwiftPM 布局：bundle 内是扁平 icons.xcassets，拷进 Resources（正式版既有运行时路径）
     echo "在 $LUCIDE_BUNDLE_PATH 找到 LucideIcons 资源，复制到 Resources 目录..."
     # 先删除旧的，避免权限问题
     rm -rf "$RESOURCES_DIR/icons.xcassets"
     cp -R "$LUCIDE_BUNDLE_PATH/icons.xcassets" "$RESOURCES_DIR/"
+elif [ -n "$LUCIDE_BUNDLE_PATH" ]; then
+    # 新 swiftbuild 布局：bundle 是 Contents/Resources/Assets.car 编译形态，
+    # 整个 bundle 拷进 Frameworks（Icon.swift loadFromKnownBundle 的既有支持路径）
+    echo "在 $LUCIDE_BUNDLE_PATH 找到 LucideIcons 资源（编译形态），复制到 Frameworks 目录..."
+    mkdir -p "$CONTENTS/Frameworks"
+    rm -rf "$CONTENTS/Frameworks/LucideIcons_LucideIcons.bundle"
+    cp -R "$LUCIDE_BUNDLE_PATH" "$CONTENTS/Frameworks/"
 else
-    echo "警告：未找到 LucideIcons 资源，请检查构建配置。"
+    echo "错误：未找到 LucideIcons 资源，图标将全部空白。终止构建。"
+    exit 1
 fi
 
 # 复制 QuiteNote 资源文件（包括 YAML 配置文件）
-QUITENOTE_BUNDLE_PATH=$(find .build -name "QuiteNote_QuiteNote.bundle" -type d -path "*/release/*" | head -n 1)
+QUITENOTE_BUNDLE_PATH=$(find .build -name "QuiteNote_QuiteNote.bundle" -type d -path "*/[Rr]elease/*" | head -n 1)
+if [ -z "$QUITENOTE_BUNDLE_PATH" ]; then
+    QUITENOTE_BUNDLE_PATH=$(find .build -name "QuiteNote_QuiteNote.bundle" -type d | head -n 1)
+fi
 
 if [ -n "$QUITENOTE_BUNDLE_PATH" ]; then
     echo "在 $QUITENOTE_BUNDLE_PATH 找到 QuiteNote 资源，复制到 Resources 目录..."
