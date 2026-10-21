@@ -796,7 +796,7 @@ def smoke_screenshot_toolbar(run: Run, driver: AXDriver) -> str:
 
     # Selection hugging the right edge of the main display (logical points).
     sel_x1, sel_y1, sel_x2, sel_y2 = width - 262, 300.0, width - 42, 480.0
-    _mouse_drag(sel_x1 * pt, sel_y1 * pt, sel_x2 * pt, sel_y2 * pt)
+    _mouse_drag(sel_x1, sel_y1, sel_x2, sel_y2)
 
     cap_default = _capture_main_display(run, "toolbar-right-default")
     buttons_default = _find_toolbar_buttons(cap_default, width, sel_y2, sel_y2 + 250)
@@ -810,7 +810,7 @@ def smoke_screenshot_toolbar(run: Run, driver: AXDriver) -> str:
         raise RuntimeError(f"record button clipped at right edge in default state: cx={red1[0]:.0f} width={width:.0f}")
 
     # Click the text tool group (third group button: +2 * 38pt from the selected group).
-    _mouse_click((blue1[0] + 76) * pt, blue1[1] * pt)
+    _mouse_click(blue1[0] + 76, blue1[1])
 
     cap_widened = _capture_main_display(run, "toolbar-right-widened")
     buttons_widened = _find_toolbar_buttons(cap_widened, width, sel_y2, sel_y2 + 250)
@@ -827,7 +827,7 @@ def smoke_screenshot_toolbar(run: Run, driver: AXDriver) -> str:
         raise RuntimeError(f"toolbar did not yield left after widening: record cx {red1[0]:.0f} -> {red2[0]:.0f}")
 
     # Click the shape tool group (left neighbor of the selected text group) to expand the sub-toolbar.
-    _mouse_click((blue2[0] - 38) * pt, blue2[1] * pt)
+    _mouse_click(blue2[0] - 38, blue2[1])
 
     cap_expanded = _capture_main_display(run, "toolbar-subtoolbar-expanded")
     buttons_expanded = _find_toolbar_buttons(cap_expanded, width, sel_y2, sel_y2 + 250)
@@ -866,7 +866,7 @@ def smoke_screenshot_toolbar(run: Run, driver: AXDriver) -> str:
             raise RuntimeError(f"screenshot overlay did not appear ({label} selection)")
         time.sleep(1.0)
 
-        _mouse_drag(width * 0.3 * pt, sel_y1 * pt, width * 0.55 * pt, sel_y2 * pt)
+        _mouse_drag(width * 0.3, sel_y1, width * 0.55, sel_y2)
         cap_edge = _capture_main_display(run, f"toolbar-{label}-selection")
         buttons_edge = _find_toolbar_buttons(cap_edge, width, band_lo, band_hi)
         if "blue" not in buttons_edge:
