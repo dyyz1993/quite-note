@@ -590,44 +590,50 @@ def _main_display_size() -> tuple[float, float]:
     return bounds.size.width, bounds.size.height
 
 
-def _mouse_click(x: float, y: float) -> None:
-    from Quartz import (
-        CGEventCreateMouseEvent, CGEventPost, CGEventSourceCreate,
-        kCGEventSourceStateHIDSystemState, kCGEventLeftMouseDown, kCGEventLeftMouseUp, CGPoint,
+def _cua_call(tool: str, args: str) -> str:
+    result = subprocess.run(
+        ["/Applications/CuaDriver.app/Contents/MacOS/cua-driver", "call", tool, args],
+        check=False,
+        timeout=30,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
     )
-    source = CGEventSourceCreate(kCGEventSourceStateHIDSystemState)
-    point = CGPoint(x, y)
-    CGEventPost(kCGEventSourceStateHIDSystemState, CGEventCreateMouseEvent(source, kCGEventLeftMouseDown, point, 0))
-    CGEventPost(kCGEventSourceStateHIDSystemState, CGEventCreateMouseEvent(source, kCGEventLeftMouseUp, point, 0))
+    return result.stdout
+
+
+def _mouse_click(x: float, y: float) -> None:
+    out = _cua_call("click", f'{{"scope":"desktop","delivery_mode":"foreground","x":{x},"y":{y}}}')
+    if "error" in out or "pending" in out:
+        raise RuntimeError(f"cua click failed at ({x:.0f},{y:.0f}): {out.strip()[:160]}")
     time.sleep(0.7)
 
 
 def _mouse_drag(x1: float, y1: float, x2: float, y2: float) -> None:
-    from Quartz import (
-        CGEventCreateMouseEvent, CGEventPost, CGEventSourceCreate,
-        kCGEventSourceStateHIDSystemState, kCGEventLeftMouseDown,
-        kCGEventLeftMouseDragged, kCGEventLeftMouseUp, CGPoint,
-    )
-    source = CGEventSourceCreate(kCGEventSourceStateHIDSystemState)
-    CGEventPost(kCGEventSourceStateHIDSystemState, CGEventCreateMouseEvent(source, kCGEventLeftMouseDown, CGPoint(x1, y1), 0))
-    for step in range(1, 9):
-        t = step / 8.0
-        point = CGPoint(x1 + (x2 - x1) * t, y1 + (y2 - y1) * t)
-        CGEventPost(kCGEventSourceStateHIDSystemState, CGEventCreateMouseEvent(source, kCGEventLeftMouseDragged, point, 0))
-        time.sleep(0.03)
-    CGEventPost(kCGEventSourceStateHIDSystemState, CGEventCreateMouseEvent(source, kCGEventLeftMouseUp, CGPoint(x2, y2), 0))
+    out = _cua_call("drag", (
+        f'{{"scope":"desktop","delivery_mode":"foreground","from_x":{x1},"from_y":{y1},'
+        f'"to_x":{x2},"to_y":{y2},"duration_ms":400,"steps":12}}'))
+    if "error" in out or "pending" in out:
+        raise RuntimeError(f"cua drag failed ({x1:.0f},{y1:.0f})->({x2:.0f},{y2:.0f}): {out.strip()[:160]}")
     time.sleep(0.7)
 
 
 def _press_escape() -> None:
-    from Quartz import (
-        CGEventCreateKeyboardEvent, CGEventPost, CGEventSourceCreate,
-        kCGEventSourceStateHIDSystemState,
-    )
-    source = CGEventSourceCreate(kCGEventSourceStateHIDSystemState)
-    for key_down in (True, False):
-        CGEventPost(kCGEventSourceStateHIDSystemState, CGEventCreateKeyboardEvent(source, 53, key_down))
-        time.sleep(0.05)
+    # cliclick's keyboard synthesis is TCC-granted on the dedicated test Mac
+    # (/usr/local/bin/cliclick); raw CGEventPost from the runner session is not.
+    cliclick = "/usr/local/bin/cliclick"
+    if os.path.exists(cliclick):
+        subprocess.run([cliclick, "kp:esc"], check=False, timeout=10,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    else:
+        from Quartz import (
+            CGEventCreateKeyboardEvent, CGEventPost, CGEventSourceCreate,
+            kCGEventSourceStateHIDSystemState,
+        )
+        source = CGEventSourceCreate(kCGEventSourceStateHIDSystemState)
+        for key_down in (True, False):
+            CGEventPost(kCGEventSourceStateHIDSystemState, CGEventCreateKeyboardEvent(source, 53, key_down))
+            time.sleep(0.05)
     time.sleep(0.5)
 
 
@@ -765,6 +771,12 @@ def smoke_screenshot_toolbar(run: Run, driver: AXDriver) -> str:
     width, height = _main_display_size()
     pid = driver.pid
 
+    # Cua captures may be scaled (e.g. 1366px for a 1440pt display); derive the
+    # px-per-pt factor once so input synthesis lands on the intended points.
+    from PIL import Image as PILImage
+    probe = _capture_main_display(run, "toolbar-scale-probe")
+    pt = PILImage.open(probe).size[0] / width
+
     _press_escape()  # clear any stale session
     _press_status_menu_item("捕获屏幕截图")
     deadline = time.monotonic() + 3
@@ -774,9 +786,9 @@ def smoke_screenshot_toolbar(run: Run, driver: AXDriver) -> str:
         raise RuntimeError("screenshot overlay did not appear")
     time.sleep(1.0)  # interaction layer settles after the window exists; early drags get dropped
 
-    # Selection hugging the right edge of the main display.
+    # Selection hugging the right edge of the main display (logical points).
     sel_x1, sel_y1, sel_x2, sel_y2 = width - 262, 300.0, width - 42, 480.0
-    _mouse_drag(sel_x1, sel_y1, sel_x2, sel_y2)
+    _mouse_drag(sel_x1 * pt, sel_y1 * pt, sel_x2 * pt, sel_y2 * pt)
 
     cap_default = _capture_main_display(run, "toolbar-right-default")
     buttons_default = _find_toolbar_buttons(cap_default, width, sel_y2, sel_y2 + 90)
@@ -790,7 +802,7 @@ def smoke_screenshot_toolbar(run: Run, driver: AXDriver) -> str:
         raise RuntimeError(f"record button clipped at right edge in default state: cx={red1[0]:.0f} width={width:.0f}")
 
     # Click the text tool group (third group button: +2 * 38pt from the selected group).
-    _mouse_click(blue1[0] + 76, blue1[1])
+    _mouse_click((blue1[0] + 76) * pt, blue1[1] * pt)
 
     cap_widened = _capture_main_display(run, "toolbar-right-widened")
     buttons_widened = _find_toolbar_buttons(cap_widened, width, sel_y2, sel_y2 + 90)
@@ -807,7 +819,7 @@ def smoke_screenshot_toolbar(run: Run, driver: AXDriver) -> str:
         raise RuntimeError(f"toolbar did not yield left after widening: record cx {red1[0]:.0f} -> {red2[0]:.0f}")
 
     # Click the shape tool group (left neighbor of the selected text group) to expand the sub-toolbar.
-    _mouse_click(blue2[0] - 38, blue2[1])
+    _mouse_click((blue2[0] - 38) * pt, blue2[1] * pt)
 
     cap_expanded = _capture_main_display(run, "toolbar-subtoolbar-expanded")
     buttons_expanded = _find_toolbar_buttons(cap_expanded, width, sel_y2, sel_y2 + 90)
@@ -846,7 +858,7 @@ def smoke_screenshot_toolbar(run: Run, driver: AXDriver) -> str:
             raise RuntimeError(f"screenshot overlay did not appear ({label} selection)")
         time.sleep(1.0)
 
-        _mouse_drag(width * 0.3, sel_y1, width * 0.55, sel_y2)
+        _mouse_drag(width * 0.3 * pt, sel_y1 * pt, width * 0.55 * pt, sel_y2 * pt)
         cap_edge = _capture_main_display(run, f"toolbar-{label}-selection")
         buttons_edge = _find_toolbar_buttons(cap_edge, width, band_lo, band_hi)
         if "blue" not in buttons_edge:
