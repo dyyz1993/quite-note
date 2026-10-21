@@ -647,7 +647,10 @@ def _capture_main_display(run: Run, name: str) -> Path:
     requests_dir = recordings / "requests"
     frames_dir = recordings / "frames"
     requests_dir.mkdir(parents=True, exist_ok=True)
-    stem = f"toolbar-{name}-{time.time_ns()}"
+    # UIEvidenceCaptureService only serves "frame-"-prefixed stems; no
+    # clipboard/launcher substring keeps the highest-level-window fallback,
+    # which is the screenshot overlay this scenario asserts on.
+    stem = f"frame-toolbar-{name}-{time.time_ns()}"
     request = requests_dir / f"{stem}.request"
     request.write_text(name + "\n")
     output = frames_dir / f"{stem}.png"
