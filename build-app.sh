@@ -141,6 +141,11 @@ if [ "$SKIP_BUILD" = false ]; then
         -Xswiftc -D -Xswiftc LEGACY_CI_SDK
         -Xswiftc -Xfrontend -Xswiftc -solver-expression-time-threshold=1000
     )
+    # Sparkle.framework 打进 Contents/Frameworks，主二进制以 @rpath 引用——
+    # 必须注入这条 rpath，否则 dyld 加载即失败（"Library not loaded: @rpath/Sparkle.framework"）
+    if [ "$APP_STORE_MODE" = false ]; then
+        SWIFT_BUILD_ARGS+=(-Xlinker -rpath -Xlinker "@executable_path/../Frameworks")
+    fi
     if [ "$BUNDLE_ID" = "com.quitenote.app.dev" ]; then
         echo "开发变体将同时构建常驻核心..."
         swift build -c release --product QuiteNoteCoreService
@@ -256,6 +261,26 @@ elif [ -n "$LUCIDE_BUNDLE_PATH" ]; then
 else
     echo "错误：未找到 LucideIcons 资源，图标将全部空白。终止构建。"
     exit 1
+fi
+
+# 复制 Sparkle.framework（在线更新；App Store 沙盒版不用 Sparkle，跳过）
+# 来源 = SwiftPM artifact（.build/artifacts/sparkle/.../Sparkle.xcframework，universal）。
+# 主二进制以 @rpath/Sparkle.framework 引用，rpath 由构建参数 -Xlinker 注入
+# （@executable_path/../Frameworks），见 SWIFT_BUILD_ARGS。
+if [ "$APP_STORE_MODE" = false ]; then
+    SPARKLE_FRAMEWORK=$(find .build/artifacts -path "*macos-arm64_x86_64/Sparkle.framework" -maxdepth 5 -type d 2>/dev/null | head -n 1)
+    if [ -z "$SPARKLE_FRAMEWORK" ]; then
+        SPARKLE_FRAMEWORK=$(find .build -name "Sparkle.framework" -type d -path "*macos*" 2>/dev/null | grep -v dSYM | head -n 1)
+    fi
+    if [ -n "$SPARKLE_FRAMEWORK" ]; then
+        echo "在 $SPARKLE_FRAMEWORK 找到 Sparkle.framework，复制到 Frameworks 目录..."
+        rm -rf "$CONTENTS/Frameworks/Sparkle.framework"
+        cp -R "$SPARKLE_FRAMEWORK" "$CONTENTS/Frameworks/"
+        # 移除 dSYM 目录，减小包体并避免签名噪音
+        rm -rf "$CONTENTS/Frameworks/Sparkle.framework/Versions/B/Resources/dSYMs" 2>/dev/null || true
+    else
+        echo "警告：未找到 Sparkle.framework，在线更新功能将不可用（构建继续）"
+    fi
 fi
 
 # 复制 QuiteNote 资源文件（包括 YAML 配置文件）

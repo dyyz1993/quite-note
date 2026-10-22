@@ -15,7 +15,12 @@ final class UpdateManager: NSObject, ObservableObject {
     private lazy var updater: SPUUpdater = {
         let driver = SPUStandardUserDriver(hostBundle: Bundle.main, delegate: nil)
         let updater = SPUUpdater(hostBundle: Bundle.main, applicationBundle: Bundle.main, userDriver: driver, delegate: self)
-        try? updater.start()
+        do {
+            try updater.start()
+            NSLog("[Sparkle] updater started, feed=%@, autoCheck=%d", updater.feedURL?.absoluteString ?? "nil", updater.automaticallyChecksForUpdates ? 1 : 0)
+        } catch {
+            NSLog("[Sparkle] updater start FAILED: %@", String(describing: error))
+        }
         return updater
     }()
     #endif
@@ -35,6 +40,7 @@ final class UpdateManager: NSObject, ObservableObject {
     /// 启动静默检查（App 启动完成后调用一次；Sparkle 自身按 SUAutomaticallyUpdate/周期调度）
     func startBackgroundChecks() {
         #if !APP_STORE
+        NSLog("[Sparkle] startBackgroundChecks called")
         _ = updater
         #endif
     }
@@ -67,14 +73,21 @@ final class UpdateManager: NSObject, ObservableObject {
 
 extension UpdateManager: SPUUpdaterDelegate {
     func updater(_ updater: SPUUpdater, didFindValidUpdate item: SUAppcastItem) {
+        NSLog("[Sparkle] 发现新版本 %@", item.displayVersionString)
         updaterDidFindUpdate(item.displayVersionString.isEmpty ? item.versionString : item.displayVersionString)
     }
 
     func updaterDidNotFindUpdate(_ updater: SPUUpdater) {
+        NSLog("[Sparkle] 无新版本")
         updaterDidFindUpdate(nil)
     }
 
     func updater(_ updater: SPUUpdater, didAbortWithError error: Error) {
+        NSLog("[Sparkle] 检查中止: %@", error.localizedDescription)
         updaterDidFinishCheck()
+    }
+
+    func updater(_ updater: SPUUpdater, failedToAppcastWithError error: Error) {
+        NSLog("[Sparkle] appcast 拉取失败: %@", error.localizedDescription)
     }
 }
