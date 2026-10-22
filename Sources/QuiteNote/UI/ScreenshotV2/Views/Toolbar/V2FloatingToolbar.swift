@@ -107,13 +107,13 @@ struct V2FloatingToolbar: View {
     }
 
     /// 展开层 offset（V2AnnotationToolbar overlay 内坐标）：
-    /// V2FloatingToolbar 用 .position() 定位，position 容器的子视图坐标以 position
-    /// 点为原点，所以 offset = 目标 frame 的左上角 - 主栏中心点。
+    /// overlay 挂在 mainToolbarContent 上（对齐 .topLeading），其局部原点为
+    /// toolbarContent 扣除外层 padding (horizontal 12, vertical 8) 后的左上角。
     private var expansionPlacements: V2AnnotationToolbar.ExpansionPlacements {
         func toOffset(_ frame: CGRect?) -> CGSize? {
             frame.map {
-                CGSize(width: $0.minX - layoutOutput.mainSize.width / 2,
-                       height: $0.minY - layoutOutput.mainSize.height / 2)
+                CGSize(width: $0.minX - ScreenshotToolbarLayout.FixedGeometry.toolbarOuterPadding,
+                       height: $0.minY - ScreenshotToolbarLayout.FixedGeometry.toolbarOuterVerticalPadding)
             }
         }
         return .init(
