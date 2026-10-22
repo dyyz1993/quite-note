@@ -432,7 +432,9 @@ struct V2AnnotationToolbar: View {
         if showAudioPicker { syncExpansionSpecs() }
     }
 
-    /// 虚线工具的自绘示意小图：Lucide 无贴切的虚线图标，slash 会被误读为笔画工具
+    /// 虚线工具的自绘示意小图：Lucide 无贴切的虚线图标，slash 会被误读为笔画工具。
+    /// contentShape(Rectangle()) 必须有：纯 stroke 的 Path 不构成点击区域，
+    /// 没有它整个按钮只有 2pt 细线可点、其余穿透（2026-10-22 E2E 实锤）。
     private func dashedLineGlyph(size: CGFloat, color: Color) -> some View {
         Path { p in
             p.move(to: CGPoint(x: 3, y: size / 2))
@@ -441,6 +443,7 @@ struct V2AnnotationToolbar: View {
         .stroke(style: StrokeStyle(lineWidth: 2, lineCap: .round, dash: [4.5, 3.5]))
         .foregroundColor(color)
         .frame(width: size, height: size)
+        .contentShape(Rectangle())
     }
 
     /// 工具组按钮
