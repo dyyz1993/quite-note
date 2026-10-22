@@ -98,6 +98,8 @@ enum ScreenshotToolbarLayout {
     struct Output: Equatable {
         /// 主栏包围盒中心（屏幕坐标系，与选区同空间）
         let mainCenter: CGPoint
+        /// 主栏尺寸（position 容器内 offset 换算用）
+        let mainSize: CGSize
         /// 二级工具栏 frame（主栏局部坐标；nil = 未展开）
         let subToolbarFrameInMain: CGRect?
         /// 音频弹层 frame（主栏局部坐标；nil = 未展开）
@@ -175,6 +177,7 @@ enum ScreenshotToolbarLayout {
 
         return Output(
             mainCenter: CGPoint(x: centerX, y: centerY),
+            mainSize: mainSize,
             subToolbarFrameInMain: subFrame.map { $0.offsetBy(dx: -finalMainOriginX, dy: -finalMainOriginY) },
             audioPickerFrameInMain: audioFrame.map { $0.offsetBy(dx: -finalMainOriginX, dy: -finalMainOriginY) }
         )
