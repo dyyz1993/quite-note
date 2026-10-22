@@ -210,6 +210,10 @@ final class StatusBarController {
         feedback.target = self
         feedback.isEnabled = true
         menu.addItem(feedback)
+        let checkUpdate = NSMenuItem(title: "检查更新…", action: #selector(onCheckForUpdates), keyEquivalent: "")
+        checkUpdate.target = self
+        checkUpdate.isEnabled = true
+        menu.addItem(checkUpdate)
         let prefs = NSMenuItem(title: "偏好设置", action: #selector(openSettings), keyEquivalent: ",")
         prefs.target = self
         prefs.isEnabled = true
@@ -354,6 +358,11 @@ final class StatusBarController {
         alert.alertStyle = .informational
         alert.addButton(withTitle: "确定")
         alert.runModal()
+    }
+
+    /// 菜单：检查更新（Sparkle 手动检查，无新版弹「已是最新」提示）
+    @objc private func onCheckForUpdates() {
+        UpdateManager.shared.checkForUpdates()
     }
 
     /// 菜单：关于应用

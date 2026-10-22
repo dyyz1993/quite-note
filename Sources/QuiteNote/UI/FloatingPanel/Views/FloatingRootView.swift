@@ -80,6 +80,7 @@ struct FloatingRootView: View {
     var onMinimize: (() -> Void)? = nil
     @State private var showSettings = false
     @State private var settingsTab: String = "ai"
+    @ObservedObject private var updateVM = UpdateManager.shared
     @State private var expandedId: UUID? = nil
     @State private var searchTerm: String = ""
     @State private var searchResults: [Record] = [] // 缓存搜索结果
@@ -354,6 +355,23 @@ struct FloatingRootView: View {
                     .foregroundColor(.themeTextPrimary) // 使用主题文件中的文本颜色
 
                 Spacer()
+
+                // 有新版本时显示蓝色上箭头更新按钮（点击触发 Sparkle 更新流程）
+                if updateVM.updateAvailable {
+                    Button(action: { UpdateManager.shared.checkForUpdates() }) {
+                        ZStack {
+                            Circle()
+                                .fill(Color.themeOverlaySelected)
+                                .frame(width: 22, height: 22)
+                            Image(systemName: "arrow.up")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(.white)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .help("发现新版本 \(updateVM.availableVersion ?? "")，点击更新")
+                    .transition(.scale.combined(with: .opacity))
+                }
 
                 HoverButton(icon: .settings, size: 16, isActive: showSettings) {
                     settingsTab = "ai"

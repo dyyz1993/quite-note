@@ -329,6 +329,10 @@ cat > "$CONTENTS/Info.plist" << EOF
     <string>$VERSION</string>
     <key>CFBundleShortVersionString</key>
     <string>$VERSION</string>
+    <key>SUPublicEDKey</key>
+    <string>lSd4xWWLtuykwCbPH/kYqFZqog7LgcJbJTyPJUyggb0=</string>
+    <key>SUFeedURL</key>
+    <string>https://dyyz1993.github.io/quite-note/appcast.xml</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>LSApplicationCategoryType</key>

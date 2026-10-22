@@ -16,7 +16,9 @@ let package = Package(
         // Lucide-Swift 图标库
         .package(url: "https://github.com/JakubMazur/lucide-icons-swift", from: "0.556.0"),
         // Yams YAML 解析库
-        .package(url: "https://github.com/jpsim/Yams", from: "5.0.0")
+        .package(url: "https://github.com/jpsim/Yams", from: "5.0.0"),
+        // Sparkle 自动更新（DMG 分发版在线更新；App Store 沙盒版不用）
+        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.6.0")
     ],
     targets: [
         .target(
@@ -28,7 +30,8 @@ let package = Package(
             dependencies: [
                 "QuiteNoteSharedStorage",
                 .product(name: "LucideIcons", package: "lucide-icons-swift"),
-                .product(name: "Yams", package: "yams")
+                .product(name: "Yams", package: "yams"),
+                .product(name: "Sparkle", package: "Sparkle")
             ],
             path: "Sources/QuiteNote",
             exclude: [

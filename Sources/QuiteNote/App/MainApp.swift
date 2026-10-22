@@ -38,6 +38,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // 诊断中心最先启动：检测上次异常退出 + 崩溃捕获 + 卡死看门狗 + 文件日志
         DiagnosticCenter.shared.start()
 
+        // Sparkle 在线更新：启动后台检查（appcast 比对，有新版时自动弹窗 +
+        // UpdateManager.updateAvailable 驱动主面板顶栏更新按钮）
+        // App Store 沙盒版不用 Sparkle（商店版更新走 ASC）
+        #if !APP_STORE
+        UpdateManager.shared.startBackgroundChecks()
+        #endif
+
         // 权限只在用户主动使用对应功能时请求：启动不得跳转系统设置或中断首次体验。
 
         // 初始化贴纸管理器

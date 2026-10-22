@@ -124,6 +124,56 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # Sparkle appcast：对 DMG 算 EdDSA 签名 → 合并进 gh-pages 的 appcast.xml
+      # （客户端 SUFeedURL 指向 https://dyyz1993.github.io/quite-note/appcast.xml）
+      - name: 更新 Sparkle appcast
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SPARKLE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY_FILE }}
+          REPO: ${{ github.repository }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          set -e
+          # 1. 私钥落盘（sign_update --ed-key-file 读取）
+          echo "$SPARKLE_KEY" > "$RUNNER_TEMP/sparkle_ed_key"
+
+          DMG_FILE=$(ls QuiteNote-*.dmg | head -n 1)
+          VERSION="${TAG_NAME#v}"
+          DMG_URL="https://github.com/${REPO}/releases/download/${TAG_NAME}/${DMG_FILE}"
+          DMG_SIZE=$(stat -f %z "$DMG_FILE")
+          PUB_DATE=$(date -u "+%a, %d %b %Y %H:%M:%S %z")
+
+          # 2. EdDSA 签名（sparkle:edSignature）
+          SIGN_OUT=$(.build/artifacts/sparkle/Sparkle/bin/sign_update "$DMG_FILE" --ed-key-file "$RUNNER_TEMP/sparkle_ed_key")
+          SIG=$(echo "$SIGN_OUT" | sed -E 's/.*sparkle:edSignature="([^"]+)".*/\1/')
+          [[ -n "$SIG" ]] || { echo "EdDSA 签名失败: $SIGN_OUT"; exit 1; }
+          echo "EdDSA 签名 OK: ${SIG:0:24}..."
+
+          # 3. 克隆 gh-pages（不存在则首次建骨架）
+          GH_PAGES_DIR="$RUNNER_TEMP/gh-pages"
+          if ! git clone --depth 1 --branch gh-pages \
+              "https://x-access-token:${GITHUB_TOKEN}@github.com/${REPO}.git" "$GH_PAGES_DIR" 2>/dev/null; then
+            echo "gh-pages 不存在，创建新分支"
+            git clone "https://x-access-token:${GITHUB_TOKEN}@github.com/${REPO}.git" "$GH_PAGES_DIR"
+            cd "$GH_PAGES_DIR"
+            git checkout --orphan gh-pages
+            git rm -rf . >/dev/null 2>&1 || true
+            git branch -m gh-pages
+          fi
+          cd "$GH_PAGES_DIR"
+
+          # 4. 合并 appcast（tools/make_appcast.py：替换同版本 item 或建骨架）
+          python3 "$GITHUB_WORKSPACE/tools/make_appcast.py" "$VERSION" "$DMG_URL" "$DMG_SIZE" "$SIG" "$PUB_DATE"
+
+          # 5. 提交推送（gh-pages 用 [skip ci] 防循环触发）
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add appcast.xml
+          git commit -m "appcast: ${TAG_NAME} [skip ci]" || { echo "appcast 无变化"; exit 0; }
+          git push origin gh-pages
+          echo "appcast 已推送 gh-pages"
+
       - name: 清理临时钥匙串
         if: always()
         run: |
