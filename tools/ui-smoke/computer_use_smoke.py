@@ -26,7 +26,10 @@ try:
         AXUIElementCopyElementAtPosition,
         AXUIElementSetAttributeValue,
         AXIsProcessTrusted,
+        AXValueGetValue,
         kAXValueAttribute,
+        kAXValueCGPointType,
+        kAXValueCGSizeType,
     )
 except ImportError:  # The remote test Mac boots before pip dependencies are installed.
     Quartz = None
@@ -35,6 +38,9 @@ except ImportError:  # The remote test Mac boots before pip dependencies are ins
     kAXValueAttribute = None
     AXUIElementCopyElementAtPosition = None
     AXUIElementSetAttributeValue = None
+    AXValueGetValue = None
+    kAXValueCGPointType = None
+    kAXValueCGSizeType = None
 
 
 APP_NAME = "Quite Note Dev"
@@ -267,6 +273,16 @@ class AXDriver:
         size = self.attribute("AXSize", element)
         if position is None or size is None:
             return None
+        # pyobjc 10 对 AXValue 不自动解包：AXPosition/AXSize 会返回 AXValueRef
+        # （旧桥接直接给 CGPoint/CGSize），统一在取值时双兼容解包
+        if not hasattr(position, "x"):
+            ok, position = AXValueGetValue(position, kAXValueCGPointType, None)
+            if not ok:
+                return None
+        if not hasattr(size, "width"):
+            ok, size = AXValueGetValue(size, kAXValueCGSizeType, None)
+            if not ok:
+                return None
         x = float(position.x)
         y = float(position.y)
         width = float(size.width)
