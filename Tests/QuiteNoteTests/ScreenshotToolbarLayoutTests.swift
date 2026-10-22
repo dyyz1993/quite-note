@@ -229,9 +229,9 @@ final class ScreenshotToolbarLayoutTests: XCTestCase {
 
     func testSubToolbarSizeDerivation() {
         XCTAssertEqual(ScreenshotToolbarLayout.subToolbarSize(toolCount: 0), .zero)
-        // 6*2 内边距 + n*30 按钮 + (n-1)*8 间距
-        XCTAssertEqual(ScreenshotToolbarLayout.subToolbarSize(toolCount: 2), CGSize(width: 80, height: 42))
-        XCTAssertEqual(ScreenshotToolbarLayout.subToolbarSize(toolCount: 4), CGSize(width: 156, height: 42))
+        // 4*2 内边距 + n*30 按钮 + (n-1)*4 间距
+        XCTAssertEqual(ScreenshotToolbarLayout.subToolbarSize(toolCount: 2), CGSize(width: 72, height: 38))
+        XCTAssertEqual(ScreenshotToolbarLayout.subToolbarSize(toolCount: 4), CGSize(width: 140, height: 38))
     }
 
     // MARK: - 辅助

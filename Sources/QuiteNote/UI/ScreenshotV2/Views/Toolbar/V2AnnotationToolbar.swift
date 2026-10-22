@@ -348,9 +348,9 @@ struct V2AnnotationToolbar: View {
         }
     }
 
-    /// 子工具栏
+    /// 子工具栏（视觉与主栏工具组一致：半透明黑底 + 选中蓝底 + 未选中透明）
     private func subToolbar(for tools: [AnnotationTool]) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 4) {
             ForEach(tools, id: \.self) { tool in
                 Button(action: {
                     stateManager.updateTool(tool)
@@ -366,31 +366,30 @@ struct V2AnnotationToolbar: View {
                 }) {
                     Group {
                         if tool == .dashedLine {
-                            AnyView(dashedLineGlyph(size: 16, color: stateManager.selectedTool == tool ? .white : Color.white.opacity(0.6)))
+                            AnyView(dashedLineGlyph(size: 16, color: stateManager.selectedTool == tool ? .white : Color.white.opacity(0.5)))
                         } else {
                             AnyView(LucideView(
                                 name: IconName(rawValue: tool.rawValue) ?? .penTool,
                                 size: 16,
-                                color: stateManager.selectedTool == tool ? .white : Color.white.opacity(0.6)
+                                color: stateManager.selectedTool == tool ? .white : Color.white.opacity(0.5)
                             ))
                         }
                     }
                     .frame(width: 30, height: 30)
-                    .background(stateManager.selectedTool == tool ? Color.themeBlue500.opacity(0.6) : Color.white.opacity(0.1))
+                    .background(stateManager.selectedTool == tool ? Color.blue.opacity(0.8) : Color.clear)
                     .cornerRadius(6)
                 }
                 .buttonStyle(.plain)
             }
         }
-        .padding(6)
+        .padding(4)
         .background(
             RoundedRectangle(cornerRadius: 10)
-                .fill(Color.themeBackground.opacity(0.95))
-                .shadow(color: Color.themeShadowMedium, radius: 5, x: 0, y: 3)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                .fill(Color.black.opacity(0.4))
+                .background(
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(Color.themeShadowHeavy.opacity(0.7))
+                )
         )
     }
 
