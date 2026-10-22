@@ -105,11 +105,6 @@ struct V2AnnotationToolbar: View {
                    let offset = expansionPlacements.subToolbar {
                     subToolbar(for: tools)
                         .fixedSize()
-                        .background(GeometryReader { geo in
-                            Color.clear.onAppear {
-                                print("[二级诊断] offset=\(offset) overlay锚点尺寸=\(geo.size)")
-                            }
-                        })
                         .offset(offset)
                         .onHover { hovering in
                             stateManager.isMouseOverUI = hovering
