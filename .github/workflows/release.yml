@@ -144,8 +144,9 @@ jobs:
     secrets:
       FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
 
-  # 发布结果推送到手机（GET <PHONE_PUSH_URL>/<title>/<body>，同反馈系统的 push 通道）
-  # best-effort：推送失败不判失败（通知类操作，curl 非 2xx 也只记日志）
+  # 发布结果推送到手机（GET <PHONE_PUSH_URL>/<title>/<body>?icon=...&url=...）
+  # 带 QuiteNote 应用图标，点击直达 GitHub Release / Actions 构建日志
+  # best-effort：推送失败不判失败（通知类操作，永远不影响发布产物）
   push-notify:
     name: Phone Push Notification
     if: always()
@@ -158,18 +159,44 @@ jobs:
           RESULT: ${{ needs.release.result }}
           TAG: ${{ github.ref_name }}
           RUN_ID: ${{ github.run_id }}
+          REPO: ${{ github.repository }}
+          ICON_URL: "https://image-clip.docker.19930810.xyz:8443/api/image?id=9fbb8374-8ef8-4557-9e2d-f42d469dcd9c&cx=-2&cy=-3&cw=127&ch=127"
         run: |
           if [ -z "$PUSH_URL" ]; then echo "PHONE_PUSH_URL 未配置，跳过"; exit 0; fi
-          if [ "$RESULT" = "success" ]; then
-            TITLE=" Quite Note ${TAG} 发布成功"
-            BODY="DMG 已签名公证并挂到 GitHub Release | https://github.com/${{ github.repository }}/releases/tag/${TAG}"
-          else
-            TITLE=" Quite Note ${TAG} 发布失败（${RESULT}）"
-            BODY="查看日志 | https://github.com/${{ github.repository }}/actions/runs/${RUN_ID}"
-          fi
-          ENC_TITLE=$(python3 -c "import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1]))" "$TITLE")
-          ENC_BODY=$(python3 -c "import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1]))" "$BODY")
-          CODE=$(curl -s -o /dev/null -w "%{http_code}" "${PUSH_URL}/${ENC_TITLE}/${ENC_BODY}")
-          echo "push http ${CODE}"
-          [ "$CODE" = "200" ] || echo "::warning::手机推送返回 ${CODE}（不影响发布结果）"
+          python3 - <<PY
+          import urllib.parse, urllib.request, os
+
+          push_base = os.environ["PUSH_URL"].rstrip("/")
+          tag = os.environ.get("TAG", "")
+          result = os.environ.get("RESULT", "")
+          repo = os.environ.get("REPO", "")
+          run_id = os.environ.get("RUN_ID", "")
+          icon = os.environ.get("ICON_URL", "")
+
+          if result == "success":
+              title = f"Quite Note {tag} 发布成功"
+              body = "DMG 已签名公证并挂到 GitHub Release（点击直达）"
+              jump_url = f"https://github.com/{repo}/releases/tag/{tag}"
+          else:
+              title = f"Quite Note {tag} 发布失败（{result}）"
+              body = "点击查看 Actions 构建日志排查原因"
+              jump_url = f"https://github.com/{repo}/actions/runs/{run_id}"
+
+          enc_title = urllib.parse.quote(title)
+          enc_body = urllib.parse.quote(body)
+          query = urllib.parse.urlencode({
+              "icon": icon,
+              "url": jump_url,
+              "group": "QuiteNote Release"
+          })
+          req_url = f"{push_base}/{enc_title}/{enc_body}?{query}"
+
+          try:
+              req = urllib.request.Request(req_url, headers={"User-Agent": "QuiteNote-CI"})
+              with urllib.request.urlopen(req, timeout=15) as resp:
+                  code = resp.getcode()
+                  print(f"push http {code}")
+          except Exception as e:
+              print(f"::warning::手机推送异常: {e}（不影响发布结果）")
+          PY
 
