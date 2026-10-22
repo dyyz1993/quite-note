@@ -103,6 +103,7 @@ struct V2AnnotationToolbar: View {
                 if let group = expandedGroup,
                    let tools = getSubTools(for: group), tools.count > 1,
                    let offset = expansionPlacements.subToolbar {
+                    print("[二级] placement offset = \(offset), mainSize=\(expansionPlacements)")
                     subToolbar(for: tools)
                         .fixedSize()
                         .offset(offset)
