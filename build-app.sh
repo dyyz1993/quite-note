@@ -11,7 +11,10 @@ APP_NAME="Quite Note"
 BUNDLE_ID="com.quitenote.app"
 EXECUTABLE_NAME="QuiteNote"
 BINARY_NAME="QuiteNote"        # swift build 的产物名（两个变体共用同一个二进制）
-VERSION="1.0.0"
+# 版本号单一真值源 = git 最新 tag（v1.4.0 → 1.4.0），取不到时回退 0.0.0-dev；
+# CI 发布仍以 build-release.sh <版本号> 参数为准（会覆写此值）
+VERSION="$(git -C "$SCRIPT_DIR" describe --tags --abbrev=0 2>/dev/null | sed 's/^v//')"
+VERSION="${VERSION:-0.0.0-dev}"
 
 # ====================================================================
 # 权限检查与引导功能

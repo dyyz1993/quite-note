@@ -360,7 +360,9 @@ final class StatusBarController {
     @objc private func onAbout() {
         let alert = NSAlert()
         alert.messageText = "QuiteNote"
-        alert.informativeText = "版本 1.0.0\n\n一个简洁的剪切板历史记录和AI提炼工具\n\n© 2025 QuiteNote Team"
+        // 版本号与 Info.plist 同源（CFBundleShortVersionString，由 build 脚本从 git tag 写入）
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
+        alert.informativeText = "版本 \(version)\n\n一个简洁的剪切板历史记录和AI提炼工具\n\n© 2025 QuiteNote Team"
         alert.alertStyle = .informational
         alert.addButton(withTitle: "确定")
         alert.runModal()
