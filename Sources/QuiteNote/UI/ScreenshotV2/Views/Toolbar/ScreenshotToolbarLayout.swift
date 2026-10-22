@@ -84,6 +84,11 @@ enum ScreenshotToolbarLayout {
         var specs = Specs.none
         var margin: CGFloat = 8
         var spacing: CGFloat = 12
+        /// 底部被 Dock 占据的高度（overlay 顶左坐标系：从屏幕底边往上算）。
+        /// 贴底定位时必须避开，否则工具栏会沉在 Dock 后面（2026-10-22 实拍）。
+        var bottomInset: CGFloat = 0
+        /// 顶部被菜单栏占据的高度
+        var topInset: CGFloat = 0
         /// 用户拖拽主栏的偏移：只参与展开层最终贴边判断，不改变主栏基准位置（由调用方自行叠加）
         var mainDisplacement: CGPoint = .zero
     }
@@ -108,19 +113,19 @@ enum ScreenshotToolbarLayout {
         let scr = input.screen
         let availLeft = scr.minX + input.margin
         let availRight = scr.maxX - input.margin
-        let availTop = scr.minY + input.margin
-        let availBottom = scr.maxY - input.margin
+        let availTop = scr.minY + input.topInset + input.margin
+        let availBottom = scr.maxY - input.bottomInset - input.margin
 
         // 1. 垂直：选区下方 → 上方 → 贴底（沿用既有优先级与开闭边界，不改变现状行为）
         let belowCenterY = input.selection.maxY + input.spacing + halfH
         let aboveCenterY = input.selection.minY - input.spacing - halfH
         let centerY: CGFloat
-        if belowCenterY + halfH < scr.maxY - input.margin {
+        if belowCenterY + halfH < availBottom {
             centerY = belowCenterY
-        } else if aboveCenterY - halfH > scr.minY + input.margin {
+        } else if aboveCenterY - halfH > availTop {
             centerY = aboveCenterY
         } else {
-            centerY = scr.maxY - input.margin - halfH
+            centerY = availBottom - halfH
         }
 
         // 2. 水平：主栏先按自身尺寸落位（选区居中 + 自身不出屏，现状行为）

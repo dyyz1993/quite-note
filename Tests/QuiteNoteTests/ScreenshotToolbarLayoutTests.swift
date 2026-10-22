@@ -169,6 +169,55 @@ final class ScreenshotToolbarLayoutTests: XCTestCase {
         XCTAssertTrue(withinScreen(subScreen))
     }
 
+    /// 底部被 Dock 占据时，贴底定位的工具栏必须整体抬到 Dock 之上（2026-10-22 实拍回归）
+    func testBottomInset_LiftsToolbarAboveDock() {
+        let screen = CGRect(x: 0, y: 0, width: 1440, height: 900)
+        // 选区贴底 -> 主栏贴底
+        let selection = CGRect(x: 600, y: 820, width: 200, height: 60)
+        let mainSize = CGSize(width: 520, height: 66)
+        let dockInset: CGFloat = 78  // Dock 高度
+
+        let withoutInset = ScreenshotToolbarLayout.compute(.init(
+            screen: screen, selection: selection, mainSize: mainSize, specs: .none,
+            margin: 8, spacing: 12))
+        let withInset = ScreenshotToolbarLayout.compute(.init(
+            screen: screen, selection: selection, mainSize: mainSize, specs: .none,
+            margin: 8, spacing: 12, bottomInset: dockInset))
+
+        // 两种口径下工具栏底边都不得进入 Dock 区域（屏幕底往上 dockInset）
+        let dockTop = screen.maxY - dockInset
+        XCTAssertLessThanOrEqual(withoutInset.mainCenter.y + mainSize.height / 2, dockTop + 0.01,
+                                 "无 inset 时工具栏不应沉进 Dock")
+        XCTAssertLessThanOrEqual(withInset.mainCenter.y + mainSize.height / 2, dockTop - 8 + 0.01,
+                                 "有 inset 时工具栏应整体抬到 Dock 之上")
+    }
+
+    /// 实拍回归：选区在 Dock 附近（下方无空间），工具栏必须整体在 Dock 之上
+    func testSelectionJustAboveDock_ToolbarStaysAboveDock() {
+        let screen = CGRect(x: 0, y: 0, width: 1440, height: 900)
+        let dockTop: CGFloat = 822           // Dock 顶
+        let selection = CGRect(x: 600, y: dockTop - 40, width: 200, height: 30)  // 选区紧贴 Dock 上方
+        let mainSize = CGSize(width: 520, height: 66)
+        let out = ScreenshotToolbarLayout.compute(.init(
+            screen: screen, selection: selection, mainSize: mainSize, specs: .none,
+            margin: 8, spacing: 12, bottomInset: 900 - dockTop))
+        XCTAssertLessThanOrEqual(out.mainCenter.y + mainSize.height / 2, dockTop,
+                                 "底部选区时工具栏不得进入 Dock 区域")
+    }
+
+    /// 顶部被菜单栏占据时，贴顶定位的工具栏必须整体下移
+    func testTopInset_LowersToolbarBelowMenuBar() {
+        let screen = CGRect(x: 0, y: 0, width: 1440, height: 900)
+        let selection = CGRect(x: 600, y: 4, width: 200, height: 40)  // 贴顶
+        let mainSize = CGSize(width: 520, height: 66)
+        let menuBar: CGFloat = 25
+
+        let withInset = ScreenshotToolbarLayout.compute(.init(
+            screen: screen, selection: selection, mainSize: mainSize, specs: .none,
+            margin: 8, spacing: 12, topInset: menuBar))
+        XCTAssertGreaterThanOrEqual(withInset.mainCenter.y - mainSize.height / 2, menuBar + 8 - 0.01)
+    }
+
     // MARK: - 确定性推导
 
     func testPrimaryButtonCenterXDerivation() {

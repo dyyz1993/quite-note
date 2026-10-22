@@ -87,13 +87,21 @@ struct V2FloatingToolbar: View {
     private var layoutOutput: ScreenshotToolbarLayout.Output {
         // 用实际尺寸（首帧前用估算值兜底）
         let size = actualSize.width > 0 ? actualSize : CGSize(width: estimatedWidth, height: estimatedHeight)
+        // 屏幕上下被菜单栏 / Dock 占据的区域：贴底定位时必须避开，
+        // 否则底部选区的工具栏会沉在 Dock 后面（2026-10-22 实拍）。
+        let frame = screen.frame
+        let visible = screen.visibleFrame
+        let bottomInset = max(0, frame.maxY - visible.maxY)
+        let topInset = max(0, visible.minY - frame.minY)
         return ScreenshotToolbarLayout.compute(.init(
-            screen: CGRect(origin: .zero, size: screen.frame.size),
+            screen: CGRect(origin: .zero, size: frame.size),
             selection: selection,
             mainSize: size,
             specs: expansionSpecs,
             margin: margin,
             spacing: spacing,
+            bottomInset: bottomInset,
+            topInset: topInset,
             mainDisplacement: CGPoint(x: dragOffset.width, y: dragOffset.height)
         ))
     }
