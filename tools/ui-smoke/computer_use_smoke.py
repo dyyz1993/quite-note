@@ -594,6 +594,11 @@ def _main_display_size() -> tuple[float, float]:
     return bounds.size.width, bounds.size.height
 
 
+def caffeinate(t=25):
+    subprocess.Popen(["caffeinate", "-u", "-d", "-t", str(t)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    time.sleep(1.0)
+
+
 def _cua_call(tool: str, args: str) -> str:
     result = subprocess.run(
         ["/Applications/CuaDriver.app/Contents/MacOS/cua-driver", "call", tool, args],
@@ -780,7 +785,7 @@ def _diff_region(capture_before: Path, capture_after: Path, display_width: float
 
 def _snap_overlay(tag):
     """cua 截屏（屏幕须唤醒/保活）"""
-    caffeinate()
+    caffeinate(20)
     out = f"/tmp/qn-manual/FIN_{tag}.png"
     if os.path.exists(out): os.remove(out)
     subprocess.run([CUA, "call", "get_desktop_state", "--screenshot-out-file", out],
@@ -817,8 +822,11 @@ def smoke_screenshot_toolbar(run: Run, driver: AXDriver) -> str:
     width, height = _main_display_size()
     pid = driver.pid
 
+    def _wake():
+        subprocess.Popen(["caffeinate", "-u", "-t", "25"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        time.sleep(1.0)
+
     _press_escape()  # clear any stale session
-    _press_status_menu_item("捕获屏幕截图")
     deadline = time.monotonic() + 3
     while time.monotonic() < deadline and _overlay_window_count(pid) == 0:
         time.sleep(0.05)
