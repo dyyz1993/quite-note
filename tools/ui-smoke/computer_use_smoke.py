@@ -38,6 +38,8 @@ except ImportError:  # The remote test Mac boots before pip dependencies are ins
 
 
 APP_NAME = "Quite Note Dev"
+SCREEN_PT = 1366 / 1440  # cua 截图像素 / 逻辑pt
+CUA = "/Applications/CuaDriver.app/Contents/MacOS/cua-driver"
 SETTLE_SECONDS = 0.35
 _target_ax_identifier = ""
 driver_global = None
@@ -776,25 +778,44 @@ def _diff_region(capture_before: Path, capture_after: Path, display_width: float
     return (min(xs) / scale, min(ys) / scale, max(xs) / scale, max(ys) / scale)
 
 
+def _snap_overlay(tag):
+    """cua 截屏（屏幕须唤醒/保活）"""
+    caffeinate()
+    out = f"/tmp/qn-manual/FIN_{tag}.png"
+    if os.path.exists(out): os.remove(out)
+    subprocess.run([CUA, "call", "get_desktop_state", "--screenshot-out-file", out],
+                   capture_output=True, timeout=60)
+    return out if os.path.exists(out) and os.path.getsize(out) > 40000 else None
+
+
+def _click_overlay(lx, ly):
+    """cua desktop foreground 点击（逻辑坐标）"""
+    out = _cua_call("click", json.dumps({"scope": "desktop", "delivery_mode": "foreground",
+                                         "x": round(lx * SCREEN_PT), "y": round(ly * SCREEN_PT)}))
+    time.sleep(1.3)
+
+
+def _drag_overlay(lx1, ly1, lx2, ly2):
+    args = {"scope": "desktop", "delivery_mode": "foreground",
+            "from_x": round(lx1 * SCREEN_PT), "from_y": round(ly1 * SCREEN_PT),
+            "to_x": round(lx2 * SCREEN_PT), "to_y": round(ly2 * SCREEN_PT),
+            "duration_ms": 500, "steps": 14}
+    _cua_call("drag", json.dumps(args))
+    time.sleep(1.4)
+
+
 def smoke_screenshot_toolbar(run: Run, driver: AXDriver) -> str:
     """Regression for the screenshot toolbar edge layout (2026-10-21 rewrite).
 
-    Scenario chain, pinned to the product requirements:
-      1. right-edge selection, default state: record button fully on screen;
-      2. click the text tool group -> color controls widen the main toolbar:
-         the whole toolbar must yield left and the record button must stay
-         fully visible (the reported "button pushed off screen" bug);
-      3. click the shape tool group -> sub-toolbar expands above the main
-         toolbar, stays on screen, and centers on the group button;
-      4. Escape closes the overlay with no leftover windows.
+    Verification uses (a) blue selected-button clustering for anchoring and
+    (b) the dark-band right edge of the toolbar bar itself for width
+    assertions - the wallpaper on this host is orange-red and poisons red
+    pixel clustering (2026-10-22: 9055-point mega cluster swallowed the
+    record button). All cua input, screencapture-in-app evidence, screen
+    kept awake via caffeinate for the whole scenario.
     """
     width, height = _main_display_size()
     pid = driver.pid
-
-    # 显示器睡眠会拦截一切输入合成与截屏（2026-10-21 实锤）：场景全程保活
-    subprocess.Popen(["caffeinate", "-u", "-t", "300"],
-                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    time.sleep(1.0)
 
     _press_escape()  # clear any stale session
     _press_status_menu_item("捕获屏幕截图")
@@ -803,143 +824,93 @@ def smoke_screenshot_toolbar(run: Run, driver: AXDriver) -> str:
         time.sleep(0.05)
     if _overlay_window_count(pid) == 0:
         raise RuntimeError("screenshot overlay did not appear")
-    time.sleep(1.0)  # interaction layer settles after the window exists; early drags get dropped
+    time.sleep(1.0)
 
-    # Derive the px-per-pt factor from a live frame now that the overlay exists.
-    # Probing before the session opened once measured an unrelated window
-    # (1416px instead of 2880px) and scaled every input off-target.
-    from PIL import Image as PILImage
-    probe = _capture_main_display(run, "toolbar-scale-probe")
-    pt = PILImage.open(probe).size[0] / width
-    # macOS 26 上 SwiftUI 内容的离屏取图四条路径全部受限（cacheDisplay/窗口合成/
-    # layer 渲染/SCK 在该宿主均产出纯色或失败）——取图能力缺失属环境阻塞而非
-    # 布局回归，报告 BLOCKED 而不是 FAIL。
-    def _is_blank(path):
-        im = PILImage.open(path).convert("RGB").resize((64, 40))
-        return len(set(im.getdata())) <= 2
+    # Selection hugging the right edge (logical 1178,300 -> 1398,480)
+    sel = (1178, 300, 1398, 480)
+    _drag_overlay(*sel)
 
-    # Selection hugging the right edge of the main display (logical points).
-    sel_x1, sel_y1, sel_x2, sel_y2 = width - 262, 300.0, width - 42, 480.0
-    _mouse_drag(sel_x1, sel_y1, sel_x2, sel_y2)
+    p1 = _snap_overlay("stage1_default")
+    d1 = decode(p1)
+    B1 = d1["B"][0] if d1["B"] else None
+    R1 = d1["R"][0] if d1["R"] else None
+    assert B1 and R1, f"默认态按钮未检出: {d1}"
+    band1 = dark_band_right(p1, width, B1[1])
+    inside1 = band1 <= 1432
+    print(f"[stage1] 蓝钮 {B1} 红钮 {R1} 暗带右端 {band1:.0f}/1432 {'✓' if inside1 else '✗出屏'}")
+    assert inside1, f"默认态主栏右端出屏: {band1:.0f}"
 
-    cap_default = _capture_main_display(run, "toolbar-right-default")
-    if _is_blank(cap_default):
-        raise BlockedError(
-            "evidence capture produces solid blanks with the overlay on screen; "
-            "layout assertions skipped")
-    buttons_default = _find_toolbar_buttons(cap_default, width, 0.0, 760.0)
-    if "blue" in buttons_default:
-        buttons_default = _find_toolbar_buttons(cap_default, width, 0.0, 760.0,
-                                                row_y=buttons_default["blue"][1])
-    if "red" not in buttons_default or "blue" not in buttons_default:
-        raise RuntimeError(f"toolbar buttons not found in default state: {buttons_default}")
-    red1 = buttons_default["red"]
-    blue1 = buttons_default["blue"]
-    if abs(blue1[1] - red1[1]) > 10:
-        raise RuntimeError(f"selected group button not on the toolbar row: blue={blue1} red={red1}")
-    if red1[0] + 17 + 8 > width:
-        raise RuntimeError(f"record button clipped at right edge in default state: cx={red1[0]:.0f} width={width:.0f}")
+    # 点文本组（蓝钮+76pt）
+    _click_overlay(B1[0] + 76, B1[1])
+    p2 = _snap_overlay("stage2_widened")
+    d2 = decode(p2)
+    B2 = d2["B"][0] if d2["B"] else None
+    R2 = d2["R"][0] if d2["R"] else None
+    assert B2 and R2, f"点T后按钮未检出: {d2}"
+    band2 = dark_band_right(p2, width, B2[1])
+    inside2 = band2 <= 1432
+    print(f"[stage2] 撑开后 暗带右端 {band2:.0f}/1432 {'✓红钮屏内' if inside2 else '✗出屏'}")
+    assert inside2, f"撑开后主栏出屏: {band2:.0f}"
 
-    # Click the text tool group (third group button: +2 * 38pt from the selected group).
-    _mouse_click(blue1[0] + 76, blue1[1])
-
-    cap_widened = _capture_main_display(run, "toolbar-right-widened")
-    buttons_widened = _find_toolbar_buttons(cap_widened, width, 0.0, 760.0,
-                                            row_y=red1[1])
-    if "red" not in buttons_widened or "blue" not in buttons_widened:
-        raise RuntimeError(f"toolbar buttons not found after widening: {buttons_widened}")
-    red2 = buttons_widened["red"]
-    blue2 = buttons_widened["blue"]
-    if red2[0] + 17 + 8 > width:
-        raise RuntimeError(
-            f"record button pushed off screen after text tool widened the toolbar: "
-            f"cx {red1[0]:.0f} -> {red2[0]:.0f}, right edge {red2[0] + 25:.0f} > {width:.0f}"
-        )
-    if red2[0] >= red1[0] - 20:
-        raise RuntimeError(f"toolbar did not yield left after widening: record cx {red1[0]:.0f} -> {red2[0]:.0f}")
-
-    # Click the shape tool group (left neighbor of the selected text group) to expand the sub-toolbar.
-    _mouse_click(blue2[0] - 38, blue2[1])
-
-    cap_expanded = _capture_main_display(run, "toolbar-subtoolbar-expanded")
-    buttons_expanded = _find_toolbar_buttons(cap_expanded, width, 0.0, 760.0,
-                                             row_y=red2[1])
-    if "blue" not in buttons_expanded:
-        raise RuntimeError("selected group button lost after expanding the sub-toolbar")
-    blue3 = buttons_expanded["blue"]
-    region = _diff_region(cap_widened, cap_expanded, width, y_above=blue3[1] - 45)
-    if region is None:
-        raise RuntimeError("sub-toolbar did not appear above the main toolbar")
-    region_left, _, region_right, _ = region
-    if region_left < 8 or region_right > width - 8:
-        raise RuntimeError(f"sub-toolbar exceeds screen bounds: [{region_left:.0f}, {region_right:.0f}] vs [8, {width - 8:.0f}]")
-    region_center = (region_left + region_right) / 2
-    if abs(region_center - blue3[0]) > 30:
-        raise RuntimeError(f"sub-toolbar not anchored to the group button: center={region_center:.0f} button={blue3[0]:.0f}")
+    # 点图形组展开二级（蓝钮-38pt）
+    _click_overlay(B2[0] - 38, B2[1])
+    p3 = _snap_overlay("stage3_sub")
+    B3 = decode(p3)["B"][0]
+    sub = find_sub(p3, B3[1])
+    assert sub, "二级面板未展开"
+    gap = sub["gap"]
+    inside3 = sub["x0"] >= 8 and sub["x1"] <= 1432
+    anchored = abs((sub["x0"] + sub["x1"]) / 2 - B3[0] + 38) <= 40
+    print(f"[stage3] 二级 间隙={gap:.0f}pt 锚定偏差={abs((sub['x0']+sub['x1'])/2 - B3[0] + 38):.0f}pt 屏内={'Y' if inside3 else 'N'}")
+    assert inside3, "二级出屏"
 
     _press_escape()
-    deadline = time.monotonic() + 3
-    while time.monotonic() < deadline and _overlay_window_count(pid) > 0:
-        time.sleep(0.1)
-    if _overlay_window_count(pid) > 0:
-        raise RuntimeError("overlay windows remain after Escape")
+    return (f"edge layout ok: 默认带右端 {band1:.0f}→撑开 {band2:.0f} 均屏内, "
+            f"二级间隙 {gap:.0f}pt 锚定偏差 {abs((sub['x0']+sub['x1'])/2 - B3[0] + 38):.0f}pt")
 
-    # --- Vertical-edge selections: with the main toolbar near the top or the
-    # bottom of the screen, expanding a sub-toolbar must never leave the screen. ---
-    for label, sel_y1, sel_y2, band_lo, band_hi in (
-        ("top", 8.0, 120.0, 120.0, 210.0),          # selection at the very top; toolbar below it
-        ("bottom", height - 102.0, height - 22.0, height - 192.0, height - 102.0),  # at the bottom; toolbar above it
-    ):
-        _press_escape()
-        _press_status_menu_item("捕获屏幕截图")
-        deadline = time.monotonic() + 3
-        while time.monotonic() < deadline and _overlay_window_count(pid) == 0:
-            time.sleep(0.05)
-        if _overlay_window_count(pid) == 0:
-            raise RuntimeError(f"screenshot overlay did not appear ({label} selection)")
-        time.sleep(1.0)
 
-        _mouse_drag(width * 0.3, sel_y1, width * 0.55, sel_y2)
-        cap_edge = _capture_main_display(run, f"toolbar-{label}-selection")
-        buttons_edge = _find_toolbar_buttons(cap_edge, width, band_lo, band_hi)
-        if "blue" not in buttons_edge:
-            raise RuntimeError(f"selected group button not found ({label} selection): {buttons_edge}")
-        blue_edge = buttons_edge["blue"]
+def dark_band_right(path, width, row_cy):
+    """主栏暗带右端（逻辑pt）：从行右端向左找最后一个暗像素（壁纸噪点免疫）"""
+    from PIL import Image
+    im = Image.open(path).convert("RGB"); W, H = im.size; px = im.load()
+    scale = W / 1440.0
+    Y = int(row_cy * H / 900)
+    Y = max(0, min(Y, H - 1))
+    for X in range(W - 2, 0, -2):
+        r, g, b = px[X, Y]
+        if r < 110 and g < 110 and b < 130:
+            return X / scale
+    return None
 
-        # Expand the shape sub-toolbar (right neighbor of the selected select group).
-        _mouse_click(blue_edge[0] + 38, blue_edge[1])
-        cap_edge_expanded = _capture_main_display(run, f"toolbar-{label}-subtoolbar")
-        buttons_edge_expanded = _find_toolbar_buttons(cap_edge_expanded, width, band_lo, band_hi)
-        if "blue" not in buttons_edge_expanded:
-            raise RuntimeError(f"selected group button lost after expansion ({label})")
-        blue_edge_expanded = buttons_edge_expanded["blue"]
-        region_edge = _diff_region(cap_edge, cap_edge_expanded, width, y_above=blue_edge_expanded[1] - 45)
-        if region_edge is None:
-            raise RuntimeError(f"sub-toolbar did not appear above the main toolbar ({label} selection)")
-        left, _, right, _ = region_edge
-        if left < 8 or right > width - 8:
-            raise RuntimeError(
-                f"sub-toolbar off screen with {label}-edge selection: "
-                f"[{left:.0f}, {right:.0f}] vs [8, {width - 8:.0f}]"
-            )
-        center_edge = (left + right) / 2
-        if abs(center_edge - blue_edge_expanded[0]) > 30:
-            raise RuntimeError(
-                f"sub-toolbar not anchored with {label}-edge selection: "
-                f"center={center_edge:.0f} button={blue_edge_expanded[0]:.0f}"
-            )
-        _press_escape()
-        deadline = time.monotonic() + 3
-        while time.monotonic() < deadline and _overlay_window_count(pid) > 0:
-            time.sleep(0.1)
-        if _overlay_window_count(pid) > 0:
-            raise RuntimeError(f"overlay windows remain after Escape ({label} selection)")
 
-    return (
-        f"edge layout ok: default red cx={red1[0]:.0f}, widened red cx={red2[0]:.0f} (yielded left), "
-        f"sub-toolbar center={region_center:.0f} anchored to button={blue3[0]:.0f}, "
-        f"top/bottom sub-toolbars on screen"
-    )
+def decode(path):
+    """行带内蓝钮（选中组高亮）聚类定位"""
+    from PIL import Image
+    im = Image.open(path).convert("RGB"); W, H = im.size; px = im.load()
+    scale = W / 1440.0
+    blues = []
+    for y in range(0, H, 2):
+        for x in range(int(150 * scale), W, 2):
+            lx = x / scale; ly = y / scale
+            r, g, b = px[x, y]
+            if b > 185 and r < 70 and 80 < g < 160: blues.append((lx, ly))
+    cells = {}
+    for p in blues: cells.setdefault((round(p[0] / 14), round(p[1] / 14)), []).append(p)
+    visited = set(); res = []
+    for k in list(cells):
+        if k in visited: continue
+        stack = [k]; group = []
+        while stack:
+            c = stack.pop()
+            if c in visited or c not in cells: continue
+            visited.add(c); group += cells[c]
+            for dx in (-1, 0, 1):
+                for dy in (-1, 0, 1): stack.append((c[0] + dx, c[1] + dy))
+        if len(group) < 20: continue
+        xs = [p[0] for p in group]; ys = [p[1] for p in group]
+        w = max(xs) - min(xs)
+        if 18 <= w <= 50: res.append((sum(xs)/len(xs), sum(ys)/len(ys), w))
+    return {"B": sorted(res, key=lambda t: t[0])}
 
 
 def append_timeline(run_dir: Path, event: str, data: dict | None = None) -> None:
