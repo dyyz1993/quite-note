@@ -13,5 +13,13 @@
         <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
         <enclosure url="https://github.com/dyyz1993/quite-note/releases/download/v1.4.0/QuiteNote-1.4.0.dmg" length="14476571" type="application/x-bzip2" sparkle:edSignature="Tc7LS7OVhPAfxVxmlM4YIxY5OiBkc3GDKlEasdXlyHqBjlDKctBgb30PZjddqVACHPgyIGZCV66jgbQalWbLBA=="/>
     </item>
-    </channel>
+        <item>
+        <title>Version 1.5.0</title>
+        <pubDate>Thu, 22 Oct 2026 18:37:18 +0000</pubDate>
+        <sparkle:version>1.5.0</sparkle:version>
+        <sparkle:shortVersionString>1.5.0</sparkle:shortVersionString>
+        <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+        <enclosure url="https://github.com/dyyz1993/quite-note/releases/download/v1.5.0/QuiteNote-1.5.0.dmg" length="13658385" type="application/x-bzip2" sparkle:edSignature="mlf1JhjV/BVvM818OvfmtL0DxalwVKQXKY7i3TzBB5EwLt1wjAKG4/995Jd6B+mKqL50gVrkU0iHfNyo48mfDA=="/>
+    </item>
+</channel>
 </rss>
