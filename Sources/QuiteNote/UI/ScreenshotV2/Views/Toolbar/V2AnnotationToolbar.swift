@@ -369,11 +369,17 @@ struct V2AnnotationToolbar: View {
                     expandedGroup = nil // 选中后关闭
                     syncExpansionSpecs()
                 }) {
-                    LucideView(
-                        name: IconName(rawValue: tool.rawValue) ?? .penTool,
-                        size: 16,
-                        color: stateManager.selectedTool == tool ? .white : Color.white.opacity(0.6)
-                    )
+                    Group {
+                        if tool == .dashedLine {
+                            AnyView(dashedLineGlyph(size: 16, color: stateManager.selectedTool == tool ? .white : Color.white.opacity(0.6)))
+                        } else {
+                            AnyView(LucideView(
+                                name: IconName(rawValue: tool.rawValue) ?? .penTool,
+                                size: 16,
+                                color: stateManager.selectedTool == tool ? .white : Color.white.opacity(0.6)
+                            ))
+                        }
+                    }
                     .frame(width: 30, height: 30)
                     .background(stateManager.selectedTool == tool ? Color.themeBlue500.opacity(0.6) : Color.white.opacity(0.1))
                     .cornerRadius(6)
@@ -431,6 +437,17 @@ struct V2AnnotationToolbar: View {
         if showAudioPicker { syncExpansionSpecs() }
     }
 
+    /// 虚线工具的自绘示意小图：Lucide 无贴切的虚线图标，slash 会被误读为笔画工具
+    private func dashedLineGlyph(size: CGFloat, color: Color) -> some View {
+        Path { p in
+            p.move(to: CGPoint(x: 3, y: size / 2))
+            p.addLine(to: CGPoint(x: size - 3, y: size / 2))
+        }
+        .stroke(style: StrokeStyle(lineWidth: 2, lineCap: .round, dash: [4.5, 3.5]))
+        .foregroundColor(color)
+        .frame(width: size, height: size)
+    }
+
     /// 工具组按钮
     @ViewBuilder
     private func groupButton(_ group: AnnotationToolGroup) -> some View {
@@ -458,11 +475,18 @@ struct V2AnnotationToolbar: View {
             }
             syncExpansionSpecs()
         }) {
-            LucideView(
-                name: IconName(rawValue: isSelected ? stateManager.selectedTool.rawValue : lastTool.rawValue) ?? .penTool,
-                size: 18,
-                color: isSelected ? .white : .white.opacity(0.5)
-            )
+            Group {
+                let shown = isSelected ? stateManager.selectedTool : lastTool
+                if shown == .dashedLine {
+                    AnyView(dashedLineGlyph(size: 18, color: isSelected ? .white : .white.opacity(0.5)))
+                } else {
+                    AnyView(LucideView(
+                        name: IconName(rawValue: shown.rawValue) ?? .penTool,
+                        size: 18,
+                        color: isSelected ? .white : .white.opacity(0.5)
+                    ))
+                }
+            }
             .frame(width: 34, height: 34)
             .background(isSelected ? Color.blue.opacity(0.8) : Color.clear)
             .cornerRadius(8)
