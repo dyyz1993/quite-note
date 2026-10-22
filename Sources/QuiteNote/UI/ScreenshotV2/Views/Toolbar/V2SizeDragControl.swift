@@ -23,12 +23,12 @@ struct V2SizeDragControl: View {
             ZStack {
                 // 外圆背景
                 Circle()
-                    .stroke(isDragging ? Color.blue : Color.white.opacity(0.3), lineWidth: 1.2)
+                    .stroke(isDragging ? Color.themeOverlaySelected : Color.themeOverlayDivider, lineWidth: 1.2)
                     .frame(width: outerSize, height: outerSize)
                 
                 // 内圆（指示当前大小）
                 Circle()
-                    .fill(isDragging ? Color.blue : Color.white.opacity(0.8))
+                    .fill(isDragging ? Color.themeOverlaySelected : Color.white.opacity(0.8))
                     .frame(width: calculateInnerSize(currentValue: currentValue, range: range), 
                            height: calculateInnerSize(currentValue: currentValue, range: range))
             }
@@ -37,7 +37,7 @@ struct V2SizeDragControl: View {
             // 底部固定数字
             Text("\(Int(currentValue))")
                 .font(.system(size: 9, weight: .bold, design: .monospaced))
-                .foregroundColor(isDragging ? .blue : .white.opacity(0.6))
+                .foregroundColor(isDragging ? Color.themeOverlaySelected : Color.themeOverlayIconMuted)
                 .frame(height: 10)
         }
         .frame(width: 34, height: 34) // 整体尺寸与其他图标对齐

@@ -16,7 +16,7 @@ private struct ToolbarHoverTooltip: ViewModifier {
                         .font(.system(size: 11))
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
-                        .background(Color.themeShadowHeavy)
+                        .background(Color.themeBlack50)
                         .foregroundColor(.white)
                         .cornerRadius(4)
                         .fixedSize()
@@ -154,9 +154,9 @@ struct V2AnnotationToolbar: View {
                 magnifierScaleGroup
             }
             
-            Divider().frame(height: 24).background(Color.white.opacity(0.2))
+            Divider().frame(height: 24).background(Color.themeOverlayDivider)
             actionButtonsGroup
-            Divider().frame(width: 1, height: 24).background(Color.white.opacity(0.2))
+            Divider().frame(width: 1, height: 24).background(Color.themeOverlayDivider)
 
             // OCR 文字识别按钮：对选区最终图跑本地 Vision 识别
             Button(action: {
@@ -186,7 +186,7 @@ struct V2AnnotationToolbar: View {
                 ZStack {
                     Circle()
                         .fill(LinearGradient(
-                            colors: [Color.blue.opacity(0.8), Color.blue],
+                            colors: [Color.themeOverlaySelected, Color.blue],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         ))
@@ -227,7 +227,7 @@ struct V2AnnotationToolbar: View {
             }) {
                 ZStack {
                     Circle()
-                        .fill(Color.white.opacity(0.12))
+                        .fill(Color.themeWhite30)
                         .frame(width: 34, height: 34)
 
                     Circle()
@@ -270,7 +270,7 @@ struct V2AnnotationToolbar: View {
         .padding(8)
         .background(
             RoundedRectangle(cornerRadius: 12)
-                .fill(Color.themeShadowHeavy.opacity(0.7))
+                .fill(Color.themeOverlayGlassOuter)
         )
     }
 
@@ -303,13 +303,13 @@ struct V2AnnotationToolbar: View {
             }
         }
         .padding(4)
-        .background(Color.black.opacity(0.4))
+        .background(Color.themeOverlayGlassInner)
         .cornerRadius(8)
     }
 
     private var colorSelectionGroup: some View {
         Group {
-            Divider().frame(height: 24).background(Color.white.opacity(0.2))
+            Divider().frame(height: 24).background(Color.themeOverlayDivider)
 
             HStack(spacing: 6) {
                 ForEach(colors, id: \.self) { color in
@@ -317,7 +317,7 @@ struct V2AnnotationToolbar: View {
                 }
             }
             .padding(6)
-            .background(Color.themeShadowMedium)
+            .background(Color.themeOverlayGlassInner)
             .cornerRadius(8)
         }
     }
@@ -366,17 +366,17 @@ struct V2AnnotationToolbar: View {
                 }) {
                     Group {
                         if tool == .dashedLine {
-                            AnyView(dashedLineGlyph(size: 16, color: stateManager.selectedTool == tool ? .white : Color.white.opacity(0.5)))
+                            AnyView(dashedLineGlyph(size: 16, color: stateManager.selectedTool == tool ? .white : Color.themeOverlayIconMuted))
                         } else {
                             AnyView(LucideView(
                                 name: IconName(rawValue: tool.rawValue) ?? .penTool,
                                 size: 16,
-                                color: stateManager.selectedTool == tool ? .white : Color.white.opacity(0.5)
+                                color: stateManager.selectedTool == tool ? .white : Color.themeOverlayIconMuted
                             ))
                         }
                     }
                     .frame(width: 30, height: 30)
-                    .background(stateManager.selectedTool == tool ? Color.blue.opacity(0.8) : Color.clear)
+                    .background(stateManager.selectedTool == tool ? Color.themeOverlaySelected : Color.clear)
                     .cornerRadius(6)
                 }
                 .buttonStyle(.plain)
@@ -384,11 +384,11 @@ struct V2AnnotationToolbar: View {
         }
         .padding(4)
         .background(
-            RoundedRectangle(cornerRadius: 10)
-                .fill(Color.black.opacity(0.4))
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color.themeOverlayGlassInner)
                 .background(
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(Color.themeShadowHeavy.opacity(0.7))
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.themeOverlayGlassOuter)
                 )
         )
     }
@@ -485,7 +485,7 @@ struct V2AnnotationToolbar: View {
                 }
             }
             .frame(width: 34, height: 34)
-            .background(isSelected ? Color.blue.opacity(0.8) : Color.clear)
+            .background(isSelected ? Color.themeOverlaySelected : Color.clear)
             .cornerRadius(8)
         }
         .buttonStyle(.plain)
@@ -496,7 +496,7 @@ struct V2AnnotationToolbar: View {
         Button(action: action) {
             LucideView(name: icon, size: 18, color: .white)
                 .frame(width: 34, height: 34)
-                .background(primary ? Color.themeBlue500 : Color.white.opacity(0.1))
+                .background(primary ? Color.themeOverlaySelected : Color.clear)
                 .cornerRadius(8)
         }
         .buttonStyle(.plain)
@@ -621,7 +621,7 @@ struct V2AnnotationToolbar: View {
             .padding(.vertical, 6)
             .background(
                 RoundedRectangle(cornerRadius: ThemeRadius.sm.rawValue)
-                    .fill(selected ? Color.themeBlue600.opacity(0.85) : Color.themeGray700)
+                    .fill(selected ? Color.themeOverlaySelected : Color.themeGray700)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: ThemeRadius.sm.rawValue)

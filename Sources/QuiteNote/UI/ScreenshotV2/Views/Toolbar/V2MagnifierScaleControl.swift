@@ -16,7 +16,7 @@ struct V2MagnifierScaleControl: View {
         VStack(spacing: 2) {
             ZStack {
                 // 背景图标
-                LucideView(name: .zoomIn, size: 14, color: isDragging ? .themeBlue500 : .themeTextTertiary)
+                LucideView(name: .zoomIn, size: 14, color: isDragging ? Color.themeOverlaySelected : .themeTextTertiary)
                     .frame(width: 18, height: 18)
             }
             .frame(height: 20)
@@ -24,7 +24,7 @@ struct V2MagnifierScaleControl: View {
             // 底部倍率文字
             Text(String(format: "%.1fx", currentValue))
                 .font(.system(size: 9, weight: .bold, design: .monospaced))
-                .foregroundColor(isDragging ? .themeBlue500 : .themeTextPrimary)
+                .foregroundColor(isDragging ? Color.themeOverlaySelected : .themeTextPrimary)
                 .frame(height: 10)
         }
         .frame(width: 38, height: 34)

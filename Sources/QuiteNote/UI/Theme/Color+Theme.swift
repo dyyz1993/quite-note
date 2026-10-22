@@ -137,6 +137,24 @@ extension Color {
     /// 聚焦状态 - 边框高亮
     static let themeFocused = Color.themeBlue500.opacity(0.3)
 
+    // MARK: - Overlay Toolbar（悬浮在截图/录屏内容上的工具条专用，2026-10-23 立）
+    //
+    // 截图工具栏/二级栏/录制控制条悬浮在任意壁纸上，可读性靠"双层玻璃底"保证：
+    // 外层深色压暗 + 内层黑色提对比（两层叠加约等于 62% 黑，壁纸上白色图标可读）。
+    // 此前各文件现场拼 Color.black.opacity(...) / themeShadowHeavy.opacity(...)，
+    // 同一语义出现 3+ 种写法（2026-10-23 审计），一律收敛到这里的 token。
+
+    /// Overlay 玻璃底 - 外层（压暗层，铺在内容之上）
+    static let themeOverlayGlassOuter = Color.themeShadowHeavy.opacity(0.7)
+    /// Overlay 玻璃底 - 内层（对比层，叠在压暗层之下）
+    static let themeOverlayGlassInner = Color.black.opacity(0.4)
+    /// Overlay 选中态底色（工具栏按钮选中时的蓝底，替代散落的 Color.blue / themeBlue500/600）
+    static let themeOverlaySelected = Color.themeBlue600.opacity(0.8)
+    /// Overlay 未选中图标色（50% 白）
+    static let themeOverlayIconMuted = Color.white.opacity(0.5)
+    /// Overlay 分隔线色（工具栏竖线/横线）
+    static let themeOverlayDivider = Color.white.opacity(0.2)
+
     // MARK: - Status Indicators
 
     /// 状态 - 空闲

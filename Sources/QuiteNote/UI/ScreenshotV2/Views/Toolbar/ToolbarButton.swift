@@ -22,7 +22,7 @@ struct ToolbarButton: View {
                     .foregroundColor(.white.opacity(0.8))
             }
             .frame(width: 44, height: 44)
-            .background(isHovered ? Color.white.opacity(0.1) : Color.clear)
+            .background(isHovered ? Color.themeHoverMedium : Color.clear)
             .cornerRadius(8)
         }
         .buttonStyle(.plain)
