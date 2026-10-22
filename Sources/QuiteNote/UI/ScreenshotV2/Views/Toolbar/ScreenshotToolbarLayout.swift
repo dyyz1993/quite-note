@@ -35,7 +35,7 @@ enum ScreenshotToolbarLayout {
         /// 二级工具栏顶边相对主栏包围盒上缘的挂载偏移。
         /// 二级高 42pt：-52 = 底边紧贴主栏顶上方 10pt（2026-10-22 依用户反馈收紧，
         /// 原 -60 的观感间隙过大）。改动需同步单测 ScreenshotToolbarLayoutTests。
-        static let subToolbarAttachY: CGFloat = -52
+        static let subToolbarAttachY: CGFloat = 0
         /// 音频弹层顶边相对主栏包围盒上缘的挂载偏移（沿表现状：ZStack 内 +54 + 外边距 8）
         static let audioPickerAttachY: CGFloat = 62
         /// 展开层垂直翻转（默认侧放不下时）到另一侧所用的间隙
