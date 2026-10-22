@@ -1,0 +1,17 @@
+<?xml version="1.0" standalone="yes"?>
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+    <channel>
+        <title>QuiteNote</title>
+        <link>https://dyyz1993.github.io/quite-note/appcast.xml</link>
+        <description>QuiteNote 更新清单</description>
+        <language>zh-cn</language>
+    <item>
+        <title>Version 1.4.0</title>
+        <pubDate>Thu, 22 Oct 2026 16:37:36 +0000</pubDate>
+        <sparkle:version>1.4.0</sparkle:version>
+        <sparkle:shortVersionString>1.4.0</sparkle:shortVersionString>
+        <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+        <enclosure url="https://github.com/dyyz1993/quite-note/releases/download/v1.4.0/QuiteNote-1.4.0.dmg" length="14476571" type="application/x-bzip2" sparkle:edSignature="PLACEHOLDER_WILL_RESIGN"/>
+    </item>
+    </channel>
+</rss>
