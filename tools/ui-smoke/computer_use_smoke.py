@@ -732,9 +732,9 @@ def _find_toolbar_buttons(capture: Path, display_width: float, y_lo: float, y_hi
             ys = [p[1] for p in group]
             cluster_width = (max(xs) - min(xs)) / scale
             info = f"{color} @{key} n={len(group)} w={cluster_width:.1f}pt x[{min(xs)/scale:.0f},{max(xs)/scale:.0f}]"
-            if len(group) < 40:
+            if len(group) < 25:
                 dbg.append(info + " REJECT:too-few"); continue
-            if not 22 <= cluster_width <= 48:
+            if not 18 <= cluster_width <= 50:
                 dbg.append(info + " REJECT:width"); continue
             position = ((min(xs) + max(xs)) / 2 / scale, (min(ys) + max(ys)) / 2 / scale)
             if color == "red" and row_y is not None and abs(position[1] - row_y) > 15:
