@@ -143,3 +143,31 @@ jobs:
             tools/ui-smoke/runs/ui-*/knowledge-candidate.md
           retention-days: 30
           if-no-files-found: warn
+
+      # 成功时的截图基准快照：推到 gh-pages 的 ui-baseline/（持久，不受 artifact 30 天限制），
+      # 供后续回归对比：https://dyyz1993.github.io/quite-note/ui-baseline/
+      - name: Snapshot UI baseline (PASS only)
+        if: success()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          RUN_DIR="$(find tools/ui-smoke/runs -maxdepth 1 -type d -name 'ui-*' -print -quit)"
+          [[ -n "$RUN_DIR" ]] || { echo "UI run directory missing" >&2; exit 2; }
+          GH_DIR="$RUNNER_TEMP/gh-pages-baseline"
+          git clone --depth 5 --branch gh-pages \
+            "https://x-access-token:${GITHUB_TOKEN}@github.com/${REPO}.git" "$GH_DIR" \
+            || { echo "gh-pages 不存在，跳过基线快照"; exit 0; }
+          python3 tools/ui-smoke/snapshot_ui_baseline.py "$RUN_DIR" "$GH_DIR" \
+            || { echo "快照未生成（非 PASS？）"; exit 0; }
+          cd "$GH_DIR"
+          if git status --porcelain | grep -q .; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add ui-baseline
+            git commit -m "ui-baseline: ${GITHUB_SHA::8} [skip ci]"
+            git push origin gh-pages
+            echo "基线已推送到 gh-pages"
+          else
+            echo "基线无变化"
+          fi
