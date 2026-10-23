@@ -68,7 +68,7 @@ echo "✅ 公证凭据: $NOTARY_PROFILE"
 # ------------------------------------------------------------------
 echo ""
 echo "🛠  构建 .app ..."
-./build-app.sh --no-launch
+APP_SIGN_IDENTITY="$SIGN_IDENTITY" ./build-app.sh --no-launch
 
 # 覆写 Info.plist 中的版本号（build-app.sh 内置写死 1.0.0）
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" -c "Set :CFBundleVersion $VERSION" "$APP_PATH/Contents/Info.plist" >/dev/null
