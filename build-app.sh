@@ -274,6 +274,13 @@ if [ "$APP_STORE_MODE" = false ]; then
     fi
     if [ -n "$SPARKLE_FRAMEWORK" ]; then
         echo "在 $SPARKLE_FRAMEWORK 找到 Sparkle.framework，复制到 Frameworks 目录..."
+        # CI 的老 SwiftPM 可能把 framework 内容直接铺进 .build 产物 app 的 Frameworks/
+        # （无 Sparkle.framework 目录层，导致 codesign 报 "Contents/Frameworks/Versions/B/..."）
+        # 检测到该形态时清空重拷
+        if [ -e "$CONTENTS/Frameworks/Versions" ]; then
+            echo "检测到铺开的 Sparkle 结构（Frameworks/Versions），清理..."
+            rm -rf "$CONTENTS/Frameworks"
+        fi
         rm -rf "$CONTENTS/Frameworks/Sparkle.framework"
         cp -R "$SPARKLE_FRAMEWORK" "$CONTENTS/Frameworks/"
         # 移除 dSYM 目录，减小包体并避免签名噪音
