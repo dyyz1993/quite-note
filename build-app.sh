@@ -278,6 +278,14 @@ if [ "$APP_STORE_MODE" = false ]; then
         cp -R "$SPARKLE_FRAMEWORK" "$CONTENTS/Frameworks/"
         # 移除 dSYM 目录，减小包体并避免签名噪音
         rm -rf "$CONTENTS/Frameworks/Sparkle.framework/Versions/B/Resources/dSYMs" 2>/dev/null || true
+        # 移除非英语本地化：CI 的 codesign 会把 Versions/B/Resources/*.lproj 误判为
+        # 子组件导致整包签名失败（"bundle format unrecognized"），运行时回退 en 无损
+        find "$CONTENTS/Frameworks/Sparkle.framework/Versions/B/Resources" -name "*.lproj" -not -name "en.lproj" -exec rm -rf {} + 2>/dev/null || true
+        # 先独立签名 framework（含嵌套 Updater.app），主包 --deep 签名时不再重签
+        if command -v codesign >/dev/null 2>&1 && [ -n "${APP_SIGN_IDENTITY:-}" ]; then
+            codesign --force --deep --sign "$APP_SIGN_IDENTITY" "$CONTENTS/Frameworks/Sparkle.framework" 2>/dev/null \
+              || codesign --force --deep -s - "$CONTENTS/Frameworks/Sparkle.framework" 2>/dev/null || true
+        fi
     else
         echo "警告：未找到 Sparkle.framework，在线更新功能将不可用（构建继续）"
     fi
