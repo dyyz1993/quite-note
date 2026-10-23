@@ -15,11 +15,11 @@
     </item>
         <item>
         <title>Version 1.5.0</title>
-        <pubDate>Thu, 22 Oct 2026 18:37:18 +0000</pubDate>
+        <pubDate>Thu, 23 Oct 2026 03:25:00 +0000</pubDate>
         <sparkle:version>1.5.0</sparkle:version>
         <sparkle:shortVersionString>1.5.0</sparkle:shortVersionString>
         <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
-        <enclosure url="https://github.com/dyyz1993/quite-note/releases/download/v1.5.0/QuiteNote-1.5.0.dmg" length="13658385" type="application/x-bzip2" sparkle:edSignature="mlf1JhjV/BVvM818OvfmtL0DxalwVKQXKY7i3TzBB5EwLt1wjAKG4/995Jd6B+mKqL50gVrkU0iHfNyo48mfDA=="/>
+        <enclosure url="https://github.com/dyyz1993/quite-note/releases/download/v1.5.0/QuiteNote-1.5.0.dmg" length="15061379" type="application/x-bzip2" sparkle:edSignature="3J0l8m8jiQn9cO1fr+im5yRA/PrUZ4tRq0fxLZBchTEzFdZXmO4yXhG9fv3f381fhua/uzAu8KMRF6AYgjjLBQ=="/>
     </item>
 </channel>
 </rss>
