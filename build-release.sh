@@ -79,6 +79,15 @@ echo "✅ 版本号已写入: $VERSION"
 # ------------------------------------------------------------------
 echo ""
 echo "🔐 Developer ID 签名 ..."
+# 嵌套 bundle 从内到外签：先 Sparkle.framework（含 Updater.app/XPCServices），
+# 再主包 --deep。CI 老版 codesign 直接 --deep 会在 framework 嵌套 lproj 上
+# 误报 "bundle format unrecognized"（.learnings/ERRORS.md 2026-10-23 条）
+SPARKLE_FW="$APP_PATH/Contents/Frameworks/Sparkle.framework"
+if [ -d "$SPARKLE_FW" ]; then
+    codesign --force --deep --options runtime --timestamp \
+        --sign "$SIGN_IDENTITY" "$SPARKLE_FW"
+    echo "✅ Sparkle.framework 预签名完成"
+fi
 codesign --force --deep --options runtime --timestamp \
     --identifier "$BUNDLE_ID" \
     --entitlements "$ENTITLEMENTS" \
