@@ -283,6 +283,10 @@ if [ "$APP_STORE_MODE" = false ]; then
         fi
         rm -rf "$CONTENTS/Frameworks/Sparkle.framework"
         cp -R "$SPARKLE_FRAMEWORK" "$CONTENTS/Frameworks/"
+        echo "[diag2] cp 后 Frameworks 顶层:"
+        ls "$CONTENTS/Frameworks/" | head -12
+        echo "[diag2] cp 后 Sparkle.framework 是否为目录:"
+        [ -d "$CONTENTS/Frameworks/Sparkle.framework" ] && echo "是目录" || echo "不是目录！"
         # 移除 dSYM 目录，减小包体并避免签名噪音
         rm -rf "$CONTENTS/Frameworks/Sparkle.framework/Versions/B/Resources/dSYMs" 2>/dev/null || true
         # 移除非英语本地化：CI 的 codesign 会把 Versions/B/Resources/*.lproj 误判为
