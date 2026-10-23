@@ -397,6 +397,10 @@ chmod +x "$MACOS_DIR/$EXECUTABLE_NAME"
 
 # 代码签名 (只在二进制变化时重新签名)
 if [ "$BINARY_CHANGED" = true ]; then
+    echo "[diag] Contents/Frameworks 内容:"
+    ls -la "$CONTENTS/Frameworks/" 2>/dev/null || true
+    echo "[diag] Sparkle.framework 顶层:"
+    ls "$CONTENTS/Frameworks/Sparkle.framework/" 2>/dev/null || true
     echo "二进制文件已变化，正在重新签名..."
 
     if command -v codesign >/dev/null 2>&1; then
