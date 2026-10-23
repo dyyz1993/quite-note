@@ -282,11 +282,14 @@ if [ "$APP_STORE_MODE" = false ]; then
             rm -rf "$CONTENTS/Frameworks"
         fi
         rm -rf "$CONTENTS/Frameworks/Sparkle.framework"
-        cp -R "$SPARKLE_FRAMEWORK" "$CONTENTS/Frameworks/"
-        echo "[diag2] cp 后 Frameworks 顶层:"
-        ls "$CONTENTS/Frameworks/" | head -12
-        echo "[diag2] cp 后 Sparkle.framework 是否为目录:"
-        [ -d "$CONTENTS/Frameworks/Sparkle.framework" ] && echo "是目录" || echo "不是目录！"
+        # ditto 保真复制（保留 symlink 结构与元数据；BSD cp -R 在某些 checkout
+        # 状态下会把 symlink 目录当实体拷出错误层级）
+        ditto "$SPARKLE_FRAMEWORK" "$CONTENTS/Frameworks/Sparkle.framework"
+        # 防御：若拷完仍不是目录（异常环境），直接终止而不是产出坏包
+        if [ ! -d "$CONTENTS/Frameworks/Sparkle.framework" ]; then
+            echo "错误：Sparkle.framework 复制异常，终止构建"
+            exit 1
+        fi
         # 移除 dSYM 目录，减小包体并避免签名噪音
         rm -rf "$CONTENTS/Frameworks/Sparkle.framework/Versions/B/Resources/dSYMs" 2>/dev/null || true
         # 移除非英语本地化：CI 的 codesign 会把 Versions/B/Resources/*.lproj 误判为
@@ -408,10 +411,6 @@ chmod +x "$MACOS_DIR/$EXECUTABLE_NAME"
 
 # 代码签名 (只在二进制变化时重新签名)
 if [ "$BINARY_CHANGED" = true ]; then
-    echo "[diag] Contents/Frameworks 内容:"
-    ls -la "$CONTENTS/Frameworks/" 2>/dev/null || true
-    echo "[diag] Sparkle.framework 顶层:"
-    ls "$CONTENTS/Frameworks/Sparkle.framework/" 2>/dev/null || true
     echo "二进制文件已变化，正在重新签名..."
 
     if command -v codesign >/dev/null 2>&1; then
