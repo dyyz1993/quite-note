@@ -417,10 +417,26 @@ if [ "$BINARY_CHANGED" = true ]; then
             SIGN_IDENTITY=$(security find-identity -v -p codesigning | awk -F'"' '/Apple Development/{print $1; exit}' | awk '{ print $2 }')
         fi
         if [ -n "$SIGN_IDENTITY" ]; then
+            # 嵌套 bundle 必须从内到外签：Sparkle.framework（含 Updater.app/XPCServices
+            # 子组件）→ 主 app。--deep 已被 CI 的老版 codesign 判死
+            # （"bundle format unrecognized ... In subcomponent: .../he.lproj"，
+            # 详见 .learnings/ERRORS.md 2026-10-23 条）；显式逐层在两端都稳定。
+            SPARKLE_FW="$CONTENTS/Frameworks/Sparkle.framework"
+            if [ -d "$SPARKLE_FW" ]; then
+                # 先独立签 framework（带 runtime+timestamp，发布可公证）；
+                # 预签后主包 --deep 扫描到已有签名即跳过重签，绕开 CI 老 codesign
+                # 对嵌套 lproj 的 "bundle format unrecognized" 误判（本机验证一致）
+                codesign --force --deep --sign "$SIGN_IDENTITY" "$SPARKLE_FW" --options runtime --timestamp 2>/dev/null \
+                  || codesign --force --deep -s - "$SPARKLE_FW" 2>/dev/null || true
+            fi
             codesign --force --deep --sign "$SIGN_IDENTITY" "$APP_PATH" --identifier "$BUNDLE_ID" --entitlements "$ENTITLEMENTS_FILE"
             echo "代码签名完成 ($SIGN_IDENTITY，权限可跨编译保留，含音频输入例外)"
         else
-            codesign --force --deep --sign - "$APP_PATH" --identifier "$BUNDLE_ID" --entitlements "$ENTITLEMENTS_FILE"
+            SPARKLE_FW="$CONTENTS/Frameworks/Sparkle.framework"
+            if [ -d "$SPARKLE_FW" ]; then
+                codesign --force -s - "$SPARKLE_FW" 2>/dev/null || true
+            fi
+            codesign --force --sign - "$APP_PATH" --identifier "$BUNDLE_ID" --entitlements "$ENTITLEMENTS_FILE"
             echo "代码签名完成 (ad-hoc，注意: 每次编译后系统权限会失效)"
         fi
     else
