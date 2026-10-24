@@ -7,7 +7,12 @@ struct MainApp: App {
 
     var body: some Scene {
         Settings {
-            PreferencesView()
+            if let store = appDelegate.recordStore, let bluetooth = appDelegate.bluetoothManager {
+                PreferencesView(store: store, bluetooth: bluetooth)
+            } else {
+                // 如果还没有初始化完成，显示一个占位符
+                EmptyView()
+            }
         }
     }
 }
@@ -18,15 +23,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var clipboard: ClipboardService?
     private var shortcuts: KeyboardShortcutManager?
 
+    // 公开的 store 和 bluetooth 属性供 PreferencesView 使用
+    var recordStore: RecordStore!
+    var bluetoothManager: BluetoothManager!
+
     /// 应用启动回调：初始化状态栏与悬浮窗
     func applicationDidFinishLaunching(_ notification: Notification) {
         print("[DEBUG] 应用启动中...")
-        
+
         NSApp.setActivationPolicy(.accessory)
-        
+
         let store = RecordStore()
-        clipboard = ClipboardService(store: store)
         let bluetooth = BluetoothManager()
+
+        clipboard = ClipboardService(store: store)
+        self.recordStore = store
+        self.bluetoothManager = bluetooth
+
         let heatmapVM = HeatmapViewModel(store: store)
         let ai = AIService()
         store.attachAI(service: ai)
