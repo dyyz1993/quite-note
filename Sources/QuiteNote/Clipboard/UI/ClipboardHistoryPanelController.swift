@@ -6,8 +6,8 @@ import SwiftUI
 enum ClipboardPanelKeyAction: Equatable {
     case moveUp
     case moveDown
-    case switchFilterLeft   // ← 切换筛选类型
-    case switchFilterRight  // → 切换筛选类型
+    case switchFilterLeft   // ⇧Tab 切换筛选类型（反向）
+    case switchFilterRight  // Tab 切换筛选类型（正向）
     case pasteSelected
     case pasteIndex(Int) // ⌘1–⌘9
     case saveToFlash     // ⌘S
@@ -240,9 +240,7 @@ final class ClipboardHistoryPanelController {
         removeKeyMonitor()
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self, let window = event.window, window === self.panel, window.isKeyWindow else { return event }
-            let isSearchFieldEditing = window.firstResponder is NSTextView
-                && searchFieldHandle?.currentEditor() === window.firstResponder
-            guard let action = Self.mapKey(event, isSearchFieldEditing: isSearchFieldEditing) else {
+            guard let action = Self.mapKey(event) else {
                 return event
             }
             self.onKeyAction?(action)
@@ -259,8 +257,7 @@ final class ClipboardHistoryPanelController {
 
     /// 按键映射（仅窗口聚焦时生效；⌘1–9 不注册全局，PRD 6）
     static func mapKey(
-        _ event: NSEvent,
-        isSearchFieldEditing: Bool
+        _ event: NSEvent
     ) -> ClipboardPanelKeyAction? {
         let flags = event.modifierFlags.intersection([.command, .option, .shift, .control])
         let keyCode = event.keyCode
@@ -279,15 +276,21 @@ final class ClipboardHistoryPanelController {
             }
         }
 
+        // ⇧Tab / Tab：切换分类筛选（输入框聚焦与否均生效——面板内 Tab 无其他用途）
+        // （2026-10-24 交互改版：←/→ 永远是输入框光标键（搜索框常驻聚焦），分类
+        // 切换移到 Tab——旧"←→ 未聚焦时切筛选"与常驻聚焦设计自相矛盾，实测切不动）
+        if flags == .shift, keyCode == 48 {
+            return .switchFilterLeft
+        }
+        if flags.isEmpty, keyCode == 48 {
+            return .switchFilterRight
+        }
+
         if flags.isEmpty {
             switch keyCode {
             case 125: return .moveDown      // ↓
             case 126: return .moveUp        // ↑
-            // 输入框内 ←/→ 是编辑键，必须交给 field editor 移动光标。
-            case 123:
-                return isSearchFieldEditing ? nil : .switchFilterLeft
-            case 124:
-                return isSearchFieldEditing ? nil : .switchFilterRight
+            // ←/→ 永远是输入框光标编辑键（搜索框常驻聚焦，方案 B：输入框/分类分工明确）
             case 36, 76: return .pasteSelected // Return / 小键盘 Enter
             case 117: return .deleteSelected // fn+Delete（向前删除）
             case 53: return .escape         // Esc（焦点在搜索框时 field editor 会吞 cancelOperation，这里直接拦）

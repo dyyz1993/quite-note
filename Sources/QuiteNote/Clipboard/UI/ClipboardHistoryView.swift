@@ -70,7 +70,7 @@ struct ClipboardHistoryView: View {
         VStack(spacing: 0) {
             if prefs.clipboardOnboarded {
                 bigSearchField   // 大搜索框（唤起即聚焦，尾部内联设置图标）
-                filterBar        // 轻量筛选胶囊（←→ 切换）
+                filterBar        // 轻量筛选胶囊（Tab 切换）
                 contentArea      // 白卡列表
                 shortcutFooter   // 底部快捷键提示 + 记录状态/保留策略
             } else {
@@ -171,14 +171,14 @@ struct ClipboardHistoryView: View {
         .background(ClipboardPalette.background)
     }
 
-    // MARK: - 筛选栏（浅色小胶囊，浅紫选中，←→ 键循环切换）
+    // MARK: - 筛选栏（浅色小胶囊，浅紫选中，Tab 键循环切换）
 
     private var filterBar: some View {
         HStack(spacing: 6) {
                         ForEach(ClipboardFilter.allCases, id: \.self) { item in
                 let isSelected = vm.filter == item
                 // 纯点按而非 Button：Button 会进键盘焦点链画系统焦点环（全键盘访问
-                // 开启时实锤，同设置齿轮问题）；筛选切换已有 ←→ 快捷键
+                // 开启时实锤，同设置齿轮问题）；筛选切换已有 Tab 快捷键
                 HStack(spacing: 4) {
                     LucideView(name: item.icon, size: 11, color: isSelected ? ClipboardPalette.accent : ClipboardPalette.textTertiary)
                     Text(item.label)
@@ -294,11 +294,11 @@ struct ClipboardHistoryView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    // MARK: - 底部快捷键提示（←→ 切类型 · ↑↓ 选条 · ↩ 粘贴）
+    // MARK: - 底部快捷键提示（Tab 切类型 · ↑↓ 选条 · ↩ 粘贴）
 
     private var shortcutFooter: some View {
         HStack(spacing: 14) {
-            Text("←→ 切换类型")
+            Text("Tab 切换类型")
             Text("↑↓ 选择")
             Text("↩ 粘贴")
             Text("⌘1–9 直贴")
