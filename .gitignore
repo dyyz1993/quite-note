@@ -31,7 +31,16 @@ cloud/feedback-worker/.admin-token
 tools/ui-smoke/runs/
 tools/ui-smoke/__pycache__/
 
+
 # 会话生成图与本地工具缓存
 generated-images/
 tools/__pycache__/
 .video_agent/
+
+# AI 设置校验产物（保留 pr 白名单目录）
+.artifacts/*
+!.artifacts/ai-settings-validation/
+.artifacts/ai-settings-validation/*
+!.artifacts/ai-settings-validation/pr/
+.artifacts/ai-settings-validation/pr/*
+!.artifacts/ai-settings-validation/pr/*

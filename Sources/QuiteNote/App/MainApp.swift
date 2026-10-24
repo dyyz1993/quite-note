@@ -86,11 +86,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.floatingPanelController?.show()
         }
 
-        // 尝试显式加载已随 App 打包的 LucideIcons 资源 bundle
-        // 使用 Bundle.main.bundleURL 直接构建到 Contents/Frameworks 的路径
+        // Discover the SwiftPM resource bundle without calling load(): this is
+        // a resource-only bundle, so Bundle.load() logs "Cannot find executable".
         let lucideBundleURL = Bundle.main.bundleURL.appendingPathComponent("Contents/Frameworks/LucideIcons_LucideIcons.bundle")
-        if let lucideBundle = Bundle(url: lucideBundleURL) {
-            lucideBundle.load()
+        if Bundle(url: lucideBundleURL) != nil {
             print("[DEBUG] LucideIcons bundle loaded explicitly from Contents/Frameworks.")
         } else {
             print("[DEBUG] Failed to explicitly load LucideIcons bundle from Contents/Frameworks.")

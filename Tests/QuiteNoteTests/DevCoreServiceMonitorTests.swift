@@ -1,4 +1,5 @@
 import XCTest
+import Combine
 @testable import QuiteNote
 
 final class DevCoreServiceMonitorTests: XCTestCase {
@@ -79,14 +80,31 @@ final class DevCoreServiceMonitorTests: XCTestCase {
         )
 
         monitor.refresh()
-        XCTAssertNil(monitor.snapshot)
-        // The real LaunchAgent is loaded in this developer session, so the fixture
-        // reaches its missing state file. Either failure is fail-closed and unhealthy.
-        XCTAssertNotNil(monitor.lastError)
-        XCTAssertTrue([
-            DevCoreServiceMonitorError.serviceUnavailable.localizedDescription,
-            DevCoreServiceMonitorError.stateUnreadable.localizedDescription,
-        ].contains(monitor.lastError))
+        // launchctl latency varies by machine load. Observe the published failure
+        // rather than asserting at an arbitrary wall-clock midpoint.
+        let expectation = expectation(description: "monitor fails closed")
+        var cancellables: [AnyCancellable] = []
+        let errorCancellable = monitor.$lastError.sink { error in
+            guard error != nil else { return }
+            DispatchQueue.main.async {
+                XCTAssertNil(monitor.snapshot)
+                // The real LaunchAgent is loaded in this developer session, so the
+                // fixture reaches its missing state file. Either failure is fail-closed.
+                XCTAssertTrue([
+                    DevCoreServiceMonitorError.serviceUnavailable.localizedDescription,
+                    DevCoreServiceMonitorError.stateUnreadable.localizedDescription,
+                ].contains(error))
+                expectation.fulfill()
+            }
+        }
+        let refreshingCancellable = monitor.$isRefreshing.dropFirst().sink { refreshing in
+            if !refreshing, monitor.lastError != nil {
+                expectation.fulfill()
+            }
+        }
+        cancellables = [errorCancellable, refreshingCancellable]
+        wait(for: [expectation], timeout: 5)
+        _ = cancellables
     }
 }
 

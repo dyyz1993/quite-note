@@ -50,6 +50,8 @@ final class DevCoreServiceMonitor: ObservableObject {
     private let stateURL: URL
     private let domain: String
     private var timer: Timer?
+    private var activeRefreshID: UUID?
+    private let launchctlQueue = DispatchQueue(label: "com.quitenote.app.dev.core-monitor", qos: .utility)
 
     init(
         bundleIdentifier: String? = Bundle.main.bundleIdentifier,
@@ -86,27 +88,50 @@ final class DevCoreServiceMonitor: ObservableObject {
     func refresh() {
         guard isDevBuild else { return }
         isRefreshing = true
-        defer { isRefreshing = false }
-        lastError = nil
+        let refreshID = UUID()
+        activeRefreshID = refreshID
+        // launchctl is an external process. Synchronous waitUntilExit on the main
+        // actor blocks first launch and can keep the app unresponsive if launchd
+        // is slow, which is exactly when this diagnostic monitor is needed most.
+        let stateURL = self.stateURL
+        let domain = self.domain
+        let heartbeatTimeout = self.heartbeatTimeout
+        let label = Self.label
+        launchctlQueue.async { [weak self] in
+            let result: Result<DevCoreServiceStatus, Error>
+            do {
+                let output = try Self.runLaunchctl(["print", "\(domain)/\(label)"], queue: nil)
+                guard Self.pid(fromLaunchctlOutput: output) != nil else {
+                    throw DevCoreServiceMonitorError.serviceUnavailable
+                }
+                let parsed = try Self.readStatus(at: stateURL)
+                guard let heartbeat = parsed.heartbeatAt,
+                      Date().timeIntervalSince(heartbeat) <= heartbeatTimeout else {
+                    throw DevCoreServiceMonitorError.stateStale
+                }
+                result = .success(parsed)
+            } catch {
+                result = .failure(error)
+            }
 
-        do {
-            launchdPID = try launchctlPID()
-            guard launchdPID != nil else {
-                throw DevCoreServiceMonitorError.serviceUnavailable
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                guard self.activeRefreshID == refreshID else { return }
+                self.isRefreshing = false
+                switch result {
+                case .success(let parsed):
+                    self.lastError = nil
+                    self.launchdPID = parsed.pid
+                    self.snapshot = parsed
+                    self.isHeartbeatStale = false
+                    self.lastStateUpdatedAt = Date()
+                case .failure(let error):
+                    self.snapshot = nil
+                    self.launchdPID = nil
+                    self.lastStateUpdatedAt = nil
+                    self.lastError = error.localizedDescription
+                }
             }
-            let parsed = try Self.readStatus(at: stateURL)
-            guard let heartbeat = parsed.heartbeatAt,
-                   Date().timeIntervalSince(heartbeat) <= heartbeatTimeout else {
-                throw DevCoreServiceMonitorError.stateStale
-            }
-            snapshot = parsed
-            isHeartbeatStale = false
-            lastStateUpdatedAt = Date()
-        } catch {
-            snapshot = nil
-            launchdPID = nil
-            lastStateUpdatedAt = nil
-            lastError = error.localizedDescription
         }
     }
 
@@ -118,8 +143,8 @@ final class DevCoreServiceMonitor: ObservableObject {
         do {
             isRestarting = true
             defer { isRestarting = false }
-            _ = try runLaunchctl(["print", "\(domain)/\(Self.label)"])
-            _ = try runLaunchctl(["kickstart", "-k", "\(domain)/\(Self.label)"])
+            _ = try Self.runLaunchctl(["print", "\(domain)/\(Self.label)"], queue: launchctlQueue)
+            _ = try Self.runLaunchctl(["kickstart", "-k", "\(domain)/\(Self.label)"], queue: launchctlQueue)
             refresh()
         } catch {
             lastError = error.localizedDescription
@@ -139,7 +164,11 @@ final class DevCoreServiceMonitor: ObservableObject {
     }
 
     private func launchctlPID() throws -> Int32? {
-        let output = try runLaunchctl(["print", "\(domain)/\(Self.label)"])
+        let output = try Self.runLaunchctl(["print", "\(domain)/\(Self.label)"], queue: nil)
+        return Self.pid(fromLaunchctlOutput: output)
+    }
+
+    nonisolated static func pid(fromLaunchctlOutput output: String) -> Int32? {
         for line in output.split(separator: "\n") {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             guard trimmed.hasPrefix("pid = ") else { continue }
@@ -149,7 +178,7 @@ final class DevCoreServiceMonitor: ObservableObject {
         return nil
     }
 
-    private func runLaunchctl(_ arguments: [String]) throws -> String {
+    nonisolated static func runLaunchctl(_ arguments: [String], queue: DispatchQueue?) throws -> String {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
         process.arguments = arguments
@@ -162,8 +191,18 @@ final class DevCoreServiceMonitor: ObservableObject {
         } catch {
             return ""
         }
-        // launchctl can block indefinitely if its service lookup wedges; keep UI
-        // and tests bounded rather than waiting on waitUntilExit.
+        try waitBounded(process: process)
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        let output = String(data: data, encoding: .utf8) ?? ""
+        guard process.terminationStatus == 0 else {
+            throw DevCoreServiceMonitorError.serviceUnavailable
+        }
+        return output
+    }
+
+    /// launchctl can block indefinitely if its service lookup wedges; keep the UI
+    /// and tests bounded instead of relying on `waitUntilExit()` without a deadline.
+    nonisolated private static func waitBounded(process: Process) throws {
         let semaphore = DispatchSemaphore(value: 0)
         DispatchQueue.global(qos: .utility).async {
             process.waitUntilExit()
@@ -173,11 +212,5 @@ final class DevCoreServiceMonitor: ObservableObject {
             process.terminate()
             throw DevCoreServiceMonitorError.serviceUnavailable
         }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        let output = String(data: data, encoding: .utf8) ?? ""
-        guard process.terminationStatus == 0 else {
-            throw DevCoreServiceMonitorError.serviceUnavailable
-        }
-        return output
     }
 }

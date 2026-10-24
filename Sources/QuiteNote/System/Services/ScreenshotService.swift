@@ -223,7 +223,7 @@ final class ScreenshotService {
                     sourceApp: "Screen Recording",
                     sourceUrl: resolvedVirtualPath,
                     type: .video,
-                    skipAI: true
+                    skipAI: resolvedVirtualPath == nil
                 )
                 self?.recordStore?.postLightHint("录屏已存入闪记 ✅")
                 DiagnosticCenter.info("Save", "录屏已存入闪记: \(fileURL.lastPathComponent)")
@@ -339,7 +339,7 @@ final class ScreenshotService {
             sourceApp: "Screen Capture",
             sourceUrl: sourceUrl,
             type: .screenshot,
-            skipAI: true
+            skipAI: sourceUrl == nil
         )
 
         print("[DEBUG ScreenshotService] \(message) 已保存并创建记录")

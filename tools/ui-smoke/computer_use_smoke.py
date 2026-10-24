@@ -534,35 +534,30 @@ def _ax_children(element):
 def _find_ax_element_by_identifier(identifier: str):
     global _target_ax_identifier
     _target_ax_identifier = identifier
-    # Targeted hit test avoids traversing large/offscreen AX trees on the remote Mac.
-    window = driver_global.foreground_floating_window()
-    if window:
+    # Prefer the known clipboard panel frame (760x520) over the generic foreground
+    # window selector. NSStatusItem creates small layered companion windows that
+    # can win that heuristic while pointing AX hit probes at menu chrome.
+    candidates = [
+        window for window in driver_global.windows()
+        if 700 <= window["frame"][2] <= 800 and 490 <= window["frame"][3] <= 550
+    ]
+    for window in candidates:
         x, y, width, height = window["frame"]
-        # The search field occupies the top strip of the 760x520 panel; lower
-        # probes hit the filter/list and require tree traversal to recover.
         for fraction in ((0.5, 0.055), (0.3, 0.06), (0.7, 0.06)):
             found = driver_global.element_at(x + width * fraction[0], y + height * fraction[1])
-            if found is not None and _target_ax_identifier in (
+            if found is None:
+                continue
+            identifiers = (
                 _ax_string(_ax_attribute(found, "AXIdentifier")),
                 _ax_string(_ax_attribute(found, "AXDescription")),
-            ):
+            )
+            if _target_ax_identifier in identifiers:
                 return found
-            if found is not None:
-                # Hit testing is bounded; avoid recursive tree walks that can hang
-                # once SwiftUI exposes a large accessibility tree.
-                if _ax_string(_ax_attribute(found, "AXRole")) == "AXTextField":
-                    return found
-                frame = driver_global.bounding_frame(found)
-                if frame:
-                    element_x, element_y, element_width, element_height = frame
-                    center_x = element_x + element_width / 2
-                    center_y = element_y + element_height / 2
-                    if x <= center_x <= x + width and y <= center_y <= y + height:
-                        print(
-                            f"AX hit candidate={identifier} role={_ax_string(_ax_attribute(found, 'AXRole'))} "
-                            f"frame={frame} window={(x, y, width, height)}",
-                            file=sys.stderr,
-                        )
+            # Some remote AX sessions omit the identifier during first hit resolution.
+            # The clipboard panel has exactly one text field, so role is a stable
+            # fallback without recursively traversing the large list tree.
+            if _ax_string(_ax_attribute(found, "AXRole")) == "AXTextField":
+                return found
     return None
 
 

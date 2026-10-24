@@ -15,6 +15,18 @@ final class ClipboardFlashNoteService {
 
     private init() {}
 
+    struct ImageAIDecision: Equatable {
+        let content: String
+        let shouldSummarize: Bool
+    }
+
+    /// 图片总结优先直接读取原图；OCR 文本只是附加上下文和本地搜索索引。
+    nonisolated static func imageAIDecision(ocrText: String?, imagePath: String? = nil) -> ImageAIDecision {
+        let content = ocrText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let hasReadableImage = imagePath.map { AIImagePayloadLoader.canLoad(path: $0) } == true
+        return ImageAIDecision(content: content, shouldSummarize: hasReadableImage || !content.isEmpty)
+    }
+
     /// 把条目提升为正式 Record 并建立关联
     /// - Returns: 成功关联的正式记录 id
     @discardableResult
@@ -44,13 +56,14 @@ final class ClipboardFlashNoteService {
             )
         case .image:
             // 复用同一份原图文件（虚拟路径），OCR 文本进正文便于原搜索命中（PRD 11：保留原图和 OCR 文本）
+            let decision = Self.imageAIDecision(ocrText: entry.ocrText, imagePath: entry.assetPath)
             record = store.addRecord(
-                content: entry.ocrText ?? "",
+                content: decision.content,
                 hash: entry.contentHash,
                 sourceApp: entry.sourceApp,
                 sourceUrl: entry.assetPath,
                 type: .image,
-                skipAI: true
+                skipAI: !decision.shouldSummarize
             )
         case .file:
             record = saveFileRecord(entry, store: store)

@@ -39,10 +39,6 @@ final class RecordAICOORDINATOR {
     /// 连接 AI 服务
     func attachAI(service: AIServiceProtocol) {
         self.ai = service
-        if let s = service as? AIService {
-            s.openAIBaseURL = prefs.openAIBaseURL
-            s.openAIModel = prefs.openAIModel
-        }
     }
 
     // MARK: - 单条记录处理
@@ -53,18 +49,56 @@ final class RecordAICOORDINATOR {
         existingTags: [String],
         completion: @escaping (RecordAIUpdate) -> Void
     ) {
-        guard enableAI, let ai else {
+        guard enableAI, ai != nil else {
             completion(.none)
             return
         }
 
-        guard record.content.count >= self.summaryTrigger else {
+        let imageSummary = record.type.isVisualRecord && record.sourceUrl != nil
+        guard imageSummary || record.content.count >= self.summaryTrigger else {
             Self.logger.info("内容长度不足 (\(record.content.count) < \(self.summaryTrigger))，跳过 AI 总结")
             completion(.none)
             return
         }
 
         isProcessing = true
+
+        startSummaryRequest(
+            record: record,
+            existingTags: existingTags
+        ) { [weak self] result in
+            self?.finishSummarization(record: record, result: result, completion: completion)
+        }
+    }
+
+    /// 单条/批量共用的模型调用分发：视觉记录走原图多模态，其余走文本。
+    private func startSummaryRequest(
+        record: Record,
+        existingTags: [String],
+        completion: @escaping (Result<SummaryResult, Error>) -> Void
+    ) {
+        guard let ai else {
+            completion(.failure(NSError(
+                domain: "RecordAICOORDINATOR",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "AI 服务尚未连接"]
+            )))
+            return
+        }
+
+        if record.type.isVisualRecord, let imagePath = record.sourceUrl {
+            ai.summarizeImage(
+                contextId: record.id.uuidString,
+                titleLimit: titleLimit,
+                summaryLimit: summaryLimit,
+                content: record.content,
+                imagePath: imagePath,
+                existingTags: existingTags
+            ) { result in
+                completion(result)
+            }
+            return
+        }
 
         ai.summarize(
             contextId: record.id.uuidString,
@@ -74,49 +108,47 @@ final class RecordAICOORDINATOR {
             existingTags: existingTags,
             systemPrompt: prefs.aiSystemPrompt,
             userPrompt: prefs.aiUserPrompt
-        ) { [weak self] result in
-            guard let self = self else {
-                completion(.none)
-                return
-            }
+        ) { result in
+            completion(result)
+        }
+    }
 
-            self.isProcessing = false
-
-            DispatchQueue.main.async {
-                switch result {
-                case .success(let s):
-                    // 处理标签合并：自动识别的标签 + AI 生成的标签
-                    var finalTags: [String]? = s.tags
-                    if let aiTags = s.tags {
-                        let autoTags = record.tags
-                        // 确保 AI 生成的标签不带 #
-                        let cleanedAITags = aiTags.map { t -> String in
-                            let trimmed = t.trimmingCharacters(in: .whitespacesAndNewlines)
-                            return trimmed.hasPrefix("#") ? String(trimmed.dropFirst()) : trimmed
-                        }
-                        finalTags = Array(Set(autoTags + cleanedAITags)).sorted()
+    private func finishSummarization(
+        record: Record,
+        result: Result<SummaryResult, Error>,
+        completion: @escaping (RecordAIUpdate) -> Void
+    ) {
+        isProcessing = false
+        DispatchQueue.main.async {
+            switch result {
+            case .success(let s):
+                var finalTags = s.tags
+                if let aiTags = s.tags {
+                    let cleaned = aiTags.map { tag in
+                        let trimmed = tag.trimmingCharacters(in: .whitespacesAndNewlines)
+                        return trimmed.hasPrefix("#") ? String(trimmed.dropFirst()) : trimmed
                     }
-
-                    // 处理关键词：确保都有 # 前缀且不超过 10 个
-                    var finalKeywords: [String]? = s.keywords
-                    if let aiKeywords = s.keywords {
-                        let cleaned = aiKeywords.prefix(10).map { k -> String in
-                            let trimmed = k.trimmingCharacters(in: .whitespacesAndNewlines)
-                            return trimmed.hasPrefix("#") ? trimmed : "#\(trimmed)"
-                        }
-                        finalKeywords = Array(cleaned)
-                    }
-
-                    completion(.success(
-                        title: s.title,
-                        summary: s.summary,
-                        confidence: s.confidence,
-                        tags: finalTags,
-                        keywords: finalKeywords
-                    ))
-                case .failure:
-                    completion(.failure)
+                    finalTags = Array(Set(record.tags + cleaned)).sorted()
                 }
+
+                var finalKeywords = s.keywords
+                if let aiKeywords = s.keywords {
+                    let cleaned = aiKeywords.prefix(10).map { keyword in
+                        let trimmed = keyword.trimmingCharacters(in: .whitespacesAndNewlines)
+                        return trimmed.hasPrefix("#") ? trimmed : "#\(trimmed)"
+                    }
+                    finalKeywords = Array(cleaned)
+                }
+
+                completion(.success(
+                    title: s.title,
+                    summary: s.summary,
+                    confidence: s.confidence,
+                    tags: finalTags,
+                    keywords: finalKeywords
+                ))
+            case .failure:
+                completion(.failure)
             }
         }
     }
@@ -130,7 +162,7 @@ final class RecordAICOORDINATOR {
         progressHandler: @escaping (Int, UUID, Record, RecordAIUpdate) -> Void,
         completion: @escaping () -> Void
     ) {
-        guard enableAI, let ai, !isBulkProcessing else {
+        guard enableAI, ai != nil, !isBulkProcessing else {
             if isBulkProcessing {
                 Self.logger.info("批量处理已在进行中，跳过重复调用")
             }
@@ -138,7 +170,16 @@ final class RecordAICOORDINATOR {
             return
         }
 
-        let targets = records.enumerated().filter { $0.element.title == nil }.prefix(batchSize)
+        let targets = records.enumerated().filter { _, record in
+            guard !record.skipAI, record.aiStatus != "pending" else { return false }
+            if record.type.isVisualRecord {
+                guard let sourceUrl = record.sourceUrl,
+                      AIImagePayloadLoader.canLoad(path: sourceUrl) else {
+                    return false
+                }
+            }
+            return record.title == nil || (record.type.isVisualRecord && record.aiStatus != "success")
+        }.prefix(batchSize)
         guard !targets.isEmpty else {
             Self.logger.info("没有需要处理的记录")
             completion()
@@ -150,29 +191,24 @@ final class RecordAICOORDINATOR {
         Self.logger.info("开始批量处理 \(totalCount) 条记录")
 
         let existingTags = getAllUniqueTags(from: records)
+        var completedCount = 0
 
         for (index, record) in targets {
-            // 检查是否已经在处理中
-            guard records[index].aiStatus != "pending" else {
-                Self.logger.info("跳过已在处理中的记录: \(index)")
-                continue
-            }
-
             // 更新状态为 pending
             progressHandler(index, record.id, record, .none)
 
-            ai.summarize(
-                contextId: record.id.uuidString,
-                titleLimit: titleLimit,
-                summaryLimit: summaryLimit,
-                content: record.content,
-                existingTags: existingTags,
-                systemPrompt: prefs.aiSystemPrompt,
-                userPrompt: prefs.aiUserPrompt
-            ) { [weak self] result in
+            startSummaryRequest(record: record, existingTags: existingTags) { [weak self] result in
                 guard let self = self else { return }
 
                 DispatchQueue.main.async {
+                    defer {
+                        completedCount += 1
+                        if completedCount == totalCount {
+                            self.isBulkProcessing = false
+                            completion()
+                        }
+                    }
+
                     switch result {
                     case .success(let s):
                         // 处理标签合并
@@ -212,10 +248,6 @@ final class RecordAICOORDINATOR {
                         Self.logger.info("批量处理记录 \(index) 失败")
                     }
 
-                    // 检查是否全部完成
-                    if index == totalCount - 1 {
-                        self.isBulkProcessing = false
-                    }
                 }
             }
         }
