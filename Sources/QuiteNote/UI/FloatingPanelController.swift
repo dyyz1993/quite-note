@@ -2,53 +2,18 @@ import SwiftUI
 import AppKit
 
 // MARK: - Colors & Theme
+// Note: Most colors are defined in Sources/QuiteNote/UI/Theme/Color+Theme.swift
+// This extension only contains FloatingPanelController-specific colors
+
 extension Color {
-    // Tailwind Colors Exact Match
-    // Gray Scale
-    static let themeBackground = Color(red: 17/255, green: 24/255, blue: 39/255) // gray-900
-    static let themeSidebar = Color(red: 31/255, green: 41/255, blue: 55/255)    // gray-800 (used for sidebar/tab bar in note.jsx often or similar dark)
-    // Note: note.jsx uses bg-black/20 for sidebar, but let's keep a variable for it.
-    
-    static let themeGray900 = Color(red: 17/255, green: 24/255, blue: 39/255)
-    static let themeGray800 = Color(red: 31/255, green: 41/255, blue: 55/255)
-    static let themeGray700 = Color(red: 55/255, green: 65/255, blue: 81/255)
-    static let themeGray600 = Color(red: 75/255, green: 85/255, blue: 99/255)
-    static let themeGray500 = Color(red: 107/255, green: 114/255, blue: 128/255)
-    static let themeGray400 = Color(red: 156/255, green: 163/255, blue: 175/255)
-    static let themeGray300 = Color(red: 209/255, green: 213/255, blue: 221/255)
-    static let themeGray200 = Color(red: 229/255, green: 231/255, blue: 235/255)
-    static let themeGray100 = Color(red: 243/255, green: 244/255, blue: 246/255)
-    
-    static let themeTextPrimary = themeGray200
-    static let themeTextSecondary = themeGray400
-    static let themeTextTertiary = themeGray500
+    // FloatingPanelController specific colors
+    static let themeSidebar = Color(red: 31/255, green: 41/255, blue: 55/255)    // gray-800 (used for sidebar)
+    // Note: note.jsx uses bg-black/20 for sidebar, but let's keep this for compatibility
 
-    // Transparents
-    static let themeCard = Color.white.opacity(0.05)       // bg-white/5
-    static let themeBorder = Color.white.opacity(0.1)      // border-white/10
-    static let themeBorderSubtle = Color.white.opacity(0.05) // border-white/5
-    static let themeHover = Color.white.opacity(0.1)       // hover:bg-white/10
-    static let themeItem = Color.white.opacity(0.05)       // bg-white/5
-    static let themeInput = Color.black.opacity(0.4)       // bg-black/40 (inputs)
-    static let themePanel = Color.black.opacity(0.2)       // bg-black/20 (sidebar/panels)
-
-    // Accents
     static let themeAccent = Color(red: 37/255, green: 99/255, blue: 235/255)    // blue-600
-    static let themeBlue500 = Color(red: 59/255, green: 130/255, blue: 246/255)
-    static let themeBlue400 = Color(red: 96/255, green: 165/255, blue: 250/255)
-    
-    static let themePurple500 = Color(red: 168/255, green: 85/255, blue: 247/255)
     static let themePurple = Color(red: 192/255, green: 132/255, blue: 252/255)  // purple-400
-    
-    static let themeGreen900 = Color(red: 20/255, green: 83/255, blue: 45/255)
-    static let themeGreen600 = Color(red: 22/255, green: 163/255, blue: 74/255)
-    static let themeGreen500 = Color(red: 34/255, green: 197/255, blue: 94/255)
     static let themeGreen = Color(red: 74/255, green: 222/255, blue: 128/255)    // green-400
-    
-    static let themeRed500 = Color(red: 239/255, green: 68/255, blue: 68/255)
     static let themeRed = Color(red: 248/255, green: 113/255, blue: 113/255)     // red-400
-    
-    static let themeYellow500 = Color(red: 234/255, green: 179/255, blue: 8/255)
     static let themeYellow = Color(red: 250/255, green: 204/255, blue: 21/255)   // yellow-400
 }
 
@@ -165,97 +130,92 @@ final class FloatingPanelController {
         NotificationCenter.default.addObserver(self, selector: #selector(onWindowKeyDidChange(_:)), name: NSWindow.didResignKeyNotification, object: panel)
     }
 
-    /// 显示悬浮窗，带缩放+淡入动效
+    /// 显示悬浮窗，带淡入动效
     func show() {
         print("[DEBUG] show() called")
         userHidden = false
-        
+
         // 1. 确保位置正确
         forceCenterWindow()
-        
+
         // 2. 重置透明度，防止动画状态残留
         panel.alphaValue = 1
         // 确保层级为浮动层级（比普通窗口高）
         panel.level = .floating
-        
-        // 3. 激活应用和窗口
-        // 对于 Accessory app，顺序很重要：先激活 App，再 OrderFront
-        NSApp.activate(ignoringOtherApps: true)
+
+        // 3. 显示窗口（保持Accessory模式，不切换ActivationPolicy）
         panel.makeKeyAndOrderFront(nil)
         panel.orderFrontRegardless()
-        
+
         // 4. 执行动画
         if animationsEnabled {
             panel.alphaValue = 0
             NSAnimationContext.runAnimationGroup { ctx in
-                ctx.duration = 0.3
+                ctx.duration = 0.2
                 ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
                 panel.animator().alphaValue = 1
             }
         }
-        
+
+        // 5. 重置悬停状态，确保UI正常显示
+        updateHoverState(hovering: false, animated: false)
+
         focusProvider.isKeyWindow = panel.isKeyWindow
         print("[DEBUG] show() 完成，isVisible: \(panel.isVisible), isKey: \(panel.isKeyWindow)")
     }
 
     /// 启动期强制确保悬浮窗可见并可在当前空间显示
-    /// 使用更稳健的策略：先尝试直接显示，如果失败则切换 Activation Policy
     func ensureVisibleOnLaunch() {
         print("[DEBUG] ensureVisibleOnLaunch() called - Force showing window")
         userHidden = false
-        
+
         // 停止之前的 Timer，避免冲突
         launchEnsurer?.invalidate()
         launchEnsurer = nil
-        
+
         // 1. 基础属性重置
         panel.alphaValue = 1
         panel.isOpaque = false
-        panel.level = .floating 
-        
+        panel.level = .floating
+
         // 2. 强制居中
         forceCenterWindow()
-        
-        // 3. 强制显示策略 (Accessory App 核心显示逻辑)
-        // 步骤 A: 常规显示尝试
+
+        // 3. 强制显示策略 (保持Accessory模式，不切换ActivationPolicy)
         panel.makeKeyAndOrderFront(nil)
         panel.orderFrontRegardless()
-        NSApp.activate(ignoringOtherApps: true)
-        
-        // 步骤 B: 延时强化 (保持 Accessory，不切换到 Regular，避免 Dock 显示)
+
+        // 4. 延时强化（确保窗口显示）
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
             guard let self = self else { return }
-            // 再次尝试激活并前置
-            NSApp.activate(ignoringOtherApps: true)
+            // 再次尝试前置
             self.panel.makeKeyAndOrderFront(nil)
             self.panel.orderFrontRegardless()
             let isKey = self.panel.isKeyWindow
             let isVisible = self.panel.isVisible
-            print("[DEBUG] 强化后状态: visible=\(isVisible), key=\(isKey), policy=\(NSApp.activationPolicy())")
+            print("[DEBUG] 强化后状态: visible=\(isVisible), key=\(isKey)")
         }
     }
 
-    /// 隐藏悬浮窗，带缩放+淡出动效
+    /// 隐藏悬浮窗，带淡出动效
     func hide() {
         // 标记为用户主动隐藏，并清理可能导致再次前置的定时器/状态
         userHidden = true
         hoverActive = false
         revertTimer?.invalidate(); revertTimer = nil
         launchEnsurer?.invalidate(); launchEnsurer = nil
-        
+
         if animationsEnabled {
             NSAnimationContext.runAnimationGroup { ctx in
-                ctx.duration = 0.4
-                ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.4, 0.0, 0.6, 1.0)
+                ctx.duration = 0.2
+                ctx.timingFunction = CAMediaTimingFunction(name: .easeIn)
                 panel.animator().alphaValue = 0
             } completionHandler: { [weak panel] in
                 panel?.orderOut(nil)
                 panel?.alphaValue = 1
-                NSApp.setActivationPolicy(.accessory)
             }
         } else {
             panel.orderOut(nil)
-            NSApp.setActivationPolicy(.accessory)
         }
         focusProvider.isKeyWindow = false
     }
@@ -275,7 +235,7 @@ final class FloatingPanelController {
         focusProvider.isKeyWindow = panel.isKeyWindow
     }
 
-    /// 悬停请求切换到 Regular 获取 KeyWindow
+    /// 悬停时请求窗口前置（保持Accessory模式）
     func requestRegularFocus(reason: String) {
         // 如果用户主动隐藏了窗口，则不进行任何前置操作
         if userHidden { return }
@@ -284,16 +244,17 @@ final class FloatingPanelController {
         if now - lastSwitchAt < 0.5 { return } // 节流 500ms
         lastSwitchAt = now
         hoverActive = true
-        print("[DEBUG] requestFocus(\(reason)) policy=\(NSApp.activationPolicy()) isKey=\(panel.isKeyWindow)")
+        print("[DEBUG] requestFocus(\(reason)) isKey=\(panel.isKeyWindow)")
         // 保持 Accessory，直接激活并前置
         DispatchQueue.main.async {
-            NSApp.activate(ignoringOtherApps: true)
             self.panel.makeKeyAndOrderFront(nil)
             self.panel.orderFrontRegardless()
+            // 确保悬停时UI正常显示
+            self.updateHoverState(hovering: true, animated: true)
         }
     }
 
-    /// 悬停离开后回退到 Accessory（防抖）
+    /// 悬停离开后让UI变淡（防抖）
     func scheduleRevertToAccessory() {
         // 如果用户主动隐藏了窗口，则直接返回，不进行回退策略（避免前置）
         if userHidden { return }
@@ -302,11 +263,10 @@ final class FloatingPanelController {
         revertTimer?.invalidate()
         revertTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { [weak self] _ in
             guard let self else { return }
-            // 只有在非悬停且非交互状态下才回退到 Accessory
+            // 只有在非悬停且非交互状态下才让UI变淡
             if !self.hoverActive && !self.isInteracting && !self.userHidden {
-                NSApp.setActivationPolicy(.accessory)
-                self.panel.orderFrontRegardless()
-                print("[DEBUG] revertToAccessory policy=\(NSApp.activationPolicy()) isKey=\(self.panel.isKeyWindow)")
+                self.updateHoverState(hovering: false, animated: true)
+                print("[DEBUG] UI 变淡")
             }
         }
     }
@@ -319,13 +279,32 @@ final class FloatingPanelController {
         let windowHeight: CGFloat = 640
         let centerX = screenFrame.midX - (windowWidth / 2)
         let centerY = screenFrame.midY - (windowHeight / 2)
-        
+
         let newFrame = NSRect(x: centerX, y: centerY, width: windowWidth, height: windowHeight)
         panel.setFrame(newFrame, display: true)
         panel.makeKeyAndOrderFront(nil)
         panel.orderFrontRegardless()
-        
+
         print("[DEBUG] 强制窗口居中，新位置: \(newFrame)")
+    }
+
+    /// 更新悬停状态（控制UI透明度）
+    /// hovering: true = 正常显示, false = 变淡显示
+    /// animated: 是否使用动画过渡
+    func updateHoverState(hovering: Bool, animated: Bool) {
+        let targetAlpha: CGFloat = hovering ? 1.0 : 0.85
+
+        if animated {
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0.2
+                ctx.allowsImplicitAnimation = true
+                panel.animator().alphaValue = targetAlpha
+            }
+        } else {
+            panel.alphaValue = targetAlpha
+        }
+
+        print("[DEBUG] updateHoverState: hovering=\(hovering), alpha=\(targetAlpha)")
     }
 }
 
@@ -342,161 +321,185 @@ struct FloatingRootView: View {
     @State private var settingsTab: String = "ai"
     @State private var expandedId: UUID? = nil
     @State private var searchTerm: String = ""
+    @State private var isHovering = false
+
+    // Sidebar View
+    private var sidebarView: some View {
+        ZStack(alignment: .top) {
+            Color.black.opacity(0.2) // bg-black/20
+            WindowDragHandler() // Allow dragging on sidebar background
+
+            HeatmapView(vm: heatmapVM)
+        }
+        .frame(width: 64) // w-16
+        .zIndex(10) // Fix Tooltip Z-Index (Ensure it renders above Main Content)
+        .overlay(Rectangle().frame(width: 1, height: nil, alignment: .trailing).foregroundColor(Color.themeBorder), alignment: .trailing)
+        .opacity(isHovering ? 1.0 : 0.7)
+    }
+
+    // Header View
+    private var headerView: some View {
+        HStack {
+            // Window Controls (Custom Red Dot)
+            HStack(spacing: 8) {
+                // Close (Red)
+                CloseButton(onClose: onClose)
+            }
+            .padding(.leading, 16)
+
+            Spacer()
+
+            Text(showSettings ? "偏好设置" : "剪切板历史")
+                .font(.system(size: 14, weight: .semibold)) // text-sm font-semibold
+                .foregroundColor(.themeGray200) // text-gray-200
+
+            Spacer()
+
+            // Bluetooth Icon (Lucide)
+            HStack(spacing: 12) {
+                Group {
+                    if let name = bluetooth.connectedDeviceName {
+                        LucideView(name: .bluetoothConnected, size: 14, color: .themeBlue400)
+                            .help("已连接: \(name)")
+                    } else if bluetooth.state == .poweredOn {
+                        LucideView(name: .bluetooth, size: 14, color: .themeYellow)
+                            .help("蓝牙已开启，未连接")
+                    } else {
+                        LucideView(name: .bluetoothOff, size: 14, color: .themeGray500)
+                            .help("蓝牙未开启")
+                    }
+                }
+                .font(.system(size: 14))
+                .frame(width: 16, height: 16) // Ensure it has size
+                .contentShape(Rectangle()) // Make sure it's clickable/hoverable
+                .onTapGesture {
+                    settingsTab = "bluetooth"
+                    withAnimation(.easeInOut(duration: 0.3)) { showSettings = true }
+                }
+                .pointingHandCursor()
+
+                HoverButton(icon: .settings, size: 16, isActive: showSettings) {
+                    settingsTab = "ai"
+                    withAnimation(.easeInOut(duration: 0.3)) { showSettings.toggle() }
+                }
+            }
+            .padding(.trailing, 16)
+        }
+        .frame(height: 48) // h-12
+        .background(
+            ZStack {
+                Color.themeBackground.opacity(0.5) // bg-gray-900/50
+                WindowDragHandler() // Allow dragging on header background
+            }
+        )
+        .overlay(Rectangle().frame(width: nil, height: 1, alignment: .bottom).foregroundColor(Color.themeBorder), alignment: .bottom)
+        .opacity(isHovering ? 1.0 : 0.7)
+    }
+
+    // Main Content View
+    private var mainContentView: some View {
+        VStack(spacing: 0) {
+            // Search Bar
+            HStack {
+                LucideView(name: .search, size: 16, color: .themeGray500)
+                TextField("搜索标题或内容...", text: $searchTerm)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 14)) // text-sm
+                    .foregroundColor(.themeGray100) // text-gray-100
+                    .disabled(!focus.isKeyWindow)
+            }
+            .padding(12) // p-3
+            .background(Color.black.opacity(0.1)) // bg-black/10
+            .overlay(Rectangle().frame(height: 1).foregroundColor(Color.themeBorder), alignment: .bottom)
+
+            let base = heatmapVM.filteredRecords()
+            let items = searchTerm.isEmpty ? base : base.filter { r in
+                (r.title ?? "").lowercased().contains(searchTerm.lowercased()) || r.content.lowercased().contains(searchTerm.lowercased())
+            }
+
+            ScrollView {
+                VStack(spacing: 12) {
+                    if items.isEmpty {
+                        VStack(spacing: 12) {
+                            Image(systemName: "magnifyingglass")
+                                .font(.system(size: 48))
+                                .opacity(0.2)
+                            Text("没有找到匹配的记录。")
+                                .font(.system(size: 14)) // text-sm
+                                .foregroundColor(.themeGray500)
+                        }
+                        .frame(height: 300)
+                    } else {
+                        ForEach(items.prefix(100)) { record in
+                            RecordCardView(record: record, expandedId: $expandedId, store: store)
+                        }
+                    }
+                }
+                .padding(16) // p-4
+            }
+
+            // Bottom Status Bar
+            HStack {
+                Text("记录条数: \(store.records.count) 条 (已过滤: \(store.records.count - items.count))")
+                Spacer()
+                Text("AI: \(store.enableAI ? "ON (阈值 > \(store.summaryTrigger) 字符)" : "OFF")")
+            }
+            .font(.system(size: 10)) // text-[10px]
+            .foregroundColor(.themeGray500) // text-gray-500
+            .padding(.horizontal, 16)
+            .frame(height: 32) // h-8
+            .background(Color.black.opacity(0.2)) // bg-black/20
+            .overlay(Rectangle().frame(height: 1).foregroundColor(Color.themeBorder), alignment: .top)
+            .opacity(isHovering ? 1.0 : 0.8)
+        }
+    }
 
     var body: some View {
-        ZStack(alignment: .topTrailing) {
-            HStack(spacing: 0) {
-                // Left Sidebar (Activity)
-                ZStack(alignment: .top) {
-                    Color.black.opacity(0.2) // bg-black/20
-                    WindowDragHandler() // Allow dragging on sidebar background
-                    
-                    HeatmapView(vm: heatmapVM)
-                }
-                .frame(width: 64) // w-16
-                .zIndex(10) // Fix Tooltip Z-Index (Ensure it renders above Main Content)
-                .overlay(Rectangle().frame(width: 1, height: nil, alignment: .trailing).foregroundColor(Color.themeBorder), alignment: .trailing)
+        HStack(spacing: 0) {
+            // Left Sidebar (Activity)
+            sidebarView
 
-                // Right Main Content
-                ZStack {
-                    Color.themeBackground.opacity(0.9) // bg-gray-900/90
-                    
-                    VStack(spacing: 0) {
-                        // Header (Drag area)
-                        HStack {
-                            // Window Controls (Custom Red Dot)
-                            HStack(spacing: 8) {
-                                // Close (Red)
-                                CloseButton(onClose: onClose)
-                            }
-                            .padding(.leading, 16)
-                            
-                            Spacer()
-                            
-                            Text(showSettings ? "偏好设置" : "剪切板历史")
-                                .font(.system(size: 14, weight: .semibold)) // text-sm font-semibold
-                                .foregroundColor(.themeGray200) // text-gray-200
-                            
-                            Spacer()
-                            
-                            // Bluetooth Icon (Lucide)
-                            HStack(spacing: 12) {
-                                Group {
-                                    if let name = bluetooth.connectedDeviceName {
-                                        LucideView(name: .bluetoothConnected, size: 14, color: .themeBlue400)
-                                            .help("已连接: \(name)")
-                                    } else if bluetooth.state == .poweredOn {
-                                        LucideView(name: .bluetooth, size: 14, color: .themeYellow)
-                                            .help("蓝牙已开启，未连接")
-                                    } else {
-                                        LucideView(name: .bluetoothOff, size: 14, color: .themeGray500)
-                                            .help("蓝牙未开启")
-                                    }
-                                }
-                                .font(.system(size: 14))
-                                .frame(width: 16, height: 16) // Ensure it has size
-                                .contentShape(Rectangle()) // Make sure it's clickable/hoverable
-                                .onTapGesture {
-                                    settingsTab = "bluetooth"
-                                    withAnimation(.easeInOut(duration: 0.3)) { showSettings = true }
-                                }
-                                .pointingHandCursor()
-                                
-                                HoverButton(icon: .settings, size: 16, isActive: showSettings) {
-                                    settingsTab = "ai"
-                                    withAnimation(.easeInOut(duration: 0.3)) { showSettings.toggle() }
-                                }
-                            }
-                            .padding(.trailing, 16)
-                        }
-                        .frame(height: 48) // h-12
-                        .background(
-                            ZStack {
-                                Color.themeBackground.opacity(0.5) // bg-gray-900/50
-                                WindowDragHandler() // Allow dragging on header background
-                            }
-                        )
-                        .overlay(Rectangle().frame(width: nil, height: 1, alignment: .bottom).foregroundColor(Color.themeBorder), alignment: .bottom)
-                        
+            // Right Content Area (Header + Main Content)
+            ZStack {
+                // Background and styling for the entire right area
+                Color.themeBackground.opacity(0.9)
+                    .cornerRadius(16)
+                    .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.themeBorder, lineWidth: 1))
+                    .shadow(color: Color.black.opacity(0.5), radius: 20, x: 0, y: 10)
+                    .ignoresSafeArea()
+
+                // Content Stack
+                VStack(spacing: 0) {
+                    // Header
+                    headerView
+
+                    // Main Content
+                    ZStack {
+                        Color.themeBackground.opacity(0.9) // bg-gray-900/90
+
                         if showSettings {
                             SettingsOverlayView(store: store, bluetooth: bluetooth, showSettings: $showSettings, initialTab: settingsTab)
                                 .transition(.move(edge: .trailing))
                         } else {
-                            // Main List
-                            VStack(spacing: 0) {
-                                // Search Bar
-                                HStack {
-                                    LucideView(name: .search, size: 16, color: .themeGray500)
-                                    TextField("搜索标题或内容...", text: $searchTerm)
-                                        .textFieldStyle(.plain)
-                                        .font(.system(size: 14)) // text-sm
-                                        .foregroundColor(.themeGray100) // text-gray-100
-                                        .disabled(!focus.isKeyWindow)
-                                }
-                                .padding(12) // p-3
-                                .background(Color.black.opacity(0.1)) // bg-black/10
-                                .overlay(Rectangle().frame(height: 1).foregroundColor(Color.themeBorder), alignment: .bottom)
-                                
-                                let base = heatmapVM.filteredRecords()
-                                let items = searchTerm.isEmpty ? base : base.filter { r in
-                                    (r.title ?? "").lowercased().contains(searchTerm.lowercased()) || r.content.lowercased().contains(searchTerm.lowercased())
-                                }
-                                
-                                ScrollView {
-                                    VStack(spacing: 12) {
-                                        if items.isEmpty {
-                                            VStack(spacing: 12) {
-                                                Image(systemName: "magnifyingglass")
-                                                    .font(.system(size: 48))
-                                                    .opacity(0.2)
-                                                Text("没有找到匹配的记录。")
-                                                    .font(.system(size: 14)) // text-sm
-                                                    .foregroundColor(.themeGray500)
-                                            }
-                                            .frame(height: 300)
-                                        } else {
-                                            ForEach(items.prefix(100)) { record in
-                                                RecordCardView(record: record, expandedId: $expandedId, store: store)
-                                            }
-                                        }
-                                    }
-                                    .padding(16) // p-4
-                                }
-                                
-                                // Bottom Status Bar
-                                HStack {
-                                    Text("记录条数: \(store.records.count) 条 (已过滤: \(store.records.count - items.count))")
-                                    Spacer()
-                                    Text("AI: \(store.enableAI ? "ON (阈值 > \(store.summaryTrigger) 字符)" : "OFF")")
-                                }
-                                .font(.system(size: 10)) // text-[10px]
-                                .foregroundColor(.themeGray500) // text-gray-500
-                                .padding(.horizontal, 16)
-                                .frame(height: 32) // h-8
-                                .background(Color.black.opacity(0.2)) // bg-black/20
-                                .overlay(Rectangle().frame(height: 1).foregroundColor(Color.themeBorder), alignment: .top)
-                            }
+                            mainContentView
                         }
                     }
                 }
-            }
-            
-            // Toast Overlay (Elevated to top level)
-            if let toast = store.toast {
-                ToastView(message: toast)
-                    .padding(.top, 32)
-                    .padding(.trailing, 32)
-                    .transition(.move(edge: .top).combined(with: .opacity))
-                    .zIndex(100)
+
+                // Toast Overlay (top-right of right content area)
+                if let toast = store.toast {
+                    ToastView(message: toast)
+                        .padding(.top, 32)
+                        .padding(.trailing, 32)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                        .zIndex(100)
+                }
             }
         }
-        .background(Color.themeBackground.opacity(0.9))
-        .cornerRadius(16)
-        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.themeBorder, lineWidth: 1))
-        .shadow(color: Color.black.opacity(0.5), radius: 20, x: 0, y: 10)
-        .ignoresSafeArea()
-        .kerning(0.5)
-        .onHover { hovering in onHoverChanged?(hovering) }
+        .onHover { hovering in
+            isHovering = hovering
+            onHoverChanged?(hovering)
+        }
         .simultaneousGesture(
             DragGesture(minimumDistance: 0)
                 .onChanged { _ in onInteractionChanged?(true) }
