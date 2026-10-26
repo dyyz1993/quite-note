@@ -5,9 +5,13 @@ on:
     branches: ['**']
   pull_request:
 
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   unit-tests:
-    runs-on: macos-15
+    runs-on: [self-hosted, macos-heavy]
     steps:
       - name: 检出代码
         uses: actions/checkout@v4

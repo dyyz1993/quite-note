@@ -9,11 +9,15 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ui-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-dev-artifact:
     name: Build Dev UI Artifact
     # The app now requires the macOS 26 SDK; use GitHub's hosted macOS image.
-    runs-on: macos-26
+    runs-on: [self-hosted, macos-heavy]
     steps:
       - uses: actions/checkout@v4
 

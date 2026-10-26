@@ -11,9 +11,13 @@ on:
     branches: [ master, main ]
   workflow_dispatch:
 
+concurrency:
+  group: build-macos-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-macos:
-    runs-on: macos-latest
+    runs-on: [self-hosted, macos-heavy]
 
     steps:
     - name: 检出代码
