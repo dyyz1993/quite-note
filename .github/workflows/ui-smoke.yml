@@ -47,7 +47,12 @@ jobs:
           uname -m
           swift build -c release --arch x86_64 --arch arm64 --product QuiteNote
           mkdir -p .build/release
-          cp .build/apple/Products/Release/QuiteNote .build/release/QuiteNote
+          # Cross-arch builds use the Xcode backend, whose output lives in
+          # .build/out/Products/Release/ rather than SwiftPM's apple layout.
+          BINARY="$(find .build -type f -name QuiteNote -path '*/Release/*' ! -path '*/Intermediates.noindex/*' ! -path '*.dSYM*' | head -n 1)"
+          [[ -n "$BINARY" ]] || { echo "QuiteNote binary not found"; exit 1; }
+          echo "Using binary: $BINARY"
+          cp "$BINARY" .build/release/QuiteNote
           [[ -n "$APP_SIGN_IDENTITY" ]] || { echo "APP_SIGN_IDENTITY was not prepared"; exit 2; }
           ./build-app.sh --dev --no-build --no-launch
 
