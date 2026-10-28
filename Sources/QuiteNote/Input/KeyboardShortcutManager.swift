@@ -219,6 +219,15 @@ final class KeyboardShortcutManager {
         
         if char.isEmpty { return false }
 
+        // 截图会话自己决定 ⌘C/⌘V：可能是复制标注元素、粘贴标注，
+        // 也可能要让 TextField 原生处理；这里不能抢先触发应用级粘贴。
+        let screenshotSessionActive = MainActor.assumeIsolated {
+            !V2ScreenshotController.debugPanels.isEmpty
+        }
+        if screenshotSessionActive && flags == .command && (char == "c" || char == "v") {
+            return false
+        }
+
         // 1. 检查截图快捷键
         if flags == cachedFlags && char == cachedShortcut {
             triggerScreenshot()

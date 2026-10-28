@@ -97,7 +97,9 @@ class V2ScreenshotController {
             // ✅ 使用支持文本输入的 V2TextInputPanel
             let panel = V2TextInputPanel(
                 contentRect: screen.frame,
-                styleMask: [.borderless, .nonactivatingPanel],
+                // The overlay must receive menu shortcuts. A nonactivating panel
+                // bypasses normal key-window routing, so the system handles them.
+                styleMask: [.borderless],
                 backing: .buffered,
                 defer: false
             )
@@ -188,22 +190,48 @@ class V2ScreenshotController {
                 return nil  // 阻止事件传递
             }
 
-            // 处理 Command+C/S/O/R
-            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-            if flags == .command {
-                if event.charactersIgnoringModifiers == "s" {
+            // 处理 Command+C/V/S/O/R
+            if let shortcut = screenshotShortcut(for: event) {
+                let manager = V2PrimaryScreenStateManager.shared
+                switch shortcut {
+                case .copy:
+                    switch copyCommandRoute(
+                        isEditingText: manager.isEditingTextAnnotation,
+                        hasSelectedElement: manager.hasSelectedAnnotation
+                    ) {
+                    case .nativeTextEditor:
+                        return event
+                    case .selectedAnnotation:
+                        if manager.copySelectedAnnotation() {
+                            return nil
+                        }
+                        NotificationCenter.default.post(name: NSNotification.Name("CopyScreenshot"), object: nil)
+                        return nil
+                    case .screenshot:
+                        NotificationCenter.default.post(name: NSNotification.Name("CopyScreenshot"), object: nil)
+                        return nil
+                    }
+                case .paste:
+                    switch pasteCommandRoute(
+                        isEditingText: manager.isEditingTextAnnotation,
+                        hasCopiedAnnotation: manager.hasCopiedAnnotation
+                    ) {
+                    case .nativeTextEditor:
+                        return event
+                    case .annotation:
+                        manager.pasteCopiedAnnotation()
+                    case .none:
+                        break
+                    }
+                    return nil
+                case .save:
                     NotificationCenter.default.post(name: NSNotification.Name("SaveScreenshot"), object: nil)
-                    return nil  // 阻止事件传递
-                } else if event.charactersIgnoringModifiers == "c" {
-                    NotificationCenter.default.post(name: NSNotification.Name("CopyScreenshot"), object: nil)
-                    return nil  // 阻止事件传递
-                } else if event.charactersIgnoringModifiers == "o" {
+                case .ocr:
                     NotificationCenter.default.post(name: NSNotification.Name("OCRScreenshot"), object: nil)
-                    return nil  // 阻止事件传递
-                } else if event.charactersIgnoringModifiers == "r" {
+                case .record:
                     NotificationCenter.default.post(name: NSNotification.Name("RecordScreenshot"), object: nil)
-                    return nil  // 阻止事件传递
                 }
+                return nil  // 阻止事件传递
             }
 
             return event
@@ -258,6 +286,58 @@ class V2ScreenshotController {
         case requireDoublePress
         case clearSelection
         case exitNow
+    }
+
+    enum V2ScreenshotShortcut: Equatable {
+        case save
+        case copy
+        case paste
+        case ocr
+        case record
+    }
+
+    enum V2CopyCommandRoute: Equatable {
+        case nativeTextEditor
+        case selectedAnnotation
+        case screenshot
+    }
+
+    enum V2PasteCommandRoute: Equatable {
+        case nativeTextEditor
+        case annotation
+        case none
+    }
+
+    static func copyCommandRoute(
+        isEditingText: Bool,
+        hasSelectedElement: Bool
+    ) -> V2CopyCommandRoute {
+        if isEditingText { return .nativeTextEditor }
+        return hasSelectedElement ? .selectedAnnotation : .screenshot
+    }
+
+    static func pasteCommandRoute(
+        isEditingText: Bool,
+        hasCopiedAnnotation: Bool
+    ) -> V2PasteCommandRoute {
+        if isEditingText { return .nativeTextEditor }
+        return hasCopiedAnnotation ? .annotation : .none
+    }
+
+    /// Compare only the shortcuts' meaningful modifiers. Caps Lock and Fn also
+    /// appear in modifierFlags, so exact equality would drop valid Cmd shortcuts.
+    static func screenshotShortcut(for event: NSEvent) -> V2ScreenshotShortcut? {
+        let flags = event.modifierFlags.intersection([.command, .option, .control, .shift])
+        guard flags == .command else { return nil }
+
+        switch event.charactersIgnoringModifiers?.lowercased() {
+        case "s": return .save
+        case "c": return .copy
+        case "v": return .paste
+        case "o": return .ocr
+        case "r": return .record
+        default: return nil
+        }
     }
 
     static func escDecision(hasElements: Bool, lastEscPress: Date?, now: Date, hasSelection: Bool) -> V2EscDecision {

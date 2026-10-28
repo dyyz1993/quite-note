@@ -1060,11 +1060,8 @@ struct V2ScreenshotView: View {
                             // 检查是否点击在当前文本编辑框附近（增加容错）
                             let rect = elementBoundingRect(element, selection: localSelectedArea, screenSize: screenSize).insetBy(dx: -15, dy: -15)
                             if !rect.contains(clickLocation) {
-                                // 点击了外部，完成并结束编辑
-                                if element.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                    primaryScreenManager.elements.removeAll { $0.id == selectedId }
-                                }
-                                primaryScreenManager.selectedElementId = nil
+                                // 点击外部完成输入：保留非空文本为选中态，并切回箭头工具
+                                primaryScreenManager.finishEditingTextElement(id: selectedId)
                                 addLog("Text Edit: Finished by clicking away")
                                 
                                 // ✨ 关键修复：点击空白处失焦后，不要在同一次点击中创建新文本
@@ -1351,7 +1348,7 @@ struct V2ScreenshotView: View {
                             color: element.color,
                             fontSize: element.fontSize,
                             onCommit: {
-                                primaryScreenManager.selectedElementId = nil
+                                primaryScreenManager.finishEditingTextElement(id: selectedId)
                             }
                         )
                     }

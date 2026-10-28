@@ -64,6 +64,11 @@ struct AnnotationTextEditorView: View {
                 isFocused = true
             }
         }
+        .onChange(of: isFocused) { focused in
+            if !focused {
+                onCommit()
+            }
+        }
         .onReceive(timer) { _ in
             blinkCursor.toggle()
         }

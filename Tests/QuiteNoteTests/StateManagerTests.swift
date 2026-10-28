@@ -76,4 +76,107 @@ final class StateManagerTests: XCTestCase {
         manager.updateElementSize(element.id, level: 2)
         XCTAssertEqual(manager.elements[0].fontSize, 24)
     }
+
+    /// 文字输入结束（失焦/点击其他区域）后，非空文本应保持选中并切到箭头工具。
+    func testFinishTextEditingKeepsElementSelectedAndSwitchesToCursor() {
+        let element = DrawingElement(
+            tool: .text,
+            points: [CGPoint(x: 20, y: 30)],
+            color: .red,
+            lineWidth: 4,
+            text: "标注文字"
+        )
+        manager.elements = [element]
+        manager.selectedTool = .text
+        manager.selectedElementId = element.id
+
+        manager.finishEditingTextElement(id: element.id)
+
+        XCTAssertEqual(manager.selectedTool, .cursor)
+        XCTAssertEqual(manager.selectedElementId, element.id)
+        XCTAssertEqual(manager.elements.count, 1)
+    }
+
+    /// 空文本结束编辑时应删除，不留下一个不可见的选中元素。
+    func testFinishEmptyTextEditingRemovesElementAndClearsSelection() {
+        let element = DrawingElement(
+            tool: .text,
+            points: [CGPoint(x: 20, y: 30)],
+            color: .red,
+            lineWidth: 4,
+            text: "   \n"
+        )
+        manager.elements = [element]
+        manager.selectedTool = .text
+        manager.selectedElementId = element.id
+
+        manager.finishEditingTextElement(id: element.id)
+
+        XCTAssertEqual(manager.selectedTool, .cursor)
+        XCTAssertNil(manager.selectedElementId)
+        XCTAssertTrue(manager.elements.isEmpty)
+    }
+
+    /// 选中元素后的 ⌘C/⌘V 走截图会话内部剪贴板，不覆盖系统截图。
+    func testCopyAndPasteSelectedAnnotationCreatesOffsetDuplicate() {
+        manager.updateSelection(
+            CGRect(x: 0, y: 0, width: 300, height: 300),
+            on: nil
+        )
+        let element = DrawingElement(
+            tool: .rectangle,
+            points: [CGPoint(x: 20, y: 30), CGPoint(x: 60, y: 80)],
+            color: .blue,
+            lineWidth: 5
+        )
+        manager.addElement(element)
+
+        XCTAssertTrue(manager.copySelectedAnnotation())
+        XCTAssertTrue(manager.hasCopiedAnnotation)
+        XCTAssertTrue(manager.pasteCopiedAnnotation())
+
+        XCTAssertEqual(manager.elements.count, 2)
+        let pasted = manager.elements[1]
+        XCTAssertNotEqual(pasted.id, element.id)
+        XCTAssertEqual(pasted.tool, .rectangle)
+        XCTAssertEqual(pasted.lineWidth, 5)
+        XCTAssertEqual(pasted.points[0], CGPoint(x: 32, y: 42))
+        XCTAssertEqual(pasted.points[1], CGPoint(x: 72, y: 92))
+        XCTAssertEqual(manager.selectedElementId, pasted.id)
+        XCTAssertEqual(manager.selectedTool, .cursor)
+    }
+
+    /// 文本编辑器聚焦时，⌘C/⌘V 必须交给 TextField，不能复制标注或截图。
+    func testTextEditingRoutesClipboardShortcutsToNativeTextField() {
+        let element = DrawingElement(
+            tool: .text,
+            points: [CGPoint(x: 20, y: 30)],
+            color: .red,
+            lineWidth: 4,
+            text: "可编辑文字"
+        )
+        manager.elements = [element]
+        manager.selectedTool = .text
+        manager.selectedElementId = element.id
+
+        XCTAssertTrue(manager.isEditingTextAnnotation)
+        XCTAssertFalse(manager.copySelectedAnnotation())
+        XCTAssertFalse(manager.pasteCopiedAnnotation())
+    }
+
+    /// 只在模型里残留 selectedElementId、但工具不是箭头时，不算可见选中态。
+    func testInactiveDrawingToolDoesNotExposeCopyableSelection() {
+        let element = DrawingElement(
+            tool: .rectangle,
+            points: [CGPoint(x: 20, y: 30)],
+            color: .blue,
+            lineWidth: 5
+        )
+        manager.elements = [element]
+        manager.selectedTool = .rectangle
+        manager.selectedElementId = element.id
+
+        XCTAssertFalse(manager.hasSelectedAnnotation)
+        XCTAssertFalse(manager.copySelectedAnnotation())
+    }
 }

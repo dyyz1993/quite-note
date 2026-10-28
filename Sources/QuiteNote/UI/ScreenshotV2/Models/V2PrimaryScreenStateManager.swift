@@ -84,6 +84,10 @@ class V2PrimaryScreenStateManager: ObservableObject {
     @Published var elements: [DrawingElement] = []
     /// 当前正在绘制的元素
     @Published var currentElement: DrawingElement?
+    /// 截图会话内的元素剪贴板，不覆盖系统剪贴板中的截图图片。
+    private var copiedAnnotation: DrawingElement?
+    private var annotationPasteCount = 0
+    var hasCopiedAnnotation: Bool { copiedAnnotation != nil }
     /// 当前选中的工具
     @Published var selectedTool: AnnotationTool = .cursor
     /// 当前选中的颜色
@@ -152,6 +156,23 @@ class V2PrimaryScreenStateManager: ObservableObject {
                 self.magnifierScale = element.magnifierScale
             }
         }
+    }
+
+    /// 文本编辑器是否正显示并接收键盘输入。
+    /// 此时 ⌘C/⌘V 应交给 TextField，而不是执行元素或整张截图的复制。
+    var isEditingTextAnnotation: Bool {
+        guard let id = selectedElementId,
+              selectedTool == .text,
+              let element = elements.first(where: { $0.id == id }) else {
+            return false
+        }
+        return element.tool == .text
+    }
+
+    /// 当前是否处于可见的箭头选中态（选中框只在 cursor 工具下显示）。
+    var hasSelectedAnnotation: Bool {
+        guard selectedTool == .cursor, let id = selectedElementId else { return false }
+        return elements.contains(where: { $0.id == id })
     }
 
     /// 放大镜预览状态（鼠标跟随模式）
@@ -224,6 +245,8 @@ class V2PrimaryScreenStateManager: ObservableObject {
         // 重置标注系统状态
         elements = []
         currentElement = nil
+        copiedAnnotation = nil
+        annotationPasteCount = 0
         selectedTool = .cursor
         selectedColor = .red
         lineWidth = 4.0
@@ -349,6 +372,68 @@ class V2PrimaryScreenStateManager: ObservableObject {
         if let index = elements.firstIndex(where: { $0.id == id }) {
             elements[index].text = text
         }
+    }
+
+    /// 文字输入结束：空文本删除；非空文本保留选中并切回选择工具。
+    func finishEditingTextElement(id: UUID) {
+        selectedTool = .cursor
+
+        guard let index = elements.firstIndex(where: { $0.id == id }) else {
+            if selectedElementId == id {
+                selectedElementId = nil
+            }
+            return
+        }
+
+        if elements[index].text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            elements.remove(at: index)
+            if selectedElementId == id {
+                selectedElementId = nil
+            }
+        } else {
+            selectedElementId = id
+        }
+    }
+
+    /// 复制当前选中的标注元素；文本编辑器聚焦时交给 TextField 原生复制。
+    @discardableResult
+    func copySelectedAnnotation() -> Bool {
+        guard hasSelectedAnnotation,
+              !isEditingTextAnnotation,
+              let id = selectedElementId,
+              let element = elements.first(where: { $0.id == id }) else {
+            return false
+        }
+
+        copiedAnnotation = element
+        annotationPasteCount = 0
+        return true
+    }
+
+    /// 粘贴截图会话内复制的标注元素，每次粘贴产生新 id 和轻微偏移。
+    @discardableResult
+    func pasteCopiedAnnotation() -> Bool {
+        guard !isEditingTextAnnotation, let copiedAnnotation else { return false }
+
+        annotationPasteCount += 1
+        let offset = pasteOffset(for: copiedAnnotation)
+        let duplicate = copiedAnnotation.duplicated(offsetBy: offset)
+        selectedTool = .cursor
+        addElement(duplicate)
+        return true
+    }
+
+    private func pasteOffset(for element: DrawingElement) -> CGSize {
+        let distance = 12 * CGFloat(annotationPasteCount)
+        guard let selection = selectedArea, !element.points.isEmpty else {
+            return CGSize(width: distance, height: distance)
+        }
+
+        let xs = element.points.map(\.x)
+        let ys = element.points.map(\.y)
+        let maxDx = max(0, selection.maxX - (xs.max() ?? selection.maxX))
+        let maxDy = max(0, selection.maxY - (ys.max() ?? selection.maxY))
+        return CGSize(width: min(distance, maxDx), height: min(distance, maxDy))
     }
 
     /// 清除所有标注元素

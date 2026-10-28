@@ -52,4 +52,73 @@ final class ScreenshotEscDecisionTests: XCTestCase {
             V2ScreenshotController.escDecision(hasElements: true, lastEscPress: now.addingTimeInterval(-1.0), now: now, hasSelection: true),
             .exitNow)
     }
+
+    /// Caps Lock is reported alongside Cmd; it must not hide screenshot shortcuts.
+    func testCommandShortcutIgnoresCapsLock() {
+        XCTAssertEqual(
+            V2ScreenshotController.screenshotShortcut(for: keyEvent("c", flags: [.command, .capsLock])),
+            .copy)
+    }
+
+    /// Extra user-visible modifiers still belong to a different shortcut.
+    func testCommandShiftCDoesNotTriggerCopy() {
+        XCTAssertNil(V2ScreenshotController.screenshotShortcut(for: keyEvent("c", flags: [.command, .shift])))
+    }
+
+    func testBareCDoesNotTriggerCopy() {
+        XCTAssertNil(V2ScreenshotController.screenshotShortcut(for: keyEvent("c", flags: [])))
+    }
+
+    func testCommandVMapsToPaste() {
+        XCTAssertEqual(
+            V2ScreenshotController.screenshotShortcut(for: keyEvent("v", flags: [.command, .capsLock])),
+            .paste
+        )
+    }
+
+    /// 有元素选中时复制元素；没有选中时才复制整张截图。
+    func testCopyCommandRoutesSelectedElementBeforeScreenshot() {
+        XCTAssertEqual(
+            V2ScreenshotController.copyCommandRoute(isEditingText: false, hasSelectedElement: true),
+            .selectedAnnotation
+        )
+        XCTAssertEqual(
+            V2ScreenshotController.copyCommandRoute(isEditingText: false, hasSelectedElement: false),
+            .screenshot
+        )
+        XCTAssertEqual(
+            V2ScreenshotController.copyCommandRoute(isEditingText: true, hasSelectedElement: true),
+            .nativeTextEditor
+        )
+    }
+
+    func testPasteCommandRequiresCopiedAnnotationUnlessEditingText() {
+        XCTAssertEqual(
+            V2ScreenshotController.pasteCommandRoute(isEditingText: false, hasCopiedAnnotation: true),
+            .annotation
+        )
+        XCTAssertEqual(
+            V2ScreenshotController.pasteCommandRoute(isEditingText: false, hasCopiedAnnotation: false),
+            .none
+        )
+        XCTAssertEqual(
+            V2ScreenshotController.pasteCommandRoute(isEditingText: true, hasCopiedAnnotation: true),
+            .nativeTextEditor
+        )
+    }
+
+    private func keyEvent(_ character: String, flags: NSEvent.ModifierFlags) -> NSEvent {
+        NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: flags,
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            characters: character,
+            charactersIgnoringModifiers: character,
+            isARepeat: false,
+            keyCode: 8
+        )!
+    }
 }

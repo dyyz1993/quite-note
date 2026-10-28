@@ -132,6 +132,26 @@ struct DrawingElement: Identifiable {
     var magnifierOffset: CGSize = .zero  // 放大镜显示位置的偏移量
     var magnifierSourcePoint: CGPoint? = nil // 放大镜实际放大的源点（内容锁定位置）
     var magnifierScale: CGFloat = 2.0   // ✨ 新增：放大倍率 (1.0 - 5.0)
+
+    /// 创建带新 id 的副本，用于元素复制/粘贴。
+    func duplicated(offsetBy offset: CGSize) -> DrawingElement {
+        DrawingElement(
+            tool: tool,
+            points: points.map {
+                CGPoint(x: $0.x + offset.width, y: $0.y + offset.height)
+            },
+            color: color,
+            lineWidth: lineWidth,
+            text: text,
+            fontSize: fontSize,
+            stepNumber: stepNumber,
+            magnifierOffset: magnifierOffset,
+            magnifierSourcePoint: magnifierSourcePoint.map {
+                CGPoint(x: $0.x + offset.width, y: $0.y + offset.height)
+            },
+            magnifierScale: magnifierScale
+        )
+    }
 }
 
 /// 裁剪框调整手柄
