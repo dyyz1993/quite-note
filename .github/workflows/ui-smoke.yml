@@ -48,7 +48,12 @@ jobs:
           # The UI smoke host is an Intel Mac, so the Dev app must contain an
           # x86_64 slice. A native-arch build here produces an arm64-only
           # binary and the smoke dies with "Bad CPU type in executable".
-          swift build -c release --arch x86_64 --arch arm64 --product QuiteNote
+          # The rpath must be injected here: build-app.sh only adds it when it
+          # runs swift build itself, and this job reuses a prebuilt binary
+          # (--no-build). Without it the app cannot load Sparkle.framework
+          # ("Library not loaded: @rpath/Sparkle.framework").
+          swift build -c release --arch x86_64 --arch arm64 --product QuiteNote \
+            -Xlinker -rpath -Xlinker "@executable_path/../Frameworks"
           # Cross-arch builds use the Xcode backend, whose products live in
           # .build/apple/Products/Release/ rather than SwiftPM's plain layout.
           BINARY="$(find .build -type f -name QuiteNote -path '*/Products/Release/*' \
@@ -68,6 +73,10 @@ jobs:
             cp "$BINARY" .build/release/QuiteNote
           fi
           lipo -info .build/release/QuiteNote
+          # Fail fast if the rpath is missing: the app would only fail later,
+          # at launch, with a dyld error.
+          otool -l .build/release/QuiteNote | grep -q "@executable_path/../Frameworks" || {
+            echo "Binary is missing the @executable_path/../Frameworks rpath"; exit 1; }
           [[ -n "$APP_SIGN_IDENTITY" ]] || { echo "APP_SIGN_IDENTITY was not prepared"; exit 2; }
           ./build-app.sh --dev --no-build --no-launch
 
