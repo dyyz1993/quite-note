@@ -913,33 +913,71 @@ def dark_band_right(path, width, row_cy):
 
 
 def decode(path):
-    """行带内蓝钮（选中组高亮）聚类定位"""
+    """行带内蓝钮（选中组高亮）与红钮（录制按钮）聚类定位"""
     from PIL import Image
     im = Image.open(path).convert("RGB"); W, H = im.size; px = im.load()
     scale = W / 1440.0
+
+    def clusters(points, min_width=0, max_width=60, min_size=20):
+        cells = {}
+        for p in points: cells.setdefault((round(p[0] / 14), round(p[1] / 14)), []).append(p)
+        visited = set(); res = []
+        for k in list(cells):
+            if k in visited: continue
+            stack = [k]; group = []
+            while stack:
+                c = stack.pop()
+                if c in visited or c not in cells: continue
+                visited.add(c); group += cells[c]
+                for dx in (-1, 0, 1):
+                    for dy in (-1, 0, 1): stack.append((c[0] + dx, c[1] + dy))
+            if len(group) < min_size: continue
+            xs = [p[0] for p in group]; ys = [p[1] for p in group]
+            w = max(xs) - min(xs)
+            if min_width <= w <= max_width:
+                res.append((sum(xs)/len(xs), sum(ys)/len(ys), w, len(group)))
+        return res
+
     blues = []
     for y in range(0, H, 2):
         for x in range(int(150 * scale), W, 2):
             lx = x / scale; ly = y / scale
             r, g, b = px[x, y]
             if b > 185 and r < 70 and 80 < g < 160: blues.append((lx, ly))
-    cells = {}
-    for p in blues: cells.setdefault((round(p[0] / 14), round(p[1] / 14)), []).append(p)
-    visited = set(); res = []
-    for k in list(cells):
-        if k in visited: continue
-        stack = [k]; group = []
-        while stack:
-            c = stack.pop()
-            if c in visited or c not in cells: continue
-            visited.add(c); group += cells[c]
-            for dx in (-1, 0, 1):
-                for dy in (-1, 0, 1): stack.append((c[0] + dx, c[1] + dy))
-        if len(group) < 20: continue
-        xs = [p[0] for p in group]; ys = [p[1] for p in group]
-        w = max(xs) - min(xs)
-        if 18 <= w <= 50: res.append((sum(xs)/len(xs), sum(ys)/len(ys), w))
-    return {"B": sorted(res, key=lambda t: t[0])}
+
+    # The record button uses themeRed500 (#EF4444). Keep it strict so the
+    # orange-red wallpaper on the test Mac cannot poison the detection.
+    reds = []
+    for y in range(0, H, 2):
+        for x in range(int(150 * scale), W, 2):
+            r, g, b = px[x, y]
+            if r > 175 and 40 < g < 115 and 45 < b < 115 and r - g > 90: reds.append((x / scale, y / scale))
+
+    # The toolbar row is identified by the largest blue cluster: the selected
+    # group button is a solid ~33pt block, while wallpaper and desktop icons
+    # only produce small specks. Anchoring on the leftmost cluster instead
+    # would put the row on the noise.
+    all_blues = clusters(blues)
+    if not all_blues:
+        return {"B": [], "R": []}
+    row_y = max(all_blues, key=lambda c: c[3])[1]
+
+    blue_clusters = sorted(
+        [c for c in all_blues if abs(c[1] - row_y) <= 15 and 18 <= c[2] <= 50],
+        key=lambda t: t[0],
+    )
+
+    # The record button sits on the same row but is narrower than the blue
+    # group buttons, so the width window differs between the two colours.
+    red_clusters = [c for c in clusters(reds) if abs(c[1] - row_y) <= 15 and 8 <= c[2] <= 50]
+    red_clusters = sorted(red_clusters, key=lambda t: t[0])
+
+    return {"B": blue_clusters, "R": red_clusters}
+
+    return {
+        "B": blue_clusters,
+        "R": sorted(red_clusters, key=lambda t: t[0]),
+    }
 
 
 def append_timeline(run_dir: Path, event: str, data: dict | None = None) -> None:
