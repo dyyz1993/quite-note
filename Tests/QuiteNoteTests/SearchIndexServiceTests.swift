@@ -104,13 +104,31 @@ final class SearchIndexServiceTests: XCTestCase {
 
     func testAsyncSearchSupersedesOldResult() {
         let service = SearchIndexService<Doc>(documents: [doc("one", title: "needle one")])
-        let oldResult = expectation(description: "old result")
-        oldResult.isInverted = true
+        // The search runs on a serial background queue, so on a fast or
+        // lightly loaded machine it can deliver before cancel() bumps the
+        // generation token. The inverted expectation then failed on timing
+        // rather than on behaviour, which made the suite flaky under CI
+        // load. Make it deterministic: occupy the service queue with a slow
+        // rebuild so the search is still pending when cancel() lands.
+        let delivered = expectation(description: "old result")
+        delivered.isInverted = true
+        let rebuildStarted = expectation(description: "rebuild started")
+        let release = DispatchSemaphore(value: 0)
 
-        service.search("needle") { _ in oldResult.fulfill() }
+        service.rebuild(using: {
+            rebuildStarted.fulfill()
+            release.wait()
+            return [self.doc("v2", title: "needle")]
+        })
+        wait(for: [rebuildStarted], timeout: 1.0)
+
+        // The service queue is now busy inside the rebuild, so this search
+        // cannot have been delivered yet.
+        service.search("needle") { _ in delivered.fulfill() }
         service.cancel()
 
-        wait(for: [oldResult], timeout: 0.3)
+        wait(for: [delivered], timeout: 0.3)
+        release.signal()
     }
 
     func testLargeIndexSearchStaysFast() {
