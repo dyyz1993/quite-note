@@ -49,7 +49,7 @@ jobs:
           mkdir -p .build/release
           # Cross-arch builds use the Xcode backend, whose output lives in
           # .build/out/Products/Release/ rather than SwiftPM's apple layout.
-          BINARY="$(find .build -type f -name QuiteNote -path '*/Release/*' ! -path '*/Intermediates.noindex/*' ! -path '*.dSYM*' | head -n 1)"
+          BINARY="$(find "$(pwd)/.build" -type f -name QuiteNote -path '*/Release/*' ! -path '*/Intermediates.noindex/*' ! -path '*.dSYM*' | head -n 1)"
           [[ -n "$BINARY" ]] || { echo "QuiteNote binary not found"; exit 1; }
           echo "Using binary: $BINARY"
           rm -f .build/release/QuiteNote
