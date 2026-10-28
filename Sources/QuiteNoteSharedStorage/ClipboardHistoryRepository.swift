@@ -114,11 +114,17 @@ public final class ClipboardHistoryRepository {
         let context = makeBackgroundContext()
         context.performAndWait {
             let request = NSFetchRequest<CDClipboardEntry>(entityName: "CDClipboardEntry")
-            request.predicate = NSPredicate(
-                format: "contentHash == %@ OR plainText == %@",
-                input.contentHash,
-                input.plainText ?? UUID().uuidString
-            )
+            // A file reference and copied text can contain the same path, but
+            // have different paste semantics. Deduplicate only within one type;
+            // retain the text fallback for entries written with legacy hashes.
+            var contentPredicates = [NSPredicate(format: "contentHash == %@", input.contentHash)]
+            if let text = input.plainText {
+                contentPredicates.append(NSPredicate(format: "plainText == %@", text))
+            }
+            request.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
+                NSPredicate(format: "type == %@", input.type.rawValue),
+                NSCompoundPredicate(orPredicateWithSubpredicates: contentPredicates),
+            ])
             request.sortDescriptors = [NSSortDescriptor(key: "createdAt", ascending: false)]
             request.fetchLimit = 1
 
@@ -270,9 +276,10 @@ public final class ClipboardHistoryRepository {
         let evictable = entries
             .filter { !$0.isPinned && $0.savedRecordID == nil && !victims.contains($0.id) }
             .sorted { $0.createdAt < $1.createdAt }
-        let survivingEvictable = evictable.count - victims.count
-        if survivingEvictable > maxEntries {
-            let overflow = survivingEvictable - maxEntries
+        // Expired entries were already excluded above. Subtracting victims
+        // again would leave the remaining ordinary history over its limit.
+        if evictable.count > maxEntries {
+            let overflow = evictable.count - maxEntries
             for entry in evictable.prefix(overflow) {
                 victims.insert(entry.id)
             }

@@ -2,11 +2,11 @@
 
 [![CI](https://github.com/dyyz1993/quite-note/actions/workflows/test.yml/badge.svg)](https://github.com/dyyz1993/quite-note/actions/workflows/test.yml)
 [![Release](https://img.shields.io/github/v/release/dyyz1993/quite-note)](https://github.com/dyyz1993/quite-note/releases)
-![Platform](https://img.shields.io/badge/platform-macOS%2012%2B-black)
+![Platform](https://img.shields.io/badge/platform-macOS%2013%2B-black)
 ![Swift](https://img.shields.io/badge/Swift-SwiftUI-orange)
 [![License](https://img.shields.io/badge/license-MIT-green)](#-许可证)
 
-> macOS 原生剪切板管理器：历史记录 · AI 内容提炼 · 专业截图 · 长图拼接 —— **100% 本地运行，数据不出你的电脑**
+> macOS 原生剪切板管理器：历史记录 · AI 内容提炼 · 专业截图 · 长图拼接 —— **记录本地保存，AI 服务按需启用**
 
 基于 **SwiftUI** 构建，常驻状态栏，极致精简。
 
@@ -32,7 +32,11 @@
 
 ## 🔒 隐私
 
-所有剪切板数据 **100% 本地存储与处理**，无任何上传、无任何追踪。
+- 剪贴板历史、闪记和附件默认保存在你的 Mac，截图 OCR 使用 macOS Vision 在本机处理。
+- AI 是可选功能。启用并使用后，相关文本或图片会发送到你配置的连接及所选模型；是否在本地处理取决于该服务和模型，不能仅凭本机接口地址判断。API 密钥保存在 macOS 钥匙串中。
+- 主动提交用户反馈时，会上传你提交的反馈及所选附件；链接图标可能向对应网站请求 favicon。请根据需要选择这些功能。
+
+详细数据处理说明见[隐私政策](privacy-site/index.html)。
 
 ## 📥 安装
 
@@ -51,9 +55,11 @@
 项目使用 **Swift Package Manager** 管理，CI 全流程由 GitHub Actions 驱动：
 
 ```bash
-swift build        # 构建
-swift test         # 运行测试
+./build-app.sh --dev --no-launch   # 构建隔离的开发版应用包，不启动应用
+swift test                       # 在具备相应 macOS SDK 的 Xcode 环境运行测试
 ```
+
+单元测试 CI 使用 macOS 15 / Xcode 16.4，并通过 `LEGACY_CI_SDK` 编译兼容路径；这条测试不覆盖需要 macOS 26 SDK 的语音转录实现。交互式 UI 验证使用专用测试 Mac 和隔离数据目录，参见 [UI 测试说明](docs/ui-test-knowledge.md)。
 
 工作流覆盖：测试 → macOS 打包 → DMG 生成 → Release 发布。
 

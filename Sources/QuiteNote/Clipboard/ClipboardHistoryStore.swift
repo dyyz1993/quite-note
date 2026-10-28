@@ -173,7 +173,9 @@ final class ClipboardHistoryStore: ObservableObject {
 
         if let index = entries.firstIndex(where: { $0.id == savedEntry.id }) {
             entries[index] = savedEntry
-        } else if let index = entries.firstIndex(where: { $0.contentHash == savedEntry.contentHash }) {
+        } else if let index = entries.firstIndex(where: {
+            $0.type == savedEntry.type && $0.contentHash == savedEntry.contentHash
+        }) {
             entries[index] = savedEntry
         } else {
             let firstUnpinned = entries.firstIndex(where: { !$0.isPinned }) ?? entries.count
