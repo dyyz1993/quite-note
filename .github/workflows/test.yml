@@ -21,7 +21,19 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .build
-          key: swift-build-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
+          # The key must include the toolchain: .build/out holds
+          # SDKExplicitPrecompiledModules, whose .pcm files are only valid for
+          # the Xcode/SDK that produced them. Reusing them across an Xcode
+          # upgrade fails the build with "module file ... .pcm not found".
+          key: swift-build-${{ runner.os }}-${{ hashFiles('Package.resolved') }}-${{ hashFiles('Package.swift') }}
+          restore-keys: |
+            swift-build-${{ runner.os }}-${{ hashFiles('Package.resolved') }}-
+
+      - name: 清除失效的显式模块缓存
+        # Belt-and-braces: a restored cache from an older toolchain can still
+        # contain precompiled modules for a different SDK. Drop them so the
+        # build regenerates them against the current toolchain.
+        run: rm -rf .build/out/SDKExplicitPrecompiledModules .build/out/ModuleCache.noindex
 
       - name: 运行全部单元测试
         # SpeechAnalyzer/SpeechTranscriber require the macOS 26 SDK; GitHub's

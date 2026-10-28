@@ -412,6 +412,12 @@ fi
 
 prepare_worktree() {
   if [[ ! -d "$WORKTREE/.git" && ! -f "$WORKTREE/.git" ]]; then
+    # A previous run can leave the worktree registered in .git/worktrees while
+    # its directory was already removed (actions/checkout wipes
+    # .ui-smoke-worktrees/ but not the metadata). Re-adding then fails with
+    # "is a missing but already registered worktree" and aborts the whole run.
+    git worktree prune
+    git worktree remove --force "$WORKTREE" >/dev/null 2>&1 || true
     git worktree add --detach "$WORKTREE" "$GIT_COMMIT" >/dev/null
   fi
   if [[ "$ALLOW_DIRTY" == true && "$GIT_REF" == "HEAD" ]]; then
