@@ -46,14 +46,14 @@ jobs:
         run: |
           uname -m
           swift build -c release --arch x86_64 --arch arm64 --product QuiteNote
+          BIN_DIR="$(swift build -c release --arch x86_64 --arch arm64 --product QuiteNote --show-bin-path | tail -n 1)"
           mkdir -p .build/release
-          # Cross-arch builds use the Xcode backend, whose output lives in
-          # .build/out/Products/Release/ rather than SwiftPM's apple layout.
-          BINARY="$(find "$(pwd)/.build" -type f -name QuiteNote -path '*/Release/*' ! -path '*/Intermediates.noindex/*' ! -path '*.dSYM*' | head -n 1)"
-          [[ -n "$BINARY" ]] || { echo "QuiteNote binary not found"; exit 1; }
-          echo "Using binary: $BINARY"
+          # Cross-arch builds use the Xcode backend, so ask SwiftPM where the
+          # binary actually lives instead of guessing apple-vs-out layouts.
+          [[ -f "$BIN_DIR/QuiteNote" ]] || { echo "QuiteNote binary missing in $BIN_DIR"; exit 1; }
+          echo "Using binary: $BIN_DIR/QuiteNote"
           rm -f .build/release/QuiteNote
-          ditto "$BINARY" .build/release/QuiteNote
+          cp "$BIN_DIR/QuiteNote" .build/release/QuiteNote
           [[ -n "$APP_SIGN_IDENTITY" ]] || { echo "APP_SIGN_IDENTITY was not prepared"; exit 2; }
           ./build-app.sh --dev --no-build --no-launch
 
