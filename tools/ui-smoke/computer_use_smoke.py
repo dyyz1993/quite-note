@@ -51,13 +51,14 @@ driver_global = None
 
 
 def _cua_scale() -> float:
-    """cua 截图像素 / 逻辑pt 的换算系数。
+    """cua 点击坐标相对逻辑点的缩放系数。
 
-    cua 截的是缩放后的桌面（1366pt 宽），而坐标按显示器逻辑点给出；
-    用实际显示宽度换算，避免把 1440 当成唯一可能的屏幕宽度。
+    cua reports screen_width as the logical display width and takes click
+    coordinates in those same logical points - only its screenshots are
+    scaled down. Scaling the clicks by the screenshot size therefore moved
+    every click about 5% to the left of the intended target.
     """
-    display_w, _ = _main_display_size()
-    return (1366 / display_w) if display_w else (1366 / 1440)
+    return 1.0
 
 
 class BlockedError(RuntimeError):
@@ -632,12 +633,11 @@ def _cua_call(tool: str, args: str) -> str:
 
 
 def _mouse_click(x: float, y: float) -> None:
-    # cua 的 desktop click 带真实指针路径（hover 前置），SwiftUI 按钮可可靠响应；
-    # 坐标为截图像素（×px/pt 因子）
-    pt = 1366 / 1440
+    # cua 的 desktop click 带真实指针路径（hover 前置），SwiftUI 按钮可可靠响应。
+    # cua 接收的是逻辑点坐标（screen_width），只有它自己的截图是缩放的。
     out = _cua_call("click", (
         f'{{"scope":"desktop","delivery_mode":"foreground",'
-        f'"x":{round(x * pt)},"y":{round(y * pt)}}}'))
+        f'"x":{round(x)},"y":{round(y)}}}'))
     if "error" in out or "pending" in out:
         raise RuntimeError(f"cua click failed at ({x:.0f},{y:.0f}): {out.strip()[:160]}")
     time.sleep(0.9)
