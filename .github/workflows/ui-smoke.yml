@@ -52,7 +52,8 @@ jobs:
           BINARY="$(find .build -type f -name QuiteNote -path '*/Release/*' ! -path '*/Intermediates.noindex/*' ! -path '*.dSYM*' | head -n 1)"
           [[ -n "$BINARY" ]] || { echo "QuiteNote binary not found"; exit 1; }
           echo "Using binary: $BINARY"
-          cp "$BINARY" .build/release/QuiteNote
+          rm -f .build/release/QuiteNote
+          ditto "$BINARY" .build/release/QuiteNote
           [[ -n "$APP_SIGN_IDENTITY" ]] || { echo "APP_SIGN_IDENTITY was not prepared"; exit 2; }
           ./build-app.sh --dev --no-build --no-launch
 
