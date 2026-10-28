@@ -9,8 +9,8 @@ import AppKit
 /// 就是 Alfred 的交互；rows(in: visibleRect) 可精确拿到可见行（⌘1–⌘9 锚定视口）。
 struct ClipboardListTableView: NSViewRepresentable {
     let entries: [ClipboardEntry]
-    /// store 的内容版本号：与 count 组成 O(1) 数据签名（旧 O(n) 签名串每次按键重建）
-    let entriesVersion: Int
+    /// 可见结果版本号：搜索/筛选结果等量替换也必须刷新，滚动时保持不变。
+    let entriesRevision: Int
     @Binding var selectedIndex: Int
     let onSingleClick: (Int) -> Void   // 单击 = 选中 + 复制
     let onDoubleClick: (Int) -> Void   // 双击 = 粘贴
@@ -34,6 +34,8 @@ struct ClipboardListTableView: NSViewRepresentable {
         table.target = context.coordinator
         table.dataSource = context.coordinator
         table.delegate = context.coordinator
+        table.setAccessibilityIdentifier("clipboard.list")
+        table.setAccessibilityLabel("剪贴板历史记录")
 
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("main"))
         column.isEditable = false
@@ -60,7 +62,9 @@ struct ClipboardListTableView: NSViewRepresentable {
         let reloadNeeded = context.coordinator.entriesSignature != signature
         if reloadNeeded {
             context.coordinator.entriesSignature = signature
+            context.coordinator.suppressSelectionCallback = true
             table?.reloadData()
+            context.coordinator.suppressSelectionCallback = false
             // 数据变化后保持选中在范围内
             let safe = min(max(0, selectedIndex), max(0, entries.count - 1))
             if safe != selectedIndex { selectedIndex = safe }
@@ -91,10 +95,9 @@ struct ClipboardListTableView: NSViewRepresentable {
         }
     }
 
-    /// O(1) 数据签名：count + store 版本号（置顶/OCR/增删/翻页都会 bump version，
-    /// 覆盖旧 O(n) 签名串的全部语义）
+    /// O(1) 数据签名：结果发布时递增，覆盖相同条数的不同搜索结果及元数据更新。
     private var signature: String {
-        "\(entries.count)-\(entriesVersion)"
+        "\(entries.count)-\(entriesRevision)"
     }
 
     // MARK: - Coordinator
@@ -273,8 +276,12 @@ final class ClipRowCell: NSTableCellView {
         shortcutLabel.alphaValue = (isSelected || paletteNumber != nil) ? 1 : 0.4
 
         // 图标：图片缩略图异步 / favicon 异步 / 类型符号同步
+        // 单元格会复用；先清除旧图，迟到的缩略图只能更新原条目。
+        iconView.image = nil
         ClipRowContent.icon(entry) { [weak self] image in
-            self?.iconView.image = image
+            guard let self, self.entry?.id == entry.id,
+                  self.entry?.assetPath == entry.assetPath else { return }
+            self.iconView.image = image
         }
         sourceIconView.image = ClipboardSourceAppIcon.icon(bundleID: entry.sourceBundleID)
         sourceIconView.isHidden = sourceIconView.image == nil

@@ -5,6 +5,7 @@ import AppKit
 /// 右栏详情：展示选中条目的完整内容（参考图双栏布局的右半区）
 struct ClipboardDetailPane: View, Equatable {
     let entry: ClipboardEntry?
+    var contentRevision: Int = 0
     var onRetryOCR: (() -> Void)? = nil
 
     /// 详情大图（异步降采样加载——body 里同步 NSImage(contentsOf:) 解码全分辨率
@@ -14,11 +15,10 @@ struct ClipboardDetailPane: View, Equatable {
 
     /// 按身份比较而非全字段：synthesized == 会逐字段比较 plainText/ocrText
     /// （可达 1MB），每次按键的视图 diff 都付这个成本（打字卡顿源）。
-    /// 内容变化（OCR 完成等）由 store.entriesVersion → 全表 reload 覆盖
+    /// 内容变化由可见结果版本号覆盖，避免同一条目的 OCR/粘贴次数等停留在旧值。
     static func == (lhs: ClipboardDetailPane, rhs: ClipboardDetailPane) -> Bool {
         lhs.entry?.id == rhs.entry?.id
-            && lhs.entry?.ocrStatus == rhs.entry?.ocrStatus
-            && lhs.entry?.isPinned == rhs.entry?.isPinned
+            && lhs.contentRevision == rhs.contentRevision
     }
 
     var body: some View {
@@ -36,6 +36,7 @@ struct ClipboardDetailPane: View, Equatable {
             }
         }
         .background(Color.white)
+        .accessibilityIdentifier("clipboard.detail")
     }
 
     @ViewBuilder

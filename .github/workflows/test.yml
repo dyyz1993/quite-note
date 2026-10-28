@@ -12,21 +12,31 @@ concurrency:
 
 jobs:
   unit-tests:
-    runs-on: [self-hosted, macos-heavy]
+    # Compile on a hosted Xcode image; the dedicated UI Mac only runs prebuilt apps.
+    runs-on: macos-15
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
+
+      - name: 验证 Xcode 和 Swift 工具链
+        run: |
+          xcodebuild -version
+          xcrun --sdk macosx --show-sdk-platform-path
+          xcrun --sdk macosx --show-sdk-version
+          swift --version
 
       - name: 缓存 SwiftPM 构建产物
         uses: actions/cache@v4
         with:
           path: .build
-          key: swift-build-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
+          key: swift-build-${{ runner.os }}-${{ runner.arch }}-macos15-xcode16.4-${{ hashFiles('Package.swift', 'Package.resolved') }}
 
       - name: 运行全部单元测试
-        # SpeechAnalyzer/SpeechTranscriber require the macOS 26 SDK; GitHub's
-        # macos-15 runner stays on the older SDK. Compile the speech path down
-        # to an unavailable stub there while retaining production availability.
+        # SpeechAnalyzer/SpeechTranscriber require the macOS 26 SDK. This
+        # Xcode 16.4 compatibility lane uses the unavailable stub while
+        # production builds retain the real speech implementation.
         run: >-
           swift test
           -Xswiftc -D -Xswiftc LEGACY_CI_SDK

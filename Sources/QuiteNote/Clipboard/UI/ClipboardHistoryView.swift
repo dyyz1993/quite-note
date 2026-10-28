@@ -145,20 +145,31 @@ struct ClipboardHistoryView: View {
             })
             if !vm.searchText.isEmpty {
                 LucideView(name: .circleX, size: 14, color: ClipboardPalette.textTertiary)
+                    .frame(width: 24, height: 24)
                     .contentShape(Rectangle())
-                    .onTapGesture { vm.searchText = "" }
+                    .onTapGesture { clearSearch() }
                     .pointingHandCursor()
+                    .help("清空搜索")
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("清空搜索")
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityAction { clearSearch() }
+                    .accessibilityIdentifier("clipboard.clear_search")
             }
             // 唯一的设置入口：内联小图标（替代整条标题栏，面板极简）。
             // 用 onTapGesture 而非 Button——Button 会进键盘焦点链画蓝色焦点环
             //（全键盘访问开启时实锤），纯图标无此问题
             LucideView(name: .settings, size: 14, color: ClipboardPalette.textTertiary)
+                .frame(width: 24, height: 24)
                 .contentShape(Rectangle())
-                .onTapGesture {
-                    QuiteNoteNotification.post(.showSettings, object: nil, userInfo: ["tab": "clipboard"])
-                }
+                .onTapGesture { openClipboardSettings() }
                 .pointingHandCursor()
                 .help("剪贴板设置")
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("剪贴板设置")
+                .accessibilityAddTraits(.isButton)
+                .accessibilityAction { openClipboardSettings() }
+                .accessibilityIdentifier("clipboard.settings")
         }
         .padding(.horizontal, 12)
         .frame(height: 46)
@@ -175,7 +186,7 @@ struct ClipboardHistoryView: View {
 
     private var filterBar: some View {
         HStack(spacing: 6) {
-                        ForEach(ClipboardFilter.allCases, id: \.self) { item in
+            ForEach(ClipboardFilter.allCases, id: \.self) { item in
                 let isSelected = vm.filter == item
                 // 纯点按而非 Button：Button 会进键盘焦点链画系统焦点环（全键盘访问
                 // 开启时实锤，同设置齿轮问题）；筛选切换已有 Tab 快捷键
@@ -193,9 +204,15 @@ struct ClipboardHistoryView: View {
                 .contentShape(Rectangle())
                 .onTapGesture { vm.filter = item }
                 .pointingHandCursor()
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(item.label)
+                .accessibilityValue(isSelected ? "已选中" : "未选中")
+                .accessibilityAddTraits(.isButton)
+                .accessibilityAction { vm.filter = item }
+                .accessibilityIdentifier("clipboard.filter.\(item.rawValue)")
             }
             Spacer()
-            Text("\(vm.visibleEntries.count) 条")
+            Text(vm.isSearching ? "搜索中…" : "\(vm.visibleEntries.count) 条")
                 .font(.system(size: 11))
                 .foregroundColor(ClipboardPalette.textTertiary)
                 .accessibilityIdentifier("clipboard.count")
@@ -223,7 +240,7 @@ struct ClipboardHistoryView: View {
                     Rectangle()
                         .fill(ClipboardPalette.inputBorder)
                         .frame(width: 1)
-                    ClipboardDetailPane(entry: selectedEntry) {
+                    ClipboardDetailPane(entry: selectedEntry, contentRevision: vm.visibleEntriesRevision) {
                         if let id = selectedEntry?.id {
                             ClipboardOCRQueue.shared.retry(entryID: id)
                             showHint("OCR 重试中…")
@@ -242,14 +259,16 @@ struct ClipboardHistoryView: View {
     private var entryList: some View {
         ClipboardListTableView(
             entries: vm.visibleEntries,
-            entriesVersion: store.entriesVersion,
+            entriesRevision: vm.visibleEntriesRevision,
             selectedIndex: $vm.selectedIndex,
             onSingleClick: { index in
+                guard !vm.isSearching, vm.visibleEntries.indices.contains(index) else { return }
                 // 单击 = 选中并复制（用户约定）
                 ClipboardPasteService.shared.copy(vm.visibleEntries[index])
                 showHint("已复制到剪贴板")
             },
             onDoubleClick: { index in
+                guard !vm.isSearching, vm.visibleEntries.indices.contains(index) else { return }
                 paste(vm.visibleEntries[index])
             },
             onVisibleTopChanged: { top in
@@ -261,37 +280,91 @@ struct ClipboardHistoryView: View {
         )
     }
 
-    /// 空态区分：无历史 / 搜索无结果 / 暂停（PRD 7.5）
+    /// 无结果要说明当前搜索/筛选范围，并提供一步恢复；停用时不能承诺自动记录。
     private var emptyStateView: some View {
         VStack(spacing: 12) {
-            if !vm.debouncedQuery.isEmpty {
-                if vm.isSearching {
-                    ProgressView()
-                        .controlSize(.small)
-                } else {
-                    LucideView(name: .search, size: 34, color: ClipboardPalette.textTertiary)
-                    Text("没有匹配「\(vm.debouncedQuery)」的结果")
-                        .font(.system(size: 13))
-                        .foregroundColor(ClipboardPalette.textSecondary)
+            if vm.isSearching {
+                ProgressView()
+                    .controlSize(.small)
+                emptyStateTitle("正在搜索剪贴板…")
+            } else if !vm.debouncedQuery.isEmpty {
+                LucideView(name: .search, size: 34, color: ClipboardPalette.textTertiary)
+                emptyStateTitle("没有匹配的结果")
+                emptyStateDescription("在「\(vm.filter.label)」中未找到「\(searchQueryPreview)」。试试其他关键词或扩大筛选范围。")
+                HStack(spacing: 10) {
+                    Button("清空搜索") { clearSearch() }
+                        .buttonStyle(.bordered)
+                        .accessibilityIdentifier("clipboard.empty.clear_search")
+                    if vm.filter != .all {
+                        Button("查看全部类型") { showAllEntries() }
+                            .buttonStyle(.borderedProminent)
+                            .accessibilityIdentifier("clipboard.empty.show_all")
+                    }
                 }
-            } else if prefs.clipboardHistoryEnabled && prefs.isClipboardPaused {
+            } else if vm.filter != .all {
+                LucideView(name: vm.filter.icon, size: 34, color: ClipboardPalette.textTertiary)
+                emptyStateTitle("「\(vm.filter.label)」中没有记录")
+                emptyStateDescription(emptyFilterDescription)
+                Button("查看全部记录") { showAllEntries() }
+                    .buttonStyle(.borderedProminent)
+                    .accessibilityIdentifier("clipboard.empty.show_all")
+            } else if !prefs.clipboardHistoryEnabled {
+                LucideView(name: .clipboardList, size: 34, color: ClipboardPalette.textTertiary)
+                emptyStateTitle("剪贴板记录未启用")
+                emptyStateDescription("启用后，新复制的文本、链接、图片和文件会保存在本机。")
+                Button("启用记录") { enableClipboardHistory() }
+                    .buttonStyle(.borderedProminent)
+                    .accessibilityIdentifier("clipboard.empty.enable")
+            } else if prefs.isClipboardPaused {
                 LucideView(name: .pause, size: 34, color: ClipboardPalette.statusPaused)
-                Text("剪贴板记录已暂停")
-                    .font(.system(size: 13))
-                    .foregroundColor(ClipboardPalette.textSecondary)
+                emptyStateTitle("剪贴板记录已暂停")
+                emptyStateDescription("暂停期间复制的内容不会被记录，恢复后开始记录新的内容。")
                 Button("恢复记录") { prefs.setClipboardPausedUntil(nil) }
                     .buttonStyle(.borderedProminent)
+                    .accessibilityIdentifier("clipboard.empty.resume")
             } else {
                 LucideView(name: .keyboard, size: 34, color: ClipboardPalette.textTertiary)
-                Text("没有历史记录")
-                    .font(.system(size: 13))
-                    .foregroundColor(ClipboardPalette.textSecondary)
-                Text("复制的内容会自动出现在这里")
-                    .font(.system(size: 11))
-                    .foregroundColor(ClipboardPalette.textTertiary)
+                emptyStateTitle("还没有历史记录")
+                emptyStateDescription("在其他应用中复制一段内容，它会自动出现在这里。敏感应用和已关闭的内容类型不会记录。")
+                Button("剪贴板设置") { openClipboardSettings() }
+                    .buttonStyle(.bordered)
+                    .accessibilityIdentifier("clipboard.empty.settings")
             }
         }
+        .multilineTextAlignment(.center)
+        .padding(28)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityIdentifier("clipboard.empty_state")
+    }
+
+    private func emptyStateTitle(_ title: String) -> some View {
+        Text(title)
+            .font(.system(size: 14, weight: .medium))
+            .foregroundColor(ClipboardPalette.textPrimary)
+    }
+
+    private func emptyStateDescription(_ description: String) -> some View {
+        Text(description)
+            .font(.system(size: 12))
+            .foregroundColor(ClipboardPalette.textSecondary)
+            .lineLimit(3)
+            .frame(maxWidth: 380)
+    }
+
+    private var searchQueryPreview: String {
+        let query = vm.debouncedQuery.replacingOccurrences(of: "\n", with: " ")
+        return query.count > 60 ? String(query.prefix(60)) + "…" : query
+    }
+
+    private var emptyFilterDescription: String {
+        switch vm.filter {
+        case .pinned:
+            return "选中一条记录后按 ⌘P 置顶，常用内容就能在这里快速找到。"
+        case .saved:
+            return "选中一条记录后按 ⌘S 加入闪记，保存过的内容会出现在这里。"
+        default:
+            return "试试其他类型，或返回全部记录查看已有内容。"
+        }
     }
 
     // MARK: - 底部快捷键提示（Tab 切类型 · ↑↓ 选条 · ↩ 粘贴）
@@ -306,7 +379,12 @@ struct ClipboardHistoryView: View {
             Text("⌘P 置顶")
             Text("Esc 关闭")
             Spacer()
-            if prefs.isClipboardPaused {
+            if !prefs.clipboardHistoryEnabled {
+                Button("记录未启用 · 点击启用") { enableClipboardHistory() }
+                    .buttonStyle(.plain)
+                    .foregroundColor(ClipboardPalette.accent)
+                    .accessibilityIdentifier("clipboard.enable")
+            } else if prefs.isClipboardPaused {
                 Button("已暂停 · 点击恢复") {
                     prefs.setClipboardPausedUntil(nil)
                     showHint("已恢复记录")
@@ -314,12 +392,9 @@ struct ClipboardHistoryView: View {
                 .buttonStyle(.plain)
                 .font(.system(size: 11))
                 .foregroundColor(ClipboardPalette.statusPaused)
-            } else if !prefs.clipboardHistoryEnabled {
-                Text("记录未启用")
-                    .foregroundColor(ClipboardPalette.statusPaused)
             } else {
                 // 保留策略透明化：让用户知道历史会自动清理、留多久
-                Text("已记录 \(store.entries.count) 条 · 自动保留\(retentionLabel)")
+                Text("历史 \(store.entries.count)\(store.hasMore ? "+" : "") 条 · 自动保留\(retentionLabel)")
                     .foregroundColor(ClipboardPalette.textTertiary)
             }
         }
@@ -334,6 +409,26 @@ struct ClipboardHistoryView: View {
     }
 
     // MARK: - 行为
+
+    private func clearSearch() {
+        vm.searchText = ""
+        controller.focusSearchFieldNow()
+    }
+
+    private func showAllEntries() {
+        vm.filter = .all
+        controller.focusSearchFieldNow()
+    }
+
+    private func openClipboardSettings() {
+        QuiteNoteNotification.post(.showSettings, object: nil, userInfo: ["tab": "clipboard"])
+    }
+
+    private func enableClipboardHistory() {
+        prefs.setClipboardPausedUntil(nil)
+        prefs.setClipboardHistoryEnabled(true)
+        controller.focusSearchFieldNow()
+    }
 
     private var selectedEntry: ClipboardEntry? {
         vm.visibleEntries.indices.contains(vm.selectedIndex) ? vm.visibleEntries[vm.selectedIndex] : nil

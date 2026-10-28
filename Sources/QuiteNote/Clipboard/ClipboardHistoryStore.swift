@@ -42,6 +42,18 @@ final class ClipboardHistoryStore: ObservableObject {
     }
 
     deinit {
+        if let timer = retentionTimer {
+            // Timers must be invalidated on the run loop where they were installed.
+            if Thread.isMainThread {
+                timer.invalidate()
+            } else {
+                timer.performSelector(
+                    onMainThread: #selector(Timer.invalidate),
+                    with: nil,
+                    waitUntilDone: false
+                )
+            }
+        }
         if let remoteChangeObserverID {
             repository.removeRemoteChangeObserver(remoteChangeObserverID)
         }
@@ -62,13 +74,15 @@ final class ClipboardHistoryStore: ObservableObject {
     /// 定期清理：应用长时间运行且用户一直没复制时，过期条目也能被清掉
     private func startRetentionTimer() {
         guard retentionTimer == nil else { return }
-        let t = Timer(timeInterval: 6 * 3600, target: self, selector: #selector(retentionTick), userInfo: nil, repeats: true)
+        // A target-based repeating timer retains its target for the lifetime of
+        // the run loop, preventing the store and its database from being released.
+        let t = Timer(timeInterval: 6 * 3600, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.applyRetentionIfNeeded()
+            }
+        }
         RunLoop.main.add(t, forMode: .common)
         retentionTimer = t
-    }
-
-    @objc private func retentionTick() {
-        applyRetentionIfNeeded()
     }
 
     func reload() {
@@ -173,7 +187,9 @@ final class ClipboardHistoryStore: ObservableObject {
 
         if let index = entries.firstIndex(where: { $0.id == savedEntry.id }) {
             entries[index] = savedEntry
-        } else if let index = entries.firstIndex(where: { $0.contentHash == savedEntry.contentHash }) {
+        } else if let index = entries.firstIndex(where: {
+            $0.type == savedEntry.type && $0.contentHash == savedEntry.contentHash
+        }) {
             entries[index] = savedEntry
         } else {
             let firstUnpinned = entries.firstIndex(where: { !$0.isPinned }) ?? entries.count
