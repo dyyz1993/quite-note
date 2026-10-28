@@ -45,11 +45,22 @@ jobs:
       - name: Build universal Dev app
         run: |
           uname -m
-          # Native-arch build only: the smoke runs on an arm64 Mac, and the
-          # Xcode backend silently drops the executable during cross-arch
-          # copy-products on this runner. A single-arch build keeps the
-          # standard .build/release/QuiteNote layout that build-app.sh expects.
-          swift build -c release --product QuiteNote
+          # The UI smoke host is an Intel Mac, so the Dev app must contain an
+          # x86_64 slice. A native-arch build here produces an arm64-only
+          # binary and the smoke dies with "Bad CPU type in executable".
+          swift build -c release --arch x86_64 --arch arm64 --product QuiteNote
+          # Cross-arch builds use the Xcode backend, whose products live in
+          # .build/apple/Products/Release/ rather than SwiftPM's plain layout.
+          BINARY="$(find .build -type f -name QuiteNote -path '*/Products/Release/*' \
+            ! -path '*/Intermediates.noindex/*' ! -path '*.dSYM*' -print -quit)"
+          [[ -n "$BINARY" ]] || { echo "QuiteNote binary not found under .build"; exit 1; }
+          echo "Using binary: $BINARY"
+          # Fail fast if the artifact would not run on the Intel smoke host.
+          lipo -info "$BINARY"
+          lipo -info "$BINARY" | grep -q x86_64 || {
+            echo "Binary has no x86_64 slice; the UI smoke host is Intel"; exit 1; }
+          mkdir -p .build/release
+          cp "$BINARY" .build/release/QuiteNote
           [[ -n "$APP_SIGN_IDENTITY" ]] || { echo "APP_SIGN_IDENTITY was not prepared"; exit 2; }
           ./build-app.sh --dev --no-build --no-launch
 
