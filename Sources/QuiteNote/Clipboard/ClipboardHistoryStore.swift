@@ -47,7 +47,11 @@ final class ClipboardHistoryStore: ObservableObject {
             if Thread.isMainThread {
                 timer.invalidate()
             } else {
-                DispatchQueue.main.async { timer.invalidate() }
+                timer.performSelector(
+                    onMainThread: #selector(Timer.invalidate),
+                    with: nil,
+                    waitUntilDone: false
+                )
             }
         }
         if let remoteChangeObserverID {
