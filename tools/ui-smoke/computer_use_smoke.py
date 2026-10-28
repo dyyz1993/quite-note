@@ -919,7 +919,9 @@ def smoke_screenshot_toolbar(run: Run, driver: AXDriver) -> str:
     print(f"[stage2] 撑开后 暗带右端 {band2:.0f}/{width - 8:.0f} {'✓红钮屏内' if inside2 else '✗出屏'}")
     assert inside2, f"撑开后主栏出屏: {band2:.0f}"
 
-    # 点图形组展开二级（蓝钮-38pt）
+    # 点图形组展开二级。The group buttons sit 38pt apart and the selected one
+    # is the text group at this point, so the shape group is one slot back.
+    # Deriving it from B2 would land on the colour swatches instead.
     _click_overlay(B2[0] - 38, B2[1])
     p3 = _snap_overlay("stage3_sub", run.run_dir)
     B3 = decode(p3)["B"][0]
@@ -1005,17 +1007,36 @@ def decode(path):
         return {"B": [], "R": []}
     row_y = max(all_blues, key=lambda c: c[3])[1]
 
-    blue_clusters = sorted(
-        [c for c in all_blues if abs(c[1] - row_y) <= 15 and 18 <= c[2] <= 50],
+    # The toolbar carries two kinds of blue: the selected annotation group
+    # button and the colour swatches. Both can measure the same width, so
+    # tell them apart by the group spacing - the six tool groups sit 38pt
+    # apart. A blue cluster that has a partner exactly 38pt away belongs to
+    # the tool row; the rest are colour swatches.
+    row_blues = sorted(
+        [c for c in all_blues if abs(c[1] - row_y) <= 15],
         key=lambda t: t[0],
     )
+    group_buttons = [
+        c for c in row_blues
+        if any(
+            abs(other[0] - c[0] - 38) <= 8
+            for other in row_blues
+            if abs(other[0] - c[0]) > 20
+        )
+    ]
+    swatches = [c for c in row_blues if c not in group_buttons]
+    if not group_buttons and row_blues:
+        # Only one group is highlighted, so it has no 38pt sibling. The tool
+        # groups sit left of the colour swatches, so take the leftmost blue.
+        group_buttons = [row_blues[0]]
+        swatches = row_blues[1:]
 
     # The record button sits on the same row but is narrower than the blue
     # group buttons, so the width window differs between the two colours.
     red_clusters = [c for c in clusters(reds) if abs(c[1] - row_y) <= 15 and 8 <= c[2] <= 50]
     red_clusters = sorted(red_clusters, key=lambda t: t[0])
 
-    return {"B": blue_clusters, "R": red_clusters}
+    return {"B": group_buttons, "S": sorted(swatches, key=lambda t: t[0]), "R": red_clusters}
 
 
 def find_sub(before_path, after_path, row_y):
