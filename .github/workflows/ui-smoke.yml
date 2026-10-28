@@ -8,6 +8,9 @@ on:
 
 permissions:
   contents: read
+  # The smoke job re-downloads the Dev artifact when the first transfer is
+  # truncated, which needs read access to the run's artifacts.
+  actions: read
 
 concurrency:
   group: ui-smoke-${{ github.ref }}
@@ -112,19 +115,41 @@ jobs:
         run: python3 -m unittest discover -s tools/ui-smoke -p 'test_evidence.py' -v
 
       - uses: actions/download-artifact@v4
+        id: dev-artifact
         with:
           pattern: QuiteNoteDev-*.zip
           merge-multiple: true
           path: ${{ runner.temp }}/ui-artifact
 
       - name: Verify artifact
+        env:
+          ARTIFACT_URL: ${{ steps.dev-artifact.outputs.artifact-url }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          ARTIFACT="$(find "$RUNNER_TEMP/ui-artifact" -maxdepth 1 -name 'QuiteNoteDev-*.zip' -print -quit)"
-          [[ -n "$ARTIFACT" ]] || { echo "Dev artifact was not downloaded" >&2; exit 2; }
-          CHECKSUM="$(find "$RUNNER_TEMP/ui-artifact" -maxdepth 1 -name 'QuiteNoteDev-*.sha256' -print -quit)"
-          [[ -n "$CHECKSUM" ]] || { echo "Dev artifact checksum was not downloaded" >&2; exit 2; }
-          (cd "$RUNNER_TEMP/ui-artifact" && shasum -a 256 --check "$(basename "$CHECKSUM")")
-          echo "UI_ARTIFACT=$ARTIFACT" >> "$GITHUB_ENV"
+          # The link to GitHub is slow and can cut the transfer short, which
+          # leaves a truncated zip whose checksum never matches. Retry the
+          # download until the checksum verifies instead of failing the run.
+          for attempt in 1 2 3 4 5; do
+            ARTIFACT="$(find "$RUNNER_TEMP/ui-artifact" -maxdepth 1 -name 'QuiteNoteDev-*.zip' -print -quit)"
+            CHECKSUM="$(find "$RUNNER_TEMP/ui-artifact" -maxdepth 1 -name 'QuiteNoteDev-*.sha256' -print -quit)"
+            if [[ -n "$ARTIFACT" && -n "$CHECKSUM" ]] \
+              && (cd "$RUNNER_TEMP/ui-artifact" && shasum -a 256 --check "$(basename "$CHECKSUM")"); then
+              echo "UI_ARTIFACT=$ARTIFACT" >> "$GITHUB_ENV"
+              exit 0
+            fi
+            echo "Artifact verification failed (attempt $attempt/5); re-downloading."
+            rm -f "$RUNNER_TEMP"/ui-artifact/QuiteNoteDev-*.zip
+            sleep $(( attempt * 15 ))
+            curl -fL --retry 5 --retry-all-errors --connect-timeout 30 \
+              -H "Authorization: Bearer $GITHUB_TOKEN" \
+              "$ARTIFACT_URL" -o "$RUNNER_TEMP/ui-artifact/QuiteNoteDev-retry.zip" || true
+            if [[ -f "$RUNNER_TEMP/ui-artifact/QuiteNoteDev-retry.zip" ]]; then
+              mv "$RUNNER_TEMP/ui-artifact/QuiteNoteDev-retry.zip" \
+                 "$RUNNER_TEMP/ui-artifact/QuiteNoteDev-$(echo "$GITHUB_SHA" | cut -c1-8)-universal.zip"
+            fi
+          done
+          echo "Dev artifact could not be downloaded intact after 5 attempts" >&2
+          exit 1
 
       - name: Update GUI smoke launcher
         run: ./tools/ui-smoke/install-quitenote-gui-launcher.sh
