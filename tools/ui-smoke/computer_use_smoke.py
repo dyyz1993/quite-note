@@ -44,11 +44,20 @@ except ImportError:  # The remote test Mac boots before pip dependencies are ins
 
 
 APP_NAME = "Quite Note Dev"
-SCREEN_PT = 1366 / 1440  # cua 截图像素 / 逻辑pt
 CUA = "/Applications/CuaDriver.app/Contents/MacOS/cua-driver"
 SETTLE_SECONDS = 0.35
 _target_ax_identifier = ""
 driver_global = None
+
+
+def _cua_scale() -> float:
+    """cua 截图像素 / 逻辑pt 的换算系数。
+
+    cua 截的是缩放后的桌面（1366pt 宽），而坐标按显示器逻辑点给出；
+    用实际显示宽度换算，避免把 1440 当成唯一可能的屏幕宽度。
+    """
+    display_w, _ = _main_display_size()
+    return (1366 / display_w) if display_w else (1366 / 1440)
 
 
 class BlockedError(RuntimeError):
@@ -794,27 +803,54 @@ def _diff_region(capture_before: Path, capture_after: Path, display_width: float
     return (min(xs) / scale, min(ys) / scale, max(xs) / scale, max(ys) / scale)
 
 
-def _snap_overlay(tag):
-    """cua 截屏（屏幕须唤醒/保活）"""
+def _snap_overlay(tag, run_dir):
+    """Snapshot the screenshot overlay through the app's own capture service.
+
+    The overlay renders at screenSaver level, so neither the runner session
+    nor the CuaDriver daemon can capture it - they only see the desktop
+    underneath, which is why the previous captures of stage1/stage2/stage3
+    came out identical. The Dev app holds the Screen Recording grant and
+    exposes UIEvidenceCaptureService, which grabs its own highest-level
+    window by window id and writes the PNG into the run's frames directory.
+    """
     caffeinate(20)
-    out = f"/tmp/qn-manual/FIN_{tag}.png"
-    if os.path.exists(out): os.remove(out)
-    subprocess.run([CUA, "call", "get_desktop_state", "--screenshot-out-file", out],
-                   capture_output=True, timeout=60)
-    return out if os.path.exists(out) and os.path.getsize(out) > 40000 else None
+    evidence_dir = Path(run_dir) / "recordings"
+    requests = evidence_dir / "requests"
+    frames = evidence_dir / "frames"
+    requests.mkdir(parents=True, exist_ok=True)
+    frames.mkdir(parents=True, exist_ok=True)
+
+    name = f"frame-{tag}"
+    request = requests / f"{name}.request"
+    output = frames / f"{name}.png"
+    for stale in (request, output):
+        try:
+            stale.unlink()
+        except FileNotFoundError:
+            pass
+    request.write_text("")
+
+    deadline = time.monotonic() + 15
+    while time.monotonic() < deadline:
+        if output.exists() and output.stat().st_size > 40000:
+            return str(output)
+        time.sleep(0.1)
+    return None
 
 
 def _click_overlay(lx, ly):
     """cua desktop foreground 点击（逻辑坐标）"""
+    scale = _cua_scale()
     out = _cua_call("click", json.dumps({"scope": "desktop", "delivery_mode": "foreground",
-                                         "x": round(lx * SCREEN_PT), "y": round(ly * SCREEN_PT)}))
+                                         "x": round(lx * scale), "y": round(ly * scale)}))
     time.sleep(1.3)
 
 
 def _drag_overlay(lx1, ly1, lx2, ly2):
+    scale = _cua_scale()
     args = {"scope": "desktop", "delivery_mode": "foreground",
-            "from_x": round(lx1 * SCREEN_PT), "from_y": round(ly1 * SCREEN_PT),
-            "to_x": round(lx2 * SCREEN_PT), "to_y": round(ly2 * SCREEN_PT),
+            "from_x": round(lx1 * scale), "from_y": round(ly1 * scale),
+            "to_x": round(lx2 * scale), "to_y": round(ly2 * scale),
             "duration_ms": 500, "steps": 14}
     _cua_call("drag", json.dumps(args))
     time.sleep(1.4)
@@ -855,40 +891,42 @@ def smoke_screenshot_toolbar(run: Run, driver: AXDriver) -> str:
         raise RuntimeError("screenshot overlay did not appear")
     time.sleep(1.0)
 
-    # Selection hugging the right edge (logical 1178,300 -> 1398,480)
-    sel = (1178, 300, 1398, 480)
+    # Selection hugging the right edge of the actual display.
+    sel = (width - 102, 300, width - 2, 480)
     _drag_overlay(*sel)
 
-    p1 = _snap_overlay("stage1_default")
+    p1 = _snap_overlay("stage1_default", run.run_dir)
+    if not p1:
+        raise RuntimeError("stage1 overlay capture failed")
     d1 = decode(p1)
     B1 = d1["B"][0] if d1["B"] else None
     R1 = d1["R"][0] if d1["R"] else None
     assert B1 and R1, f"默认态按钮未检出: {d1}"
     band1 = dark_band_right(p1, width, B1[1])
-    inside1 = band1 <= 1432
-    print(f"[stage1] 蓝钮 {B1} 红钮 {R1} 暗带右端 {band1:.0f}/1432 {'✓' if inside1 else '✗出屏'}")
+    inside1 = band1 <= width - 8
+    print(f"[stage1] 蓝钮 {B1} 红钮 {R1} 暗带右端 {band1:.0f}/{width - 8:.0f} {'✓' if inside1 else '✗出屏'}")
     assert inside1, f"默认态主栏右端出屏: {band1:.0f}"
 
-    # 点文本组（蓝钮+76pt）
+    # 点文本组：group buttons sit 38pt apart, the text group is two slots over.
     _click_overlay(B1[0] + 76, B1[1])
-    p2 = _snap_overlay("stage2_widened")
+    p2 = _snap_overlay("stage2_widened", run.run_dir)
     d2 = decode(p2)
     B2 = d2["B"][0] if d2["B"] else None
     R2 = d2["R"][0] if d2["R"] else None
     assert B2 and R2, f"点T后按钮未检出: {d2}"
     band2 = dark_band_right(p2, width, B2[1])
-    inside2 = band2 <= 1432
-    print(f"[stage2] 撑开后 暗带右端 {band2:.0f}/1432 {'✓红钮屏内' if inside2 else '✗出屏'}")
+    inside2 = band2 <= width - 8
+    print(f"[stage2] 撑开后 暗带右端 {band2:.0f}/{width - 8:.0f} {'✓红钮屏内' if inside2 else '✗出屏'}")
     assert inside2, f"撑开后主栏出屏: {band2:.0f}"
 
     # 点图形组展开二级（蓝钮-38pt）
     _click_overlay(B2[0] - 38, B2[1])
-    p3 = _snap_overlay("stage3_sub")
+    p3 = _snap_overlay("stage3_sub", run.run_dir)
     B3 = decode(p3)["B"][0]
-    sub = find_sub(p3, B3[1])
+    sub = find_sub(p2, p3, B3[1])
     assert sub, "二级面板未展开"
     gap = sub["gap"]
-    inside3 = sub["x0"] >= 8 and sub["x1"] <= 1432
+    inside3 = sub["x0"] >= 8 and sub["x1"] <= width - 8
     anchored = abs((sub["x0"] + sub["x1"]) / 2 - B3[0] + 38) <= 40
     print(f"[stage3] 二级 间隙={gap:.0f}pt 锚定偏差={abs((sub['x0']+sub['x1'])/2 - B3[0] + 38):.0f}pt 屏内={'Y' if inside3 else 'N'}")
     assert inside3, "二级出屏"
@@ -902,8 +940,12 @@ def dark_band_right(path, width, row_cy):
     """主栏暗带右端（逻辑pt）：从行右端向左找最后一个暗像素（壁纸噪点免疫）"""
     from PIL import Image
     im = Image.open(path).convert("RGB"); W, H = im.size; px = im.load()
-    scale = W / 1440.0
-    Y = int(row_cy * H / 900)
+    # The capture can come from the app (full display) or from cua (scaled
+    # down), so derive the scale from the image against the real display
+    # width instead of assuming a fixed 1440pt canvas.
+    display_w, display_h = _main_display_size()
+    scale = W / display_w if display_w else W / 1440.0
+    Y = int(row_cy * H / display_h) if display_h else int(row_cy * H / 900)
     Y = max(0, min(Y, H - 1))
     for X in range(W - 2, 0, -2):
         r, g, b = px[X, Y]
@@ -916,7 +958,8 @@ def decode(path):
     """行带内蓝钮（选中组高亮）与红钮（录制按钮）聚类定位"""
     from PIL import Image
     im = Image.open(path).convert("RGB"); W, H = im.size; px = im.load()
-    scale = W / 1440.0
+    display_w, _ = _main_display_size()
+    scale = W / display_w if display_w else W / 1440.0
 
     def clusters(points, min_width=0, max_width=60, min_size=20):
         cells = {}
@@ -973,6 +1016,37 @@ def decode(path):
     red_clusters = sorted(red_clusters, key=lambda t: t[0])
 
     return {"B": blue_clusters, "R": red_clusters}
+
+
+def find_sub(before_path, after_path, row_y):
+    """Locate the sub-toolbar that expands above the main toolbar.
+
+    The sub-toolbar is the region that changed above the main toolbar row
+    (row_y, in display points) between the previous capture and this one.
+    Returns {"x0", "x1", "gap"} in display points, or None when no panel
+    appeared.
+    """
+    from PIL import Image, ImageChops
+
+    before = Image.open(before_path).convert("RGB")
+    after = Image.open(after_path).convert("RGB")
+    diff = ImageChops.difference(before, after).convert("L")
+    width, height = after.size
+    display_w, _ = _main_display_size()
+    scale = width / display_w if display_w else width / 1440.0
+    changed = diff.load()
+    limit = int(row_y * scale)
+    xs, ys = [], []
+    for y in range(0, min(limit, height), 2):
+        for x in range(0, width, 2):
+            if changed[x, y] > 24:
+                xs.append(x)
+                ys.append(y)
+    if len(xs) < 200:
+        return None
+    x0, x1 = min(xs) / scale, max(xs) / scale
+    top = min(ys) / scale
+    return {"x0": x0, "x1": x1, "gap": row_y - top}
 
     return {
         "B": blue_clusters,
