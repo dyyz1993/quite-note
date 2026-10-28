@@ -838,9 +838,19 @@ def smoke_screenshot_toolbar(run: Run, driver: AXDriver) -> str:
         time.sleep(1.0)
 
     _press_escape()  # clear any stale session
-    deadline = time.monotonic() + 3
+    # The screenshot session is started from the status-bar menu, the same
+    # path the clipboard and launcher suites use. Pressing Escape only clears
+    # a stale session, so the overlay never appeared on its own.
+    _press_status_menu_item("捕获屏幕截图")
+    deadline = time.monotonic() + 8
     while time.monotonic() < deadline and _overlay_window_count(pid) == 0:
         time.sleep(0.05)
+    if _overlay_window_count(pid) == 0:
+        # The menu title is localized; fall back to the English title.
+        _press_status_menu_item("Capture Screenshot")
+        deadline = time.monotonic() + 8
+        while time.monotonic() < deadline and _overlay_window_count(pid) == 0:
+            time.sleep(0.05)
     if _overlay_window_count(pid) == 0:
         raise RuntimeError("screenshot overlay did not appear")
     time.sleep(1.0)
