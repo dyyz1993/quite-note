@@ -59,8 +59,15 @@ jobs:
           lipo -info "$BINARY"
           lipo -info "$BINARY" | grep -q x86_64 || {
             echo "Binary has no x86_64 slice; the UI smoke host is Intel"; exit 1; }
-          mkdir -p .build/release
-          cp "$BINARY" .build/release/QuiteNote
+          # build-app.sh looks for .build/apple/Products/Release first and then
+          # .build/release. Cross-arch builds hardlink the product into
+          # .build/release already, so only copy when it is not there yet;
+          # "cp: identical (not copied)" would abort the step under set -e.
+          if [[ ! -f ".build/release/QuiteNote" ]]; then
+            mkdir -p .build/release
+            cp "$BINARY" .build/release/QuiteNote
+          fi
+          lipo -info .build/release/QuiteNote
           [[ -n "$APP_SIGN_IDENTITY" ]] || { echo "APP_SIGN_IDENTITY was not prepared"; exit 2; }
           ./build-app.sh --dev --no-build --no-launch
 
