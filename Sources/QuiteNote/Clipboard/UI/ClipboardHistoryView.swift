@@ -262,11 +262,13 @@ struct ClipboardHistoryView: View {
             entriesRevision: vm.visibleEntriesRevision,
             selectedIndex: $vm.selectedIndex,
             onSingleClick: { index in
+                guard !vm.isSearching, vm.visibleEntries.indices.contains(index) else { return }
                 // 单击 = 选中并复制（用户约定）
                 ClipboardPasteService.shared.copy(vm.visibleEntries[index])
                 showHint("已复制到剪贴板")
             },
             onDoubleClick: { index in
+                guard !vm.isSearching, vm.visibleEntries.indices.contains(index) else { return }
                 paste(vm.visibleEntries[index])
             },
             onVisibleTopChanged: { top in

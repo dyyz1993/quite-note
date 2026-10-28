@@ -17,7 +17,7 @@ jobs:
   build-dev-artifact:
     name: Build Dev UI Artifact
     # The app now requires the macOS 26 SDK; use GitHub's hosted macOS image.
-    runs-on: [self-hosted, macos-heavy]
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
 
@@ -45,7 +45,10 @@ jobs:
       - name: Build universal Dev app
         run: |
           uname -m
-          swift build -c release --arch x86_64 --arch arm64 --product QuiteNote
+          # --no-build below stages this binary directly, so use the same
+          # bundled Sparkle lookup path as build-app.sh.
+          swift build -c release --arch x86_64 --arch arm64 --product QuiteNote \
+            -Xlinker -rpath -Xlinker '@executable_path/../Frameworks'
           mkdir -p .build/release
           cp .build/apple/Products/Release/QuiteNote .build/release/QuiteNote
           [[ -n "$APP_SIGN_IDENTITY" ]] || { echo "APP_SIGN_IDENTITY was not prepared"; exit 2; }

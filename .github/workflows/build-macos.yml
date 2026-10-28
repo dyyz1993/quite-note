@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   build-macos:
-    runs-on: [self-hosted, macos-heavy]
+    runs-on: macos-26
 
     steps:
     - name: 检出代码

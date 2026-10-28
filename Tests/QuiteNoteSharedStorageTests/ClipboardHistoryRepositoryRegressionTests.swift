@@ -1,3 +1,4 @@
+import CoreData
 import XCTest
 @testable import QuiteNoteSharedStorage
 
@@ -5,14 +6,21 @@ final class ClipboardHistoryRepositoryRegressionTests: XCTestCase {
     private func makeRepository() -> ClipboardHistoryRepository {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("quitenote-history-regression-\(UUID().uuidString)", isDirectory: true)
-        addTeardownBlock {
-            try? FileManager.default.removeItem(at: root)
-        }
-        return ClipboardHistoryRepository(
-            persistence: ClipboardHistoryPersistence(
-                databaseURL: root.appendingPathComponent("ClipboardHistory.sqlite")
-            )
+        let persistence = ClipboardHistoryPersistence(
+            databaseURL: root.appendingPathComponent("ClipboardHistory.sqlite")
         )
+        addTeardownBlock {
+            let context = persistence.context
+            await context.perform(schedule: .enqueued) { context.reset() }
+            let coordinator = persistence.container.persistentStoreCoordinator
+            try coordinator.performAndWait {
+                for store in coordinator.persistentStores {
+                    try coordinator.remove(store)
+                }
+            }
+            try FileManager.default.removeItem(at: root)
+        }
+        return ClipboardHistoryRepository(persistence: persistence)
     }
 
     func testFileAndPathTextRemainDistinctRegardlessOfCaptureOrder() throws {
