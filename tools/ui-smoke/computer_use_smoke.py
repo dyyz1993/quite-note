@@ -51,14 +51,15 @@ driver_global = None
 
 
 def _cua_scale() -> float:
-    """cua 点击坐标相对逻辑点的缩放系数。
+    """cua 点击/拖拽坐标相对逻辑点的倍率。
 
-    cua reports screen_width as the logical display width and takes click
-    coordinates in those same logical points - only its screenshots are
-    scaled down. Scaling the clicks by the screenshot size therefore moved
-    every click about 5% to the left of the intended target.
+    cua takes click and drag coordinates in its screenshot's native pixel
+    space (scale_factor x logical). Verified on the smoke host: a drag sent
+    as (1338,300)->(1438,480) produced a "50 x 90" selection at logical
+    (663-721, 123-238) - exactly half - so the overlay never saw the intended
+    right-edge selection and every toolbar click landed on empty canvas.
     """
-    return 1.0
+    return 2.0
 
 
 class BlockedError(RuntimeError):
@@ -907,14 +908,9 @@ def smoke_screenshot_toolbar(run: Run, driver: AXDriver) -> str:
     print(f"[stage1] 蓝钮 {B1} 红钮 {R1} 暗带右端 {band1:.0f}/{width - 8:.0f} {'✓' if inside1 else '✗出屏'}")
     assert inside1, f"默认态主栏右端出屏: {band1:.0f}"
 
-    # 点文本组。The group buttons sit 38pt apart, but the offset from the
-    # selected button is only reliable when the selected group is known, so
-    # locate the text glyph itself: a "T" drawn as a wide top bar with a
-    # single stem under it.
-    text_x = _text_tool_center(p1, B1[1])
-    if text_x is None:
-        raise RuntimeError("文本工具图标未检出")
-    _click_overlay(text_x, B1[1])
+    # 点文本组：group buttons sit 38pt apart and B1 is the selected cursor
+    # group, so the text group is two slots over.
+    _click_overlay(B1[0] + 76, B1[1])
     p2 = _snap_overlay("stage2_widened", run.run_dir)
     d2 = decode(p2)
     B2 = d2["B"][0] if d2["B"] else None
@@ -1014,20 +1010,29 @@ def decode(path):
     row_y = max(all_blues, key=lambda c: c[3])[1]
 
     # The toolbar carries two kinds of blue: the selected annotation group
-    # button and the colour swatches, and both can measure the same width.
-    # The tool groups are easier to locate by their glyphs: each group button
-    # draws a light icon on the dark pill, and the six groups sit 38pt apart,
-    # left of the colour swatches and the record button.
-    icons = _toolbar_icon_centers(px, W, H, scale, row_y)
-    group_buttons = []
-    for x in icons:
-        near = [c for c in all_blues if abs(c[1] - row_y) <= 15 and abs(c[0] - x) <= 22]
-        if near:
-            group_buttons.append(near[0])
-    swatches = [
-        c for c in all_blues
-        if abs(c[1] - row_y) <= 15 and c not in group_buttons
-    ]
+    # button (blue highlight with a white tool glyph drawn on top) and the
+    # colour swatches (solid filled circles). Both measure ~33pt across, so
+    # tell them apart by content: a group button's bounding box contains
+    # white glyph pixels, a swatch is solid colour.
+    row_blues = [c for c in all_blues if abs(c[1] - row_y) <= 15]
+
+    def has_white_glyph(c):
+        x_lo = int((c[0] - c[2] / 2) * scale)
+        x_hi = int((c[0] + c[2] / 2) * scale)
+        y_lo = int((c[1] - c[2] / 2) * scale)
+        y_hi = int((c[1] + c[2] / 2) * scale)
+        hits = 0
+        for X in range(max(0, x_lo), min(W, x_hi), 2):
+            for Y in range(max(0, y_lo), min(H, y_hi), 2):
+                r, g, b = px[X, Y]
+                if r > 200 and g > 200 and b > 200:
+                    hits += 1
+                    if hits >= 3:
+                        return True
+        return False
+
+    group_buttons = sorted([c for c in row_blues if has_white_glyph(c)], key=lambda t: t[0])
+    swatches = sorted([c for c in row_blues if c not in group_buttons], key=lambda t: t[0])
 
     # The record button sits on the same row but is narrower than the blue
     # group buttons, so the width window differs between the two colours.
@@ -1071,46 +1076,6 @@ def _toolbar_icon_centers(px, W, H, scale, row_y, max_gap=22):
             merged.append((a, b))
     return [(a + b) / 2 / scale for a, b in merged]
 
-
-def _text_tool_center(path, row_y):
-    """Horizontal centre of the "T" glyph on the toolbar row, or None.
-
-    The "T" is the only glyph in the annotation pill whose stem sits under a
-    horizontal bar, so look for a warm off-white row segment with exactly one
-    narrow lit column below it. Measured on the smoke host the T sits near
-    x=442, ~80pt right of the selected cursor button.
-    """
-    from PIL import Image
-
-    im = Image.open(path).convert("RGB")
-    W, H = im.size
-    px = im.load()
-    display_w, _ = _main_display_size()
-    scale = W / display_w if display_w else W / 1440.0
-
-    def glyph(x, y):
-        r, g, b = px[x, y]
-        return r > 130 and g > 110 and abs(r - g) < 60 and r >= b - 30
-
-    y0, y1 = max(0, int((row_y - 16) * scale)), min(H, int((row_y + 16) * scale))
-    for Y in range(y0, y1):
-        run = []
-        for X in range(int(400 * scale), int(560 * scale)):
-            if glyph(X, Y):
-                if not run or X - run[-1] <= 4:
-                    run.append(X)
-                else:
-                    break
-        if len(run) < 4 or run[-1] - run[0] > 22 * scale:
-            continue
-        lo, hi = run[0], run[-1]
-        stem = sum(
-            1 for X in range(lo, hi + 1)
-            if any(glyph(X, Y + k) for k in range(2, 10))
-        )
-        if stem <= 3:
-            return (lo + hi) / 2 / scale
-    return None
 
 def find_sub(before_path, after_path, row_y):
     """Locate the sub-toolbar that expands above the main toolbar.
