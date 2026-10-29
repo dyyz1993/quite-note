@@ -205,7 +205,10 @@ jobs:
 
       # 成功时的截图基准快照：推到 gh-pages 的 ui-baseline/（持久，不受 artifact 30 天限制），
       # 供后续回归对比：https://dyyz1993.github.io/quite-note/ui-baseline/
+      # 基线包含十余张截图，在到 GitHub 的慢速链路上推送可能失败——
+      # 快照是锦上添花，不让它拖垮整个 workflow。
       - name: Snapshot UI baseline (PASS only)
+        continue-on-error: true
         if: success()
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -220,6 +223,7 @@ jobs:
           python3 tools/ui-smoke/snapshot_ui_baseline.py "$RUN_DIR" "$GH_DIR" \
             || { echo "快照未生成（非 PASS？）"; exit 0; }
           cd "$GH_DIR"
+          git config http.postBuffer 157286400
           if git status --porcelain | grep -q .; then
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
