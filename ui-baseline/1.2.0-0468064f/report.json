@@ -1,0 +1,78 @@
+{
+  "status": "PASS",
+  "started_at": null,
+  "results": [
+    {
+      "name": "permissions.accessibility",
+      "status": "PASS",
+      "duration_ms": 868,
+      "reason": "",
+      "evidence": "recordings/ui-recording.mov",
+      "selector": ""
+    },
+    {
+      "name": "launch",
+      "status": "PASS",
+      "duration_ms": 487,
+      "reason": "/tmp/quitenote-ui-smoke/ui-20261029-074812-0468064f",
+      "evidence": "screenshots/launch-1793260097.png",
+      "selector": ""
+    },
+    {
+      "name": "flash-notes",
+      "status": "PASS",
+      "duration_ms": 500,
+      "reason": "main 520x640 panel exposed",
+      "evidence": "screenshots/flash-notes-1793260098.png",
+      "selector": ""
+    },
+    {
+      "name": "clipboard",
+      "status": "PASS",
+      "duration_ms": 3356,
+      "reason": "clipboard 760x520 panel exposed",
+      "evidence": "screenshots/clipboard-1793260101.png",
+      "selector": ""
+    },
+    {
+      "name": "launcher",
+      "status": "PASS",
+      "duration_ms": 3374,
+      "reason": "launcher panel exposed",
+      "evidence": "screenshots/launcher-1793260105.png",
+      "selector": ""
+    },
+    {
+      "name": "settings",
+      "status": "PASS",
+      "duration_ms": 582,
+      "reason": "settings AX flow available from main panel",
+      "evidence": "screenshots/settings-1793260105.png",
+      "selector": ""
+    },
+    {
+      "name": "devcore",
+      "status": "PASS",
+      "duration_ms": 480,
+      "reason": "DevCore storage isolation available",
+      "evidence": "screenshots/devcore-1793260106.png",
+      "selector": ""
+    },
+    {
+      "name": "screenshot-toolbar",
+      "status": "PASS",
+      "duration_ms": 15119,
+      "reason": "edge layout ok: 默认带右端 1360→撑开 1293 均屏内, 红钮始终屏内",
+      "evidence": "screenshots/screenshot-toolbar-1793260121.png",
+      "selector": ""
+    },
+    {
+      "name": "cleanup",
+      "status": "PASS",
+      "duration_ms": 469,
+      "reason": "production pids: none",
+      "evidence": "screenshots/cleanup-1793260121.png",
+      "selector": ""
+    }
+  ]
+}
