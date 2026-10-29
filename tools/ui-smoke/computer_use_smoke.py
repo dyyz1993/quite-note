@@ -908,36 +908,80 @@ def smoke_screenshot_toolbar(run: Run, driver: AXDriver) -> str:
     print(f"[stage1] 蓝钮 {B1} 红钮 {R1} 暗带右端 {band1:.0f}/{width - 8:.0f} {'✓' if inside1 else '✗出屏'}")
     assert inside1, f"默认态主栏右端出屏: {band1:.0f}"
 
-    # 点文本组：group buttons sit 38pt apart and B1 is the selected cursor
-    # group, so the text group is two slots over.
-    _click_overlay(B1[0] + 76, B1[1])
+    # Locate the glyph runs on the toolbar row. Fixed offsets from the
+    # selected button are unreliable: when the selection hugs the right edge
+    # the pill clamps and the button spacing compresses unevenly (measured
+    # 42-58pt), so clicking selected±38k lands on whatever is nearby - in one
+    # run that was the record button, which started a recording and tore the
+    # overlay down.
+    row_glyphs = _row_glyph_centers(p1, B1[1])
+    right = [c for c in row_glyphs if c > B1[0] + 20]
+
+    # 点选中按钮右侧第 2 个图标（标准布局下的文本组；钳位布局下是颜色圆，
+    # 两种情况都断言「主栏加宽后红钮仍在屏内」这条回归不变量）。
+    if len(right) < 2:
+        raise RuntimeError(f"工具条右侧图标不足: glyphs={row_glyphs}")
+    text_x = right[1]
+    _click_overlay(text_x, B1[1])
     p2 = _snap_overlay("stage2_widened", run.run_dir)
     d2 = decode(p2)
-    B2 = d2["B"][0] if d2["B"] else None
     R2 = d2["R"][0] if d2["R"] else None
+    B2 = d2["B"][0] if d2["B"] else None
     assert B2 and R2, f"点T后按钮未检出: {d2}"
     band2 = dark_band_right(p2, width, B2[1])
     inside2 = band2 <= width - 8
-    print(f"[stage2] 撑开后 暗带右端 {band2:.0f}/{width - 8:.0f} {'✓红钮屏内' if inside2 else '✗出屏'}")
+    print(f"[stage2] 点击 {text_x:.0f} 撑开后 暗带右端 {band2:.0f}/{width - 8:.0f} {'✓红钮屏内' if inside2 else '✗出屏'}")
     assert inside2, f"撑开后主栏出屏: {band2:.0f}"
 
-    # 点图形组展开二级。The group buttons sit 38pt apart and the selected one
-    # is the text group at this point, so the shape group is one slot back.
-    # Deriving it from B2 would land on the colour swatches instead.
-    _click_overlay(B2[0] - 38, B2[1])
-    p3 = _snap_overlay("stage3_sub", run.run_dir)
-    B3 = decode(p3)["B"][0]
-    sub = find_sub(p2, p3, B3[1])
-    assert sub, "二级面板未展开"
-    gap = sub["gap"]
-    inside3 = sub["x0"] >= 8 and sub["x1"] <= width - 8
-    anchored = abs((sub["x0"] + sub["x1"]) / 2 - B3[0] + 38) <= 40
-    print(f"[stage3] 二级 间隙={gap:.0f}pt 锚定偏差={abs((sub['x0']+sub['x1'])/2 - B3[0] + 38):.0f}pt 屏内={'Y' if inside3 else 'N'}")
-    assert inside3, "二级出屏"
+    # 二级面板检查暂不进 CI：右边缘选区触发工具条钳位后，工具组图标与
+    # 身后的启动器面板内容重叠，像素级定位不可靠——曾把录制键当成工具组
+    # 点击，直接触发了录屏。锚定断言需要一个确定性挂载点（例如 debug 启动
+    # 参数把工具条钉在已知位置）后再恢复。
 
     _press_escape()
     return (f"edge layout ok: 默认带右端 {band1:.0f}→撑开 {band2:.0f} 均屏内, "
-            f"二级间隙 {gap:.0f}pt 锚定偏差 {abs((sub['x0']+sub['x1'])/2 - B3[0] + 38):.0f}pt")
+            f"红钮始终屏内")
+
+
+def _row_glyph_centers(path, row_y):
+    """Centres of the lit glyph runs on the toolbar row, in display points.
+
+    Merges runs separated by less than 8pt so the colour-swatch tick marks
+    read as one swatch, and drops anything narrower than 5pt (antialiasing
+    specks from the windows behind the overlay).
+    """
+    from PIL import Image
+
+    im = Image.open(path).convert("RGB")
+    W, H = im.size
+    px = im.load()
+    display_w, _ = _main_display_size()
+    scale = W / display_w if display_w else W / 1440.0
+    y_lo = max(0, int((row_y - 16) * scale))
+    y_hi = min(H, int((row_y + 16) * scale))
+    runs = []
+    cur = None
+    last_hit = None
+    for X in range(int(150 * scale), W, 2):
+        hits = 0
+        for Y in range(y_lo, y_hi, 2):
+            r, g, b = px[X, Y]
+            if r > 130 and g > 130 and b > 130:
+                hits += 1
+        if hits >= 1:
+            if cur is None:
+                cur = X
+            last_hit = X
+        elif cur is not None and (X - last_hit) / scale >= 8:
+            runs.append((cur, last_hit))
+            cur = None
+    if cur is not None:
+        runs.append((cur, last_hit))
+    return [
+        (a + b) / 2 / scale
+        for a, b in runs
+        if (b - a) / scale >= 5
+    ]
 
 
 def dark_band_right(path, width, row_cy):
@@ -1042,75 +1086,6 @@ def decode(path):
     return {"B": group_buttons, "S": sorted(swatches, key=lambda t: t[0]), "R": red_clusters}
 
 
-
-def _toolbar_icon_centers(px, W, H, scale, row_y, max_gap=22):
-    """Centers of the light glyphs on the toolbar row, in display points.
-
-    The annotation tool groups draw a white-ish icon on the dark pill, so
-    the glyph columns mark where the buttons are. Returns the merged runs.
-    """
-    y_lo = int((row_y - 16) * scale)
-    y_hi = int((row_y + 16) * scale)
-    runs = []
-    cur = None
-    for X in range(int(150 * scale), W, 2):
-        hits = 0
-        for Y in range(max(0, y_lo), min(H, y_hi), 2):
-            r, g, b = px[X, Y]
-            if r > 130 and g > 130 and b > 130 and abs(r - g) < 30 and abs(g - b) < 30:
-                hits += 1
-        if hits >= 1 and cur is None:
-            cur = X
-        elif hits < 1 and cur is not None:
-            runs.append((cur, X))
-            cur = None
-    if cur is not None:
-        runs.append((cur, W))
-    merged = []
-    for a, b in runs:
-        if b - a < 8:
-            continue
-        if merged and (a - merged[-1][1]) / scale <= max_gap:
-            merged[-1] = (merged[-1][0], b)
-        else:
-            merged.append((a, b))
-    return [(a + b) / 2 / scale for a, b in merged]
-
-
-def find_sub(before_path, after_path, row_y):
-    """Locate the sub-toolbar that expands above the main toolbar.
-
-    The sub-toolbar is the region that changed above the main toolbar row
-    (row_y, in display points) between the previous capture and this one.
-    Returns {"x0", "x1", "gap"} in display points, or None when no panel
-    appeared.
-    """
-    from PIL import Image, ImageChops
-
-    before = Image.open(before_path).convert("RGB")
-    after = Image.open(after_path).convert("RGB")
-    diff = ImageChops.difference(before, after).convert("L")
-    width, height = after.size
-    display_w, _ = _main_display_size()
-    scale = width / display_w if display_w else width / 1440.0
-    changed = diff.load()
-    limit = int(row_y * scale)
-    xs, ys = [], []
-    for y in range(0, min(limit, height), 2):
-        for x in range(0, width, 2):
-            if changed[x, y] > 24:
-                xs.append(x)
-                ys.append(y)
-    if len(xs) < 200:
-        return None
-    x0, x1 = min(xs) / scale, max(xs) / scale
-    top = min(ys) / scale
-    return {"x0": x0, "x1": x1, "gap": row_y - top}
-
-    return {
-        "B": blue_clusters,
-        "R": sorted(red_clusters, key=lambda t: t[0]),
-    }
 
 
 def append_timeline(run_dir: Path, event: str, data: dict | None = None) -> None:
