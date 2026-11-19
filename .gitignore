@@ -44,3 +44,4 @@ tools/__pycache__/
 !.artifacts/ai-settings-validation/pr/
 .artifacts/ai-settings-validation/pr/*
 !.artifacts/ai-settings-validation/pr/*
+.learnings/
