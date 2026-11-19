@@ -796,25 +796,45 @@ def _diff_region(capture_before: Path, capture_after: Path, display_width: float
     return (min(xs) / scale, min(ys) / scale, max(xs) / scale, max(ys) / scale)
 
 
-def _snap_overlay(tag):
-    """cua 截屏（屏幕须唤醒/保活）"""
+def _snap_overlay(run, tag):
+    """阶段取证截图：应用自身 UIEvidenceCaptureService 优先（唯一无 TCC 依赖通道）
+
+    协议（Sources/QuiteNote/System/Services/UIEvidenceCaptureService.swift）：app 以
+    --ui-smoke-run 启动并持有 QN_UI_EVIDENCE_DIR，每 0.1s 轮询 requests/frame-*.request，
+    把自己最高层级窗口（截图遮罩正是 screenSaver 级）写到 frames/frame-*.png。
+    外部通道（cua / 系统 screencapture）依赖 runner 会话的屏幕录制授权——该授权
+    周期性 re-consent 被踢（2026-11-20 实锤两通道同时无产物），只做兜底。
+    """
     caffeinate(20)
+    stem = f"frame-{tag}"
+    requests_dir = run.run_dir / "recordings" / "requests"
+    frames_dir = run.run_dir / "recordings" / "frames"
+    requests_dir.mkdir(parents=True, exist_ok=True)
+    frames_dir.mkdir(parents=True, exist_ok=True)
+    app_shot = frames_dir / f"{stem}.png"
+    app_shot.unlink(missing_ok=True)
+    (requests_dir / f"{stem}.request").write_text("")
+    deadline = time.monotonic() + 8
+    while time.monotonic() < deadline:
+        if app_shot.exists() and app_shot.stat().st_size > 40000:
+            return str(app_shot)
+        time.sleep(0.1)
+
+    # 兜底 1/2：cua 截屏（本机已知不稳，重试一次）
     out = f"/tmp/qn-manual/FIN_{tag}.png"
     if os.path.exists(out): os.remove(out)
     subprocess.run([CUA, "call", "get_desktop_state", "--screenshot-out-file", out],
                    capture_output=True, timeout=60)
     if not (os.path.exists(out) and os.path.getsize(out) > 40000):
-        # cua 截屏在本机已知不稳（CuaDriver 的屏幕录制授权周期性 re-consent 被踢，
-        # 见 _capture_main_display 注释）：重试一次 cua，再用系统 screencapture 兜底。
-        # 旧实现直接 return None → decode(None) 报 PIL 的 NoneType.read 假异常，掩盖真因
         time.sleep(1.0)
         subprocess.run([CUA, "call", "get_desktop_state", "--screenshot-out-file", out],
                        capture_output=True, timeout=60)
+    # 兜底 3：系统 screencapture（runner 会话无 TCC 时同样无产物）
     if not (os.path.exists(out) and os.path.getsize(out) > 40000):
         subprocess.run(["screencapture", "-x", out], check=False, timeout=30)
-    if not (os.path.exists(out) and os.path.getsize(out) > 40000):
-        raise RuntimeError(f"screenshot stage capture failed: {tag} (cua 重试 + screencapture 兜底均无产物)")
-    return out
+    if os.path.exists(out) and os.path.getsize(out) > 40000:
+        return out
+    raise RuntimeError(f"screenshot stage capture failed: {tag} (app 证据服务 + cua×2 + screencapture 全部无产物)")
 
 
 def _click_overlay(lx, ly):
@@ -865,7 +885,7 @@ def smoke_screenshot_toolbar(run: Run, driver: AXDriver) -> str:
     sel = (1178, 300, 1398, 480)
     _drag_overlay(*sel)
 
-    p1 = _snap_overlay("stage1_default")
+    p1 = _snap_overlay(run, "stage1_default")
     d1 = decode(p1)
     B1 = d1["B"][0] if d1["B"] else None
     R1 = d1["R"][0] if d1["R"] else None
@@ -877,7 +897,7 @@ def smoke_screenshot_toolbar(run: Run, driver: AXDriver) -> str:
 
     # 点文本组（蓝钮+76pt）
     _click_overlay(B1[0] + 76, B1[1])
-    p2 = _snap_overlay("stage2_widened")
+    p2 = _snap_overlay(run, "stage2_widened")
     d2 = decode(p2)
     B2 = d2["B"][0] if d2["B"] else None
     R2 = d2["R"][0] if d2["R"] else None
@@ -889,7 +909,7 @@ def smoke_screenshot_toolbar(run: Run, driver: AXDriver) -> str:
 
     # 点图形组展开二级（蓝钮-38pt）
     _click_overlay(B2[0] - 38, B2[1])
-    p3 = _snap_overlay("stage3_sub")
+    p3 = _snap_overlay(run, "stage3_sub")
     B3 = decode(p3)["B"][0]
     sub = find_sub(p3, B3[1])
     assert sub, "二级面板未展开"
