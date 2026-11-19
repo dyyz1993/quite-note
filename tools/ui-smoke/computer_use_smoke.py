@@ -803,7 +803,18 @@ def _snap_overlay(tag):
     if os.path.exists(out): os.remove(out)
     subprocess.run([CUA, "call", "get_desktop_state", "--screenshot-out-file", out],
                    capture_output=True, timeout=60)
-    return out if os.path.exists(out) and os.path.getsize(out) > 40000 else None
+    if not (os.path.exists(out) and os.path.getsize(out) > 40000):
+        # cua 截屏在本机已知不稳（CuaDriver 的屏幕录制授权周期性 re-consent 被踢，
+        # 见 _capture_main_display 注释）：重试一次 cua，再用系统 screencapture 兜底。
+        # 旧实现直接 return None → decode(None) 报 PIL 的 NoneType.read 假异常，掩盖真因
+        time.sleep(1.0)
+        subprocess.run([CUA, "call", "get_desktop_state", "--screenshot-out-file", out],
+                       capture_output=True, timeout=60)
+    if not (os.path.exists(out) and os.path.getsize(out) > 40000):
+        subprocess.run(["screencapture", "-x", out], check=False, timeout=30)
+    if not (os.path.exists(out) and os.path.getsize(out) > 40000):
+        raise RuntimeError(f"screenshot stage capture failed: {tag} (cua 重试 + screencapture 兜底均无产物)")
+    return out
 
 
 def _click_overlay(lx, ly):
