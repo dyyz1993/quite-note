@@ -41,7 +41,11 @@ jobs:
       - name: Build universal Dev app
         run: |
           uname -m
-          swift build -c release --arch x86_64 --arch arm64 --product QuiteNote
+          # rpath 必须与 build-app.sh 的构建路径一致（@executable_path/../Frameworks）：
+          # Sparkle.framework 装在 Contents/Frameworks，二进制以 @rpath 引用——
+          # 没有这条 dyld 找不到框架，启动即 SIGABRT（2026-11-19 xyz-mac 实锤）
+          swift build -c release --arch x86_64 --arch arm64 --product QuiteNote \
+            -Xlinker -rpath -Xlinker @executable_path/../Frameworks
           mkdir -p .build/release
           cp .build/apple/Products/Release/QuiteNote .build/release/QuiteNote
           [[ -n "$APP_SIGN_IDENTITY" ]] || { echo "APP_SIGN_IDENTITY was not prepared"; exit 2; }

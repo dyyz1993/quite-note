@@ -211,9 +211,20 @@ else
     BINARY_CHANGED=true
 fi
 
+# rpath 自愈守卫（2026-11-19 CI 实锤）：外部预构建的二进制（如 CI workflow 自己
+# swift build --arch 出的）没带 -Xlinker -rpath @executable_path/../Frameworks——
+# 那组 flags 只在本脚本自己的构建路径里。缺口症状：dyld 找不到 Frameworks/ 里的
+# Sparkle.framework，启动即 SIGABRT（"Library not loaded: @rpath/Sparkle.framework"）。
+# 二进制刚复制还未签名，此处补 rpath 最干净（改已签名二进制会破坏签名）。
+if [ "$APP_STORE_MODE" = false ] && command -v otool >/dev/null 2>&1; then
+    if ! otool -l "$MACOS_DIR/$EXECUTABLE_NAME" | grep -A2 LC_RPATH | grep -q "path @executable_path/../Frameworks"; then
+        echo "主二进制缺少 @executable_path/../Frameworks rpath（外部预构建二进制的常见缺口），install_name_tool 补齐"
+        install_name_tool -add_rpath "@executable_path/../Frameworks" "$MACOS_DIR/$EXECUTABLE_NAME"
+    fi
+fi
+
 # 复制图标文件
-if [ -f "AppIcon.icns" ]; then
-    echo "复制应用图标..."
+if [ -f "AppIcon.icns" ]; then    echo "复制应用图标..."
     cp AppIcon.icns "$RESOURCES_DIR/AppIcon.icns"
 elif [ -f "QuiteNote.icns" ]; then
     echo "复制备用应用图标..."
