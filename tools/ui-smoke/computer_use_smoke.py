@@ -412,10 +412,12 @@ def smoke_launcher(run: Run, driver: AXDriver) -> str:
         raise RuntimeError("app has no visible window before launcher invocation")
 
     def panel_visible() -> bool:
-        # Launcher NSPanel is not consistently AX-readable over SSH; its ~640x491
-        # popUpMenu panel is the deterministic smoke signal.
+        # Launcher NSPanel is not consistently AX-readable over SSH; its width
+        # (640, uniquely in 620-660) is the deterministic smoke signal. Height is
+        # content-adaptive and clamped to 60% of screen height — measured 477 on
+        # this host (2026-11-20), which fell 3pt outside the old 480-510 window.
         return any(
-            620 <= w["frame"][2] <= 660 and 480 <= w["frame"][3] <= 510
+            620 <= w["frame"][2] <= 660 and 300 <= w["frame"][3] <= 800
             for w in driver.windows()
         )
 
@@ -838,6 +840,9 @@ def smoke_screenshot_toolbar(run: Run, driver: AXDriver) -> str:
         time.sleep(1.0)
 
     _press_escape()  # clear any stale session
+    # ⚠️ 触发行勿删（2026-10-22 3901435 重构曾误删此行，套件永远"overlay did not
+    # appear"，直到 2026-11-20 才发现）：清场后必须从状态菜单发起截图会话
+    _press_status_menu_item("捕获屏幕截图")
     deadline = time.monotonic() + 3
     while time.monotonic() < deadline and _overlay_window_count(pid) == 0:
         time.sleep(0.05)
