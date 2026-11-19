@@ -846,6 +846,7 @@ def _snap_overlay(run, tag):
     # 归一化到 1366 宽：管线的全部像素假设（SCREEN_PT 换算、decode 的 18-50pt 簇宽、
     # dark_band 1432 上限）都按 cua 时代 1366px 截图标定；app 通道是原生 Retina 2880px，
     # 不归一化则几何全部翻倍（2026-11-20 实锤 KeyError/簇宽过滤失效）
+    os.makedirs("/tmp/qn-manual", exist_ok=True)  # 此前由 cua 落盘时顺带创建，app 通道需自建
     from PIL import Image
     im = Image.open(source)
     if im.width != 1366:
