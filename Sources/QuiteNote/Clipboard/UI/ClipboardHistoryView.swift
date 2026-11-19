@@ -242,7 +242,9 @@ struct ClipboardHistoryView: View {
     private var entryList: some View {
         ClipboardListTableView(
             entries: vm.visibleEntries,
-            entriesVersion: store.entriesVersion,
+            // 用 VM 的可见列表版本（非 store.entriesVersion）：隐藏期 store 每次捕获
+            // 都 bump，旧签名会刷隐藏表格；VM 版本只在可见列表真实变化时 +1
+            entriesVersion: vm.visibleEntriesVersion,
             selectedIndex: $vm.selectedIndex,
             onSingleClick: { index in
                 // 单击 = 选中并复制（用户约定）
@@ -298,6 +300,12 @@ struct ClipboardHistoryView: View {
 
     private var shortcutFooter: some View {
         HStack(spacing: 14) {
+            // 选中进度（用户约定：知道当前在第几条、还剩多少到底）
+            if let progress = vm.selectionProgress {
+                Text("第 \(progress.current) / \(progress.total) 条")
+                    .monospacedDigit()
+                    .foregroundColor(ClipboardPalette.accent)
+            }
             Text("Tab 切换类型")
             Text("↑↓ 选择")
             Text("↩ 粘贴")
@@ -422,9 +430,8 @@ extension ClipboardHistoryViewModel {
             let idx = dataIndex(forCommandDigit: n)
             if entries.indices.contains(idx) { paste(entries[idx]) }
         case .togglePin:
-            if entries.indices.contains(selectedIndex) {
-                ClipboardHistoryStore.shared.togglePin(id: entries[selectedIndex].id)
-            }
+            // 选中态按 ID 跟随置顶条目（togglePinSelected 内处理重排后的下标恢复）
+            togglePinSelected()
         case .deleteSelected:
             if entries.indices.contains(selectedIndex) {
                 let entry = entries[selectedIndex]

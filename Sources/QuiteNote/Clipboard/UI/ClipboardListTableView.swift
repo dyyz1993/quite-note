@@ -159,20 +159,74 @@ struct ClipboardListTableView: NSViewRepresentable {
         func reportVisibleTop() {
             guard let table, let scroll = table.enclosingScrollView else { return }
             let visible = table.rows(in: scroll.contentView.visibleRect)
-            guard visible.length > 0 else { return }
+            let update = Self.viewportUpdate(
+                visibleLocation: visible.location,
+                visibleLength: visible.length,
+                entryCount: parent.entries.count,
+                currentTop: visibleTop
+            )
             // 接近底部 → 请求下一页（store.loadMore 内部有 hasMore 守卫，幂等）
-            if visible.location + visible.length >= parent.entries.count - 30 {
+            if update.loadMore {
                 parent.onLoadMore()
             }
-            guard visible.location != visibleTop else { return }
-            visibleTop = visible.location
+            guard update.topChanged else { return }
+            visibleTop = update.newTop
             parent.onVisibleTopChanged(visibleTop)
-            // 只刷新当前可见区间（⌘N 序号随视口变；滚出屏幕的行不需要刷）。
-            // 旧实现刷 oldTop..newTop+11，快速滚动时一次冲刷 30-50 行
-            let lo = max(0, Int(visible.location))
-            let hi = min(parent.entries.count - 1, lo + Int(visible.length) - 1)
+            applyPaletteUpdates(update.paletteUpdates)
+        }
+
+        /// 滚动位置的纯计算（与 AppKit 解耦，单元测试直接钉住边界/序号映射）：
+        /// 可见区间 → 是否请求下一页 / 首行是否变化 / 各可见行的 ⌘N 序号更新
+        struct ViewportUpdate: Equatable {
+            struct PaletteUpdate: Equatable {
+                let row: Int
+                let slot: Int?
+            }
+            let loadMore: Bool
+            let topChanged: Bool
+            let newTop: Int
+            let paletteUpdates: [PaletteUpdate]
+        }
+
+        static func viewportUpdate(
+            visibleLocation: Int,
+            visibleLength: Int,
+            entryCount: Int,
+            currentTop: Int
+        ) -> ViewportUpdate {
+            guard visibleLength > 0 else {
+                return ViewportUpdate(loadMore: false, topChanged: false, newTop: currentTop, paletteUpdates: [])
+            }
+            let loadMore = visibleLocation + visibleLength >= entryCount - 30
+            guard visibleLocation != currentTop else {
+                return ViewportUpdate(loadMore: loadMore, topChanged: false, newTop: currentTop, paletteUpdates: [])
+            }
+            // 增量刷新当前可见行上的 ⌘N 序号：直接调已有 cell 的 updatePaletteNumber，
+            // 严禁 table.reloadData（旧实现滚动每行重建 ~12 个 cell，是 ↓ 导航卡顿主因）
+            let lo = max(0, visibleLocation)
+            let hi = min(entryCount - 1, lo + visibleLength - 1)
+            var updates: [ViewportUpdate.PaletteUpdate] = []
             if hi >= lo {
-                table.reloadData(forRowIndexes: IndexSet(integersIn: lo...hi), columnIndexes: IndexSet(integer: 0))
+                updates.reserveCapacity(hi - lo + 1)
+                for row in lo...hi {
+                    let slot = row - visibleLocation + 1
+                    updates.append(ViewportUpdate.PaletteUpdate(row: row, slot: (1...9).contains(slot) ? slot : nil))
+                }
+            }
+            return ViewportUpdate(loadMore: loadMore, topChanged: true, newTop: visibleLocation, paletteUpdates: updates)
+        }
+
+        /// 可注入 effect：把序号更新应用到已存在的 cell（cellProvider 默认走真实表格；
+        /// 单测注入桩验证映射，不依赖 NSTableView 布局周期）
+        func applyPaletteUpdates(
+            _ updates: [ViewportUpdate.PaletteUpdate],
+            cellProvider: ((Int) -> ClipRowCell?)? = nil
+        ) {
+            let provider = cellProvider ?? { [weak self] row in
+                self?.table?.view(atColumn: 0, row: row, makeIfNecessary: false) as? ClipRowCell
+            }
+            for update in updates {
+                provider(update.row)?.updatePaletteNumber(update.slot)
             }
         }
     }
@@ -183,10 +237,20 @@ final class ClipRowCell: NSTableCellView {
     private let iconView = NSImageView()
     private let titleLabel = NSTextField(labelWithString: "")
     private let sourceIconView = NSImageView()
+    /// 置顶标识（时间左侧小图钉；未置顶时完全收起不占位）
+    private let pinView = NSImageView()
     private let timeLabel = NSTextField(labelWithString: "")
     private let shortcutLabel = NSTextField(labelWithString: "")
+    /// 置顶图钉的收展约束（configure 按条目状态切换）
+    private var pinWidthConstraint: NSLayoutConstraint!
+    private var sourceToPinConstraint: NSLayoutConstraint!
+    private var pinToTimeConstraint: NSLayoutConstraint!
 
     private var entry: ClipboardEntry?
+    /// 序号标签展示状态（refreshShortcutLabel 的输入；滚动时增量更新用）
+    private var isSelectedRow = false
+    private var currentPaletteNumber: Int?
+    private var currentIndex = 0
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -208,12 +272,22 @@ final class ClipRowCell: NSTableCellView {
         sourceIconView.translatesAutoresizingMaskIntoConstraints = false
         timeLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
         shortcutLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+        pinView.translatesAutoresizingMaskIntoConstraints = false
+        pinView.image = NSImage(systemSymbolName: "pin.fill", accessibilityDescription: "置顶")
+        pinView.imageScaling = .scaleProportionallyDown
 
         addSubview(iconView)
         addSubview(titleLabel)
         addSubview(sourceIconView)
+        addSubview(pinView)
         addSubview(timeLabel)
         addSubview(shortcutLabel)
+
+        // 元信息链：sourceIcon → [pin] → time → shortcut；未置顶时 pin 宽度收 0、
+        // 两侧间距合并回原 -6 视觉间距
+        pinWidthConstraint = pinView.widthAnchor.constraint(equalToConstant: 9)
+        sourceToPinConstraint = sourceIconView.trailingAnchor.constraint(equalTo: pinView.leadingAnchor, constant: -4)
+        pinToTimeConstraint = pinView.trailingAnchor.constraint(equalTo: timeLabel.leadingAnchor, constant: -4)
 
         NSLayoutConstraint.activate([
             iconView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
@@ -228,10 +302,13 @@ final class ClipRowCell: NSTableCellView {
             shortcutLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
             timeLabel.trailingAnchor.constraint(equalTo: shortcutLabel.leadingAnchor, constant: -8),
             timeLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
-            sourceIconView.trailingAnchor.constraint(equalTo: timeLabel.leadingAnchor, constant: -6),
             sourceIconView.centerYAnchor.constraint(equalTo: centerYAnchor),
             sourceIconView.widthAnchor.constraint(equalToConstant: 12),
             sourceIconView.heightAnchor.constraint(equalToConstant: 12),
+            pinView.centerYAnchor.constraint(equalTo: centerYAnchor),
+            pinWidthConstraint,
+            sourceToPinConstraint,
+            pinToTimeConstraint,
 
             titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: sourceIconView.leadingAnchor, constant: -8),
         ])
@@ -249,6 +326,9 @@ final class ClipRowCell: NSTableCellView {
 
     func configure(entry: ClipboardEntry, index: Int, isSelected: Bool, paletteNumber: Int?) {
         self.entry = entry
+        self.currentIndex = index
+        self.isSelectedRow = isSelected
+        self.currentPaletteNumber = paletteNumber
         wantsLayer = true
         layer?.cornerRadius = 4
 
@@ -256,21 +336,26 @@ final class ClipRowCell: NSTableCellView {
             layer?.backgroundColor = Self.selectedBg.cgColor
             titleLabel.textColor = .white
             timeLabel.textColor = NSColor.white.withAlphaComponent(0.75)
-            shortcutLabel.textColor = .white
         } else {
             layer?.backgroundColor = Self.normalBg.cgColor
             titleLabel.textColor = Self.normalTitle
             timeLabel.textColor = Self.normalTime
-            shortcutLabel.textColor = paletteNumber != nil ? Self.accent : NSColor(red: 0.6, green: 0.6, blue: 0.6, alpha: 0.6)
         }
         titleLabel.font = Self.titleFont
         timeLabel.font = Self.metaFont
         shortcutLabel.font = Self.shortcutFont
 
+        // 置顶标识：普通行主题紫、选中行白色；未置顶宽度收 0（间距 -2 + 0 + -4
+        // 与原 sourceIcon→time -6 等效，布局零漂移）
+        let pinned = entry.isPinned
+        pinView.isHidden = !pinned
+        pinWidthConstraint.constant = pinned ? 9 : 0
+        sourceToPinConstraint.constant = pinned ? -4 : -2
+        pinView.contentTintColor = isSelected ? NSColor.white : Self.accent
+
         titleLabel.stringValue = ClipRowContent.singleLine(entry)
         timeLabel.stringValue = ClipboardTimeFormatter.short(entry.createdAt)
-        shortcutLabel.stringValue = isSelected ? "⏎" : (paletteNumber.map { "⌘\($0)" } ?? "\(index + 1)")
-        shortcutLabel.alphaValue = (isSelected || paletteNumber != nil) ? 1 : 0.4
+        refreshShortcutLabel()
 
         // 图标：图片缩略图异步 / favicon 异步 / 类型符号同步
         ClipRowContent.icon(entry) { [weak self] image in
@@ -279,6 +364,42 @@ final class ClipRowCell: NSTableCellView {
         sourceIconView.image = ClipboardSourceAppIcon.icon(bundleID: entry.sourceBundleID)
         sourceIconView.isHidden = sourceIconView.image == nil
     }
+
+    /// 滚动时增量刷新 ⌘N 序号（仅改快捷键标签的文本/颜色/透明度，不重绘整行）
+    func updatePaletteNumber(_ paletteNumber: Int?) {
+        guard currentPaletteNumber != paletteNumber else { return }
+        currentPaletteNumber = paletteNumber
+        refreshShortcutLabel()
+    }
+
+    /// 序号标签三态文案（纯函数供单测钉住：选中 ⏎ > ⌘N > 行号兜底）
+    static func shortcutText(isSelected: Bool, paletteNumber: Int?, index: Int) -> String {
+        if isSelected { return "⏎" }
+        if let n = paletteNumber { return "⌘\(n)" }
+        return "\(index + 1)"
+    }
+
+    static func shortcutAlpha(isSelected: Bool, paletteNumber: Int?) -> Double {
+        (isSelected || paletteNumber != nil) ? 1 : 0.4
+    }
+
+    private func refreshShortcutLabel() {
+        shortcutLabel.stringValue = Self.shortcutText(
+            isSelected: isSelectedRow, paletteNumber: currentPaletteNumber, index: currentIndex
+        )
+        shortcutLabel.textColor = isSelectedRow
+            ? .white
+            : (currentPaletteNumber != nil ? Self.accent : NSColor(red: 0.6, green: 0.6, blue: 0.6, alpha: 0.6))
+        shortcutLabel.alphaValue = Self.shortcutAlpha(
+            isSelected: isSelectedRow, paletteNumber: currentPaletteNumber
+        )
+    }
+
+    #if DEBUG
+    /// 单测观察口（增量更新行为验证用）
+    var shortcutTextForTesting: String { shortcutLabel.stringValue }
+    var shortcutAlphaForTesting: Double { shortcutLabel.alphaValue }
+    #endif
 }
 
 /// 行内容组装（AppKit 单元格用）

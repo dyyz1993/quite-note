@@ -132,14 +132,26 @@ final class DiagnosticCenter {
     }
 
     /// 异步操作埋点句柄：begin 后在完成时调 end()，超阈值才落日志
-    struct MeasureToken {
+    /// final class + 幂等 end：剪贴板搜索的"先搜旧快照、重建后兜底重搜"会拿到
+    /// 同一个 token 两次 end（struct 拷贝守不住标记），class 让所有引用共享 ended
+    final class MeasureToken {
         let category: String
         let name: String
         let threshold: TimeInterval
         let start: DispatchTime
         var extra: String = ""
+        private var ended = false
+
+        init(category: String, name: String, threshold: TimeInterval, start: DispatchTime) {
+            self.category = category
+            self.name = name
+            self.threshold = threshold
+            self.start = start
+        }
 
         func end() {
+            guard !ended else { return }
+            ended = true
             let ms = Double(DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1_000_000
             guard ms >= threshold * 1000 else { return }
             let suffix = extra.isEmpty ? "" : " · \(extra)"

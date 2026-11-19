@@ -53,6 +53,100 @@ final class ClipboardSearchViewModelTests: XCTestCase {
         XCTAssertFalse(vm.isSearching)
     }
 
+    func testTogglePinKeepsSelectionOnPinnedEntry() {
+        let store = ClipboardHistoryStore()
+        store.deleteAllForTesting()
+        (0..<3).forEach { store.insertOrUpdate(makeEntry($0)) }
+        let vm = ClipboardHistoryViewModel()
+        vm.bind(store: store)
+
+        // 初始 [2, 1, 0]（时间倒序）：选中最后一条（最旧）
+        vm.selectedIndex = 2
+        let pinnedID = vm.visibleEntries[2].id
+
+        vm.togglePinSelected()
+
+        // 置顶 → 条目移到头部，选中态必须跟随（而不是留在旧下标 2 上）
+        XCTAssertEqual(vm.visibleEntries.first?.id, pinnedID)
+        XCTAssertEqual(vm.selectedIndex, 0, "置顶后选中应跟随原条目到新位置")
+        XCTAssertTrue(vm.visibleEntries[0].isPinned)
+
+        // 再按一次 ⌘P 取消置顶 → 条目回到底部原位，选中继续跟随
+        vm.togglePinSelected()
+        XCTAssertEqual(vm.visibleEntries.last?.id, pinnedID)
+        XCTAssertEqual(vm.selectedIndex, 2, "取消置顶后选中应跟随原条目回到原位置")
+        XCTAssertFalse(vm.visibleEntries[2].isPinned)
+    }
+
+    func testIndexDocumentCarriesCompactPinyinForChineseTitle() {
+        let chinese = ClipboardEntry(
+            type: .text,
+            plainText: "会议纪要：周会同步",
+            contentHash: "pinyin-doc-1"
+        )
+        let doc = ClipboardHistoryViewModel.indexDocumentForTesting(chinese)
+        XCTAssertEqual(doc.pinyinNormalized, "huiyijiyaozhouhuitongbu", "全拼必须压缩去空格（nihao 式无分隔输入才命中）")
+        XCTAssertEqual(doc.pinyinInitialsNormalized, "hyjyzhtb")
+
+        // 纯拉丁标题不生成拼音（建档成本守卫）
+        let latin = ClipboardEntry(
+            type: .text,
+            plainText: "standup notes",
+            contentHash: "pinyin-doc-2"
+        )
+        let latinDoc = ClipboardHistoryViewModel.indexDocumentForTesting(latin)
+        XCTAssertEqual(latinDoc.pinyinNormalized, "")
+        XCTAssertEqual(latinDoc.pinyinInitialsNormalized, "")
+    }
+
+    func testPinyinQueryMatchesChineseEntry() {
+        let store = ClipboardHistoryStore()
+        store.deleteAllForTesting()
+        store.insertOrUpdate(ClipboardEntry(
+            type: .text,
+            plainText: "会议纪要：周会同步",
+            contentHash: "pinyin-e2e-1"
+        ))
+        store.insertOrUpdate(makeEntry(1))
+        let vm = ClipboardHistoryViewModel()
+        vm.bind(store: store)
+        vm.preloadSearchIndex(store: store)
+
+        // 全拼无分隔（用户实际输入形态）
+        let full = expectation(description: "full pinyin search delivers")
+        func checkFull(_ attempts: Int = 0) {
+            vm.searchText = "huiyijiyao"
+            vm.flushSearchForTesting()
+            if vm.visibleEntries.contains(where: { $0.plainText == "会议纪要：周会同步" }) && !vm.isSearching {
+                full.fulfill()
+            } else if attempts < 100 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { checkFull(attempts + 1) }
+            } else {
+                XCTFail("全拼搜索未命中中文条目")
+                full.fulfill()
+            }
+        }
+        checkFull()
+        wait(for: [full], timeout: 7)
+
+        // 首字母缩写
+        let initials = expectation(description: "initials search delivers")
+        func checkInitials(_ attempts: Int = 0) {
+            vm.searchText = "hyjy"
+            vm.flushSearchForTesting()
+            if vm.visibleEntries.contains(where: { $0.plainText == "会议纪要：周会同步" }) && !vm.isSearching {
+                initials.fulfill()
+            } else if attempts < 100 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { checkInitials(attempts + 1) }
+            } else {
+                XCTFail("首字母搜索未命中中文条目")
+                initials.fulfill()
+            }
+        }
+        checkInitials()
+        wait(for: [initials], timeout: 7)
+    }
+
     func testNewerQuerySupersedesOldBackgroundResult() {
         let store = ClipboardHistoryStore()
         store.deleteAllForTesting()
@@ -151,6 +245,8 @@ final class ClipboardSearchViewModelTests: XCTestCase {
         store.deleteAllForTesting()
         _ = store.loadIfNeededForTesting()
         let vm = ClipboardHistoryViewModel()
+        // 生产语义下面板隐藏时 sink 跳过重算；本测试覆盖 sink 驱动路径，注入常真
+        vm.isPanelVisibleProvider = { true }
         vm.bind(store: store)
 
         let payload = "remote-core-visible-\(UUID().uuidString)"
