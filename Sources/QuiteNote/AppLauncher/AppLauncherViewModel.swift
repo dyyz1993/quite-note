@@ -146,7 +146,7 @@ final class AppLauncherViewModel: ObservableObject {
             calculatorResult = nil
         }
         let store = AppCatalogStore.shared
-        // 排序：网页搜索 → 收藏片段/备忘 → 符号 → 应用。
+        // 排序：网页搜索 → 应用 → 符号 → 系统命令 → 收藏片段/备忘（文本兜底填充）。
         // 非 App Store 渠道额外提供本机系统集成能力。
         var items: [LauncherItem] = []
         // 网页搜索："搜索 swift 泛型" → 首行"在 Google 搜索"
@@ -179,7 +179,9 @@ final class AppLauncherViewModel: ObservableObject {
             textIndex.search(searchText, limit: Self.maxVisible) { [weak self] page in
                 guard let self, self.searchText == searchText else { return }
                 let textResults = page.documents.map(\.payload).map { LauncherItem.text($0) }
-                self.results.insert(contentsOf: textResults, at: min(1, self.results.count))
+                // 闪记/收藏片段是兜底填充（用户约定：应用结果优先），追加到末尾，
+                // 不再插到首行下面抢应用的位置
+                self.results.append(contentsOf: textResults)
                 self.resultsVersion += 1
                 self.suppressHoverSelection()
                 if self.selectedIndex != 0 { self.selectedIndex = 0 }
@@ -204,7 +206,10 @@ final class AppLauncherViewModel: ObservableObject {
         appIndex.search(searchText, limit: Self.maxVisible) { [weak self] page in
             guard let self, self.searchText == query else { return }
             let appResults = page.documents.map(\.payload).map { LauncherItem.app($0) }
-            self.results.append(contentsOf: appResults)
+            // 应用结果恒排在文本条目（闪记/收藏兜底）之前：两个异步回调落地次序
+            // 不定，按"第一个 .text 项之前插入"保证最终顺序稳定为 应用 → 文本
+            let index = Self.appInsertionIndex(in: self.results)
+            self.results.insert(contentsOf: appResults, at: index)
             self.resultsVersion += 1
             self.suppressHoverSelection()
             if self.selectedIndex != 0 { self.selectedIndex = 0 }
@@ -226,8 +231,23 @@ final class AppLauncherViewModel: ObservableObject {
         }
     }
 
-    private nonisolated static func textIndexDocument(_ item: LauncherTextItem) -> SearchIndexDocument<LauncherTextItem> {
-        SearchIndexDocument(
+    /// 应用结果并入 results 的落点：顶部动作区（网页/退出/范围行）之后、
+    /// 次级区（符号/命令/文本兜底）之前。用户约定：启动器的主场景是启动应用，
+    /// 同等匹配下应用恒排在符号等次要结果之前。
+    /// 纯函数供单测钉住顺序语义（应用回调与符号/文本落地次序不定）。
+    nonisolated static func appInsertionIndex(in results: [LauncherItem]) -> Int {
+        for (index, item) in results.enumerated() {
+            switch item {
+            case .symbol, .command, .text, .file:
+                return index
+            case .web, .scope, .quit, .app:
+                continue
+            }
+        }
+        return results.count
+    }
+
+    private nonisolated static func textIndexDocument(_ item: LauncherTextItem) -> SearchIndexDocument<LauncherTextItem> {        SearchIndexDocument(
             id: item.id,
             source: .launcherText,
             payload: item,

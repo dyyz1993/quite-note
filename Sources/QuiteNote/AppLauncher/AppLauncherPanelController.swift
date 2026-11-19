@@ -27,6 +27,27 @@ final class AppLauncherPanelController {
     /// hosted view 不会随面板隐藏销毁，onAppear 只触发一次）
     var onKeyAction: ((AppLauncherKeyAction) -> Void)?
 
+    /// 搜索框的 AppKit 句柄（LauncherSearchField 注册；makeFirstResponder 用）
+    weak var searchFieldHandle: NSTextField?
+
+    /// 确定性聚焦搜索框（面板已 key 才能生效；key 晚到由补焦重试/becomeKey 观察者兜底）
+    func focusSearchFieldNow() {
+        guard let panel, panel.isVisible, let field = searchFieldHandle else { return }
+        // 已聚焦且编辑中（含输入法组词态）→ 必须跳过：makeFirstResponder 会重启
+        // field editor 会话，未上屏的组词内容被整段丢弃（首词被删问题，同剪贴板面板）
+        if let editor = field.currentEditor(), panel.firstResponder === editor {
+            return
+        }
+        if panel.isKeyWindow {
+            let ok = panel.makeFirstResponder(field)
+            if ok {
+                DiagnosticCenter.info("Launcher", "聚焦成功：makeFirstResponder → true")
+            } else {
+                DiagnosticCenter.warning("Launcher", "聚焦失败：makeFirstResponder 返回 false")
+            }
+        }
+    }
+
     private init() {}
 
     var isVisible: Bool { panel?.isVisible ?? false }
@@ -36,6 +57,10 @@ final class AppLauncherPanelController {
     }
 
     func show() {
+        // Alfred 式 force English：唤起即切英文键盘（缩略词 wx/weixin 直达，中文
+        // IME 会把 "wx" 组词吞掉），收起时还原。已有英文会话则幂等
+        InputSourceSwitcher.selectEnglishForPanel()
+
         let panel = ensurePanel()
         // 居中到鼠标所在的屏幕（panel.center() 多屏时会甩到副屏）
         let mouseLocation = NSEvent.mouseLocation
@@ -54,6 +79,7 @@ final class AppLauncherPanelController {
         panel.makeKeyAndOrderFront(nil)
         // macOS 14+ 对 accessory 应用的 activate 不总是生效，补一次确保搜索框可输入
         NSApp.activate(ignoringOtherApps: true)
+        focusSearchFieldNow()
 
         // 面板互斥：唤启动器时收起剪贴板面板（两个浮板同时可见会引发 key 转移竞态，
         // 实测 key 停在 nil、面板键盘全废；互斥同时消除干扰源）
@@ -63,13 +89,20 @@ final class AppLauncherPanelController {
 
         // key 就位补拉：makeKey 是异步的。用浮球验证过的激进方式（orderFrontRegardless
         // + makeKey 直调），按固定间隔补拉直到就位
-        // 前密后疏重试（同剪贴板面板，macOS 26 激活归因窗口约束）+ 激活重锤兜底
+        // 前密后疏重试（同剪贴板面板，macOS 26 激活归因窗口约束）+ 激活重锤兜底。
+        // 每轮重试后**无条件**补焦一拍：只在 makeKey 成功才补焦会让"晚到的 key"
+        // 无人聚焦（剪贴板面板实测过的坑——key✓ 但打不了字）
         for delay in [0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.55, 0.7] {
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-                guard let self, let panel = self.panel, panel.isVisible, !panel.isKeyWindow else { return }
-                NSApp.activate(ignoringOtherApps: true)
-                panel.orderFrontRegardless()
-                panel.makeKey()
+                guard let self, let panel = self.panel, panel.isVisible else { return }
+                if !panel.isKeyWindow {
+                    NSApp.activate(ignoringOtherApps: true)
+                    panel.orderFrontRegardless()
+                    panel.makeKey()
+                }
+                DispatchQueue.main.async {
+                    self.focusSearchFieldNow()
+                }
             }
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
@@ -79,6 +112,9 @@ final class AppLauncherPanelController {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                 NSApp.activate(ignoringOtherApps: true)
                 panel.makeKeyAndOrderFront(nil)
+                DispatchQueue.main.async {
+                    self.focusSearchFieldNow()
+                }
             }
             // 无论 key 是否成功，确认聚焦后切回 .accessory（否则 Dock 图标常驻）
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
@@ -96,6 +132,7 @@ final class AppLauncherPanelController {
         }
 
         installKeyMonitor()
+        installClickOutsideMonitor()
 
         // ESC 注册为 Carbon 热键（面板打开期间）：搜狗在「搜索框聚焦+中文模式」下
         // 会在 app 之前吞掉裸 ESC（实测单/双击都到不了 NSEvent 监听器），Carbon 层
@@ -119,12 +156,14 @@ final class AppLauncherPanelController {
     }
 
     func hide() {
+        InputSourceSwitcher.restore()
         if policyDanced {
             NSApp.setActivationPolicy(.accessory)
             policyDanced = false
         }
         panel?.orderOut(nil)
         removeKeyMonitor()
+        removeClickOutsideMonitor()
         GlobalHotkeyManager.shared.unregister(id: 5003)
         onKeyAction = nil
     }
@@ -146,9 +185,51 @@ final class AppLauncherPanelController {
         panel.setFrame(frame, display: true)
     }
 
+    // MARK: - 点击外部关闭（Alfred 式兜底）
+
+    /// 全局鼠标按下监听（面板打开期间）。didResignKey 只覆盖"面板曾拿到 key 后
+    /// 失焦"；面板从未成为 key（accessory 激活被拒的竞态）时点击别处不触发
+    /// resign 通知，面板会一直悬在屏上——全局监听点面板外任意处即收起，补上缺口
+    private var clickOutsideMonitor: Any?
+
+    private func installClickOutsideMonitor() {
+        removeClickOutsideMonitor()
+        clickOutsideMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { [weak self] _ in
+            let location = NSEvent.mouseLocation
+            Task { @MainActor [weak self] in
+                guard let self, let panel = self.panel, panel.isVisible else { return }
+                if !NSMouseInRect(location, panel.frame, false) {
+                    self.hide()
+                }
+            }
+        }
+    }
+
+    private func removeClickOutsideMonitor() {
+        if let monitor = clickOutsideMonitor {
+            NSEvent.removeMonitor(monitor)
+            clickOutsideMonitor = nil
+        }
+    }
+
     // MARK: - 失焦自动关闭（点别处即退出，不留常驻窗口）
 
     private var resignObserver: NSObjectProtocol?
+
+    /// 面板成为 key window → 确定性补焦（系统异步完成激活/key 时的兜底——
+    /// 晚到的 key 没有人聚焦 = "面板开了但打不了字"）
+    private var becomeKeyFocusObserver: NSObjectProtocol?
+
+    private func installBecomeKeyFocusObserver() {
+        guard becomeKeyFocusObserver == nil, let panel else { return }
+        becomeKeyFocusObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didBecomeKeyNotification, object: panel, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.focusSearchFieldNow()
+            }
+        }
+    }
 
     private func installResignObserver() {
         guard resignObserver == nil, let panel else { return }
@@ -200,6 +281,7 @@ final class AppLauncherPanelController {
 
         self.panel = panel
         installResignObserver()
+        installBecomeKeyFocusObserver()
         return panel
     }
 
