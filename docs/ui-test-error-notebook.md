@@ -238,3 +238,9 @@
 - Fix/现状: 场景取图纯色时 raise BlockedError 报 BLOCKED 而非 FAIL（981fbb7）；取图成功时像素断言链已验证可用（ui-20261021-124850：按钮检测/断言逻辑/流程时序全通过）。
 - Prevention: ① 测试机取图只依赖"人点过确认的窗口期"，跑长 E2E 前先 `cua-driver call get_desktop_state` 探测一次；② 新增输入通道时核对坐标空间（逻辑 pt vs 像素）；③ SwiftUI 窗口的像素证据优先 ScreenCaptureKit（App 自身授权），离屏渲染路径一律不可信。
 - Evidence: runs/ui-20261021-124850-d012ec21（成功样本）、ui-20261021-130554-0235bcac（BLOCKED 样本）
+
+## 2026-11-20 · screenshot-toolbar 套件五连修后管线全通，遗留 6pt 带宽标定（待修）
+
+**已修（807f3fd/4922d1b，全部有现场图实证）**：① 3901435 误删的截图会话触发行（一个月结构性必败）；② decode 红钮分支被简化丢弃（KeyError 'R'）；③ app 证据通道 Retina 2880px 未归一化（管线按 1366px 标定，几何全翻倍）；④ 工具栏锚定"最左蓝簇"被 Dock 污染（改工作区红蓝同行配对取最上）；⑤ /tmp/qn-manual 目录自建。取证主通道已切到 app 自身 UIEvidenceCaptureService（零 TCC 依赖，cua/screencapture 降级兜底——两外部通道 11-20 实锤同时无产物）。
+
+**遗留**：stage1 `暗带右端 1438 > 1432` ——选区由 cua drag 投递（SCREEN_PT=1366/1440 换算），实测落点与设计（贴右缘 1178→1398）偏差大（上轮实测选区仅 104×85 挂在屏中）。修法方向：拖拽改 cliclick（套件按键已用它，坐标逻辑pt），或标定 cua desktop 坐标系；须同时重校 1432 上限（v1.4.0 工具栏 token 化后红钮已是 ~10pt 小圆点，几何基线全部要按新版重标）。**修前本套件视为 KNOWN-FAIL，不计阻塞**。
