@@ -119,13 +119,26 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: QuiteNote-*.dmg
-          generate_release_notes: true
+          # Release 正文 = CHANGELOG.md 里对应版本的段落（发版说明随仓库维护，
+          # 淘汰 generate_release_notes 的自动 PR 列表——与实际变更无关）
+          body_path: release-notes.txt
           name: Quite Note ${{ github.ref_name }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # Sparkle appcast：对 DMG 算 EdDSA 签名 → 合并进 gh-pages 的 appcast.xml
       # （客户端 SUFeedURL 指向 https://dyyz1993.github.io/quite-note/appcast.xml）
+      - name: 从 CHANGELOG 提取发版说明
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          awk -v v="$VERSION" '
+            $0 ~ "^## \\[" v "\\]" {f=1; next}
+            /^## \\[/ && f {exit}
+            f
+          ' CHANGELOG.md > release-notes.txt
+          [ -s release-notes.txt ] || echo "见仓库 CHANGELOG.md" > release-notes.txt
+          head -c 8000 release-notes.txt > release-notes.tmp && mv release-notes.tmp release-notes.txt
+
       - name: 更新 Sparkle appcast
         if: startsWith(github.ref, 'refs/tags/')
         env:

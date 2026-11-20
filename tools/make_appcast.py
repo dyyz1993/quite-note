@@ -2,6 +2,7 @@
 """合并/创建 Sparkle appcast.xml（CI 发版时调用）。
 
 用法: make_appcast.py <version> <dmg_url> <dmg_size> <ed_signature> <pub_date>
+item 携带 releaseNotesLink → Sparkle 更新弹窗显示"了解详情"（跳 GitHub Release 页）
 在 gh-pages 工作目录内运行；有 appcast.xml 则替换同版本 item 后插入新 item，
 无则创建骨架文件。"""
 import sys
@@ -17,6 +18,7 @@ def build_item(version: str, dmg_url: str, dmg_size: str, sig: str, pub_date: st
         f"        <sparkle:version>{version}</sparkle:version>\n"
         f"        <sparkle:shortVersionString>{version}</sparkle:shortVersionString>\n"
         "        <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>\n"
+        f"        <sparkle:releaseNotesLink>https://github.com/dyyz1993/quite-note/releases/tag/v{version}</sparkle:releaseNotesLink>\n"
         f'        <enclosure url="{dmg_url}" length="{dmg_size}" '
         f'type="application/x-bzip2" sparkle:edSignature="{sig}"/>\n'
         "    </item>\n"
