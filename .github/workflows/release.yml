@@ -132,8 +132,8 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           awk -v v="$VERSION" '
-            $0 ~ "^## \\[" v "\\]" {f=1; next}
-            /^## \\[/ && f {exit}
+            index($0, "## [" v "]") == 1 {f=1; next}
+            index($0, "## [") == 1 && f {exit}
             f
           ' CHANGELOG.md > release-notes.txt
           [ -s release-notes.txt ] || echo "见仓库 CHANGELOG.md" > release-notes.txt
