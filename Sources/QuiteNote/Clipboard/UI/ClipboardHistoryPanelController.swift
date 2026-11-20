@@ -208,6 +208,7 @@ final class ClipboardHistoryPanelController {
         installKeyMonitor()
         installClickOutsideMonitor()
         installGlobalKeyFallbacks()
+        beginWakeAssertion()
 
         // ESC Carbon 拦截（面板打开期间）：搜狗中文模式会吞裸 ESC，同启动器面板
         GlobalHotkeyManager.shared.register(key: "esc", modifiers: [], id: 5004) { [weak self] in
@@ -223,6 +224,30 @@ final class ClipboardHistoryPanelController {
     }
 
     private var policyDanced = false
+
+    // MARK: App Nap 防护（2026-11-20 采样定罪）
+    // 激活被拒 → 应用跌回后台 → macOS 26 对后台 accessory 应用激进 App Nap：
+    // 主线程空闲挂起、主队列定时唤醒延迟 15s 量级（hang-sample 实锤：主线程
+    // mach_msg 空转、零计算零锁，用户面板冻结、心跳饿死）。面板可见期间持有
+    // userInitiated 活动断言，禁止系统 nap。
+    private var wakeAssertion: NSObjectProtocol?
+
+    private func beginWakeAssertion() {
+        guard wakeAssertion == nil else { return }
+        wakeAssertion = ProcessInfo.processInfo.beginActivity(
+            options: .userInitiatedAllowingIdleSystemSleep,
+            reason: "clipboard-panel-visible"
+        )
+        DiagnosticCenter.info("Clipboard", "App Nap 断言已持有（面板可见期间）")
+    }
+
+    private func endWakeAssertion() {
+        if let token = wakeAssertion {
+            ProcessInfo.processInfo.endActivity(token)
+            wakeAssertion = nil
+            DiagnosticCenter.info("Clipboard", "App Nap 断言已释放")
+        }
+    }
     /// key 补拉熔断标志（show() 时复位；某步 activate/makeKey 阻塞 >0.8s 置位）
     private var abortKeyLadder = false
 
@@ -233,6 +258,7 @@ final class ClipboardHistoryPanelController {
         }
         DiagnosticCenter.info("Clipboard", "面板收起（当前 key: \(NSApp.keyWindow.map { String(describing: type(of: $0)) } ?? "nil")）")
         panel?.orderOut(nil)
+        endWakeAssertion()
         removeKeyMonitor()
         removeClickOutsideMonitor()
         removeGlobalKeyFallbacks()
