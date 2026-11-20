@@ -233,12 +233,17 @@ final class ClipboardHistoryViewModel: ObservableObject {
         searchIndex.search(query, limit: 300) { [weak self] page in
             guard let self, self.searchGeneration == generation else { return }
             let results = page.documents.map(\.payload)
-            let resultIDs = Set(results.map(\.id))
-            let incremental = store.entries.filter {
-                filter.matches($0) && !resultIDs.contains($0.id) &&
-                ClipboardSearchService.matchScore(query: query, entry: $0) > 0
+            // 增量合并只在库超过首页（索引语料未覆盖内存页之外的条目）时才需要；
+            // ≤500 条的库每键白跑 500×matchScore（2026-11-20 打字卡顿主因之一）
+            var final = results
+            if store.hasMore {
+                let resultIDs = Set(results.map(\.id))
+                final += store.entries.filter {
+                    filter.matches($0) && !resultIDs.contains($0.id) &&
+                    ClipboardSearchService.matchScore(query: query, entry: $0) > 0
+                }
             }
-            self.visibleEntries = results + incremental
+            self.visibleEntries = final
             self.isSearching = false
             self.applyPendingSelection()
             token.end()

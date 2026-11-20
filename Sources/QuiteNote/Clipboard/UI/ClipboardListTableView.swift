@@ -407,7 +407,10 @@ enum ClipRowContent {
     static func singleLine(_ entry: ClipboardEntry) -> String {
         switch entry.type {
         case .text:
-            return (entry.plainText ?? "").replacingOccurrences(of: "\n", with: " ")
+            // 先截断再替换（2026-11-20）：对 MB 文本全量 replacingOccurrences 是
+            // 每行每帧的隐藏成本，行标题视觉上只显示 ~40 字
+            return String((entry.plainText ?? "").prefix(200))
+                .replacingOccurrences(of: "\n", with: " ")
         case .link:
             return ClipboardTypeDetector.domain(ofURL: entry.sourceURL ?? entry.plainText ?? "") ?? "链接"
         case .file:

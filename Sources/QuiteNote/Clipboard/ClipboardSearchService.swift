@@ -9,13 +9,37 @@ import Foundation
 enum ClipboardSearchService {
 
     /// 单个条目的匹配等级：0 = 不匹配，3 = 完整匹配，2 = 前缀，1 = 包含
+    /// 空间换时间（2026-11-20 用户真机实测：每键 0.8-1.2s 卡顿）：matchScore 走
+    /// 增量合并路径时每键对全部内存条目现场 searchableFields + normalize——
+    /// MB 级 plainText 一条 folding 就几十 ms。按条目 id 缓存"归一化 + 截断"结果。
+    /// 截断 800 字：合并路径只兜底首页增量，全量精确匹配走统一索引（无截断）
+    private static var normalizedFieldsCache: [UUID: [String]] = [:]
+    private static let cacheLock = NSLock()
+
+    static func invalidateFieldsCache() {
+        cacheLock.lock(); normalizedFieldsCache.removeAll(); cacheLock.unlock()
+    }
+
+    static func cachedNormalizedFields(_ entry: ClipboardEntry) -> [String] {
+        cacheLock.lock()
+        if let hit = normalizedFieldsCache[entry.id] {
+            cacheLock.unlock(); return hit
+        }
+        cacheLock.unlock()
+        let fields = searchableFields(entry).map { normalize(String($0.prefix(800))) }.filter { !$0.isEmpty }
+        cacheLock.lock()
+        if normalizedFieldsCache.count > 2000 { normalizedFieldsCache.removeAll() } // 防无界增长
+        normalizedFieldsCache[entry.id] = fields
+        cacheLock.unlock()
+        return fields
+    }
+
     static func matchScore(query: String, entry: ClipboardEntry) -> Int {
         let q = normalize(query)
         guard !q.isEmpty else { return 0 }
 
         var best = 0
-        for field in searchableFields(entry) {
-            let f = normalize(field)
+        for f in cachedNormalizedFields(entry) {
             guard !f.isEmpty else { continue }
             if f == q {
                 return 3
