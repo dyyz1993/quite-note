@@ -338,6 +338,19 @@ final class DiagnosticCenter {
     static let stallMinorThreshold: TimeInterval = 0.5
     static let stallMajorThreshold: TimeInterval = 5.0
 
+    /// 卡死时用 sample(1) 抓本进程主线程栈（写 logDirectory/hang-sample-<时间戳>.txt，
+    /// 与文件日志同目录、同 QN_TEST_STORAGE_ROOT 重定向）。看门狗线程执行；
+    /// 失败静默（sample 缺失/被限）不影响看门狗本身
+    private func sampleHungMainThread() {
+        let path = logDirectory
+            .appendingPathComponent("hang-sample-" + Int(Date().timeIntervalSince1970).description + ".txt")
+            .path
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/sample")
+        task.arguments = [String(ProcessInfo.processInfo.processIdentifier), "3", "-mayDie", "-file", path]
+        do { try task.run() } catch { /* 采样失败不影响主流程 */ }
+    }
+
     private func startWatchdog() {
         // 主线程心跳：每 0.25s 打点（可感知 0.5s 级卡顿）；主线程被阻塞时打点自然停止
         func beat() {
@@ -365,6 +378,11 @@ final class DiagnosticCenter {
                         self.hangEpisodeReported = true
                         self.hangStartTime = Date().addingTimeInterval(-lag)
                         self.writeLine(level: .error, category: "Hang", message: "⚠️ 主线程无响应 \(Int(lag)) 秒（疑似卡死，超过 \(Int(Self.stallMajorThreshold)) 秒阈值）")
+                        // 卡死自动采样：sample(1) 抓主线程栈（同用户进程无需 sudo）——
+                        // 看门狗线程跑的，不依赖被堵死的主线程。一次 episode 采一次。
+                        // 背景：2026-11-20 剪贴板面板第二次唤起后 15-17s 主线程冻结×2，
+                        // 重锤/补拉计时全部没排上队（堵在 show() 后 0.35s 内），盲修无效
+                        self.sampleHungMainThread()
                     }
                 }
 
