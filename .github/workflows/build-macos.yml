@@ -48,13 +48,16 @@ jobs:
 
           # Sparkle 二进制产物从本机镜像灌入（真实缓存会被 SwiftPM 在下载失败时清除，
           # 2026-11-20 实锤 artifacts=0；镜像目录见 /Users/xuyingzhou/runners/swiftpm-mirror）
-          SPARKLE_KEY="https_58__47__47_github_46_com_47_sparkle_45_project_47_Sparkle_47_releases_47_download_47_2_46_10_46_0_47_Sparkle_45_for_45_Swift_45_Package_45_Manager_46_zip"
-          MIRROR="/Users/xuyingzhou/runners/swiftpm-mirror/sparkle-2.10.0.zip"
-          if [ -f "$MIRROR" ]; then
-            mkdir -p "$DST/artifacts"
-            cp "$MIRROR" "$DST/artifacts/$SPARKLE_KEY"
-            echo "Sparkle artifact primed from mirror"
-          fi
+          SPARKLE_KEY="https___github_com_sparkle_project_Sparkle_releases_download_2_10_0_Sparkle_for_Swift_Package_Manager_zip"
+                  # 旧 mangle（_<十进制>_）一并放入：不同工具链版本 mangle 规则不同，双保险
+                  SPARKLE_KEY_LEGACY="https_58__47__47_github_46_com_47_sparkle_45_project_47_Sparkle_47_releases_47_download_47_2_46_10_46_0_47_Sparkle_45_for_45_Swift_45_Package_45_Manager_46_zip"
+                  MIRROR="/Users/xuyingzhou/runners/swiftpm-mirror/sparkle-2.10.0.zip"
+                  if [ -f "$MIRROR" ]; then
+                    mkdir -p "$DST/artifacts"
+                    cp "$MIRROR" "$DST/artifacts/$SPARKLE_KEY"
+                    cp "$MIRROR" "$DST/artifacts/$SPARKLE_KEY_LEGACY"
+                    echo "Sparkle artifact primed from mirror"
+                  fi
         else
           echo "WARN: 开发机 SwiftPM 缓存不存在，回退网络下载"
         fi
