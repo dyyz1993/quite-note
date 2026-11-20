@@ -36,6 +36,16 @@ jobs:
             rsync -a --delete "$SRC/repositories/" "$DST/repositories/" 2>/dev/null || true
             rsync -a "$SRC/artifacts/" "$DST/artifacts/" 2>/dev/null || true
             echo "SwiftPM cache primed: $(ls "$DST/repositories" 2>/dev/null | wc -l | tr -d ' ') repos, $(ls "$DST/artifacts" 2>/dev/null | wc -l | tr -d ' ') artifacts"
+
+            # Sparkle 二进制产物从本机镜像灌入（真实缓存会被 SwiftPM 在下载失败时清除，
+            # 2026-11-20 实锤 artifacts=0；镜像目录见 /Users/xuyingzhou/runners/swiftpm-mirror）
+            SPARKLE_KEY="https_58__47__47_github_46_com_47_sparkle_45_project_47_Sparkle_47_releases_47_download_47_2_46_10_46_0_47_Sparkle_45_for_45_Swift_45_Package_45_Manager_46_zip"
+            MIRROR="/Users/xuyingzhou/runners/swiftpm-mirror/sparkle-2.10.0.zip"
+            if [ -f "$MIRROR" ]; then
+              mkdir -p "$DST/artifacts"
+              cp "$MIRROR" "$DST/artifacts/$SPARKLE_KEY"
+              echo "Sparkle artifact primed from mirror"
+            fi
           else
             echo "WARN: 开发机 SwiftPM 缓存不存在，回退网络下载"
           fi
