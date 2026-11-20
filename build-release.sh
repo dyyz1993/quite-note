@@ -19,7 +19,7 @@ if [ -z "$VERSION" ]; then
 fi
 
 TEAM_ID="B45VZCNYU3"
-APPLE_ID="dyyz1993@icloud.com"
+APPLE_ID="${APPLE_ID:-your-apple-id@example.com}"  # 实际公证走 keychain profile，此变量仅用于提示文案
 BUNDLE_ID="com.quitenote.app"
 APP_NAME="Quite Note"
 NOTARY_PROFILE="quitenote-notary"

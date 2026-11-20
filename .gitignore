@@ -45,3 +45,6 @@ tools/__pycache__/
 .artifacts/ai-settings-validation/pr/*
 !.artifacts/ai-settings-validation/pr/*
 .learnings/
+
+# AI 会话/验证日志（可能含内部信息，勿入库）
+.artifacts/
