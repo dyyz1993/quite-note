@@ -226,7 +226,11 @@ final class AppLauncherPanelController {
             forName: NSWindow.didBecomeKeyNotification, object: panel, queue: .main
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
-                self?.focusSearchFieldNow()
+                guard let self else { return }
+                self.focusSearchFieldNow()
+                // 补切英文（2026-11-20）：show() 里的首次尝试落在激活拒绝窗口期，
+                // 后台 app 的 TISSelectInputSource 被系统静默忽略——key 落地后重试
+                InputSourceSwitcher.selectEnglishForPanel()
             }
         }
     }

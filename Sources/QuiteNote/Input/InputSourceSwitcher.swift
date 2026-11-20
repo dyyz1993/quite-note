@@ -19,12 +19,21 @@ enum InputSourceSwitcher {
     static func selectEnglishForPanel() -> Bool {
         guard previousSource == nil else { return true }
         guard let current = TISCopyCurrentKeyboardInputSource()?.takeRetainedValue() else {
+            DiagnosticCenter.warning("Launcher", "切英文输入失败：读不到当前输入源")
             return false
         }
         guard !isASCIICapable(current) else { return false }
-        guard let target = englishSource() else { return false }
-        guard TISSelectInputSource(target) == noErr else { return false }
+        guard let target = englishSource() else {
+            DiagnosticCenter.warning("Launcher", "切英文输入失败：无启用的 ASCII 键盘")
+            return false
+        }
+        guard TISSelectInputSource(target) == noErr else {
+            // macOS 26 后台 app 的切换请求会被静默拒绝——调用方须在面板成为 key 后重试
+            DiagnosticCenter.warning("Launcher", "切英文输入被系统拒绝（app 未前台？）")
+            return false
+        }
         previousSource = current
+        DiagnosticCenter.info("Launcher", "已切英文键盘（面板会话），收起时还原")
         return true
     }
 
