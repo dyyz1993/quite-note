@@ -23,6 +23,23 @@ jobs:
           path: .build
           key: swift-build-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
 
+      # 自托管 runner 依赖预热（2026-11-20）：GitHub runner 每个 job 覆盖 HOME，
+      # SwiftPM 用户级缓存（lucide 镜像仓库 + Sparkle 二进制产物）不可见，而本机
+      # 直连 GitHub releases/codeload 不稳（大包断流）。从真实用户的缓存目录拷入
+      # job HOME → resolve 全程零网络。真实目录由开发机维护（见 ERRORS.md 11-19/20）
+      - name: 预热 SwiftPM 依赖缓存（自托管）
+        run: |
+          SRC="/Users/xuyingzhou/Library/Caches/org.swift.swiftpm"
+          DST="$HOME/Library/Caches/org.swift.swiftpm"
+          if [ -d "$SRC" ]; then
+            mkdir -p "$DST"
+            rsync -a --delete "$SRC/repositories/" "$DST/repositories/" 2>/dev/null || true
+            rsync -a "$SRC/artifacts/" "$DST/artifacts/" 2>/dev/null || true
+            echo "SwiftPM cache primed: $(ls "$DST/repositories" 2>/dev/null | wc -l | tr -d ' ') repos, $(ls "$DST/artifacts" 2>/dev/null | wc -l | tr -d ' ') artifacts"
+          else
+            echo "WARN: 开发机 SwiftPM 缓存不存在，回退网络下载"
+          fi
+
       - name: 运行全部单元测试
         # SpeechAnalyzer/SpeechTranscriber require the macOS 26 SDK; GitHub's
         # macos-15 runner stays on the older SDK. Compile the speech path down
