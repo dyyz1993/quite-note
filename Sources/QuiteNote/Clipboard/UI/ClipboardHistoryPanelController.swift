@@ -47,13 +47,17 @@ enum ClipboardGlobalFallback {
 
     /// 裸导航键（仅面板**未成为 key** 期间注册，didBecomeKey 即注销）：
     /// 组词期 ↑↓/回车是输入法候选键，Carbon 注册即系统级消费、无法放行，
-    /// 面板已 key 时必须还给 local monitor 路径（带组词守卫）
+    /// 面板已 key 时必须还给 local monitor 路径（带组词守卫）。
+    /// ←/→ 仅在搜索词为空时作为切筛选键注册（有输入内容时左右是光标编辑键，
+    /// 消费会破坏编辑——arrowFilterGuard 拦）
     static let navigationSpecs: [Spec] = [
         Spec(key: "up", modifiers: [], id: 5122, action: .moveUp),
         Spec(key: "down", modifiers: [], id: 5123, action: .moveDown),
         Spec(key: "return", modifiers: [], id: 5124, action: .pasteSelected),
         Spec(key: "tab", modifiers: [], id: 5125, action: .switchFilterRight),
         Spec(key: "tab", modifiers: .shift, id: 5126, action: .switchFilterLeft),
+        Spec(key: "left", modifiers: [], id: 5127, action: .switchFilterLeft),
+        Spec(key: "right", modifiers: [], id: 5128, action: .switchFilterRight),
     ]
 
     /// 按面板 key 状态给出应注册的规格集合（单测钉住分层语义）
@@ -61,7 +65,7 @@ enum ClipboardGlobalFallback {
         panelIsKey ? commandSpecs : commandSpecs + navigationSpecs
     }
 
-    static func allIDs() -> [UInt32] { Array(5110...5126) }
+    static func allIDs() -> [UInt32] { Array(5110...5128) }
 }
 
 /// 剪贴板历史快捷面板控制器（PRD 7.1：720×560，打开后搜索自动聚焦）
@@ -90,6 +94,10 @@ final class ClipboardHistoryPanelController {
 
     /// 搜索框的 AppKit 句柄（ClipSearchField 注册；makeFirstResponder 用）
     weak var searchFieldHandle: NSTextField?
+
+    /// ←/→ 可否当"切筛选"消费：搜索词为空才可（有输入内容时左右是光标编辑键，
+    /// 消费会破坏编辑）。视图 onAppear/didShow 接入 vm.searchText 判定
+    var arrowFilterGuard: () -> Bool = { true }
 
     /// 确定性聚焦：面板已 key 则直接生效；未 key 则由 key 补拉/成为 key 后调用
     func focusSearchFieldNow() {
@@ -141,16 +149,27 @@ final class ClipboardHistoryPanelController {
             AppLauncherPanelController.shared.hide()
         }
 
+        abortKeyLadder = false
         // key 就位补拉：前密后疏（0.05~0.7s，深度审计建议——长间隔重试落在
-        // 激活归因窗口之外全部无效）。每次重试后**无条件**补焦一拍（旧行为只在
-        // 本轮 makeKey 成功才补焦，系统异步完成 key 时无人聚焦 = "key✓ 但打不了字"）
+        // 激活归因窗口之外全部无效）。每次重试后**无条件**补焦一拍。
+        // 逐步计时 + 自适应熔断（2026-11-20 用户真机实锤：第二次唤起遭激活拒绝时
+        // 主线程冻 15.1s、0.35s 重锤都排不上队——嫌疑是 activate/makeKey 在被拒
+        // 状态下同步阻塞；某步 >0.8s 即停跳等重锤，别把主线程堵满）
         for delay in [0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.55, 0.7] {
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-                guard let self, let panel = self.panel, panel.isVisible else { return }
-                if !panel.isKeyWindow {
-                    NSApp.activate(ignoringOtherApps: true)
-                    panel.orderFrontRegardless()
-                    panel.makeKey()
+                guard let self, let panel = self.panel, panel.isVisible, !panel.isKeyWindow else { return }
+                if self.abortKeyLadder { return }
+                let t0 = DispatchTime.now()
+                NSApp.activate(ignoringOtherApps: true)
+                panel.orderFrontRegardless()
+                panel.makeKey()
+                let ms = Double(DispatchTime.now().uptimeNanoseconds - t0.uptimeNanoseconds) / 1_000_000
+                if ms > 80 {
+                    DiagnosticCenter.warning("Clipboard", String(format: "key 补拉一步耗时 %.0fms（activate/makeKey 疑似阻塞）", ms))
+                }
+                if ms > 800 {
+                    self.abortKeyLadder = true
+                    DiagnosticCenter.warning("Clipboard", String(format: "key 补拉熔断（该步 %.0fms，交由重锤接管）", ms))
                 }
                 DispatchQueue.main.async {
                     self.focusSearchFieldNow()
@@ -166,7 +185,12 @@ final class ClipboardHistoryPanelController {
             guard let self, let panel = self.panel, panel.isVisible, !panel.isKeyWindow else { return }
             DiagnosticCenter.warning("Clipboard", "激活被拒（accessory 策略），启用 .regular 重锤")
             self.policyDanced = true
+            let h0 = DispatchTime.now()
             NSApp.setActivationPolicy(.regular)
+            let policyMs = Double(DispatchTime.now().uptimeNanoseconds - h0.uptimeNanoseconds) / 1_000_000
+            if policyMs > 80 {
+                DiagnosticCenter.warning("Clipboard", String(format: "重锤 setActivationPolicy 耗时 %.0fms", policyMs))
+            }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                 NSApp.activate(ignoringOtherApps: true)
                 panel.makeKeyAndOrderFront(nil)
@@ -199,6 +223,8 @@ final class ClipboardHistoryPanelController {
     }
 
     private var policyDanced = false
+    /// key 补拉熔断标志（show() 时复位；某步 activate/makeKey 阻塞 >0.8s 置位）
+    private var abortKeyLadder = false
 
     func hide() {
         if policyDanced {
@@ -353,6 +379,14 @@ final class ClipboardHistoryPanelController {
         guard let panel, panel.isVisible else { return }
         // 与 local monitor 同款组词守卫（防御 didBecomeKey 注销竞态期的残留注册）
         if let client = panel.firstResponder as? NSTextInputClient, client.hasMarkedText() { return }
+        // 切筛选类（含 ←/→）：搜索词非空时丢弃，防止碳通道消费掉本应属于
+        // 文本编辑的按键（keyless 窗口期 resetInput 已清词，常态下恒过）
+        switch action {
+        case .switchFilterLeft, .switchFilterRight:
+            guard arrowFilterGuard() else { return }
+        default:
+            break
+        }
         DiagnosticCenter.info("Clipboard", "Carbon 兜底按键：\(action)")
         onKeyAction?(action)
     }
@@ -369,6 +403,15 @@ final class ClipboardHistoryPanelController {
                 return event
             }
             guard let action = Self.mapKey(event) else {
+                // ←/→ 特殊分流：搜索词为空时是切筛选键（用户约定 2026-11-20），
+                // 有输入内容时必须还给 field editor 当光标编辑键——mapKey 是静态
+                // 无状态表，带状态的拦截在这里做
+                let flags = event.modifierFlags.intersection([.command, .option, .shift, .control])
+                if flags.isEmpty, event.keyCode == 123 || event.keyCode == 124, self.arrowFilterGuard() {
+                    let action: ClipboardPanelKeyAction = event.keyCode == 123 ? .switchFilterLeft : .switchFilterRight
+                    self.onKeyAction?(action)
+                    return nil
+                }
                 return event
             }
             self.onKeyAction?(action)

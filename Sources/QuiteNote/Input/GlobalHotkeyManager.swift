@@ -199,7 +199,7 @@ final class GlobalHotkeyManager {
             "esc": 53,
             // 剪贴板面板未成为 key window 期间的导航键兜底（macOS 26 激活拒绝，
             // local monitor 收不到事件——↑↓/回车/Tab 全部漏进前一个应用）
-            "up": 126, "down": 125, "return": 36, "tab": 48
+            "up": 126, "down": 125, "return": 36, "tab": 48, "left": 123, "right": 124
         ]
         
         return keyMap[char]

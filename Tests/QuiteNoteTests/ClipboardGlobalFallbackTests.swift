@@ -22,14 +22,15 @@ final class ClipboardGlobalFallbackTests: XCTestCase {
     func test非Key状态_额外注册裸导航键() {
         let keySpecs = ClipboardGlobalFallback.specs(panelIsKey: true)
         let nonKeySpecs = ClipboardGlobalFallback.specs(panelIsKey: false)
-        // 12 条命令 + ↑/↓/回车/Tab/⇧Tab = 17 条
-        XCTAssertEqual(nonKeySpecs.count, keySpecs.count + 5)
+        // 12 条命令 + ↑/↓/回车/Tab/⇧Tab/←/→ = 19 条
+        XCTAssertEqual(nonKeySpecs.count, keySpecs.count + 7)
         let nav = ClipboardGlobalFallback.navigationSpecs
         XCTAssertEqual(nav.map(\.action), [
             .moveUp, .moveDown, .pasteSelected, .switchFilterRight, .switchFilterLeft,
+            .switchFilterLeft, .switchFilterRight,   // ←/→（2026-11-20 用户要求键盘左右切 tab）
         ])
         // 裸导航键必须无修饰键（有修饰键会误伤系统组合）
-        XCTAssertTrue(nav.prefix(5).allSatisfy { $0.modifiers.isEmpty || $0.modifiers == .shift })
+        XCTAssertTrue(nav.allSatisfy { $0.modifiers.isEmpty || $0.modifiers == .shift })
     }
 
     func test全部id唯一且在注销清单内() {

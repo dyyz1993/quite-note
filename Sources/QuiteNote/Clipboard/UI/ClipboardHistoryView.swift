@@ -116,6 +116,8 @@ struct ClipboardHistoryView: View {
 
     /// 把窗口按键动作接到视图（onAppear 与每次 didShow 都调用）
     private func wireKeyHandler() {
+        // ←/→ 切筛选的守卫：搜索词为空才可消费（有内容时左右是光标编辑键）
+        controller.arrowFilterGuard = { vm.searchText.isEmpty }
         controller.onKeyAction = { action in
             switch action {
             case .saveToFlash:
