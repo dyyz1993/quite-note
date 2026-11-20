@@ -78,6 +78,38 @@ final class ClipboardSearchViewModelTests: XCTestCase {
         XCTAssertFalse(vm.visibleEntries[2].isPinned)
     }
 
+    func test两区键盘模型_光标区进出() {
+        let store = ClipboardHistoryStore()
+        store.deleteAllForTesting()
+        (0..<3).forEach { store.insertOrUpdate(makeEntry($0)) }
+        let vm = ClipboardHistoryViewModel()
+        vm.bind(store: store)
+
+        // 默认列表区，选中第一条
+        XCTAssertEqual(vm.selectedIndex, 0)
+        XCTAssertFalse(vm.fieldCursorMode)
+
+        // 第一条再按 ↑ → 进入输入框光标区（←/→ 变文本光标键）
+        vm.handle(.moveUp, entries: vm.visibleEntries) { _ in }
+        XCTAssertTrue(vm.fieldCursorMode, "第一条再按 ↑ 应进入光标区")
+
+        // ↓ → 返回列表区，选中保持原位
+        vm.handle(.moveDown, entries: vm.visibleEntries) { _ in }
+        XCTAssertFalse(vm.fieldCursorMode)
+        XCTAssertEqual(vm.selectedIndex, 0, "↓ 返回列表时选中应保持")
+
+        // 非第一条的 ↑ 是普通向上移动，不进光标区
+        vm.selectedIndex = 2
+        vm.handle(.moveUp, entries: vm.visibleEntries) { _ in }
+        XCTAssertFalse(vm.fieldCursorMode)
+        XCTAssertEqual(vm.selectedIndex, 1)
+
+        // 显式改变选中（点击行）离开光标区
+        vm.handle(.moveUp, entries: vm.visibleEntries) { _ in }
+        vm.selectedIndex = 0
+        XCTAssertFalse(vm.fieldCursorMode, "选中变化应退出光标区")
+    }
+
     func testIndexDocumentCarriesCompactPinyinForChineseTitle() {
         let chinese = ClipboardEntry(
             type: .text,

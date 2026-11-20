@@ -27,7 +27,19 @@ final class ClipboardHistoryViewModel: ObservableObject {
             recomputeVisibleEntries()
         }
     }
-    @Published var selectedIndex = 0
+    @Published var selectedIndex = 0 {
+        didSet {
+            // 选中被显式改变（点击行/↑↓/搜索重置）即离开输入框光标区
+            if oldValue != selectedIndex { fieldCursorMode = false }
+        }
+    }
+
+    // MARK: 两区键盘模型（用户约定 2026-11-20，Alfred 式）
+    // 列表区（默认）：←/→ 切筛选 tab、↑↓ 移动选中；
+    // 选中已在第一条再按 ↑ → 进入输入框光标区（←/→ 变文本光标键、↓ 返回列表）。
+    // 进入是显式的——避免"有没有搜索词"这种隐式规则左右键语义漂移。
+    /// setter 供 handle 扩展/视图接线使用；用户直接改没有副作用（守卫只读它）
+    @Published var fieldCursorMode = false
     @Published private(set) var visibleEntries: [ClipboardEntry] = [] {
         // 表格数据签名用 VM 版本号（不再直接用 store.entriesVersion）：隐藏期跳过
         // 重算后 visibleEntries 不变，store 版本却在每次系统剪贴板捕获时 bump——
@@ -301,6 +313,7 @@ final class ClipboardHistoryViewModel: ObservableObject {
 
     /// 重置输入（面板每次打开时调用）
     func resetInput() {
+        fieldCursorMode = false
         searchText = ""
         commitQuery("")
         filter = .all
@@ -312,6 +325,7 @@ final class ClipboardHistoryViewModel: ObservableObject {
     }
 
     private func commitQuery(_ text: String) {
+        fieldCursorMode = false
         debouncedQuery = text
         selectedIndex = 0
         pendingSelectionID = nil

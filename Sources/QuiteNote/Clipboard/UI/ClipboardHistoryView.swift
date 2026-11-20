@@ -116,8 +116,9 @@ struct ClipboardHistoryView: View {
 
     /// 把窗口按键动作接到视图（onAppear 与每次 didShow 都调用）
     private func wireKeyHandler() {
-        // ←/→ 切筛选的守卫：搜索词为空才可消费（有内容时左右是光标编辑键）
-        controller.arrowFilterGuard = { vm.searchText.isEmpty }
+        // ←/→ 切筛选的守卫：列表区（非光标区）才可消费。光标区（第一条再按 ↑ 进入）
+        // 里左右是文本光标键；有搜索词也照样切 tab——编辑须显式 ↑ 进入光标区
+        controller.arrowFilterGuard = { !vm.fieldCursorMode }
         controller.onKeyAction = { action in
             switch action {
             case .saveToFlash:
@@ -308,7 +309,7 @@ struct ClipboardHistoryView: View {
                     .monospacedDigit()
                     .foregroundColor(ClipboardPalette.accent)
             }
-            Text("Tab 切换类型")
+            Text(vm.fieldCursorMode ? "←→ 光标 · ↓ 返回" : "←→/Tab 切类型")
             Text("↑↓ 选择")
             Text("↩ 粘贴")
             Text("⌘1–9 直贴")
@@ -418,9 +419,18 @@ extension ClipboardHistoryViewModel {
     ) {
         switch action {
         case .moveUp:
-            if selectedIndex > 0 { selectedIndex -= 1 }
+            if selectedIndex > 0 {
+                selectedIndex -= 1
+            } else {
+                // 已在第一条：↑ 进入输入框光标区（←/→ 转为文本光标键，用户约定 2026-11-20）
+                fieldCursorMode = true
+            }
         case .moveDown:
-            if selectedIndex < entries.count - 1 { selectedIndex += 1 }
+            if fieldCursorMode {
+                fieldCursorMode = false // ↓ 从光标区返回列表（选中保持原位）
+            } else if selectedIndex < entries.count - 1 {
+                selectedIndex += 1
+            }
         case .switchFilterLeft:
             switchFilter(false)
         case .switchFilterRight:
