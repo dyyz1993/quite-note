@@ -11,6 +11,16 @@ final class StatusBarController {
     private let toggleAction: () -> Void
     private let forceShowAction: () -> Void
     private var cancellables = Set<AnyCancellable>()
+    /// 启动器快捷键冲突提示项（菜单重建时更新引用，menuWillOpen 刷新可见性）
+    private weak var launcherConflictItem: NSMenuItem?
+    /// 菜单 delegate 代理（NSMenu.delegate 弱引用，这里强持有生命周期）
+    private lazy var menuWillOpenProxy: MenuWillOpenProxy = {
+        let proxy = MenuWillOpenProxy()
+        proxy.onWillOpen = { [weak self] in
+            self?.launcherConflictItem?.isHidden = !KeyboardShortcutManager.launcherShortcutConflict
+        }
+        return proxy
+    }()
 
     /// 初始化状态栏与菜单结构
     init(store: RecordStore, bluetooth: BluetoothManager, toggleAction: @escaping () -> Void, forceShowAction: @escaping () -> Void) {
@@ -126,6 +136,17 @@ final class StatusBarController {
         appLauncher.target = self
         appLauncher.isEnabled = true
         menu.addItem(appLauncher)
+
+        // ⌥空格被其他应用占用时（Carbon -9868 全局唯一：Raycast/Alfred 等先注册即持有），
+        // 此前只有设置页和诊断日志可见，用户无感知——菜单栏给出直达换键入口。
+        // 可见性在 menuWillOpen 时刷新（冲突可能被 1.5s 重试化解）
+        let launcherConflict = NSMenuItem(title: "⚠️ 启动器快捷键被其他应用占用，点击更换…", action: #selector(openLauncherShortcutSettings), keyEquivalent: "")
+        launcherConflict.target = self
+        launcherConflict.isEnabled = true
+        launcherConflict.isHidden = !KeyboardShortcutManager.launcherShortcutConflict
+        menu.addItem(launcherConflict)
+        launcherConflictItem = launcherConflict
+        menu.delegate = menuWillOpenProxy
 
         // 动态读取截图快捷键
         let screenshotShortcut = PreferencesManager.shared.screenshotShortcut
@@ -247,6 +268,11 @@ final class StatusBarController {
     /// 菜单：打开设置
     @objc private func openSettings() {
         QuiteNoteNotification.post(.showSettings)
+    }
+
+    /// 菜单：启动器快捷键冲突 → 直达启动器设置 tab 换键
+    @objc private func openLauncherShortcutSettings() {
+        QuiteNoteNotification.post(.showSettings, object: nil, userInfo: ["tab": "launcher"])
     }
 
     /// 菜单：用户反馈（打开设置并直接切到反馈 Tab；SettingsOverlayView onAppear 读取该 flag）
@@ -380,4 +406,11 @@ final class StatusBarController {
     deinit {
         cancellables.removeAll()
     }
+}
+
+/// 菜单打开时刷新冲突提示可见性（launcherShortcutConflict 可能被延迟重试化解/复现）。
+/// StatusBarController 非 NSObject，用代理对象桥接 NSMenuDelegate（menu.delegate 弱引用，需自持）
+private final class MenuWillOpenProxy: NSObject, NSMenuDelegate {
+    var onWillOpen: () -> Void = {}
+    func menuWillOpen(_ menu: NSMenu) { onWillOpen() }
 }

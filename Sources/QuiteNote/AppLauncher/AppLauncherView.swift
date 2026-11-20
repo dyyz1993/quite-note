@@ -11,7 +11,6 @@ struct AppLauncherView: View {
 
     @ObservedObject private var store = AppCatalogStore.shared
     @StateObject private var vm = AppLauncherViewModel()
-    @FocusState private var searchFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
@@ -28,13 +27,12 @@ struct AppLauncherView: View {
         .ignoresSafeArea(.container, edges: .top)
         .onAppear {
             wireKeyHandler()
-            searchFocused = true
         }
         .onReceive(NotificationCenter.default.publisher(for: QuiteNoteNotification.appLauncherPanelDidShow.name)) { _ in
-            // 面板每次唤起：清空输入、聚焦搜索框、重接键盘处理器
-            //（hosted view 不随面板隐藏销毁，onAppear 只触发一次）
+            // 面板每次唤起：清空输入、重接键盘处理器
+            //（hosted view 不随面板隐藏销毁，onAppear 只触发一次；
+            //  搜索框聚焦由控制器 focusSearchFieldNow 确定性负责，不依赖 @FocusState）
             vm.resetInput()
-            searchFocused = true
             wireKeyHandler()
         }
         .onReceive(NotificationCenter.default.publisher(for: QuiteNoteNotification.appLauncherCatalogDidUpdate.name)) { _ in
@@ -73,12 +71,7 @@ struct AppLauncherView: View {
     private var searchRow: some View {
         HStack(spacing: 10) {
             LucideView(name: .search, size: 20, color: .themeTextTertiary)
-            TextField("搜索应用…", text: $vm.searchText)
-                .textFieldStyle(.plain)
-                .font(.system(size: 17, weight: .medium))
-                .foregroundColor(.themeTextPrimary)
-                .focused($searchFocused)
-                .accessibilityIdentifier("launcher.search_field")
+            LauncherSearchField(text: $vm.searchText)
             if !vm.searchText.isEmpty {
                 LucideView(name: .x, size: 14, color: .themeTextTertiary)
                     .contentShape(Rectangle())

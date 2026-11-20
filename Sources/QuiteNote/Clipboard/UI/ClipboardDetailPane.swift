@@ -12,6 +12,17 @@ struct ClipboardDetailPane: View, Equatable {
     @State private var detailImage: NSImage?
     @State private var loadedImageID: UUID?
 
+    /// 预览截断上限（字符数）：4000 字 CJK 排版 <10ms；MB 级全文排版 15s+（实锤）
+    static let previewLimit = 4000
+
+    static func previewText(_ text: String) -> String {
+        text.count > previewLimit ? String(text.prefix(previewLimit)) + "\n…" : text
+    }
+
+    static func omittedCount(_ text: String) -> Int? {
+        text.count > previewLimit ? text.count - previewLimit : nil
+    }
+
     /// 按身份比较而非全字段：synthesized == 会逐字段比较 plainText/ocrText
     /// （可达 1MB），每次按键的视图 diff 都付这个成本（打字卡顿源）。
     /// 内容变化（OCR 完成等）由 store.entriesVersion → 全表 reload 覆盖
@@ -46,11 +57,21 @@ struct ClipboardDetailPane: View, Equatable {
 
                 switch entry.type {
                 case .text:
-                    Text(entry.plainText ?? "")
+                    // ⚠️ 预览必须截断：SwiftUI Text 无懒排版，MB 级中文全文交给
+                    // CoreText 换行 = 15-18s 主线程冻结（2026-11-20 hang-sample 实锤：
+                    // 1647/1711 样本在 CJKCompositionEngine 排版）。完整内容的价值
+                    // 在粘贴，不在面板内全文渲染
+                    Text(ClipboardDetailPane.previewText(entry.plainText ?? ""))
                         .font(.system(size: 12.5))
                         .foregroundColor(ClipboardPalette.textPrimary)
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
+                    if let omitted = ClipboardDetailPane.omittedCount(entry.plainText ?? "") {
+                        Text("预览已截断 · 共 \(omitted + ClipboardDetailPane.previewLimit) 字，其余 \(omitted) 字未显示（回车/⌘N 粘贴完整内容）")
+                            .font(.system(size: 10.5))
+                            .foregroundColor(ClipboardPalette.textTertiary)
+                            .padding(.top, 4)
+                    }
                 case .link:
                     VStack(alignment: .leading, spacing: 8) {
                         if let domain = ClipboardTypeDetector.domain(ofURL: entry.sourceURL ?? entry.plainText ?? "") {
@@ -215,7 +236,8 @@ struct ClipboardDetailPane: View, Equatable {
                             .font(.system(size: 11, weight: .medium))
                             .foregroundColor(ClipboardPalette.textSecondary)
                     }
-                    Text(ocr)
+                    // OCR 长文同样截断（长截图识别文本与正文同源的排版风险）
+                    Text(ClipboardDetailPane.previewText(ocr))
                         .font(.system(size: 12))
                         .foregroundColor(ClipboardPalette.textPrimary)
                         .textSelection(.enabled)

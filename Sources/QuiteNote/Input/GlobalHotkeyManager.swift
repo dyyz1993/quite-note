@@ -196,7 +196,10 @@ final class GlobalHotkeyManager {
             // 启动器默认 ⌥空格，键码表兜住这种存法
             "\u{00A0}": 49,
             // 面板打开期间的 ESC Carbon 拦截（搜狗在中文模式下吞裸 ESC，见面板控制器）
-            "esc": 53
+            "esc": 53,
+            // 剪贴板面板未成为 key window 期间的导航键兜底（macOS 26 激活拒绝，
+            // local monitor 收不到事件——↑↓/回车/Tab 全部漏进前一个应用）
+            "up": 126, "down": 125, "return": 36, "tab": 48, "left": 123, "right": 124
         ]
         
         return keyMap[char]

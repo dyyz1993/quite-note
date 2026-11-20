@@ -116,6 +116,9 @@ struct ClipboardHistoryView: View {
 
     /// 把窗口按键动作接到视图（onAppear 与每次 didShow 都调用）
     private func wireKeyHandler() {
+        // ←/→ 切筛选的守卫：列表区（非光标区）才可消费。光标区（第一条再按 ↑ 进入）
+        // 里左右是文本光标键；有搜索词也照样切 tab——编辑须显式 ↑ 进入光标区
+        controller.arrowFilterGuard = { !vm.fieldCursorMode }
         controller.onKeyAction = { action in
             switch action {
             case .saveToFlash:
@@ -242,7 +245,9 @@ struct ClipboardHistoryView: View {
     private var entryList: some View {
         ClipboardListTableView(
             entries: vm.visibleEntries,
-            entriesVersion: store.entriesVersion,
+            // 用 VM 的可见列表版本（非 store.entriesVersion）：隐藏期 store 每次捕获
+            // 都 bump，旧签名会刷隐藏表格；VM 版本只在可见列表真实变化时 +1
+            entriesVersion: vm.visibleEntriesVersion,
             selectedIndex: $vm.selectedIndex,
             onSingleClick: { index in
                 // 单击 = 选中并复制（用户约定）
@@ -298,7 +303,13 @@ struct ClipboardHistoryView: View {
 
     private var shortcutFooter: some View {
         HStack(spacing: 14) {
-            Text("Tab 切换类型")
+            // 选中进度（用户约定：知道当前在第几条、还剩多少到底）
+            if let progress = vm.selectionProgress {
+                Text("第 \(progress.current) / \(progress.total) 条")
+                    .monospacedDigit()
+                    .foregroundColor(ClipboardPalette.accent)
+            }
+            Text(vm.fieldCursorMode ? "←→ 光标 · ↓ 返回" : "←→/Tab 切类型")
             Text("↑↓ 选择")
             Text("↩ 粘贴")
             Text("⌘1–9 直贴")
@@ -408,9 +419,18 @@ extension ClipboardHistoryViewModel {
     ) {
         switch action {
         case .moveUp:
-            if selectedIndex > 0 { selectedIndex -= 1 }
+            if selectedIndex > 0 {
+                selectedIndex -= 1
+            } else {
+                // 已在第一条：↑ 进入输入框光标区（←/→ 转为文本光标键，用户约定 2026-11-20）
+                fieldCursorMode = true
+            }
         case .moveDown:
-            if selectedIndex < entries.count - 1 { selectedIndex += 1 }
+            if fieldCursorMode {
+                fieldCursorMode = false // ↓ 从光标区返回列表（选中保持原位）
+            } else if selectedIndex < entries.count - 1 {
+                selectedIndex += 1
+            }
         case .switchFilterLeft:
             switchFilter(false)
         case .switchFilterRight:
@@ -422,9 +442,8 @@ extension ClipboardHistoryViewModel {
             let idx = dataIndex(forCommandDigit: n)
             if entries.indices.contains(idx) { paste(entries[idx]) }
         case .togglePin:
-            if entries.indices.contains(selectedIndex) {
-                ClipboardHistoryStore.shared.togglePin(id: entries[selectedIndex].id)
-            }
+            // 选中态按 ID 跟随置顶条目（togglePinSelected 内处理重排后的下标恢复）
+            togglePinSelected()
         case .deleteSelected:
             if entries.indices.contains(selectedIndex) {
                 let entry = entries[selectedIndex]

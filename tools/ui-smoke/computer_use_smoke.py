@@ -412,10 +412,12 @@ def smoke_launcher(run: Run, driver: AXDriver) -> str:
         raise RuntimeError("app has no visible window before launcher invocation")
 
     def panel_visible() -> bool:
-        # Launcher NSPanel is not consistently AX-readable over SSH; its ~640x491
-        # popUpMenu panel is the deterministic smoke signal.
+        # Launcher NSPanel is not consistently AX-readable over SSH; its width
+        # (640, uniquely in 620-660) is the deterministic smoke signal. Height is
+        # content-adaptive and clamped to 60% of screen height — measured 477 on
+        # this host (2026-11-20), which fell 3pt outside the old 480-510 window.
         return any(
-            620 <= w["frame"][2] <= 660 and 480 <= w["frame"][3] <= 510
+            620 <= w["frame"][2] <= 660 and 300 <= w["frame"][3] <= 800
             for w in driver.windows()
         )
 
@@ -794,14 +796,68 @@ def _diff_region(capture_before: Path, capture_after: Path, display_width: float
     return (min(xs) / scale, min(ys) / scale, max(xs) / scale, max(ys) / scale)
 
 
-def _snap_overlay(tag):
-    """cua 截屏（屏幕须唤醒/保活）"""
+def _snap_overlay(run, tag):
+    """阶段取证截图：应用自身 UIEvidenceCaptureService 优先（唯一无 TCC 依赖通道）
+
+    协议（Sources/QuiteNote/System/Services/UIEvidenceCaptureService.swift）：app 以
+    --ui-smoke-run 启动并持有 QN_UI_EVIDENCE_DIR，每 0.1s 轮询 requests/frame-*.request，
+    把自己最高层级窗口（截图遮罩正是 screenSaver 级）写到 frames/frame-*.png。
+    外部通道（cua / 系统 screencapture）依赖 runner 会话的屏幕录制授权——该授权
+    周期性 re-consent 被踢（2026-11-20 实锤两通道同时无产物），只做兜底。
+    """
     caffeinate(20)
+    stem = f"frame-{tag}"
+    requests_dir = run.run_dir / "recordings" / "requests"
+    frames_dir = run.run_dir / "recordings" / "frames"
+    requests_dir.mkdir(parents=True, exist_ok=True)
+    frames_dir.mkdir(parents=True, exist_ok=True)
+    app_shot = frames_dir / f"{stem}.png"
+    app_shot.unlink(missing_ok=True)
+    (requests_dir / f"{stem}.request").write_text("")
+    source = None
+    deadline = time.monotonic() + 8
+    while time.monotonic() < deadline:
+        if app_shot.exists() and app_shot.stat().st_size > 40000:
+            source = str(app_shot)
+            break
+        time.sleep(0.1)
+
+    # 兜底 1/2：cua 截屏（本机已知不稳，重试一次）
     out = f"/tmp/qn-manual/FIN_{tag}.png"
     if os.path.exists(out): os.remove(out)
-    subprocess.run([CUA, "call", "get_desktop_state", "--screenshot-out-file", out],
-                   capture_output=True, timeout=60)
-    return out if os.path.exists(out) and os.path.getsize(out) > 40000 else None
+    if source is None:
+        subprocess.run([CUA, "call", "get_desktop_state", "--screenshot-out-file", out],
+                       capture_output=True, timeout=60)
+        if not (os.path.exists(out) and os.path.getsize(out) > 40000):
+            time.sleep(1.0)
+            subprocess.run([CUA, "call", "get_desktop_state", "--screenshot-out-file", out],
+                           capture_output=True, timeout=60)
+        if os.path.exists(out) and os.path.getsize(out) > 40000:
+            source = out
+    # 兜底 3：系统 screencapture（runner 会话无 TCC 时同样无产物）
+    if source is None:
+        if os.path.exists(out): os.remove(out)
+        subprocess.run(["screencapture", "-x", out], check=False, timeout=30)
+        if os.path.exists(out) and os.path.getsize(out) > 40000:
+            source = out
+    if source is None:
+        raise RuntimeError(f"screenshot stage capture failed: {tag} (app 证据服务 + cua×2 + screencapture 全部无产物)")
+
+    # 归一化到 1366 宽：管线的全部像素假设（SCREEN_PT 换算、decode 的 18-50pt 簇宽、
+    # dark_band 1432 上限）都按 cua 时代 1366px 截图标定；app 通道是原生 Retina 2880px，
+    # 不归一化则几何全部翻倍（2026-11-20 实锤 KeyError/簇宽过滤失效）
+    os.makedirs("/tmp/qn-manual", exist_ok=True)  # 此前由 cua 落盘时顺带创建，app 通道需自建
+    from PIL import Image
+    im = Image.open(source)
+    if im.width != 1366:
+        normalized = im.resize((1366, round(im.height * 1366 / im.width)), Image.LANCZOS)
+        im.close()
+        normalized.save(out)
+        return out
+    if source != out:
+        import shutil
+        shutil.copy(source, out)
+    return out
 
 
 def _click_overlay(lx, ly):
@@ -818,6 +874,21 @@ def _drag_overlay(lx1, ly1, lx2, ly2):
             "duration_ms": 500, "steps": 14}
     _cua_call("drag", json.dumps(args))
     time.sleep(1.4)
+
+
+def _toolbar_anchor(decoded: dict, stage: str, screen_h: float):
+    """工具栏锚定 = 同一横行（±25pt）内的蓝簇+红簇配对，取工作区最上方命中。
+
+    旧的"最左蓝簇"锚定会被 Dock 蓝色应用图标污染（2026-11-20 实锤：app 证据
+    通道的取图包含整个屏幕，Dock 图标 y≈840 与工具栏 y≈276 同时命中；且 Dock
+    行存在蓝红同排的合法配对）。工具栏的签名：蓝（选中组）红（录制）同 y 相邻、
+    且位于菜单栏（y<60）与 Dock 区（y>屏高-100）之外——截图选区悬于屏幕中上部，
+    工具栏随选区浮在同一带。
+    """
+    pairs = [(b, r) for b in decoded.get("B", []) for r in decoded.get("R", [])
+             if abs(b[1] - r[1]) <= 25 and 60 < b[1] < screen_h - 100]
+    assert pairs, f"{stage}: 工作区红蓝配对未检出 B={decoded.get('B')} R={decoded.get('R')}"
+    return min(pairs, key=lambda p: p[0][1])
 
 
 def smoke_screenshot_toolbar(run: Run, driver: AXDriver) -> str:
@@ -838,6 +909,9 @@ def smoke_screenshot_toolbar(run: Run, driver: AXDriver) -> str:
         time.sleep(1.0)
 
     _press_escape()  # clear any stale session
+    # ⚠️ 触发行勿删（2026-10-22 3901435 重构曾误删此行，套件永远"overlay did not
+    # appear"，直到 2026-11-20 才发现）：清场后必须从状态菜单发起截图会话
+    _press_status_menu_item("捕获屏幕截图")
     deadline = time.monotonic() + 3
     while time.monotonic() < deadline and _overlay_window_count(pid) == 0:
         time.sleep(0.05)
@@ -849,11 +923,9 @@ def smoke_screenshot_toolbar(run: Run, driver: AXDriver) -> str:
     sel = (1178, 300, 1398, 480)
     _drag_overlay(*sel)
 
-    p1 = _snap_overlay("stage1_default")
+    p1 = _snap_overlay(run, "stage1_default")
     d1 = decode(p1)
-    B1 = d1["B"][0] if d1["B"] else None
-    R1 = d1["R"][0] if d1["R"] else None
-    assert B1 and R1, f"默认态按钮未检出: {d1}"
+    B1, R1 = _toolbar_anchor(d1, "默认态", height)
     band1 = dark_band_right(p1, width, B1[1])
     inside1 = band1 <= 1432
     print(f"[stage1] 蓝钮 {B1} 红钮 {R1} 暗带右端 {band1:.0f}/1432 {'✓' if inside1 else '✗出屏'}")
@@ -861,11 +933,9 @@ def smoke_screenshot_toolbar(run: Run, driver: AXDriver) -> str:
 
     # 点文本组（蓝钮+76pt）
     _click_overlay(B1[0] + 76, B1[1])
-    p2 = _snap_overlay("stage2_widened")
+    p2 = _snap_overlay(run, "stage2_widened")
     d2 = decode(p2)
-    B2 = d2["B"][0] if d2["B"] else None
-    R2 = d2["R"][0] if d2["R"] else None
-    assert B2 and R2, f"点T后按钮未检出: {d2}"
+    B2, R2 = _toolbar_anchor(d2, "点T后", height)
     band2 = dark_band_right(p2, width, B2[1])
     inside2 = band2 <= 1432
     print(f"[stage2] 撑开后 暗带右端 {band2:.0f}/1432 {'✓红钮屏内' if inside2 else '✗出屏'}")
@@ -873,8 +943,8 @@ def smoke_screenshot_toolbar(run: Run, driver: AXDriver) -> str:
 
     # 点图形组展开二级（蓝钮-38pt）
     _click_overlay(B2[0] - 38, B2[1])
-    p3 = _snap_overlay("stage3_sub")
-    B3 = decode(p3)["B"][0]
+    p3 = _snap_overlay(run, "stage3_sub")
+    B3, _ = _toolbar_anchor(decode(p3), "二级面板", height)
     sub = find_sub(p3, B3[1])
     assert sub, "二级面板未展开"
     gap = sub["gap"]
@@ -903,33 +973,45 @@ def dark_band_right(path, width, row_cy):
 
 
 def decode(path):
-    """行带内蓝钮（选中组高亮）聚类定位"""
+    """行带内蓝钮（选中组高亮）/红钮（录制）聚类定位：{"B": [(x,y,w)…], "R": […]}
+    坐标为输入截图像素（管线约定 1366 宽，见 _snap_overlay 的归一化）。
+    红 R 分支曾被简化丢弃（只剩 B），触发线 2026-11-20 恢复后 suite 的
+    d1["R"] 访问第一次跑到、以 KeyError 暴露。"""
     from PIL import Image
     im = Image.open(path).convert("RGB"); W, H = im.size; px = im.load()
     scale = W / 1440.0
-    blues = []
+    def classify(r, g, b):
+        if b > 185 and r < 70 and 80 < g < 160: return "B"
+        if r > 170 and 40 < g < 130 and b < 110: return "R"
+        return None
+    cells = {}
     for y in range(0, H, 2):
         for x in range(int(150 * scale), W, 2):
-            lx = x / scale; ly = y / scale
-            r, g, b = px[x, y]
-            if b > 185 and r < 70 and 80 < g < 160: blues.append((lx, ly))
-    cells = {}
-    for p in blues: cells.setdefault((round(p[0] / 14), round(p[1] / 14)), []).append(p)
-    visited = set(); res = []
-    for k in list(cells):
-        if k in visited: continue
-        stack = [k]; group = []
-        while stack:
-            c = stack.pop()
-            if c in visited or c not in cells: continue
-            visited.add(c); group += cells[c]
-            for dx in (-1, 0, 1):
-                for dy in (-1, 0, 1): stack.append((c[0] + dx, c[1] + dy))
-        if len(group) < 20: continue
-        xs = [p[0] for p in group]; ys = [p[1] for p in group]
-        w = max(xs) - min(xs)
-        if 18 <= w <= 50: res.append((sum(xs)/len(xs), sum(ys)/len(ys), w))
-    return {"B": sorted(res, key=lambda t: t[0])}
+            color = classify(*px[x, y])
+            if color:
+                cells.setdefault((x // 14, y // 14, color), []).append((x, y))
+    found = {"B": [], "R": []}
+    for color in ("B", "R"):
+        color_cells = {k: v for k, v in cells.items() if k[2] == color}
+        visited = set(); res = []
+        for k in list(color_cells):
+            if k in visited: continue
+            stack = [k]; group = []
+            while stack:
+                c = stack.pop()
+                if c in visited or c not in color_cells: continue
+                visited.add(c); group += color_cells[c]
+                for dx in (-1, 0, 1):
+                    for dy in (-1, 0, 1): stack.append((c[0] + dx, c[1] + dy, color))
+            if len(group) < 20: continue
+            xs = [p[0] / scale for p in group]; ys = [p[1] / scale for p in group]
+            w = max(xs) - min(xs)
+            # 宽度窗按色区分：蓝=选中组整钮（~28pt）；红=v1.4.0 工具栏 token 化后的
+            # 录制小圆点（实测 ~10pt，2026-11-20），18 下限会把它整簇拒掉
+            lo = 6 if color == "R" else 18
+            if lo <= w <= 50: res.append((sum(xs)/len(xs), sum(ys)/len(ys), w))
+        found[color] = sorted(res, key=lambda t: t[0])
+    return found
 
 
 def append_timeline(run_dir: Path, event: str, data: dict | None = None) -> None:

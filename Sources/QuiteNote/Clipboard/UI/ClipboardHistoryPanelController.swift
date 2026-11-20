@@ -17,6 +17,57 @@ enum ClipboardPanelKeyAction: Equatable {
     case escape          // Esc：有搜索词先清空，否则关闭面板
 }
 
+/// Carbon 全局兜底热键规格（面板打开期间注册，收起即注销）
+///
+/// 为什么需要：macOS 26 对 accessory 应用的激活拒绝让面板可见但非 key 的窗口期
+/// （生产日志实锤：12/12 次打开 key✗，九连补拉全失败过半）local monitor 完全
+/// 收不到按键——↑↓/回车/⌘1-9 全部漏进前一个应用（浏览器 ⌘1 = 切标签页）。
+/// 修法同面板 ESC 拦截（id 5004）：可见期间注册 Carbon 全局热键，系统层截获，
+/// 与激活状态无关。
+enum ClipboardGlobalFallback {
+    struct Spec: Equatable {
+        let key: String
+        let modifiers: NSEvent.ModifierFlags
+        let id: UInt32
+        let action: ClipboardPanelKeyAction
+    }
+
+    /// ⌘ 组合（面板可见期常驻）：输入法组词不会用到 ⌘ 组合键，无 IME 冲突。
+    /// ⌘1–9 直贴 / ⌘S 闪记 / ⌘P 置顶 / ⌘F 聚焦搜索
+    static let commandSpecs: [Spec] = {
+        let digits = ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
+        var specs = digits.enumerated().map { idx, key in
+            Spec(key: key, modifiers: .command, id: UInt32(5110 + idx), action: .pasteIndex(idx + 1))
+        }
+        specs.append(Spec(key: "s", modifiers: .command, id: 5119, action: .saveToFlash))
+        specs.append(Spec(key: "p", modifiers: .command, id: 5120, action: .togglePin))
+        specs.append(Spec(key: "f", modifiers: .command, id: 5121, action: .focusSearch))
+        return specs
+    }()
+
+    /// 裸导航键（仅面板**未成为 key** 期间注册，didBecomeKey 即注销）：
+    /// 组词期 ↑↓/回车是输入法候选键，Carbon 注册即系统级消费、无法放行，
+    /// 面板已 key 时必须还给 local monitor 路径（带组词守卫）。
+    /// ←/→ 仅在搜索词为空时作为切筛选键注册（有输入内容时左右是光标编辑键，
+    /// 消费会破坏编辑——arrowFilterGuard 拦）
+    static let navigationSpecs: [Spec] = [
+        Spec(key: "up", modifiers: [], id: 5122, action: .moveUp),
+        Spec(key: "down", modifiers: [], id: 5123, action: .moveDown),
+        Spec(key: "return", modifiers: [], id: 5124, action: .pasteSelected),
+        Spec(key: "tab", modifiers: [], id: 5125, action: .switchFilterRight),
+        Spec(key: "tab", modifiers: .shift, id: 5126, action: .switchFilterLeft),
+        Spec(key: "left", modifiers: [], id: 5127, action: .switchFilterLeft),
+        Spec(key: "right", modifiers: [], id: 5128, action: .switchFilterRight),
+    ]
+
+    /// 按面板 key 状态给出应注册的规格集合（单测钉住分层语义）
+    static func specs(panelIsKey: Bool) -> [Spec] {
+        panelIsKey ? commandSpecs : commandSpecs + navigationSpecs
+    }
+
+    static func allIDs() -> [UInt32] { Array(5110...5128) }
+}
+
 /// 剪贴板历史快捷面板控制器（PRD 7.1：720×560，打开后搜索自动聚焦）
 ///
 /// 单例 + 惰性建窗（参考 V2OCRResultPanelController 模式）。
@@ -44,9 +95,19 @@ final class ClipboardHistoryPanelController {
     /// 搜索框的 AppKit 句柄（ClipSearchField 注册；makeFirstResponder 用）
     weak var searchFieldHandle: NSTextField?
 
+    /// ←/→ 可否当"切筛选"消费：搜索词为空才可（有输入内容时左右是光标编辑键，
+    /// 消费会破坏编辑）。视图 onAppear/didShow 接入 vm.searchText 判定
+    var arrowFilterGuard: () -> Bool = { true }
+
     /// 确定性聚焦：面板已 key 则直接生效；未 key 则由 key 补拉/成为 key 后调用
     func focusSearchFieldNow() {
         guard let panel, panel.isVisible, let field = searchFieldHandle else { return }
+        // 已聚焦且编辑中（含输入法 marked text 组词态）→ 必须跳过：
+        // 再调 makeFirstResponder 会重启 field editor 会话，未上屏的组词内容被
+        // 整段丢弃（唤起后 0.05–0.7s 补焦重试期间用户已开始打字 = 首个单词被删的元凶）
+        if let editor = field.currentEditor(), panel.firstResponder === editor {
+            return
+        }
         if panel.isKeyWindow {
             let ok = panel.makeFirstResponder(field)
             if ok {
@@ -88,30 +149,48 @@ final class ClipboardHistoryPanelController {
             AppLauncherPanelController.shared.hide()
         }
 
+        abortKeyLadder = false
         // key 就位补拉：前密后疏（0.05~0.7s，深度审计建议——长间隔重试落在
-        // 激活归因窗口之外全部无效）。每次重试后**无条件**补焦一拍（旧行为只在
-        // 本轮 makeKey 成功才补焦，系统异步完成 key 时无人聚焦 = "key✓ 但打不了字"）
+        // 激活归因窗口之外全部无效）。每次重试后**无条件**补焦一拍。
+        // 逐步计时 + 自适应熔断（2026-11-20 用户真机实锤：第二次唤起遭激活拒绝时
+        // 主线程冻 15.1s、0.35s 重锤都排不上队——嫌疑是 activate/makeKey 在被拒
+        // 状态下同步阻塞；某步 >0.8s 即停跳等重锤，别把主线程堵满）
         for delay in [0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.55, 0.7] {
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-                guard let self, let panel = self.panel, panel.isVisible else { return }
-                if !panel.isKeyWindow {
-                    NSApp.activate(ignoringOtherApps: true)
-                    panel.orderFrontRegardless()
-                    panel.makeKey()
+                guard let self, let panel = self.panel, panel.isVisible, !panel.isKeyWindow else { return }
+                if self.abortKeyLadder { return }
+                let t0 = DispatchTime.now()
+                NSApp.activate(ignoringOtherApps: true)
+                panel.orderFrontRegardless()
+                panel.makeKey()
+                let ms = Double(DispatchTime.now().uptimeNanoseconds - t0.uptimeNanoseconds) / 1_000_000
+                if ms > 80 {
+                    DiagnosticCenter.warning("Clipboard", String(format: "key 补拉一步耗时 %.0fms（activate/makeKey 疑似阻塞）", ms))
+                }
+                if ms > 800 {
+                    self.abortKeyLadder = true
+                    DiagnosticCenter.warning("Clipboard", String(format: "key 补拉熔断（该步 %.0fms，交由重锤接管）", ms))
                 }
                 DispatchQueue.main.async {
                     self.focusSearchFieldNow()
                 }
             }
         }
-        // 激活重锤（Steinberger 2025 / macOS 26 文档方案）：全部重试失败说明
+        // 激活重锤（Steinberger 2025 / macOS 26 文档方案）：补拉失败说明
         // accessory 激活被系统拒绝——临时切 .regular（有 Dock 图标的应用激活可靠），
-        // 面板收起时切回。代价是 Dock 图标闪现 <1 秒
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+        // 面板收起时切回。代价是 Dock 图标闪现 <1 秒。
+        // 0.35s（生产日志定标）：用户唤起后 0.2~0.5s 就开始打字/导航，0.8s 才重锤
+        // 意味着打字全漏；导航键已有 Carbon 兜底兜住，重锤只管打字进搜索框，越早越好
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
             guard let self, let panel = self.panel, panel.isVisible, !panel.isKeyWindow else { return }
             DiagnosticCenter.warning("Clipboard", "激活被拒（accessory 策略），启用 .regular 重锤")
             self.policyDanced = true
+            let h0 = DispatchTime.now()
             NSApp.setActivationPolicy(.regular)
+            let policyMs = Double(DispatchTime.now().uptimeNanoseconds - h0.uptimeNanoseconds) / 1_000_000
+            if policyMs > 80 {
+                DiagnosticCenter.warning("Clipboard", String(format: "重锤 setActivationPolicy 耗时 %.0fms", policyMs))
+            }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                 NSApp.activate(ignoringOtherApps: true)
                 panel.makeKeyAndOrderFront(nil)
@@ -127,6 +206,9 @@ final class ClipboardHistoryPanelController {
         }
 
         installKeyMonitor()
+        installClickOutsideMonitor()
+        installGlobalKeyFallbacks()
+        beginWakeAssertion()
 
         // ESC Carbon 拦截（面板打开期间）：搜狗中文模式会吞裸 ESC，同启动器面板
         GlobalHotkeyManager.shared.register(key: "esc", modifiers: [], id: 5004) { [weak self] in
@@ -143,6 +225,32 @@ final class ClipboardHistoryPanelController {
 
     private var policyDanced = false
 
+    // MARK: App Nap 防护（2026-11-20 采样定罪）
+    // 激活被拒 → 应用跌回后台 → macOS 26 对后台 accessory 应用激进 App Nap：
+    // 主线程空闲挂起、主队列定时唤醒延迟 15s 量级（hang-sample 实锤：主线程
+    // mach_msg 空转、零计算零锁，用户面板冻结、心跳饿死）。面板可见期间持有
+    // userInitiated 活动断言，禁止系统 nap。
+    private var wakeAssertion: NSObjectProtocol?
+
+    private func beginWakeAssertion() {
+        guard wakeAssertion == nil else { return }
+        wakeAssertion = ProcessInfo.processInfo.beginActivity(
+            options: .userInitiatedAllowingIdleSystemSleep,
+            reason: "clipboard-panel-visible"
+        )
+        DiagnosticCenter.info("Clipboard", "App Nap 断言已持有（面板可见期间）")
+    }
+
+    private func endWakeAssertion() {
+        if let token = wakeAssertion {
+            ProcessInfo.processInfo.endActivity(token)
+            wakeAssertion = nil
+            DiagnosticCenter.info("Clipboard", "App Nap 断言已释放")
+        }
+    }
+    /// key 补拉熔断标志（show() 时复位；某步 activate/makeKey 阻塞 >0.8s 置位）
+    private var abortKeyLadder = false
+
     func hide() {
         if policyDanced {
             NSApp.setActivationPolicy(.accessory)
@@ -150,7 +258,10 @@ final class ClipboardHistoryPanelController {
         }
         DiagnosticCenter.info("Clipboard", "面板收起（当前 key: \(NSApp.keyWindow.map { String(describing: type(of: $0)) } ?? "nil")）")
         panel?.orderOut(nil)
+        endWakeAssertion()
         removeKeyMonitor()
+        removeClickOutsideMonitor()
+        removeGlobalKeyFallbacks()
         GlobalHotkeyManager.shared.unregister(id: 5004)
         onKeyAction = nil
     }
@@ -169,7 +280,10 @@ final class ClipboardHistoryPanelController {
             forName: NSWindow.didBecomeKeyNotification, object: panel, queue: .main
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
-                self?.focusSearchFieldNow()
+                guard let self else { return }
+                self.focusSearchFieldNow()
+                // 已 key：导航键兜底交接给 local monitor（组词守卫在那一层）
+                self.removeNavigationKeyFallbacks()
             }
         }
     }
@@ -234,13 +348,96 @@ final class ClipboardHistoryPanelController {
         return panel
     }
 
+    // MARK: - 点击外部关闭（Alfred 式兜底）
+
+    /// 全局鼠标按下监听（面板打开期间）。didResignKey 只覆盖"面板曾拿到 key 后
+    /// 失焦"；面板从未成为 key（accessory 激活被拒的竞态）时点击别处不触发
+    /// resign 通知，面板会一直悬在屏上——全局监听点面板外任意处即收起，补上缺口
+    private var clickOutsideMonitor: Any?
+
+    private func installClickOutsideMonitor() {
+        removeClickOutsideMonitor()
+        clickOutsideMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { [weak self] _ in
+            let location = NSEvent.mouseLocation
+            Task { @MainActor [weak self] in
+                guard let self, let panel = self.panel, panel.isVisible else { return }
+                if !NSMouseInRect(location, panel.frame, false) {
+                    self.hide()
+                }
+            }
+        }
+    }
+
+    private func removeClickOutsideMonitor() {
+        if let monitor = clickOutsideMonitor {
+            NSEvent.removeMonitor(monitor)
+            clickOutsideMonitor = nil
+        }
+    }
+
+    // MARK: - Carbon 全局兜底（面板可见期间的键盘可靠性，见 ClipboardGlobalFallback）
+
+    private func installGlobalKeyFallbacks() {
+        let manager = GlobalHotkeyManager.shared
+        for spec in ClipboardGlobalFallback.specs(panelIsKey: panel?.isKeyWindow ?? false) {
+            manager.register(key: spec.key, modifiers: spec.modifiers, id: spec.id) { [weak self] in
+                self?.dispatchGlobalFallback(spec.action)
+            }
+        }
+    }
+
+    /// 面板成为 key 后注销裸导航键兜底：此后按键走 local monitor（带输入法组词守卫——
+    /// 组词期 ↑↓/回车是候选键必须放行；Carbon 注册即系统级消费，不注销会拦死组词）
+    private func removeNavigationKeyFallbacks() {
+        guard let panel, panel.isKeyWindow else { return }
+        ClipboardGlobalFallback.navigationSpecs.forEach {
+            GlobalHotkeyManager.shared.unregister(id: $0.id)
+        }
+    }
+
+    private func removeGlobalKeyFallbacks() {
+        ClipboardGlobalFallback.allIDs().forEach {
+            GlobalHotkeyManager.shared.unregister(id: $0)
+        }
+    }
+
+    private func dispatchGlobalFallback(_ action: ClipboardPanelKeyAction) {
+        guard let panel, panel.isVisible else { return }
+        // 与 local monitor 同款组词守卫（防御 didBecomeKey 注销竞态期的残留注册）
+        if let client = panel.firstResponder as? NSTextInputClient, client.hasMarkedText() { return }
+        // 切筛选类（含 ←/→）：搜索词非空时丢弃，防止碳通道消费掉本应属于
+        // 文本编辑的按键（keyless 窗口期 resetInput 已清词，常态下恒过）
+        switch action {
+        case .switchFilterLeft, .switchFilterRight:
+            guard arrowFilterGuard() else { return }
+        default:
+            break
+        }
+        DiagnosticCenter.info("Clipboard", "Carbon 兜底按键：\(action)")
+        onKeyAction?(action)
+    }
+
     // MARK: - 键盘监听（窗口内快捷键）
 
     private func installKeyMonitor() {
         removeKeyMonitor()
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self, let window = event.window, window === self.panel, window.isKeyWindow else { return event }
+            // 输入法组词期间（marked text）不拦截：Enter/↑↓ 此刻是候选确认键，
+            // 拦掉会把组词打断（表现同"首单词被删"），事件原样还给第一响应者
+            if let client = window.firstResponder as? NSTextInputClient, client.hasMarkedText() {
+                return event
+            }
             guard let action = Self.mapKey(event) else {
+                // ←/→ 特殊分流：搜索词为空时是切筛选键（用户约定 2026-11-20），
+                // 有输入内容时必须还给 field editor 当光标编辑键——mapKey 是静态
+                // 无状态表，带状态的拦截在这里做
+                let flags = event.modifierFlags.intersection([.command, .option, .shift, .control])
+                if flags.isEmpty, event.keyCode == 123 || event.keyCode == 124, self.arrowFilterGuard() {
+                    let action: ClipboardPanelKeyAction = event.keyCode == 123 ? .switchFilterLeft : .switchFilterRight
+                    self.onKeyAction?(action)
+                    return nil
+                }
                 return event
             }
             self.onKeyAction?(action)

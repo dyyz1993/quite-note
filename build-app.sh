@@ -211,9 +211,20 @@ else
     BINARY_CHANGED=true
 fi
 
+# rpath 自愈守卫（2026-11-19 CI 实锤）：外部预构建的二进制（如 CI workflow 自己
+# swift build --arch 出的）没带 -Xlinker -rpath @executable_path/../Frameworks——
+# 那组 flags 只在本脚本自己的构建路径里。缺口症状：dyld 找不到 Frameworks/ 里的
+# Sparkle.framework，启动即 SIGABRT（"Library not loaded: @rpath/Sparkle.framework"）。
+# 二进制刚复制还未签名，此处补 rpath 最干净（改已签名二进制会破坏签名）。
+if [ "$APP_STORE_MODE" = false ] && command -v otool >/dev/null 2>&1; then
+    if ! otool -l "$MACOS_DIR/$EXECUTABLE_NAME" | grep -A2 LC_RPATH | grep -q "path @executable_path/../Frameworks"; then
+        echo "主二进制缺少 @executable_path/../Frameworks rpath（外部预构建二进制的常见缺口），install_name_tool 补齐"
+        install_name_tool -add_rpath "@executable_path/../Frameworks" "$MACOS_DIR/$EXECUTABLE_NAME"
+    fi
+fi
+
 # 复制图标文件
-if [ -f "AppIcon.icns" ]; then
-    echo "复制应用图标..."
+if [ -f "AppIcon.icns" ]; then    echo "复制应用图标..."
     cp AppIcon.icns "$RESOURCES_DIR/AppIcon.icns"
 elif [ -f "QuiteNote.icns" ]; then
     echo "复制备用应用图标..."
@@ -268,9 +279,29 @@ fi
 # 主二进制以 @rpath/Sparkle.framework 引用，rpath 由构建参数 -Xlinker 注入
 # （@executable_path/../Frameworks），见 SWIFT_BUILD_ARGS。
 if [ "$APP_STORE_MODE" = false ]; then
+    # 查找顺序：① SwiftPM artifact 的 macOS 切片（单架构本地构建布局）
+    # ② 全 .build 扫描——双架构 `swift build --arch x86_64 --arch arm64` 的产物在
+    # .build/apple/Products/…、新 SwiftPM 的 extract 布局也在漂移，路径匹配不再可靠；
+    # 多候选时优先带 macos 切片目录的，其次 Release/apple 路径（避开 Debug ExecutableModules）
     SPARKLE_FRAMEWORK=$(find .build/artifacts -path "*macos-arm64_x86_64/Sparkle.framework" -maxdepth 5 -type d 2>/dev/null | head -n 1)
     if [ -z "$SPARKLE_FRAMEWORK" ]; then
-        SPARKLE_FRAMEWORK=$(find .build -name "Sparkle.framework" -type d -path "*macos*" 2>/dev/null | grep -v dSYM | head -n 1)
+        SPARKLE_CANDIDATES=$(find .build -type d -name "Sparkle.framework" 2>/dev/null | grep -v dSYM || true)
+        SPARKLE_FRAMEWORK=$(echo "$SPARKLE_CANDIDATES" | grep "macos" | head -n 1)
+        if [ -z "$SPARKLE_FRAMEWORK" ]; then
+            SPARKLE_FRAMEWORK=$(echo "$SPARKLE_CANDIDATES" | grep -E "Release|apple" | head -n 1)
+        fi
+        if [ -z "$SPARKLE_FRAMEWORK" ] && [ -n "$SPARKLE_CANDIDATES" ]; then
+            SPARKLE_FRAMEWORK=$(echo "$SPARKLE_CANDIDATES" | head -n 1)
+        fi
+    fi
+    if [ -z "$SPARKLE_FRAMEWORK" ]; then
+        # 2026-11-19 实锤：CI 双架构构建布局变化导致两个 find 落空，脚本静默跳过
+        # 拷贝产出无 Sparkle 的坏包——xyz-mac 冒烟全线 "app has no visible window"
+        # （dyld: Library not loaded @rpath/Sparkle.framework，启动即 SIGABRT）。
+        # 非 App Store 构建主二进制以 @rpath 链接 Sparkle，找不到必须终止。
+        echo "错误：非 App Store 构建必须打包 Sparkle.framework，但 .build 下找不到任何候选。"
+        echo "构建布局可能又变了——请更新本脚本的查找逻辑（勿删此硬失败守卫）。终止构建。"
+        exit 1
     fi
     if [ -n "$SPARKLE_FRAMEWORK" ]; then
         echo "在 $SPARKLE_FRAMEWORK 找到 Sparkle.framework，复制到 Frameworks 目录..."
