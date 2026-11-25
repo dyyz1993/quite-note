@@ -74,8 +74,9 @@ macOS (13.0+) 对「屏幕录制」和「辅助功能」有极严的安全限制
    1. 正常构建：./build-app.sh (会自动运行检查)
    2. 开发变体：./build-app.sh --dev (构建 Quite Note Dev，可与正式版共存)
    3. App Store 沙盒本地验证：./build-app.sh --app-store --no-launch
-   4. 检查权限状态：./build-app.sh --check-permissions
-   5. 帮助说明：./build-app.sh --help
+   4. 通用架构（Intel + Apple Silicon）：./build-app.sh --universal（发版脚本自动带）
+   5. 检查权限状态：./build-app.sh --check-permissions
+   6. 帮助说明：./build-app.sh --help
 
 � 手动确认路径：
    系统设置 → 隐私与安全性 → 屏幕录制
@@ -87,6 +88,7 @@ EOF
 # 处理命令行参数（支持组合，如 ./build-app.sh --dev --no-launch）
 SKIP_BUILD=false
 APP_STORE_MODE=false
+UNIVERSAL=false
 ENTITLEMENTS_FILE="$SCRIPT_DIR/QuiteNote.entitlements"
 for arg in "$@"; do
     case "$arg" in
@@ -105,6 +107,10 @@ for arg in "$@"; do
         --no-launch)
             NO_LAUNCH=true
             echo "构建完成后不重启应用..."
+            ;;
+        --universal)
+            UNIVERSAL=true
+            echo "通用架构（Apple Silicon + Intel）..."
             ;;
         --dev)
             APP_NAME="Quite Note Dev"
@@ -145,6 +151,11 @@ if [ "$SKIP_BUILD" = false ]; then
     # 必须注入这条 rpath，否则 dyld 加载即失败（"Library not loaded: @rpath/Sparkle.framework"）
     if [ "$APP_STORE_MODE" = false ]; then
         SWIFT_BUILD_ARGS+=(-Xlinker -rpath -Xlinker "@executable_path/../Frameworks")
+    fi
+    # 通用架构（Apple Silicon + Intel）：build-release.sh 发版时传 --universal。
+    # 日常本地构建保持本机单架构（通用编译耗时约翻倍，本地自用没必要）
+    if [ "$UNIVERSAL" = true ]; then
+        SWIFT_BUILD_ARGS+=(--arch x86_64 --arch arm64)
     fi
     if [ "$BUNDLE_ID" = "com.quitenote.app.dev" ]; then
         echo "开发变体将同时构建常驻核心..."

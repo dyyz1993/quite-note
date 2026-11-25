@@ -68,7 +68,9 @@ echo "✅ 公证凭据: $NOTARY_PROFILE"
 # ------------------------------------------------------------------
 echo ""
 echo "🛠  构建 .app ..."
-APP_SIGN_IDENTITY="$SIGN_IDENTITY" ./build-app.sh --no-launch
+# --universal：产物必须同时含 Apple Silicon 与 Intel（项目最低系统 macOS 13 包含 Intel Mac；
+# v1.7.0 之前云端原生编译只出了 arm64，Intel 装不了）
+APP_SIGN_IDENTITY="$SIGN_IDENTITY" ./build-app.sh --universal --no-launch
 
 # 覆写 Info.plist 中的版本号（build-app.sh 内置写死 1.0.0）
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" -c "Set :CFBundleVersion $VERSION" "$APP_PATH/Contents/Info.plist" >/dev/null
