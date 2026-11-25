@@ -232,9 +232,13 @@ class SymbolTriggerDetector: ObservableObject {
         return NSRange(location: context.range.location, length: cursorPosition - context.range.location)
     }
 
-    /// 插入选中的符号
-    /// 返回值的光标位置为 NSString / UTF-16 坐标，与 NSTextView 一致
-    func insertSymbol(_ symbol: SymbolItem, into text: String, cursorPosition: Int) -> (newText: String, newCursorPos: Int)? {
+    /// 插入符号的落点方案（与检测使用同一套定位规则，保证范围一致）。
+    /// 只给出「要替换的范围」和「替换后的光标位置」，都是 NSString / UTF-16 坐标——
+    /// 编辑器拿到范围后用可撤销插入只替换这一段，不必整段重建文本。
+    ///
+    /// - autoClean 开启：替换「触发前缀 + 触发词」
+    /// - autoClean 关闭：只替换触发词，保留前缀
+    func insertionPlan(in text: String, cursorPosition: Int, symbolContent: String) -> (replacementRange: NSRange, cursorAfterInsertion: Int)? {
         let nsString = text as NSString
         guard let context = replacementTarget(in: text, cursorPosition: cursorPosition) else {
             return nil
@@ -247,18 +251,26 @@ class SymbolTriggerDetector: ObservableObject {
         let config = configManager.enabledConfigs.first { $0.global.triggerPrefix == context.prefix } ?? .defaultConfig
 
         // emoji 等特殊字符在 NSString 中可能占多个 UTF-16 单位，光标必须按 NSString 长度计算
-        let symbolContentLength = (symbol.content as NSString).length
+        let symbolContentLength = (symbolContent as NSString).length
 
         if config.global.autoClean {
             // 替换整个触发词（包括前缀）
-            let newText = nsString.replacingCharacters(in: fullRange, with: symbol.content)
-            return (newText, fullRange.location + symbolContentLength)
+            return (fullRange, fullRange.location + symbolContentLength)
         } else {
             // 只替换触发词部分，保留前缀
             let prefixLength = (context.prefix as NSString).length
             let triggerRange = NSRange(location: fullRange.location + prefixLength, length: fullRange.length - prefixLength)
-            let newText = nsString.replacingCharacters(in: triggerRange, with: symbol.content)
-            return (newText, triggerRange.location + symbolContentLength)
+            return (triggerRange, triggerRange.location + symbolContentLength)
         }
+    }
+
+    /// 插入选中的符号
+    /// 返回值的光标位置为 NSString / UTF-16 坐标，与 NSTextView 一致
+    func insertSymbol(_ symbol: SymbolItem, into text: String, cursorPosition: Int) -> (newText: String, newCursorPos: Int)? {
+        guard let plan = insertionPlan(in: text, cursorPosition: cursorPosition, symbolContent: symbol.content) else {
+            return nil
+        }
+        let newText = (text as NSString).replacingCharacters(in: plan.replacementRange, with: symbol.content)
+        return (newText, plan.cursorAfterInsertion)
     }
 }

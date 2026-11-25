@@ -244,3 +244,46 @@
 **已修（807f3fd/4922d1b，全部有现场图实证）**：① 3901435 误删的截图会话触发行（一个月结构性必败）；② decode 红钮分支被简化丢弃（KeyError 'R'）；③ app 证据通道 Retina 2880px 未归一化（管线按 1366px 标定，几何全翻倍）；④ 工具栏锚定"最左蓝簇"被 Dock 污染（改工作区红蓝同行配对取最上）；⑤ /tmp/qn-manual 目录自建。取证主通道已切到 app 自身 UIEvidenceCaptureService（零 TCC 依赖，cua/screencapture 降级兜底——两外部通道 11-20 实锤同时无产物）。
 
 **遗留**：stage1 `暗带右端 1438 > 1432` ——选区由 cua drag 投递（SCREEN_PT=1366/1440 换算），实测落点与设计（贴右缘 1178→1398）偏差大（上轮实测选区仅 104×85 挂在屏中）。修法方向：拖拽改 cliclick（套件按键已用它，坐标逻辑pt），或标定 cua desktop 坐标系；须同时重校 1432 上限（v1.4.0 工具栏 token 化后红钮已是 ~10pt 小圆点，几何基线全部要按新版重标）。**修前本套件视为 KNOWN-FAIL，不计阻塞**。
+
+## 2026-11-25 · 便利贴专项 E2E：自定义 driver 走 launcher 队列（一次性验证，未接入套件）
+
+- Symptom: 便利贴修复后要在 xyz-mac 上做界面级验证（热键、便签输入、换底色、旧库升级、设置页新标签），现有套件没有这些场景；ssh 直连做不了 AX。
+- Root cause / 通道事实:
+  1. ssh 会话里 osascript 界面脚本化报 -1719、从 ssh 启动受信 Python 做 AX 报 -25211——只有常驻 launcher 的图形会话有辅助功能权限。
+  2. 往 `/tmp/quitenote-ui-smoke-launcher/requests/` 写请求（`run_dir` / `app_path`(.app 目录) / `storage_root` / `run_id` / `driver_path` / `suites` / `evidence`），launcher 会先用 driver 同目录的 `seed_clipboard_history.py` 灌剪贴板库、再 Popen 启动 App（print 日志在 `app.stdout.log`）、以 `--run-dir --app-pid …` 调 driver 的 `main()`，结束时 SIGTERM 掉 App（stdout 缓冲会丢）。
+  3. driver 里 `NSWorkspace.frontmostApplication()` / `runningApplications()` 返回陈旧值：焦点判定用系统级 AX（`AXUIElementCreateSystemWide` → `AXFocusedApplication` → `AXUIElementGetPid`），按 pid 取应用用 `NSRunningApplication.runningApplicationWithProcessIdentifier_`。
+  4. App 刚启动时状态栏图标可能还没建好（菜单栏 extra 的 `AXChildren` 为空），要等 0.5s 重试。
+  5. SwiftUI 按钮在设置页里是暴露 AXTitle 的，`.help()` 文本走 AXHelp，ScrollView 的纵向滚动条可以直接设 `AXValue` 滚动。
+  6. 部署 Dev 包时 `rsync` 的远端路径带空格没转义 → **静默没传输**；而测试机上原有的旧 Dev 包同样是通用架构、签名有效，`lipo` / `codesign --verify` 全过——验证被假阳性骗过，跑了一轮旧二进制。正解：`tar -cf - | ssh … tar -xf -`，部署后比对二进制 SHA-256。
+- Fix / Prevention: 自定义 driver + 通用提交脚本归档在开发机 `~/.agents/projects/quite-note/e2e-sticky/`（见其 README）。以后部署到测试机一律比哈希；`strings` 不认 UTF-8，不能用中文字面量判断二进制新旧。
+- Evidence: xyz-mac 上五场景（旧库自动迁移 → Finder 里 ⌘⇧N 归还 → ⌥⇧⌘N 新建 → 输入并换底色 → 保存到记录）、设置页「便利贴」标签、旧版本打开新库的回滚验证，均有全屏截图。
+
+## 2026-11-25 · 便利贴 E2E：断言 20/20 全过，截图里底色按钮却根本没画出来
+
+- Symptom: 全功能验证 20/20 通过之后逐张看截图：工具栏右下角该有"便签底色"按钮的位置是空的；设置页「默认颜色」的六个圆点在深色卡片上几乎分不清彼此。
+- Root cause:
+  1. SwiftUI `Menu` + `.menuStyle(.borderlessButton)` 的 label **画不出 SwiftUI 图形**（`Circle`），只画得出 `Image`——同一排的"文字颜色"按钮看得见，因为 `LucideView` 内部就是 `Image(nsImage:)`。
+  2. 把 label 换成图片后按钮出现了，但**选完菜单项按钮图标一直半亮**（约 35–50%），等几秒、打字、重新悬停都不恢复，再开一次菜单才恢复。真鼠标的点击-点击、按下-拖动-松开，以及辅助功能按压三条路径都复现。
+  3. 断言验证的是"控件存在、能点、点了有效、值写进去了"，验证不了"画没画出来、人眼找不找到"。
+  4. **诊断过程本身也是错题**：第一次把原因判成"默认深蓝的圆点压在深色工具栏上没对比度"，据此改了色板、做了双色色块，部署后才被实拍打脸（换成亮色环照样看不见）。
+- Fix / Prevention:
+  - 底色按钮改成自绘控件 `StickyNoteColorButton`（`NSViewRepresentable` + `NSMenu.popUp(positioning:at:in:)`），自己画、自己弹菜单。`popUp` 的 `at` 是菜单**顶边**在视图坐标系（原点左下）的位置，不是菜单左下角——第一次给 `(0, bounds.height + gap)` 菜单朝下弹、盖住了工具栏。
+  - 全功能验证加了「底色按钮可见」一步：截按钮位置数色环像素（修之前实测 0，修之后 230 左右）；另写六色探针逐个底色截图。
+  - **先实拍、再下结论；每次改动前后都拍。** 断言全过之后必须逐张看真实截图。菜单类控件除了辅助功能按压，必须用真鼠标再测点击-点击和按下-拖动-松开。
+- Evidence: `~/.agents/projects/quite-note/e2e-sticky/screenshots/2026-11-25-final/`（构建 `30615546e6c2…`：全功能 21/21、六色探针、真鼠标按压日志、五场景、降级/再升级回环）。
+
+## 2026-11-25 · 便利贴 E2E 环境的坑：launcher 模块缓存 / 便签偏好残留 / 合成点击瞬移 / 截图色彩配置
+
+- Symptom: 四个互不相干的现象——(a) 改了辅助模块里的函数并拷到测试机，跑起来仍报 `ImportError: cannot import name`；(b) 一启动就恢复出 7 张叠在一起的便签，探针全程在操作被盖住的窗口，选色全部"失败"；(c) 真点击打开菜单后，再点菜单项选不中；(d) 像素量里青色色环量到 0，其余五色正常。
+- Root cause:
+  1. `gui_smoke_launcher` 是**常驻进程**：driver 文件本身每次用 `spec_from_file_location` 重新加载，但 driver 里 `import` 的辅助模块留在它的 `sys.modules` 缓存里，下次运行直接复用旧模块对象。
+  2. 便签数据存在 dev 变体 UserDefaults 的 `StickyNotes` 里；提交脚本只重建隔离数据库，不清偏好。前几轮探针各建过一张便签，全部跨运行残留。
+  3. 合成点击是"瞬移"：没有 `mouseMoved` 事件，菜单高亮不跟着走，随后的点击落空、把菜单点没了。
+  4. `screencapture` 出的 PNG 带显示器 ICC 配置，读到的色值整体漂移（青色的红通道实测 123，色板是 88），±18 的逐通道容差不够。
+- Fix / Prevention:
+  1. 探针类 driver 在 import 前 `sys.modules.pop("sticky_full_e2e_driver", None)`；driver 必须暴露 `main()`（launcher 调 `module.main`）。
+  2. `submit_generic.sh` 每次开跑前（App 没在运行时）重置 `StickyNotes` / `stickyNoteShortcut` / `stickyNoteShortcutFlags` / `stickyNoteDefaultColor`；`QN_KEEP_ROOT=1` 的回退验证不动它们。
+  3. 点菜单项之前先发 `mouseMoved` 到目标位置。
+  4. 判据不比色值：比"通道大小关系"（哪些通道最高、哪些最低）+ 饱和度 + 亮度。
+  5. 另两个小的：菜单跟踪模式下连按 ESC 关不干净（状态栏菜单高亮卡住、面板打不开），点一下空桌面最稳；迁移验证里读 schema 要轮询（App 做迁移比 driver 的第一次查询晚，固定先读一次会误报"没有底色列"）。
+- Evidence: 同上目录；`submit_generic.sh` / `run_driver.sh` 的注释里有对应说明。

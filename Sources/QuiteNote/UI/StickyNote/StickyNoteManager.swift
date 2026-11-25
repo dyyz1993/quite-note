@@ -2,474 +2,410 @@ import SwiftUI
 import AppKit
 import Combine
 
-/// 贴纸管理器 - 负责贴纸的生命周期管理、数据持久化和全局快捷键响应
+/// 便利贴管理器：生命周期、本地持久化（UserDefaults「StickyNotes」）、与记录库同步。
+///
+/// 便利贴 ↔ 记录的保存/更新一律同步调用 RecordStore 并使用返回值，不经通知绕路
+/// （旧实现把回执建立在"records[0] 就是刚建的记录"的假设上，收藏优先排序时不成立）。
 final class StickyNoteManager: ObservableObject {
     static let shared = StickyNoteManager()
-    
+
     @Published var notes: [StickyNoteModel] = []
     private var windows: [UUID: StickyNoteWindow] = [:]
     private var cancellables = Set<AnyCancellable>()
-    
+
+    /// 记录库由 AppDelegate 在创建后注入
+    weak var recordStore: RecordStore?
+
+    /// 新建便利贴用的底色（设置页可改）
+    var defaultColorForNewNotes: StickyNoteColor {
+        get { StickyNoteColor.from(PreferencesManager.shared.stickyNoteDefaultColor) }
+        set { PreferencesManager.shared.setStickyNoteDefaultColor(newValue) }
+    }
+
+    /// 保存 / 更新便利贴记录失败的原因
+    enum SyncFailure: Error, Equatable {
+        /// 便利贴已被移除
+        case noteMissing
+        /// 便签是空的，没有可保存的内容
+        case blankContent
+        /// 记录库还没接入
+        case storeUnavailable
+        /// 关联的记录已被删除（关联随之解除，再同步会保存成新记录）
+        case recordMissing
+        case updateFailed(String)
+        case saveFailed
+    }
+
+    // MARK: - 持久化
+
+    static let storageKey = "StickyNotes"
+    /// 解码失败时把原数据挪到这里保留现场，免得被下一次保存覆盖掉
+    static let recoveryKey = "StickyNotes.recovery"
+    /// 内容、窗口位置这类高频变更的合并落盘延迟
+    static let saveDebounceInterval: TimeInterval = 0.4
+    private var pendingSave: DispatchWorkItem?
+    /// 首次访问时排的"恢复所有便利贴窗口"任务是否已排空（测试夹具往里塞数据前要先确认）
+    private(set) var didRestoreWindows = false
+
     private init() {
         loadNotes()
-        setupShortcuts()
         setupNotificationObservers()
+        // 退出前把延迟的落盘冲掉
+        NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)
+            .sink { [weak self] _ in self?.saveNotes() }
+            .store(in: &cancellables)
     }
 
-    /// 设置通知监听器
+    /// 监听记录库事件与"从记录打开便签"
     private func setupNotificationObservers() {
-        // 监听保存完成通知
-        NotificationCenter.default.publisher(for: NSNotification.Name("qn.stickynote.save.completed"))
+        NotificationCenter.default.publisher(for: QuiteNoteNotification.openStickyNoteFromRecord.name)
             .sink { [weak self] notification in
-                guard let self = self,
-                      let userInfo = notification.userInfo,
-                      let noteId = userInfo["noteId"] as? UUID,
-                      let recordId = userInfo["recordId"] as? UUID else { return }
-                self.handleSaveCompleted(noteId: noteId, recordId: recordId)
+                guard let record = notification.userInfo?["record"] as? Record else { return }
+                self?.createNoteFromRecord(record)
             }
             .store(in: &cancellables)
 
-        // 监听从记录打开便签的通知
-        NotificationCenter.default.publisher(for: NSNotification.Name("qn.stickynote.open.from.record"))
-            .sink { [weak self] notification in
-                guard let self = self,
-                      let userInfo = notification.userInfo,
-                      let record = userInfo["record"] as? Record else { return }
-                self.createNoteFromRecord(record)
-            }
+        NotificationCenter.default.publisher(for: QuiteNoteNotification.noteRecordDeleted.name)
+            .compactMap { $0.object as? UUID }
+            .sink { [weak self] recordID in self?.handleRecordDeleted(recordID: recordID) }
             .store(in: &cancellables)
 
-        // 监听更新失败通知（记录被删除等情况）
-        NotificationCenter.default.publisher(for: NSNotification.Name("StickyNoteUpdateFailed"))
-            .sink { [weak self] notification in
-                guard let self = self,
-                      let recordId = notification.object as? UUID else { return }
-                self.handleUpdateFailed(recordId: recordId)
-            }
-            .store(in: &cancellables)
-
-        // 监听记录删除通知，清理关联的便签
-        NotificationCenter.default.publisher(for: NSNotification.Name("RecordDeleted"))
-            .sink { [weak self] notification in
-                guard let self = self,
-                      let recordId = notification.object as? UUID else { return }
-                self.handleRecordDeleted(recordId: recordId)
-            }
+        NotificationCenter.default.publisher(for: QuiteNoteNotification.recordsCleared.name)
+            .sink { [weak self] _ in self?.handleRecordsCleared() }
             .store(in: &cancellables)
     }
-    
-    /// 加载保存的贴纸数据
+
+    /// 加载保存的便利贴并恢复窗口。启动恢复只把窗口摆出来，不抢键盘焦点——
+    /// 登录后用户接着在别的 App 里打字，不应该莫名打进便利贴
     private func loadNotes() {
-        // 初始加载，如果没有贴纸，不主动创建，等待用户快捷键
-        if let data = UserDefaults.standard.data(forKey: "StickyNotes"),
-           let decoded = try? JSONDecoder().decode([StickyNoteModel].self, from: data) {
-            self.notes = decoded
-            // 恢复窗口
-            DispatchQueue.main.async {
-                for note in self.notes {
-                    self.showWindow(for: note)
-                }
+        if let data = UserDefaults.standard.data(forKey: Self.storageKey) {
+            notes = Self.decodeNotes(from: data)
+        }
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            for note in self.notes {
+                self.showWindow(for: note, makeKey: false)
             }
+            self.didRestoreWindows = true
         }
     }
-    
-    /// 保存贴纸数据
+
+    /// 逐条容错解码：一条坏数据只丢它自己，不连累其余便利贴
+    static func decodeNotes(from data: Data) -> [StickyNoteModel] {
+        guard let elements = try? JSONSerialization.jsonObject(with: data) as? [Any] else {
+            preserveForRecovery(data, reason: "便利贴数据不是 JSON 数组")
+            return []
+        }
+        var loaded: [StickyNoteModel] = []
+        var failed = 0
+        for element in elements {
+            // JSONSerialization 只接受字典/数组这类顶层容器，裸字符串、数字会抛 ObjC 异常
+            // （try? 接不住），先筛一遍
+            guard let object = element as? [String: Any],
+                  let itemData = try? JSONSerialization.data(withJSONObject: object),
+                  let note = try? JSONDecoder().decode(StickyNoteModel.self, from: itemData) else {
+                failed += 1
+                continue
+            }
+            loaded.append(note)
+        }
+        if failed > 0 {
+            preserveForRecovery(data, reason: "便利贴数据有 \(failed)/\(elements.count) 条无法解码")
+        }
+        return loaded
+    }
+
+    private static func preserveForRecovery(_ data: Data, reason: String) {
+        DiagnosticCenter.error("StickyNote", "\(reason)，原数据已挪到恢复键 \(recoveryKey)")
+        UserDefaults.standard.set(data, forKey: recoveryKey)
+    }
+
+    /// 立即落盘：新建、删除、同步状态这类结构性变更用这个
     func saveNotes() {
-        if let encoded = try? JSONEncoder().encode(notes) {
-            UserDefaults.standard.set(encoded, forKey: "StickyNotes")
-        }
-    }
-    
-    /// 设置全局快捷键
-    private func setupShortcuts() {
-        print("[DEBUG] StickyNoteManager setting up global shortcuts...")
-        // 使用一个更不容易冲突的 ID，例如 5001
-        GlobalHotkeyManager.shared.register(
-            key: "n",
-            modifiers: [.command, .shift],
-            id: 5001
-        ) { [weak self] in
-            print("[DEBUG] Global Hotkey Triggered: Command + Shift + N")
-            self?.createNewNote()
-        }
-        // P2.3: 添加切换 Space 固定的快捷键 (⌘⌥P)
-        // 切换便签是否在所有 Desktop Space 显示
-        GlobalHotkeyManager.shared.register(
-            key: "p",
-            modifiers: [.command, .option],
-            id: 5002
-        ) { [weak self] in
-            print("[DEBUG] Toggle Space pin hotkey triggered: Command + Option + P")
-            self?.toggleSpacePinning()
-        }
-        print("[DEBUG] StickyNoteManager shortcut registration sent to GlobalHotkeyManager")
-    }
-    
-    /// 保存或更新贴纸到记录
-    func saveToRecords(note: StickyNoteModel) {
-        print("[DEBUG] saveToRecords called - noteId: \(note.id)")
-        print("[DEBUG] note page count: \(note.pages.count)")
-
-        // 格式化多页内容
-        let content = formatPagesForSaving(note.pages)
-
-        print("[DEBUG] formatted content length: \(content.count)")
-
-        guard !content.isEmpty else {
-            print("[DEBUG] Content is empty, skipping save")
-            return
-        }
-
-        // 提取标题
-        let title = note.extractNoteTitle()
-
-        // 检查是否已有关联的记录
-        if let recordId = note.syncRecordId {
-            // 更新现有记录
-            NotificationCenter.default.post(
-                name: NSNotification.Name("StickyNoteUpdateRecord"),
-                object: nil,
-                userInfo: [
-                    "recordId": recordId,
-                    "content": content,
-                    "noteFrame": note.frame,
-                    "title": title,
-                    "noteId": note.id
-                ]
-            )
-            print("[DEBUG] Sent notification to update existing record, recordId: \(recordId)")
-        } else {
-            // 创建新记录
-            NotificationCenter.default.post(
-                name: NSNotification.Name("StickyNoteSaveToRecord"),
-                object: nil,
-                userInfo: [
-                    "content": content,
-                    "noteFrame": note.frame,
-                    "title": title,
-                    "type": "note",
-                    "noteId": note.id
-                ]
-            )
-            print("[DEBUG] Sent notification to create new record")
+        pendingSave?.cancel()
+        pendingSave = nil
+        do {
+            UserDefaults.standard.set(try JSONEncoder().encode(notes), forKey: Self.storageKey)
+        } catch {
+            DiagnosticCenter.error("StickyNote", "便利贴落盘失败：\(error.localizedDescription)")
         }
     }
 
-    /// 格式化页面内容为带分隔符的字符串
-    /// 使用特殊的内部分隔符，避免与用户内容冲突
-    func formatPagesForSaving(_ pages: [StickyNotePage]) -> String {
-        let pageSeparator = "\n---NOTE_PAGE_BREAK---\n"
-        return pages.enumerated().map { index, page in
-            let content = page.content.trimmingCharacters(in: .whitespacesAndNewlines)
-            return content.isEmpty ? "" : content
-        }.filter { !$0.isEmpty }
-         .joined(separator: pageSeparator)
+    /// 延迟落盘：每次按键、拖动窗口的每一帧都会调它，合并成一次写入
+    private func scheduleSave() {
+        guard pendingSave == nil else { return }
+        let item = DispatchWorkItem { [weak self] in
+            self?.pendingSave = nil
+            self?.saveNotes()
+        }
+        pendingSave = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.saveDebounceInterval, execute: item)
     }
 
-    /// 从记录创建便签
-    func createNoteFromRecord(_ record: Record) {
-        print("[DEBUG] createNoteFromRecord called, recordId: \(record.id)")
-        print("[DEBUG] record content length: \(record.content.count)")
+    // MARK: - 模型变更
 
-        // 检查是否已有对应的便签
-        if let index = notes.firstIndex(where: { $0.syncRecordId == record.id }) {
-            // 已存在便签：更新内容和位置
-            let pages = parseRecordContent(record.content)
-            let frame = record.noteFrame ?? notes[index].frame
+    // 每个入口只动自己的字段。视图里的 note 是一份副本，frame、固定状态这些字段
+    // 可能是旧的，整份回写会把别处刚改的字段覆盖回去
 
-            print("[DEBUG] Updating existing note at index \(index)")
-            print("[DEBUG] parsed page count: \(pages.count)")
+    private func index(of noteID: UUID) -> Int? {
+        notes.firstIndex { $0.id == noteID }
+    }
 
-            notes[index].pages = pages
-            notes[index].frame = frame
+    /// 编辑器内容回写（每次按键）。传入的就是最新状态：整页覆盖，包括被清空的页
+    func updateContent(noteID: UUID, pages: [StickyNotePage], currentPageIndex: Int) {
+        guard let index = index(of: noteID) else { return }
+        guard notes[index].pages != pages || notes[index].currentPageIndex != currentPageIndex else { return }
+        notes[index].pages = pages
+        notes[index].currentPageIndex = currentPageIndex
+        scheduleSave()
+    }
 
-            // 更新窗口并确保前置
-            if let window = windows[notes[index].id] {
-                window.updateFromNote(notes[index])
-                // 确保窗口被前置到最前面
-                window.makeKeyAndOrderFront(nil)
-            } else {
-                // 窗口不存在，需要重新创建
-                showWindow(for: notes[index])
-            }
+    func setCurrentPage(noteID: UUID, pageIndex: Int) {
+        guard let index = index(of: noteID), notes[index].currentPageIndex != pageIndex else { return }
+        notes[index].currentPageIndex = pageIndex
+        scheduleSave()
+    }
 
-            saveNotes()
-            return
-        }
+    func setFrame(noteID: UUID, frame: NSRect) {
+        guard let index = index(of: noteID), notes[index].frame != frame else { return }
+        notes[index].frame = frame
+        scheduleSave()
+    }
 
-        // 创建新便签
-        let pages = parseRecordContent(record.content)
-        let frame = record.noteFrame ?? defaultFrame()
-
-        print("[DEBUG] Creating new note")
-        print("[DEBUG] parsed page count: \(pages.count)")
-
-        let note = StickyNoteModel(
-            pages: pages,
-            frame: frame,
-            syncRecordId: record.id
-        )
-
-        notes.append(note)
-        showWindow(for: note)
+    func setPinned(noteID: UUID, pinned: Bool) {
+        guard let index = index(of: noteID), notes[index].pinnedToAllSpaces != pinned else { return }
+        notes[index].pinnedToAllSpaces = pinned
         saveNotes()
+        windows[noteID]?.setPinned(pinned)
+        QuiteNoteNotification.post(.stickyNotePinChanged, object: noteID, userInfo: ["pinned": pinned])
     }
 
-    /// 解析记录内容为多页
-    /// 支持向后兼容：自动检测并转换旧格式
-    private func parseRecordContent(_ content: String) -> [StickyNotePage] {
-        var processedContent = content
-        let newSeparator = "\n---NOTE_PAGE_BREAK---\n"
-
-        // 检测并转换旧格式 -------- Page X --------
-        if content.contains("-------- Page ") {
-            let oldPattern = "(?:\\n|^)\\s*-------- Page \\d+ --------\\s*(?:\\n|$)"
-            if let regex = try? NSRegularExpression(pattern: oldPattern) {
-                processedContent = regex.stringByReplacingMatches(
-                    in: content,
-                    options: [],
-                    range: NSRange(location: 0, length: content.utf16.count),
-                    withTemplate: newSeparator
-                )
-                print("[DEBUG] Converted old page separator format to new format")
-            }
+    /// 换便签底色。已同步的便利贴立即把颜色写进记录，记录卡片跟着变色
+    func setColor(noteID: UUID, color: StickyNoteColor) {
+        guard let index = index(of: noteID), notes[index].color != color else { return }
+        notes[index].color = color
+        saveNotes()
+        if let recordID = notes[index].syncRecordId {
+            recordStore?.updateNoteColor(id: recordID, color: color.rawValue)
         }
+    }
 
-        // 按分隔符分页
-        let parts = processedContent.components(separatedBy: newSeparator)
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private func setSyncLink(noteID: UUID, recordID: UUID?) {
+        guard let index = index(of: noteID), notes[index].syncRecordId != recordID else { return }
+        notes[index].syncRecordId = recordID
+        saveNotes()
+        // 视图只更新 syncRecordId，不整体替换 note，避免冲掉正在编辑的内容
+        QuiteNoteNotification.post(.stickyNoteSyncChanged, object: noteID, userInfo: ["recordId": recordID as Any])
+    }
 
-        var pages = parts.prefix(3).map { StickyNotePage(content: $0) }
+    // MARK: - 便利贴 ↔ 记录
+
+    static let pageSeparator = "\n---NOTE_PAGE_BREAK---\n"
+    private static let legacyPageSeparator = "(?:\\n|^)\\s*-------- Page \\d+ --------\\s*(?:\\n|$)"
+    private static let legacySeparatorRegex = try? NSRegularExpression(pattern: legacyPageSeparator)
+
+    /// 便利贴内容 → 记录正文。末尾的空页不写（读回时会补齐，位置不变）；中间的空页
+    /// 要保留，否则第 3 页的内容重开后会跑到第 2 页
+    static func recordContent(from pages: [StickyNotePage]) -> String {
+        let trimmed = pages.map { $0.content.trimmingCharacters(in: .whitespacesAndNewlines) }
+        let lastFilled = trimmed.lastIndex { !$0.isEmpty } ?? -1
+        return trimmed[...max(lastFilled, 0)].joined(separator: pageSeparator)
+    }
+
+    /// 记录正文 → 页。支持旧格式（-------- Page N --------）；超过 3 页的内容不截断，
+    /// 否则"更新记录"会把第 4 页起永久写没
+    static func pages(fromRecordContent content: String) -> [StickyNotePage] {
+        let isLegacy = content.contains("-------- Page ")
+        var normalized = content
+        if isLegacy, let regex = legacySeparatorRegex {
+            normalized = regex.stringByReplacingMatches(
+                in: content, options: [], range: NSRange(location: 0, length: content.utf16.count),
+                withTemplate: pageSeparator
+            )
+        }
+        var pages = normalized
+            .components(separatedBy: pageSeparator)
+            .map { StickyNotePage(content: $0.trimmingCharacters(in: .whitespacesAndNewlines)) }
+        // 旧格式的正文以 "-------- Page 1 --------" 开头，换算后前面多出一个空页；
+        // 它不是"内容从第 2 页开始"的意思
+        if isLegacy, pages.count > 1, pages[0].content.isEmpty {
+            pages.removeFirst()
+        }
         while pages.count < 3 {
             pages.append(StickyNotePage())
         }
         return pages
     }
 
-    /// 处理保存完成通知
-    func handleSaveCompleted(noteId: UUID, recordId: UUID) {
-        if let index = notes.firstIndex(where: { $0.id == noteId }) {
-            notes[index].syncRecordId = recordId
-            saveNotes()
-            // 更新窗口工具栏状态
-            if let window = windows[noteId] {
-                window.updateSyncStatus(recordId: recordId)
+    /// 记录正文的第一页（便签卡片只展示第一页）
+    static func firstPageContent(ofRecordContent content: String) -> String {
+        pages(fromRecordContent: content).first?.content ?? ""
+    }
+
+    /// 从记录构造便利贴模型（纯函数，便于单测）
+    static func makeNote(from record: Record, defaultFrame: NSRect) -> StickyNoteModel {
+        StickyNoteModel(
+            frame: record.noteFrame ?? defaultFrame,
+            pages: pages(fromRecordContent: record.content),
+            syncRecordId: record.id,
+            color: StickyNoteColor.from(record.noteColor)
+        )
+    }
+
+    /// 把便利贴写进记录库：已关联则更新，未关联则新建。同步执行，成功返回关联的记录 id
+    @discardableResult
+    func syncToRecord(noteID: UUID) -> Result<UUID, SyncFailure> {
+        guard let note = notes.first(where: { $0.id == noteID }) else { return .failure(.noteMissing) }
+        guard !note.isBlank else { return .failure(.blankContent) }
+        guard let store = recordStore else { return .failure(.storeUnavailable) }
+
+        let content = Self.recordContent(from: note.pages)
+        let title = note.extractNoteTitle()
+        if let recordID = note.syncRecordId {
+            switch store.updateContent(id: recordID, content: content, title: title, noteFrame: note.frame) {
+            case .updated:
+                // 底色跟着一起同步：平时换底色是即时写进记录的，这里只是兜底——比如装回过旧版本
+                //（旧版本会把库迁回没有底色的结构）再升回来，记录上的底色是空的
+                store.updateNoteColor(id: recordID, color: note.color.rawValue)
+                return .success(recordID)
+            case .recordNotFound:
+                setSyncLink(noteID: noteID, recordID: nil)
+                return .failure(.recordMissing)
+            case .failed(let message):
+                return .failure(.updateFailed(message))
             }
-            // 发送通知时包含 recordId，让视图只更新 syncRecordId 而不替换整个 note
-            NotificationCenter.default.post(
-                name: NSNotification.Name("StickyNoteSyncStatusChanged"),
-                object: noteId,
-                userInfo: ["recordId": recordId]
-            )
         }
+
+        guard let record = store.addRecord(
+            content: content,
+            hash: ClipboardService.sha1(content + UUID().uuidString),
+            sourceApp: "Sticky Note",
+            type: .note,
+            fileName: title,
+            noteFrame: note.frame,
+            noteColor: note.color.rawValue,
+            synchronousSave: true
+        ) else {
+            return .failure(.saveFailed)
+        }
+        store.filterType = nil   // 主面板切到"全部"，新记录才看得见
+        setSyncLink(noteID: noteID, recordID: record.id)
+        return .success(record.id)
     }
 
-    /// 处理更新失败通知（记录被删除等情况）
-    func handleUpdateFailed(recordId: UUID) {
-        // 查找所有关联到该记录的便签，清除 syncRecordId
-        for index in notes.indices where notes[index].syncRecordId == recordId {
-            notes[index].syncRecordId = nil
-            // 通知窗口更新状态
-            NotificationCenter.default.post(name: NSNotification.Name("StickyNoteSyncStatusChanged"), object: notes[index].id)
-        }
-        saveNotes()
-    }
+    // MARK: - 记录库事件
 
-    /// 处理记录删除通知，删除关联的便签
-    func handleRecordDeleted(recordId: UUID) {
-        print("[DEBUG StickyNoteManager.handleRecordDeleted()] 收到删除通知, recordId: \(recordId)")
-        print("[DEBUG StickyNoteManager.handleRecordDeleted()] 当前便签数量: \(notes.count)")
-
-        // 查找所有关联到该记录的便签
-        let notesToDelete = notes.filter { $0.syncRecordId == recordId }
-        print("[DEBUG StickyNoteManager.handleRecordDeleted()] 找到 \(notesToDelete.count) 个关联便签")
-
-        for note in notesToDelete {
-            print("[DEBUG] 删除关联便签，noteId: \(note.id), recordId: \(recordId)")
+    /// 删除 note 记录时连带移除关联的便利贴
+    func handleRecordDeleted(recordID: UUID) {
+        for note in notes.filter({ $0.syncRecordId == recordID }) {
+            DiagnosticCenter.info("StickyNote", "关联记录已删除，移除便利贴")
             removeNote(id: note.id)
         }
+    }
 
-        if !notesToDelete.isEmpty {
-            print("[DEBUG] 已删除 \(notesToDelete.count) 个关联便签")
-            saveNotes()
+    /// 清空所有记录时移除所有已同步的便利贴（与单条删除行为一致，不必等下次启动）
+    func handleRecordsCleared() {
+        for note in notes.filter({ $0.syncRecordId != nil }) {
+            removeNote(id: note.id)
         }
     }
 
-    /// 清理僵尸便签（关联到已删除记录的便签）
-    /// - Parameter recordExists: 检查记录是否存在的回调函数
+    /// 清理僵尸便利贴（关联到已不存在的记录）。recordExists 返回 true 表示保留
     func cleanupZombieNotes(recordExists: (UUID) -> Bool) {
-        var zombieCount = 0
-
-        // 遍历所有便签，找出关联到不存在记录的便签
-        for note in notes {
-            guard let recordId = note.syncRecordId else { continue }
-
-            if !recordExists(recordId) {
-                print("[DEBUG] 发现僵尸便签，noteId: \(note.id), 不存在的记录ID: \(recordId)")
-                removeNote(id: note.id)
-                zombieCount += 1
-            }
+        var removed = 0
+        for note in notes where note.syncRecordId != nil && !recordExists(note.syncRecordId!) {
+            removeNote(id: note.id)
+            removed += 1
         }
-
-        if zombieCount > 0 {
-            print("[DEBUG] 已清理 \(zombieCount) 个僵尸便签")
-            saveNotes()
+        if removed > 0 {
+            DiagnosticCenter.warning("StickyNote", "已清理 \(removed) 张关联记录不存在的便利贴")
         }
     }
 
-    /// 默认窗口位置
-    private func defaultFrame() -> NSRect {
-        let mouseLocation = NSEvent.mouseLocation
-        let screens = NSScreen.screens
-        let currentScreen = screens.first { NSMouseInRect(mouseLocation, $0.frame, false) } ?? NSScreen.main
+    // MARK: - 生命周期
 
-        let width: CGFloat = 300
-        let height: CGFloat = 200
-
-        var x = mouseLocation.x - width / 2
-        var y = mouseLocation.y - height / 2
-
-        if let screen = currentScreen {
-            let screenFrame = screen.visibleFrame
-            x = max(screenFrame.minX + 10, min(x, screenFrame.maxX - width - 10))
-            y = max(screenFrame.minY + 10, min(y, screenFrame.maxY - height - 10))
-        }
-
-        return NSRect(x: x, y: y, width: width, height: height)
-    }
-    
-    /// 创建新贴纸
+    /// 新建便利贴：出现在鼠标所在屏，以鼠标位置为中心
     func createNewNote() {
-        // 获取当前鼠标位置和屏幕
-        let mouseLocation = NSEvent.mouseLocation
-        let screens = NSScreen.screens
-        let currentScreen = screens.first { NSMouseInRect(mouseLocation, $0.frame, false) } ?? NSScreen.main ?? screens.first
-        
-        let width: CGFloat = 300
-        let height: CGFloat = 200
-        
-        // 默认将贴纸中心放在鼠标位置
-        var x = mouseLocation.x - width / 2
-        var y = mouseLocation.y - height / 2
-        
-        // 确保贴纸在屏幕范围内
-        if let screen = currentScreen {
-            let screenFrame = screen.visibleFrame
-            
-            // 限制在屏幕边界内，并留出一点边距
-            x = max(screenFrame.minX + 10, min(x, screenFrame.maxX - width - 10))
-            y = max(screenFrame.minY + 10, min(y, screenFrame.maxY - height - 10))
-        }
-        
-        let newNote = StickyNoteModel(
-            frame: NSRect(x: x, y: y, width: width, height: height)
+        let frame = StickyNoteGeometry.newNoteFrame(
+            mouseLocation: NSEvent.mouseLocation,
+            screens: StickyNoteGeometry.currentScreens(),
+            existingFrames: windows.values.map(\.frame)
         )
-        notes.append(newNote)
-        showWindow(for: newNote)
+        let note = StickyNoteModel(frame: frame, color: defaultColorForNewNotes)
+        notes.append(note)
+        showWindow(for: note, makeKey: true)
         saveNotes()
     }
-    
-    /// 显示/创建贴纸窗口
-    private func showWindow(for note: StickyNoteModel) {
-        if windows[note.id] == nil {
-            let window = StickyNoteWindow(note: note)
-            windows[note.id] = window
+
+    /// 从记录卡片打开：已有关联的便利贴就把它前置，**不用记录内容覆盖**——
+    /// 便利贴里可能有还没点"更新记录"的新输入
+    func createNoteFromRecord(_ record: Record) {
+        let defaultFrame = StickyNoteGeometry.newNoteFrame(
+            mouseLocation: NSEvent.mouseLocation,
+            screens: StickyNoteGeometry.currentScreens()
+        )
+        let note = noteForOpening(record: record, defaultFrame: defaultFrame)
+        showWindow(for: note, makeKey: true)
+    }
+
+    /// "从记录打开"落到的便利贴：已有关联的就返回它（内容原样保留），否则按记录内容新建
+    @discardableResult
+    func noteForOpening(record: Record, defaultFrame: NSRect) -> StickyNoteModel {
+        if let existing = notes.first(where: { $0.syncRecordId == record.id }) {
+            return existing
         }
-        // 无论窗口是否已存在，都要前置到最前面
-        windows[note.id]?.makeKeyAndOrderFront(nil)
+        let note = Self.makeNote(from: record, defaultFrame: defaultFrame)
+        notes.append(note)
+        saveNotes()
+        return note
     }
-    
-    /// 删除贴纸 (不保留数据)
-    func deleteNote(_ note: StickyNoteModel) {
-        // 如果需要，可以在这里添加删除确认逻辑
-        removeNote(id: note.id)
-        print("[DEBUG] Sticky note deleted permanently")
-    }
-    
-    /// 移除贴纸并销毁窗口
+
+    /// 移除便利贴并销毁窗口（记录不受影响）
     func removeNote(id: UUID) {
         notes.removeAll { $0.id == id }
         windows[id]?.close()
         windows.removeValue(forKey: id)
         saveNotes()
     }
-    
-    /// 更新贴纸内容或位置（智能合并，避免数据丢失）
-    func updateNote(_ note: StickyNoteModel) {
-        if let index = notes.firstIndex(where: { $0.id == note.id }) {
-            var existing = notes[index]
 
-            // 优先保留最新的内容（如果有内容变化）
-            // 只在传入的 note 有新内容时才更新
-            if !note.pages.isEmpty {
-                var hasNewContent = false
-                // 检查是否有非空内容
-                for page in note.pages {
-                    if !page.content.isEmpty {
-                        hasNewContent = true
-                        break
-                    }
-                }
+    func window(for noteID: UUID) -> StickyNoteWindow? {
+        windows[noteID]
+    }
 
-                if hasNewContent {
-                    // 合并页面内容：保留非空页面
-                    for i in 0..<min(note.pages.count, existing.pages.count) {
-                        if !note.pages[i].content.isEmpty {
-                            existing.pages[i].content = note.pages[i].content
-                        }
-                    }
-                    // 如果 note 有更多页面，添加到 existing
-                    if note.pages.count > existing.pages.count {
-                        for i in existing.pages.count..<note.pages.count {
-                            existing.pages.append(note.pages[i])
-                        }
-                    }
-                }
-            }
-
-            // 更新其他属性（无条件更新，因为这些都是结构属性）
-            if note.syncRecordId != nil {
-                existing.syncRecordId = note.syncRecordId
-            }
-            // 总是更新 frame，因为窗口移动/调整大小时需要同步
-            existing.frame = note.frame
-            existing.opacity = note.opacity
-            existing.currentPageIndex = note.currentPageIndex
-
-            notes[index] = existing
-            saveNotes()
+    private func showWindow(for note: StickyNoteModel, makeKey: Bool) {
+        let window: StickyNoteWindow
+        if let existing = windows[note.id] {
+            window = existing
+        } else {
+            window = StickyNoteWindow(note: note)
+            windows[note.id] = window
+        }
+        if makeKey {
+            window.makeKeyAndOrderFront(nil)
+        } else {
+            window.orderFrontRegardless()
         }
     }
 
-    // P2.3: 切换便签的 Space 固定状态
-    func toggleSpacePinning() {
-        // 获取当前 key window（应该是当前正在编辑的便签窗口）
-        guard let currentWindow = NSApp.keyWindow as? StickyNoteWindow,
-              let index = notes.firstIndex(where: { $0.id == currentWindow.id }) else {
-            print("[DEBUG] No sticky note window is currently focused")
-            return
+    /// 切换"固定到所有 Space"。作用于当前聚焦的便利贴，其次是鼠标正停着的那张；
+    /// 成功后在便利贴上给一条短暂提示。返回是否生效
+    @discardableResult
+    func toggleSpacePinning() -> Bool {
+        let window = (NSApp.keyWindow as? StickyNoteWindow)
+            ?? windows.values.first { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) }
+        guard let window, let index = index(of: window.id) else {
+            // 没有可作用的对象：悬浮面板开着的话在面板上提示
+            recordStore?.postLightHint("请先把鼠标移到要固定的便利贴上")
+            return false
         }
-
-        // 切换固定状态
-        let note = notes[index]
-        let newState = !note.pinnedToAllSpaces
-        notes[index].pinnedToAllSpaces = newState
-        saveNotes()
-
-        // 更新窗口的 collectionBehavior
-        currentWindow.updateFromNote(notes[index])
-
-        // 显示提示
-        let message = newState ? "已固定到所有 Space" : "仅在当前 Space 显示"
-        NotificationCenter.default.post(
-            name: Notification.Name("ShowLightHint"),
-            object: message
-        )
-
-        print("[DEBUG] Toggled Space pinning for note \(note.id): \(newState)")
+        let pinned = !notes[index].pinnedToAllSpaces
+        setPinned(noteID: window.id, pinned: pinned)
+        showHint(pinned ? "已固定到所有 Space" : "仅在当前 Space 显示", for: window.id)
+        return true
     }
 
-    deinit {
-        cancellables.removeAll()
+    /// 在指定便利贴上显示一条短暂提示
+    func showHint(_ message: String, for noteID: UUID) {
+        QuiteNoteNotification.post(.stickyNoteHint, object: noteID, userInfo: ["message": message])
     }
 }

@@ -115,9 +115,7 @@ enum LauncherTextSearch {
             }
         }
         for note in stickyStore.notes {
-            // 取首页全文并剥离贴纸颜色标记 [c:#xxx]
-            let content = stripStickyMarkup(note.pages.first?.content ?? "")
-            guard !content.isEmpty else { continue }
+            guard let content = memoText(for: note.pages) else { continue }
             items.append(LauncherTextItem(kind: .memo, id: "memo-\(note.id.uuidString)", copyText: content))
         }
         items += Self.flashItems(from: searchable)
@@ -172,11 +170,17 @@ enum LauncherTextSearch {
         cacheKey = ""
     }
 
-    /// 剥离贴纸首行的颜色标记
+    /// 便签 → 备忘文本：取第一个有内容的页（首页空着、内容写在后面几页的也要搜得到）
+    static func memoText(for pages: [StickyNotePage]) -> String? {
+        guard let page = pages.first(where: { !$0.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) else { return nil }
+        let text = stripStickyMarkup(page.content)
+        return text.isEmpty ? nil : text
+    }
+
+    /// 便签文本 → 可见文字：成对的加粗/删除线/待办标记按编辑器里显示的样子去掉，
+    /// 没闭合的颜色标记（含落单的 [/c]）也一并去掉——复制出去的备忘不该带着标记
     static func stripStickyMarkup(_ text: String) -> String {
-        guard let regex = try? NSRegularExpression(pattern: "\\[c:(#?[0-9a-fA-F]{3,8})\\]") else { return text }
-        let range = NSRange(text.startIndex..., in: text)
-        return regex.stringByReplacingMatches(in: text, options: [], range: range, withTemplate: "")
+        StickyNoteMarkdown.strippingColorMarkers(StickyNoteMarkdown.plainText(text)).text
     }
 
     /// 图片条目的复制：读原图文件 → PNG 数据写剪贴板

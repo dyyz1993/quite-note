@@ -19,6 +19,8 @@ struct ButtonPositionKey: PreferenceKey {
 ///
 /// 使用 SymbolBrowserPanelManager 单例管理面板状态和键盘事件
 struct SymbolToolbarButton: View {
+    /// 按钮的边长（常规工具栏 16pt，紧凑工具栏 14pt）
+    var size: CGFloat = 16
     // 使用单例而不是创建新实例
     private let manager = SymbolBrowserPanelManager.shared
     @State private var buttonFrame: CGRect = .zero
@@ -36,9 +38,9 @@ struct SymbolToolbarButton: View {
                 print("[SymbolToolbarButton] ⚠️ keyWindow is not a StickyNoteWindow")
             }
         }) {
-            Image(systemName: "square.grid.2x2")
-                .font(.system(size: 11))
-                .foregroundColor(.themeTextSecondary)
+            LucideView(name: .layoutGrid, size: 12, color: .themeTextSecondary)
+                .frame(width: size, height: size)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .help("符号浏览器")
@@ -52,7 +54,7 @@ struct SymbolToolbarButton: View {
             buttonFrame = frame
         }
         // 监听 StickyNote 失焦事件，关闭面板
-        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("StickyNoteBlur"))) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: QuiteNoteNotification.stickyNoteBlur.name)) { _ in
             manager.closePanel()
         }
     }

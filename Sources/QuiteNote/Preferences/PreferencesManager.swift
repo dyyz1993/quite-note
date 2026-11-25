@@ -254,6 +254,27 @@ final class PreferencesManager: ObservableObject {
     var launcherOpenShortcut: String { d.string(forKey: "launcherOpenShortcut") ?? " " }
     var launcherOpenShortcutFlags: Int { d.object(forKey: "launcherOpenShortcutFlags") == nil ? Int(NSEvent.ModifierFlags([.option]).rawValue) : d.integer(forKey: "launcherOpenShortcutFlags") }
 
+    // 便利贴快捷键（可配置；空字符串 = 禁用）。默认值集中在这里，设置页「恢复默认」与单测共用
+    //
+    // 来历：这两个热键原先在 StickyNoteManager.setupShortcuts() 里用 Carbon 硬编码注册
+    //（⌘⇧N / ⌥⌘P），不归 KeyboardShortcutManager 管——设置里看不到、不能改、不能关。
+    // Carbon 热键是系统级独占：⌘⇧N 注册后 Finder 的「新建文件夹」直接失效。
+    // 收归统一管理时「新建」默认值改为 ⌥⇧⌘N：Finder 把带 N 的两键修饰组合全占了——
+    // ⌘⇧N 新建文件夹、⌃⌘N 用所选项目新建文件夹、⌥⌘N 新建智能文件夹（⌥⌘N 还是 Xcode 的 New Group）；
+    // 「固定到所有 Space」沿用 ⌥⌘P。
+    // 老用户没有这两个键的存量值（以前是硬编码），升级后直接落到新默认值，无需迁移。
+    static let defaultStickyNoteShortcut = "n"
+    static let defaultStickyNoteShortcutFlags = Int(NSEvent.ModifierFlags([.option, .shift, .command]).rawValue)
+    static let defaultStickySpacePinShortcut = "p"
+    static let defaultStickySpacePinShortcutFlags = Int(NSEvent.ModifierFlags([.option, .command]).rawValue)
+
+    /// 新建便利贴的全局热键按键（默认 ⌥⇧⌘N）
+    var stickyNoteShortcut: String { d.string(forKey: "stickyNoteShortcut") ?? Self.defaultStickyNoteShortcut }
+    var stickyNoteShortcutFlags: Int { d.object(forKey: "stickyNoteShortcutFlags") == nil ? Self.defaultStickyNoteShortcutFlags : d.integer(forKey: "stickyNoteShortcutFlags") }
+    /// 切换「固定到所有 Space」的全局热键按键（默认 ⌥⌘P，作用于当前聚焦的便利贴）
+    var stickySpacePinShortcut: String { d.string(forKey: "stickySpacePinShortcut") ?? Self.defaultStickySpacePinShortcut }
+    var stickySpacePinShortcutFlags: Int { d.object(forKey: "stickySpacePinShortcutFlags") == nil ? Self.defaultStickySpacePinShortcutFlags : d.integer(forKey: "stickySpacePinShortcutFlags") }
+
     // 历史保留策略（PRD 4.3 / 8.5）
     var clipboardMaxEntries: Int { let v = d.integer(forKey: "clipboardMaxEntries"); return v == 0 ? 500 : v }
     /// 保留天数；0 = 永不过期
@@ -305,6 +326,31 @@ final class PreferencesManager: ObservableObject {
     func setLauncherOpenShortcutFlags(_ v: Int) {
         objectWillChange.send()
         d.set(v, forKey: "launcherOpenShortcutFlags")
+    }
+    func setStickyNoteShortcut(_ v: String) {
+        objectWillChange.send()
+        d.set(v, forKey: "stickyNoteShortcut")
+    }
+    func setStickyNoteShortcutFlags(_ v: Int) {
+        objectWillChange.send()
+        d.set(v, forKey: "stickyNoteShortcutFlags")
+    }
+    func setStickySpacePinShortcut(_ v: String) {
+        objectWillChange.send()
+        d.set(v, forKey: "stickySpacePinShortcut")
+    }
+    func setStickySpacePinShortcutFlags(_ v: Int) {
+        objectWillChange.send()
+        d.set(v, forKey: "stickySpacePinShortcutFlags")
+    }
+
+    /// 新建便利贴的默认底色（StickyNoteColor 的 rawValue；缺省或无法识别的按默认深蓝处理）
+    var stickyNoteDefaultColor: String {
+        d.string(forKey: "stickyNoteDefaultColor") ?? StickyNoteColor.standard.rawValue
+    }
+    func setStickyNoteDefaultColor(_ v: StickyNoteColor) {
+        objectWillChange.send()
+        d.set(v.rawValue, forKey: "stickyNoteDefaultColor")
     }
     func setClipboardMaxEntries(_ v: Int) { d.set(v, forKey: "clipboardMaxEntries") }
     func setClipboardRetentionDays(_ v: Int) { d.set(v, forKey: "clipboardRetentionDays") }
@@ -436,25 +482,30 @@ final class PreferencesManager: ObservableObject {
         d.removeObject(forKey: "aiUserPrompt")
     }
     
+    /// resetAll() 会清除的全部键。static 是为了让单测按同一份清单保存/恢复，
+    /// 不必在测试里再抄一份键名
+    static let resettableKeys: [String] = [
+        "enableAI", "titleLimit", "summaryTrigger", "summaryLimit",
+        "dedupEnabled", "maxScreenshots", "debounceSeconds", "windowLock",
+        "animationsEnabled", "rememberWindowPosition", "attachmentsPath",
+        "attachmentsDirectoryBookmark", "screenshotSaveDirectoryBookmark",
+        "screenshotSaveDirectory", "openAIBaseURL", "openAIModel", "aiConnectionKind",
+        "magpieBaseURL", "magpieModelID", "aiSystemPrompt", "aiUserPrompt",
+        "preferredEditor", "preferredEditorBookmark", "recordingSystemAudio", "recordingMicrophone", "recordingCursorMode",
+        "recordingCountdownSeconds", "lastRecordingSelection",
+        "clipboardHistoryEnabled", "clipboardRecordText", "clipboardRecordImage", "clipboardRecordLink",
+        "clipboardRecordFile", "clipboardRecordSourceApp", "clipboardEnableOCR", "clipboardOCRChinese",
+        "clipboardOCREnglish", "clipboardOCRAutoRetry", "clipboardOpenShortcut", "clipboardOpenShortcutFlags",
+        "clipboardMaxEntries", "clipboardRetentionDays", "clipboardExcludedBundleIDs", "clipboardPausedUntil",
+        "launcherOpenShortcut", "launcherOpenShortcutFlags",
+        "stickyNoteShortcut", "stickyNoteShortcutFlags", "stickySpacePinShortcut", "stickySpacePinShortcutFlags",
+        "stickyNoteDefaultColor"
+    ]
+
     /// 重置所有设置为默认值
     func resetAll() {
         objectWillChange.send()
-        let keys = [
-            "enableAI", "titleLimit", "summaryTrigger", "summaryLimit", 
-            "dedupEnabled", "maxScreenshots", "debounceSeconds", "windowLock", 
-            "animationsEnabled", "rememberWindowPosition", "attachmentsPath",
-            "attachmentsDirectoryBookmark", "screenshotSaveDirectoryBookmark",
-            "screenshotSaveDirectory", "openAIBaseURL", "openAIModel", "aiConnectionKind",
-            "magpieBaseURL", "magpieModelID", "aiSystemPrompt", "aiUserPrompt",
-            "preferredEditor", "preferredEditorBookmark", "recordingSystemAudio", "recordingMicrophone", "recordingCursorMode",
-            "recordingCountdownSeconds", "lastRecordingSelection",
-            "clipboardHistoryEnabled", "clipboardRecordText", "clipboardRecordImage", "clipboardRecordLink",
-            "clipboardRecordFile", "clipboardRecordSourceApp", "clipboardEnableOCR", "clipboardOCRChinese",
-            "clipboardOCREnglish", "clipboardOCRAutoRetry", "clipboardOpenShortcut", "clipboardOpenShortcutFlags",
-            "clipboardMaxEntries", "clipboardRetentionDays", "clipboardExcludedBundleIDs", "clipboardPausedUntil",
-            "launcherOpenShortcut", "launcherOpenShortcutFlags"
-        ]
-        for key in keys {
+        for key in Self.resettableKeys {
             d.removeObject(forKey: key)
         }
     }

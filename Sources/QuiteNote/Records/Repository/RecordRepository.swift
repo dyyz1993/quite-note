@@ -11,6 +11,21 @@ final class RecordRepository {
         self.stack = stack
     }
 
+    /// 持久化存储没加载成功。此时查询会报错或返回空，调用方不得据此做删除类决策
+    var isStoreUnavailable: Bool { stack.loadError != nil }
+
+    /// 便利贴对应的记录是否还在。数据库没加载成功或查询出错时返回 true（保留便利贴）：
+    /// 这类情况下"查不到"不等于"记录已删除"，不能据此清理
+    func stickyNoteRecordExists(_ recordID: UUID) -> Bool {
+        guard !isStoreUnavailable else { return true }
+        do {
+            return try find(id: recordID) != nil
+        } catch {
+            DiagnosticCenter.error("RecordStore", "查询记录失败，保留便利贴: \(error.localizedDescription)")
+            return true
+        }
+    }
+
     // MARK: - JSON 序列化辅助方法
 
     private func parseJSONArray(_ json: String?) -> [String] {
@@ -287,6 +302,25 @@ final class RecordRepository {
         }
     }
 
+    /// 只更新便签底色（同步执行，单行单字段；记录不存在时什么都不做）
+    func updateNoteColor(id: UUID, color: String?) throws {
+        var updateError: Error?
+        stack.context.performAndWait {
+            let req = NSFetchRequest<CDRecord>(entityName: "CDRecord")
+            req.predicate = NSPredicate(format: "id == %@", id as CVarArg)
+            req.fetchLimit = 1
+            do {
+                if let cd = try stack.context.fetch(req).first {
+                    cd.noteColor = color
+                    try stack.context.save()
+                }
+            } catch {
+                updateError = error
+            }
+        }
+        if let error = updateError { throw error }
+    }
+
     // MARK: - 删除操作
 
     /// 删除指定记录（同步执行，确保删除完成）
@@ -388,7 +422,8 @@ final class RecordRepository {
             type: RecordType(rawValue: cd.type ?? "text") ?? .text,
             skipAI: cd.skipAI,
             size: cd.size,
-            noteFrame: noteFrame
+            noteFrame: noteFrame,
+            noteColor: cd.noteColor
         )
     }
 
@@ -416,5 +451,6 @@ final class RecordRepository {
             let nsValue = NSValue(rect: frame)
             cd.noteFrameData = try? NSKeyedArchiver.archivedData(withRootObject: nsValue, requiringSecureCoding: true)
         }
+        cd.noteColor = record.noteColor
     }
 }

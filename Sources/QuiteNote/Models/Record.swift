@@ -84,6 +84,7 @@ struct Record: Identifiable, Equatable {
     var fileCount: Int? = nil  // 文件夹包含的文件数量
     var size: Int64 = 0       // 文件大小 (bytes)
     var noteFrame: NSRect? = nil  // 便签窗口位置
+    var noteColor: String? = nil  // 便签底色（StickyNoteColor 的 rawValue；非便签记录为空）
 
     static func == (lhs: Record, rhs: Record) -> Bool {
         lhs.id == rhs.id &&
@@ -104,6 +105,7 @@ struct Record: Identifiable, Equatable {
         lhs.skipAI == rhs.skipAI &&
         lhs.fileCount == rhs.fileCount &&
         lhs.size == rhs.size &&
-        lhs.noteFrame == rhs.noteFrame
+        lhs.noteFrame == rhs.noteFrame &&
+        lhs.noteColor == rhs.noteColor
     }
 }

@@ -14,138 +14,117 @@ enum StickyNoteCommand {
 }
 
 /// 一个增强型的文本编辑器，支持 Markdown 复选框的交互式显示和编辑
+///
+/// 模型里存 Markdown 文本：显示时由 `StickyNoteMarkdown.render` 渲染成富文本，每次内容变化后
+/// `StickyNoteMarkdown.serialize` 转回 Markdown 写回模型。手打的行内标记不做实时渲染（半截标记会抖动），
+/// 靠「往返恒等」保证 updateNSView 不会因为转回的结果和模型不一致而重建。
 struct StickyNoteEditor: NSViewRepresentable {
     @Binding var text: String
+    /// 兼容参数，当前不生效：正文固定按 `StickyNoteMarkdown.baseFontSize` 渲染。
+    /// 让它真正生效会把存量便利贴的正文从 12pt 改成调用方传入的字号，而固定行高是按 12pt 调的，
+    /// 没有经过界面验证之前不动。
     var fontSize: CGFloat = 12
-    var isFocused: Bool // 新增：从外部控制焦点
+    var isFocused: Bool // 从外部控制焦点
     var onFocusChange: (Bool) -> Void
-    var commandPublisher: AnyPublisher<StickyNoteCommand, Never>? = nil // 新增：接收外部命令
-    
+    var commandPublisher: AnyPublisher<StickyNoteCommand, Never>? = nil // 接收外部命令
+
     func makeNSView(context: Context) -> NSScrollView {
+        Self.makeScrollView(text: text, coordinator: context.coordinator)
+    }
+
+    /// 组装「滚动视图 + 文本视图」。不依赖窗口，单元测试可以直接调用。
+    static func makeScrollView(text: String, coordinator: Coordinator) -> NSScrollView {
         let scrollView = NSScrollView()
         scrollView.drawsBackground = false
         scrollView.hasVerticalScroller = true
         scrollView.autohidesScrollers = true
         scrollView.backgroundColor = .clear
-        
+
         let textView = StickyNoteTextView()
-        textView.delegate = context.coordinator
+        textView.delegate = coordinator
         textView.isEditable = true
         textView.isSelectable = true
         textView.isRichText = true // 必须为 true 以支持图标
         textView.importsGraphics = false
         textView.allowsUndo = true
         textView.autoresizingMask = [.width]
-        
-        // 1. 强制绘制背景但设为透明，移除 Layer 干扰
+
+        // 强制绘制背景但设为透明，移除 Layer 干扰
         textView.drawsBackground = true
         textView.backgroundColor = .clear
-        
-        // 2. 关键：确保渲染一致性
-        let textColor = NSColor.white
-        let baseFontSize: CGFloat = 12 // 调整：从 13 减小到 12
-        let font = NSFont.systemFont(ofSize: baseFontSize)
-        
-        // 3. 窗口/光标设置 - 禁用所有导致抖动的自动调整
         textView.insertionPointColor = .white
-        textView.font = font
-        textView.textColor = textColor
-        
+        textView.font = StickyNoteMarkdown.baseFont
+        textView.textColor = StickyNoteMarkdown.textColor
+
         // 固定内边距，确保内容不随焦点位移
         textView.textContainerInset = NSSize(width: 12, height: 12)
-        textView.textContainer?.lineFragmentPadding = 0 
-        
-        // 预设段落样式，固定行高，防止抖动
-        let paragraphStyle = NSMutableParagraphStyle()
-        paragraphStyle.lineSpacing = 4 // 调整：从 5 减小到 4
-        paragraphStyle.minimumLineHeight = 18 // 调整：从 20 减小到 18
-        paragraphStyle.maximumLineHeight = 18 // 调整：从 20 减小到 18
-        
-        textView.typingAttributes = [
-            .foregroundColor: textColor,
-            .font: font,
-            .paragraphStyle: paragraphStyle
-        ]
-        
-        // 设置文本容器属性
+        textView.textContainer?.lineFragmentPadding = 0
         textView.textContainer?.widthTracksTextView = true
         textView.isVerticallyResizable = true
-        
+
         // 禁用干扰功能
         textView.isContinuousSpellCheckingEnabled = false
         textView.isGrammarCheckingEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticSpellingCorrectionEnabled = false
-        
-        // 4. 内容设置
-        let attributedString = context.coordinator.markdownToAttributed(text)
-        textView.textStorage?.setAttributedString(attributedString)
-        
-        // 5. 设置命令订阅
-        context.coordinator.setupCommandSubscription(for: textView)
 
-        // 6. 设置符号检测 - 直接调用而不通过扩展
-        context.coordinator.setupSymbolDetectionDirectly(for: textView)
+        // 内容。先放内容再设输入属性：整体替换内容可能把输入属性重置成系统默认
+        textView.textStorage?.setAttributedString(StickyNoteMarkdown.render(text))
+        coordinator.lastSerializedMarkdown = text
+        textView.typingAttributes = StickyNoteMarkdown.baseAttributes
+
+        // 命令订阅 → 符号检测（后者会清空并重建自己的订阅，不动命令订阅）
+        coordinator.setupCommandSubscription(for: textView)
+        coordinator.setupSymbolDetectionDirectly(for: textView)
 
         // 强制布局刷新
         if let textContainer = textView.textContainer {
             textView.layoutManager?.ensureLayout(for: textContainer)
         }
-        
+
         scrollView.documentView = textView
         return scrollView
     }
-    
+
     func updateNSView(_ nsView: NSScrollView, context: Context) {
         guard let textView = nsView.documentView as? StickyNoteTextView else { return }
+        context.coordinator.parent = self
 
-        // 只有当外部 text 真正变化且不是由内部触发时才同步
-        if !context.coordinator.isUpdatingFromTextView {
-            // 获取当前文本的 Markdown，并进行简单的内容比较（忽略格式差异导致的微小变化）
-            let currentMarkdown = context.coordinator.attributedToMarkdown(textView.attributedString())
-
-            print("[DEBUG] updateNSView - current length: \(currentMarkdown.count), incoming length: \(text.count)")
-
-            // 如果内容确实不一致，才进行全量更新
-            if currentMarkdown != text {
-                print("[DEBUG] updateNSView - Content changed, updating...")
-                let selectedRange = textView.selectedRange()
-                let attributedString = context.coordinator.markdownToAttributed(text)
-
-                textView.textStorage?.beginEditing()
-                textView.textStorage?.setAttributedString(attributedString)
-                textView.textStorage?.endEditing()
-
-                // 尽可能保持光标位置
-                let newRange = NSRange(location: min(selectedRange.location, (textView.string as NSString).length), length: 0)
-                textView.setSelectedRange(newRange)
-            } else {
-                print("[DEBUG] updateNSView - Content same, skipping update")
-            }
-        }
+        // 只有当外部 text 真正变化、且不是由内部触发时才同步
+        context.coordinator.syncExternalText(text, in: nsView)
 
         // 焦点同步
-        if isFocused && NSEvent.pressedMouseButtons == 0 && textView.window?.firstResponder != textView {
+        if isFocused && NSEvent.pressedMouseButtons == 0 && textView.window?.firstResponder !== textView {
             DispatchQueue.main.async {
                 guard NSEvent.pressedMouseButtons == 0 else { return }
-                if textView.window?.makeFirstResponder(textView) == true {
-                    // 成功获取焦点后，确保光标可见
-                    textView.scrollToEndOfDocument(nil)
-                }
+                // 只把 first responder 交给编辑器，不额外滚动：用户把长笔记上滚到中间阅读时，
+                // 悬停触发聚焦不该把视图拽到底部（滚动位置和选区都保持原样）
+                textView.window?.makeFirstResponder(textView)
             }
         }
     }
-    
+
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
     }
-    
+
     class Coordinator: NSObject, NSTextViewDelegate {
         var parent: StickyNoteEditor
         var isUpdatingFromTextView = false
-        var cancellables = Set<AnyCancellable>()  // Internal access for SymbolIntegration extension
+        var cancellables = Set<AnyCancellable>()  // Internal access for SymbolIntegration extension（符号检测的订阅）
+        /// 工具栏命令的订阅单独放：`cancellables` 归符号检测用，`setupSymbolDetectionDirectly` 会把它整体清空
+        var commandCancellables = Set<AnyCancellable>()
+        /// 最近一次把文本视图内容序列化成的 Markdown。updateNSView 先拿它和外部 text 比较，
+        /// 相同就直接返回——拖窗口、悬停引起的 body 重算不再触发整文转换。
+        var lastSerializedMarkdown: String?
         var textView: NSTextView?  // Internal access for SymbolIntegration extension
+        /// 文本视图当前的撤销栈（换了实例就重新订阅撤销/重做通知）
+        private var observedUndoManager: UndoManager?
+        private var undoCancellables = Set<AnyCancellable>()
+        /// 刚在光标前生成了一个待办图标：用户接着在这个位置敲的单个空格/制表符是标记语法里的分隔符，
+        /// 吸收掉（间距已经用字距表示）。任何一次编辑只匹配一次。
+        private var pendingSeparatorLocation: Int?
 
         // Duplicate prevention: track last processed symbol with timestamp
         private var lastProcessedSymbol: (symbol: String, timestamp: Date)?
@@ -156,23 +135,25 @@ struct StickyNoteEditor: NSViewRepresentable {
         }
 
         deinit {
-            print("[StickyNoteEditor.Coordinator] 🗑️ Coordinator 被销毁，清理所有订阅")
             cancellables.removeAll()
+            commandCancellables.removeAll()
+            undoCancellables.removeAll()
         }
 
         func setupCommandSubscription(for textView: NSTextView) {
             self.textView = textView
+            commandCancellables.removeAll()
             parent.commandPublisher?
                 .receive(on: RunLoop.main)
                 .sink { [weak self] command in
                     self?.handleCommand(command)
                 }
-                .store(in: &cancellables)
+                .store(in: &commandCancellables)
         }
 
         // Direct symbol detection setup (moved from extension)
         func setupSymbolDetectionDirectly(for textView: NSTextView) {
-            // ⭐ 关键修复：清空旧的订阅，防止重复订阅
+            // 清空旧的符号检测订阅，防止重复订阅。命令订阅在 commandCancellables 里，不受影响。
             cancellables.removeAll()
 
             // SymbolIntegration 的 setupSymbolDetection 负责：存储 textView、订阅文本变化做触发检测、
@@ -180,78 +161,82 @@ struct StickyNoteEditor: NSViewRepresentable {
             // 此处不再重复订阅 NSText.didChangeNotification——修复前每个按键会跑两遍检测、两遍面板更新
             self.setupSymbolDetection(for: textView)
 
-            let configCount = SymbolConfigManager.shared.configs.count
-            print("[StickyNoteEditor.Coordinator] 当前已加载 \(configCount) 个符号配置")
-            if configCount == 0 {
-                print("[StickyNoteEditor.Coordinator] ⚠️ 警告：没有加载任何配置！")
+            if SymbolConfigManager.shared.configs.isEmpty {
+                DiagnosticCenter.warning("StickyNote", "符号配置为空，联想面板不会有建议")
             }
 
             // Monitor InsertSymbolFromBrowser notification (from SymbolBrowserPanelManager)
             NotificationCenter.default.publisher(for: NSNotification.Name("InsertSymbolFromBrowser"))
                 .sink { [weak self, weak textView] notification in
-                    print("[StickyNoteEditor.Coordinator] 🔔 收到 InsertSymbolFromBrowser 通知")
-
-                    guard let self = self, let textView = textView else {
-                        print("[StickyNoteEditor.Coordinator] ⚠️ self 或 textView 为 nil")
-                        return
-                    }
-
-                    guard let symbolContent = notification.userInfo?["symbol"] as? String else {
-                        print("[StickyNoteEditor.Coordinator] ⚠️ InsertSymbolFromBrowser 通知缺少 symbol 内容")
-                        return
-                    }
-
-                    // 检查通知的目标窗口 UUID 是否匹配当前窗口
-                    guard let targetUUIDString = notification.userInfo?["windowUUID"] as? String else {
-                        print("[StickyNoteEditor.Coordinator] ⚠️ InsertSymbolFromBrowser 通知缺少 windowUUID")
-                        return
-                    }
-
-                    // 获取当前窗口的 UUID
-                    guard let currentWindow = textView.window as? StickyNoteWindow else {
-                        print("[StickyNoteEditor.Coordinator] ⚠️ 当前窗口不是 StickyNoteWindow 类型")
-                        print("[StickyNoteEditor.Coordinator] textView.window 类型: \(type(of: textView.window))")
-                        return
-                    }
-
-                    let currentUUIDString = currentWindow.uuid.uuidString
-
-                    // 比较 UUID
-                    if currentUUIDString != targetUUIDString {
-                        print("[StickyNoteEditor.Coordinator] ⏭️ 跳过，通知不是针对当前窗口的")
-                        return
-                    }
-
-                    print("[StickyNoteEditor.Coordinator] ✅ 收到针对当前窗口的符号插入通知（长度 \(symbolContent.count)）")
+                    guard let self = self, let textView = textView else { return }
+                    // 只处理发给本窗口的通知
+                    guard let symbolContent = notification.userInfo?["symbol"] as? String,
+                          let targetUUIDString = notification.userInfo?["windowUUID"] as? String,
+                          let currentUUIDString = (textView.window as? StickyNoteWindow)?.uuid.uuidString,
+                          currentUUIDString == targetUUIDString else { return }
                     self.insertSymbolIntoTextView(symbolContent, into: textView)
                 }
                 .store(in: &cancellables)
-
-            print("[StickyNoteEditor.Coordinator] ✅ 符号检测设置完成，已监听文本变化")
         }
 
+        // MARK: - 与外部同步
+
+        /// 把外部 Markdown 同步进文本视图。先和「上一次序列化结果」比较，相同就直接返回。
+        func syncExternalText(_ text: String, in scrollView: NSScrollView) {
+            guard !isUpdatingFromTextView,
+                  let textView = scrollView.documentView as? StickyNoteTextView,
+                  let storage = textView.textStorage else { return }
+            if lastSerializedMarkdown == text { return }
+
+            // 缓存不可信时（视图内容被绕过 textDidChange 改过）以实时序列化为准，再决定要不要重建
+            let current = StickyNoteMarkdown.serialize(storage)
+            lastSerializedMarkdown = current
+            if current == text { return }
+
+            rebuild(textView, storage: storage, in: scrollView, with: text)
+        }
+
+        /// 用外部 Markdown 整段重建富文本，保持选区长度和滚动位置。
+        private func rebuild(_ textView: StickyNoteTextView, storage: NSTextStorage, in scrollView: NSScrollView, with text: String) {
+            let selection = textView.selectedRange()
+            let visibleOrigin = scrollView.contentView.bounds.origin
+
+            storage.setAttributedString(StickyNoteMarkdown.render(text))
+            lastSerializedMarkdown = text
+
+            // 保持选区：位置和长度都钳制到新文本长度内
+            let newLength = storage.length
+            let location = min(selection.location, newLength)
+            let length = min(selection.length, newLength - location)
+            textView.setSelectedRange(NSRange(location: location, length: length))
+            textView.typingAttributes = StickyNoteMarkdown.baseAttributes
+
+            // 尽量保持滚动位置：内容变短时钳到可滚动范围内
+            if let textContainer = textView.textContainer {
+                textView.layoutManager?.ensureLayout(for: textContainer)
+            }
+            textView.sizeToFit()
+            let clipView = scrollView.contentView
+            let maxScroll = max(0, textView.frame.height - clipView.bounds.height)
+            let target = NSPoint(x: visibleOrigin.x, y: min(visibleOrigin.y, maxScroll))
+            if clipView.bounds.origin != target {
+                clipView.scroll(to: target)
+                scrollView.reflectScrolledClipView(clipView)
+            }
+
+            DiagnosticCenter.info("StickyNote", "内容已从外部重建：\(text.count) 字符")
+        }
+
+        // MARK: - 命令处理
 
         private func handleCommand(_ command: StickyNoteCommand) {
-            guard self.textView != nil else { return }
-            
+            guard textView != nil else { return }
+
             switch command {
             case .toggleBold:
-                toggleAttribute(key: NSAttributedString.Key("isBold"), value: true) { storage, range, isAdding in
-                    if let font = storage.attribute(.font, at: range.location, effectiveRange: nil) as? NSFont {
-                        let newFont = isAdding ? 
-                            NSFontManager.shared.convert(font, toHaveTrait: .boldFontMask) : 
-                            NSFontManager.shared.convert(font, toNotHaveTrait: .boldFontMask)
-                        storage.addAttribute(.font, value: newFont, range: range)
-                    }
-                }
+                toggleAttribute(key: StickyNoteMarkdown.boldKey)
             case .toggleStrikethrough:
-                toggleAttribute(key: NSAttributedString.Key("isStrikethrough"), value: true) { storage, range, isAdding in
-                    if isAdding {
-                        storage.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: range)
-                    } else {
-                        storage.removeAttribute(.strikethroughStyle, range: range)
-                    }
-                }
+                toggleAttribute(key: StickyNoteMarkdown.strikethroughKey)
             case .applyColor(let hex):
                 applyColorAttribute(hex: hex)
             case .resetFormat:
@@ -265,833 +250,542 @@ struct StickyNoteEditor: NSViewRepresentable {
             }
         }
 
-        private func toggleAttribute(key: NSAttributedString.Key, value: Any, customAction: (NSTextStorage, NSRange, Bool) -> Void) {
+        private func toggleAttribute(key: NSAttributedString.Key) {
             guard let textView = self.textView, let storage = textView.textStorage else { return }
             let range = textView.selectedRange()
-            
+
             textView.breakUndoCoalescing()
             storage.beginEditing()
-            
+
             if range.length > 0 {
                 // 1. 检查选中区域是否已经全部拥有该属性
                 var allHave = true
-                storage.enumerateAttributes(in: range, options: []) { attrs, subRange, _ in
-                    if attrs[key] == nil {
-                        allHave = false
-                    }
+                storage.enumerateAttribute(key, in: range, options: []) { value, _, _ in
+                    if value == nil { allHave = false }
                 }
-                
+
                 let isAdding = !allHave
-                
                 if isAdding {
-                    storage.addAttribute(key, value: value, range: range)
+                    storage.addAttribute(key, value: true, range: range)
                 } else {
                     storage.removeAttribute(key, range: range)
                 }
-                customAction(storage, range, isAdding)
+                if key == StickyNoteMarkdown.strikethroughKey {
+                    if isAdding {
+                        storage.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: range)
+                    } else {
+                        storage.removeAttribute(.strikethroughStyle, range: range)
+                    }
+                }
+                // 字体（加粗）和图标样式按语义属性重新推导：选区里的待办图标不会被改成正文字体
+                StickyNoteMarkdown.normalize(storage, range: range)
             } else {
                 // 2. 无选中时更新 typingAttributes
                 var attrs = textView.typingAttributes
                 let isAdding = attrs[key] == nil
-                
                 if isAdding {
-                    attrs[key] = value
+                    attrs[key] = true
                 } else {
                     attrs.removeValue(forKey: key)
                 }
-                
-                // 执行自定义动作（针对 typingAttributes 的模拟）
-                if let font = attrs[.font] as? NSFont {
-                     let newFont = isAdding ? 
-                         NSFontManager.shared.convert(font, toHaveTrait: .boldFontMask) : 
-                         NSFontManager.shared.convert(font, toNotHaveTrait: .boldFontMask)
-                     attrs[.font] = newFont
-                 }
-                
-                if key == NSAttributedString.Key("isStrikethrough") {
+
+                // 只有「加粗」开关动字重（此前任何格式开关都会连带改字重）
+                if key == StickyNoteMarkdown.boldKey {
+                    attrs[.font] = isAdding ? StickyNoteMarkdown.boldFont : StickyNoteMarkdown.baseFont
+                }
+                if key == StickyNoteMarkdown.strikethroughKey {
                     if isAdding {
                         attrs[.strikethroughStyle] = NSUnderlineStyle.single.rawValue
                     } else {
                         attrs.removeValue(forKey: .strikethroughStyle)
                     }
                 }
-                
+
                 textView.typingAttributes = attrs
             }
-            
+
             storage.endEditing()
             textView.didChangeText()
         }
 
         private func applyColorAttribute(hex: String) {
             guard let textView = self.textView, let storage = textView.textStorage else { return }
-            
+
             // 确保 hex 格式正确 (移除 #)
             let sanitizedHex = hex.replacingOccurrences(of: "#", with: "")
-            guard let color = NSColor(hex: sanitizedHex) else { return }
-            
+            guard let color = StickyNoteMarkdown.color(fromHex: sanitizedHex) else { return }
+
             let range = textView.selectedRange()
-            let key = NSAttributedString.Key("customColor")
-            
+            let key = StickyNoteMarkdown.colorKey
+
             textView.breakUndoCoalescing()
             storage.beginEditing()
-            
+
             if range.length > 0 {
                 storage.addAttribute(key, value: sanitizedHex, range: range)
-                storage.addAttribute(.foregroundColor, value: color, range: range)
+                StickyNoteMarkdown.normalize(storage, range: range)
             } else {
                 var attrs = textView.typingAttributes
                 attrs[key] = sanitizedHex
                 attrs[.foregroundColor] = color
                 textView.typingAttributes = attrs
             }
-            
+
             storage.endEditing()
             textView.didChangeText()
         }
 
-        private func toggleList(prefix: String) {
-            guard let textView = self.textView else { return }
-            let content = textView.string as NSString
+        private func resetFormatting() {
+            guard let textView = self.textView, let storage = textView.textStorage else { return }
             let range = textView.selectedRange()
-            let lineRange = content.lineRange(for: NSRange(location: range.location, length: 0))
-            let lineContent = content.substring(with: lineRange)
-            
-            let trimmedLine = lineContent.trimmingCharacters(in: .whitespaces)
-            let indent = String(lineContent.prefix(while: { $0.isWhitespace }))
-            
-            var newLineContent = ""
-            
-            if prefix == "- " {
-                if trimmedLine.hasPrefix("- ") {
-                    newLineContent = indent + String(trimmedLine.dropFirst(2))
-                } else {
-                    // 如果有其它列表前缀，先移除
-                    let cleaned = removeListPrefixes(trimmedLine)
-                    newLineContent = indent + "- " + cleaned
-                }
-            } else if prefix == "1. " {
-                if let _ = try? NSRegularExpression(pattern: "^\\d+\\. ").firstMatch(in: trimmedLine, options: [], range: NSRange(location: 0, length: trimmedLine.utf16.count)) {
-                    newLineContent = indent + removeListPrefixes(trimmedLine)
-                } else {
-                    let cleaned = removeListPrefixes(trimmedLine)
-                    // 查找上一行是否有序号
-                    let prevNumber = findPreviousListNumber(content, currentLineRange: lineRange)
-                    newLineContent = indent + "\(prevNumber + 1). " + cleaned
-                }
+
+            textView.breakUndoCoalescing()
+            storage.beginEditing()
+
+            if range.length > 0 {
+                // 只重置颜色：去掉语义属性后重新推导显示颜色（正文回白色，图标回标准图标色）
+                storage.removeAttribute(StickyNoteMarkdown.colorKey, range: range)
+                StickyNoteMarkdown.normalize(storage, range: range)
             }
-            
-            textView.insertText(newLineContent, replacementRange: lineRange)
+
+            // 无论是否有选中，都重置 typingAttributes，确保后续输入为白色
+            var attrs = textView.typingAttributes
+            attrs.removeValue(forKey: StickyNoteMarkdown.colorKey)
+            attrs[.foregroundColor] = StickyNoteMarkdown.textColor
+            textView.typingAttributes = attrs
+
+            storage.endEditing()
             textView.didChangeText()
         }
-        
-        private func removeListPrefixes(_ line: String) -> String {
-            var result = line
-            let patterns = ["^- \\[ \\] ", "^- \\[x\\] ", "^- ", "^\\d+\\. ", "^☐ ", "^☑ "]
-            for p in patterns {
-                if let regex = try? NSRegularExpression(pattern: p, options: []) {
-                    result = regex.stringByReplacingMatches(in: result, options: [], range: NSRange(location: 0, length: result.utf16.count), withTemplate: "")
+
+        // MARK: - 行首前缀（待办 / 列表）
+
+        /// 行首前缀的种类
+        private enum LinePrefix {
+            case none
+            case todo(checked: Bool)
+            case bullet
+            case number(Int)
+        }
+
+        /// 光标所在行的前缀信息（全部 UTF-16 坐标）
+        private struct LineInfo {
+            let range: NSRange        // 整行（含行尾换行）
+            let prefixStart: Int      // 缩进之后
+            let prefixLength: Int     // 现有前缀长度，0 表示没有
+            let prefix: LinePrefix
+        }
+
+        private func toggleTodoAtCurrentLine() {
+            guard let textView = self.textView, let storage = textView.textStorage,
+                  let line = currentLineInfo(in: textView) else { return }
+            let prefixRange = NSRange(location: line.prefixStart, length: line.prefixLength)
+
+            switch line.prefix {
+            case .none, .bullet, .number:
+                // 加待办：图标继承正文首字符的语义属性（正文是彩色的，图标也是彩色，和手打 `- [ ] ` 的效果一致）
+                let inherited = inheritedAttributes(for: line, in: textView)
+                replaceLinePrefix(in: textView, replacementRange: prefixRange,
+                                  with: StickyNoteMarkdown.todoIcon(checked: false, inheriting: inherited))
+                markFreshIconSeparator(at: line.prefixStart, in: textView)
+            case .todo(false):
+                let inherited = storage.attributes(at: line.prefixStart, effectiveRange: nil)
+                replaceLinePrefix(in: textView, replacementRange: prefixRange,
+                                  with: StickyNoteMarkdown.todoIcon(checked: true, inheriting: inherited))
+                markFreshIconSeparator(at: line.prefixStart, in: textView)
+            case .todo(true):
+                // 取消待办：连同图标后的一个空格/制表符一起去掉
+                var length = line.prefixLength
+                let after = line.prefixStart + length
+                if after < storage.length {
+                    let next = (storage.string as NSString).character(at: after)
+                    if next == 0x20 || next == 0x09 { length += 1 }
+                }
+                replaceLinePrefix(in: textView, replacementRange: NSRange(location: line.prefixStart, length: length), with: nil)
+            }
+        }
+
+        private func toggleList(prefix: String) {
+            guard let textView = self.textView, let line = currentLineInfo(in: textView) else { return }
+            let prefixRange = NSRange(location: line.prefixStart, length: line.prefixLength)
+
+            switch (prefix, line.prefix) {
+            case ("- ", .bullet), ("1. ", .number):
+                // 已是同种列表：取消
+                replaceLinePrefix(in: textView, replacementRange: prefixRange, with: nil)
+                return
+            default:
+                break
+            }
+
+            var newPrefix = prefix
+            if prefix != "- " {
+                // 有序列表：接着上一行的序号
+                let previous = findPreviousListNumber(in: textView, before: line.range)
+                newPrefix = "\(previous + 1). "
+            }
+            let inherited = inheritedAttributes(for: line, in: textView)
+            let insertion = NSAttributedString(string: newPrefix, attributes: StickyNoteMarkdown.linePrefixAttributes(inheriting: inherited))
+            replaceLinePrefix(in: textView, replacementRange: prefixRange, with: insertion)
+        }
+
+        /// 只替换行首前缀这一段（可撤销插入）。行内格式不动，光标保持在「相对正文」原来的位置。
+        private func replaceLinePrefix(in textView: NSTextView, replacementRange: NSRange, with insertion: NSAttributedString?) {
+            let selection = textView.selectedRange()
+            textView.breakUndoCoalescing()
+            if let insertion {
+                textView.insertText(insertion, replacementRange: replacementRange)
+            } else {
+                textView.insertText("", replacementRange: replacementRange)
+            }
+
+            // insertText 会把光标放到插入内容末尾；这里改回原来的相对位置
+            let newLength = insertion?.length ?? 0
+            let delta = newLength - replacementRange.length
+            func mapped(_ position: Int) -> Int {
+                if position < replacementRange.location { return position }                                   // 在被替换的前缀之前：不动
+                if position < NSMaxRange(replacementRange) { return replacementRange.location + newLength }     // 落在被替换的前缀内部：落到新前缀之后
+                return position + delta
+            }
+            let location = mapped(selection.location)
+            let end = mapped(NSMaxRange(selection))
+            textView.setSelectedRange(NSRange(location: location, length: max(0, end - location)))
+        }
+
+        /// 刚放好的待办图标：光标如果紧跟在它后面，下一个敲出来的分隔空格/制表符要吸收掉
+        private func markFreshIconSeparator(at iconLocation: Int, in textView: NSTextView) {
+            let afterIcon = NSRange(location: iconLocation + 1, length: 0)
+            pendingSeparatorLocation = textView.selectedRange() == afterIcon ? afterIcon.location : nil
+        }
+
+        /// 新加的行首前缀继承哪里的语义属性：正文首字符的（没有正文时用当前输入属性）
+        private func inheritedAttributes(for line: LineInfo, in textView: NSTextView) -> [NSAttributedString.Key: Any] {
+            if let storage = textView.textStorage {
+                let location = line.prefixStart + line.prefixLength
+                if location < storage.length {
+                    let unit = (storage.string as NSString).character(at: location)
+                    if unit != 0x0A && unit != 0x0D && unit != 0x2028 && unit != 0x2029 {
+                        return storage.attributes(at: location, effectiveRange: nil)
+                    }
                 }
             }
-            return result.trimmingCharacters(in: .whitespaces)
+            return textView.typingAttributes
         }
-        
-        private func findPreviousListNumber(_ content: NSString, currentLineRange: NSRange) -> Int {
-            if currentLineRange.location == 0 { return 0 }
-            let prevLineRange = content.lineRange(for: NSRange(location: currentLineRange.location - 1, length: 0))
-            let prevLine = content.substring(with: prevLineRange).trimmingCharacters(in: .whitespaces)
-            
-            if let match = try? NSRegularExpression(pattern: "^(\\d+)\\. ").firstMatch(in: prevLine, options: [], range: NSRange(location: 0, length: prevLine.utf16.count)) {
-                if let range = Range(match.range(at: 1), in: prevLine), let num = Int(prevLine[range]) {
-                    return num
+
+        /// 光标所在行的范围与行首前缀
+        private func currentLineInfo(in textView: NSTextView) -> LineInfo? {
+            guard let storage = textView.textStorage else { return nil }
+            let ns = storage.string as NSString
+            let selection = textView.selectedRange()
+            let lineRange = ns.lineRange(for: NSRange(location: min(selection.location, ns.length), length: 0))
+            let chars = Array(ns.substring(with: lineRange).utf16)
+            var indent = 0
+            while indent < chars.count, chars[indent] == 0x20 || chars[indent] == 0x09 { indent += 1 }
+            let detected = Self.detectPrefix(chars, from: indent)
+            return LineInfo(range: lineRange, prefixStart: lineRange.location + indent, prefixLength: detected.length, prefix: detected.prefix)
+        }
+
+        /// 从 `start` 起识别行首前缀：待办图标 / `- [ ]` / `- [x]` / `- ` / `N. `
+        private static func detectPrefix(_ chars: [unichar], from start: Int) -> (prefix: LinePrefix, length: Int) {
+            func unit(_ offset: Int) -> unichar? {
+                let index = start + offset
+                return index < chars.count ? chars[index] : nil
+            }
+            let unchecked = StickyNoteMarkdown.uncheckedIconUnit
+            let checked = StickyNoteMarkdown.checkedIconUnit
+
+            if let first = unit(0) {
+                if first == unchecked { return (.todo(checked: false), 1) }
+                if first == checked { return (.todo(checked: true), 1) }
+                if first == 0x2D, unit(1) == 0x20 {                                         // "-"
+                    if unit(2) == 0x5B, unit(4) == 0x5D, unit(3) == 0x20 || unit(3) == 0x78 {   // "[ ]" / "[x]"
+                        return (.todo(checked: unit(3) == 0x78), 5)
+                    }
+                    return (.bullet, 2)
                 }
+                if first >= 0x30 && first <= 0x39 {                                          // 数字
+                    var digits = 1
+                    while let next = unit(digits), next >= 0x30, next <= 0x39 { digits += 1 }
+                    if unit(digits) == 0x2E, unit(digits + 1) == 0x20 {                       // ". "
+                        let text = String(decoding: chars[start..<start + digits], as: UTF16.self)
+                        return (.number(Int(text) ?? 0), digits + 2)
+                    }
+                }
+            }
+            return (.none, 0)
+        }
+
+        /// 上一行如果是有序列表项，返回它的序号；否则 0
+        private func findPreviousListNumber(in textView: NSTextView, before lineRange: NSRange) -> Int {
+            guard lineRange.location > 0, let storage = textView.textStorage else { return 0 }
+            let ns = storage.string as NSString
+            let previousRange = ns.lineRange(for: NSRange(location: lineRange.location - 1, length: 0))
+            let chars = Array(ns.substring(with: previousRange).utf16)
+            var indent = 0
+            while indent < chars.count, chars[indent] == 0x20 || chars[indent] == 0x09 { indent += 1 }
+            if case .number(let value) = Self.detectPrefix(chars, from: indent).prefix {
+                return value
             }
             return 0
         }
 
-        private func resetFormatting() {
-            guard let textView = self.textView else { return }
-            let range = textView.selectedRange()
-            let storage = textView.textStorage
-
-            textView.breakUndoCoalescing()
-            storage?.beginEditing()
-
-            let keys: [NSAttributedString.Key] = [
-                .foregroundColor,
-                NSAttributedString.Key("customColor")
-            ]
-
-            if range.length > 0 {
-                // 1. 针对选中区域重置颜色
-                for key in keys {
-                    storage?.removeAttribute(key, range: range)
-                }
-                storage?.addAttribute(.foregroundColor, value: NSColor.white, range: range)
-            }
-
-            // 2. 无论是否有选中，都重置 typingAttributes，确保后续输入为白色
-            var attrs = textView.typingAttributes
-            attrs.removeValue(forKey: .foregroundColor)
-            attrs.removeValue(forKey: NSAttributedString.Key("customColor"))
-            attrs[.foregroundColor] = NSColor.white
-            textView.typingAttributes = attrs
-
-            storage?.endEditing()
-            textView.didChangeText()
-        }
+        // MARK: - 符号插入
 
         /// 插入符号到文本视图（来自符号浏览器面板）
-        private func insertSymbolIntoTextView(_ symbolContent: String, into textView: NSTextView) {
-            // ⭐ 防止重复插入（在短时间内多次插入相同符号）
+        func insertSymbolIntoTextView(_ symbolContent: String, into textView: NSTextView) {
+            // 防止在短时间内重复插入相同符号
             let now = Date()
             if let last = lastProcessedSymbol,
                last.symbol == symbolContent,
                now.timeIntervalSince(last.timestamp) < 0.5 {
-                print("[StickyNoteEditor.Coordinator] ⚠️ 跳过重复符号插入（长度 \(symbolContent.count)）")
                 return
             }
             lastProcessedSymbol = (symbolContent, now)
 
-            let text = textView.string
-            let cursorPosition = textView.selectedRange().location
-
-            print("[StickyNoteEditor.Coordinator] insertSymbolIntoTextView: symbolLength=\(symbolContent.count), cursorPosition=\(cursorPosition)")
-
-            // 直接在光标位置插入符号内容
-            let nsString = text as NSString
-            let newText = nsString.replacingCharacters(in: NSRange(location: cursorPosition, length: 0), with: symbolContent)
-
-            // 使用 NSString.length (UTF-16) 而不是 String.count (UTF-8/UTF-16 视图不同)
-            // NSTextView 使用 UTF-16 坐标系，所以必须使用 NSString.length
-            let symbolUTF16Length = (symbolContent as NSString).length
-            let newCursorPos = cursorPosition + symbolUTF16Length
-            let newTextUTF16Length = (newText as NSString).length
-
-            // 更新文本视图
-            isUpdatingFromTextView = true
-
-            let attrString = markdownToAttributed(newText)
-            textView.textStorage?.setAttributedString(attrString)
-
-            // 设置光标位置 - 使用 UTF-16 长度
-            let newRange = NSRange(location: min(newCursorPos, newTextUTF16Length), length: 0)
-            textView.setSelectedRange(newRange)
-
-            isUpdatingFromTextView = false
-
-            // 通知外部更新
-            let finalText = attributedToMarkdown(textView.attributedString())
-            if parent.text != finalText {
-                parent.text = finalText
+            let length = (symbolContent as NSString).length
+            if insertSymbolAtCursor(symbolContent, into: textView) {
+                DiagnosticCenter.info("StickyNote", "浏览器插入符号：\(length) 单元")
             }
-
-            textView.didChangeText()
-
-            print("[StickyNoteEditor.Coordinator] 符号插入完成: newCursorPos=\(newRange.location)")
         }
 
-        private func toggleTodoAtCurrentLine() {
-            guard let textView = self.textView, let storage = textView.textStorage else { return }
-            let content = textView.string as NSString
-            let range = textView.selectedRange()
-            let lineRange = content.lineRange(for: NSRange(location: range.location, length: 0))
-            let lineContent = content.substring(with: lineRange)
-            
-            // 1. 识别当前行状态
-            let trimmedLine = lineContent.trimmingCharacters(in: .whitespaces)
-            let indent = String(lineContent.prefix(while: { $0.isWhitespace }))
-            
-            var currentStatus: Int = 0 // 0: None, 1: Unfinished, 2: Finished
-            if trimmedLine.hasPrefix("☐") || trimmedLine.hasPrefix("- [ ]") {
-                currentStatus = 1
-            } else if trimmedLine.hasPrefix("☑") || trimmedLine.hasPrefix("- [x]") {
-                currentStatus = 2
-            }
-            
-            // 2. 清理现有前缀
-            var cleanedLine = trimmedLine
-            let patterns = ["^☐\\s*", "^☑\\s*", "^-\\s*\\[\\s*\\]\\s*", "^-\\s*\\[x\\]\\s*"]
-            for p in patterns {
-                if let regex = try? NSRegularExpression(pattern: p, options: []) {
-                    cleanedLine = regex.stringByReplacingMatches(in: cleanedLine, options: [], range: NSRange(location: 0, length: cleanedLine.utf16.count), withTemplate: "")
-                }
-            }
-            
-            // 3. 生成新内容
-            var newLineContent = ""
-            switch currentStatus {
-            case 0: newLineContent = indent + "- [ ] " + cleanedLine
-            case 1: newLineContent = indent + "- [x] " + cleanedLine
-            case 2: newLineContent = indent + cleanedLine
-            default: break
-            }
-            
-            // 4. 使用 textStorage 直接操作，避免 insertText 的副作用
-            storage.beginEditing()
-            isUpdatingFromTextView = true
-            
-            let attrString = markdownToAttributed(newLineContent)
-            storage.replaceCharacters(in: lineRange, with: attrString)
-            
-            // 5. 强制重置这一行的正文样式，防止属性污染
-            let newLineRange = (storage.string as NSString).lineRange(for: NSRange(location: lineRange.location, length: 0))
-            let baseFontSize: CGFloat = 12
-            let font = NSFont.systemFont(ofSize: baseFontSize)
-            let textColor = NSColor.white
-            
-            // 找到图标后的起始位置 (如果有图标)
-            let updatedText = (storage.string as NSString).substring(with: newLineRange)
-            let iconPattern = "^(☐|☑)\\s*"
-            var textOffset = 0
-            if let iconRegex = try? NSRegularExpression(pattern: iconPattern, options: []),
-               let match = iconRegex.firstMatch(in: updatedText, options: [], range: NSRange(location: 0, length: updatedText.utf16.count)) {
-                textOffset = match.range.length
-            }
-            
-            let textPartRange = NSRange(location: newLineRange.location + textOffset, length: newLineRange.length - textOffset)
-            if textPartRange.length > 0 {
-                storage.addAttribute(.font, value: font, range: textPartRange)
-                storage.addAttribute(.foregroundColor, value: textColor, range: textPartRange)
-            }
-            
-            // 6. 重置 typingAttributes，防止新输入的文字变大变绿
-            let paragraphStyle = NSMutableParagraphStyle()
-            paragraphStyle.lineSpacing = 4
-            paragraphStyle.minimumLineHeight = 18
-            paragraphStyle.maximumLineHeight = 18
-            
-            textView.typingAttributes = [
-                .font: font,
-                .foregroundColor: textColor,
-                .paragraphStyle: paragraphStyle
-            ]
-            
-            isUpdatingFromTextView = false
-            storage.endEditing()
-            
-            // 保持光标位置
-            let newCursorLocation = min(storage.length, newLineRange.location + newLineRange.length)
-            textView.setSelectedRange(NSRange(location: newCursorLocation, length: 0))
-            
-            textView.didChangeText()
+        /// 符号浏览器插入：替换当前选区（可撤销）。返回是否真的插入了。
+        @discardableResult
+        func insertSymbolAtCursor(_ symbolContent: String, into textView: NSTextView) -> Bool {
+            guard !symbolContent.isEmpty else { return false }
+            replaceText(symbolContent, in: textView.selectedRange(), of: textView)
+            return true
         }
+
+        /// 联想面板确认符号：只替换「触发前缀 + 触发词」这一段（可撤销），不再整段重建
+        func insertSymbolFromTrigger(_ symbol: SymbolItem, detectedBy detector: SymbolTriggerDetector, into textView: NSTextView) {
+            guard let plan = detector.insertionPlan(in: textView.string, cursorPosition: textView.selectedRange().location, symbolContent: symbol.content) else {
+                return
+            }
+            replaceText(symbol.content, in: plan.replacementRange, of: textView)
+            DiagnosticCenter.info("StickyNote", "联想插入符号：替换 \(plan.replacementRange.length) 单元 → \((symbol.content as NSString).length) 单元")
+        }
+
+        /// 统一的可撤销插入：走 insertText 才会进撤销栈、过 shouldChangeText、广播 NSText.didChangeNotification（符号检测靠它）
+        private func replaceText(_ text: String, in range: NSRange, of textView: NSTextView) {
+            textView.breakUndoCoalescing()
+            textView.insertText(text, replacementRange: range)
+        }
+
+        // MARK: - 粘贴
+
+        /// 粘贴的核心逻辑（可测，不碰剪贴板）：纯文本按 Markdown 渲染后，以可撤销插入替换当前选区
+        func pastePlainText(_ plainText: String, into textView: NSTextView) {
+            StickyNoteTextView.insertPastedText(plainText, into: textView, rendering: markdownToAttributed)
+        }
+
+        // MARK: - 文本变化
 
         func textDidChange(_ notification: Notification) {
-            guard let textView = notification.object as? NSTextView else { return }
-            if isUpdatingFromTextView { return }
-            
+            guard let textView = notification.object as? NSTextView, !isUpdatingFromTextView else { return }
+            handleTextChanged(in: textView)
+        }
+
+        /// 文本视图内容变化后的统一收口：实时待办渲染 + 段落属性收敛 + 回写模型。
+        /// 每次按键只做一次整文序列化，结果同时留给 updateNSView 比较。
+        func handleTextChanged(in textView: NSTextView) {
             isUpdatingFromTextView = true
-            
-            // 1. 强制清理：移除那些不再是图标但还保留着 isTodoIcon 属性的残留
-            cleanupOrphanedAttributes(textView)
-            
-            // 2. 实时渲染：将 Markdown 待办前缀原地替换为图标
-            renderTodoIconsInPlace(textView)
-            
-            let newText = attributedToMarkdown(textView.attributedString())
-            if parent.text != newText {
-                parent.text = newText
+            defer { isUpdatingFromTextView = false }
+
+            guard let storage = textView.textStorage else { return }
+            let selection = textView.selectedRange()
+            let live = StickyNoteMarkdown.normalizeLiveParagraph(storage, cursorLocation: selection.location)
+            pendingSeparatorLocation = live.separatorLocation
+            let shift = live.cursorShift
+
+            // 图标专用的字距/字号/颜色不带到后续输入；字体与颜色由语义属性重新推导
+            let typingAttributes = StickyNoteMarkdown.canonicalTypingAttributes(textView.typingAttributes)
+            if NSDictionary(dictionary: typingAttributes) != NSDictionary(dictionary: textView.typingAttributes) {
+                textView.typingAttributes = typingAttributes
             }
-            isUpdatingFromTextView = false
+            if shift != 0 {
+                textView.setSelectedRange(NSRange(location: selection.location + shift, length: selection.length))
+            }
+
+            let markdown = DiagnosticCenter.measure("StickyNote", "serialize", threshold: 0.1) {
+                StickyNoteMarkdown.serialize(storage)
+            }
+            lastSerializedMarkdown = markdown
+            if parent.text != markdown {
+                parent.text = markdown
+            }
+
+            trackUndoManager(of: textView)
         }
 
-        /// 清理残留属性，防止删除图标后正文文字继承了 isTodoIcon 或颜色属性
-        private func cleanupOrphanedAttributes(_ textView: NSTextView) {
-            guard let storage = textView.textStorage else { return }
-            let fullRange = NSRange(location: 0, length: storage.length)
-            
-            storage.beginEditing()
-            storage.enumerateAttribute(NSAttributedString.Key("isTodoIcon"), in: fullRange, options: []) { value, range, _ in
-                if value != nil {
-                    let substring = (storage.string as NSString).substring(with: range)
-                    // 如果这个范围内的字符不是我们定义的图标字符，则移除该属性
-                    if !substring.contains("☐") && !substring.contains("☑") {
-                        storage.removeAttribute(NSAttributedString.Key("isTodoIcon"), range: range)
-                        // 同时重置颜色和字体为标准样式
-                        let baseFontSize: CGFloat = 12
-                        storage.addAttribute(.font, value: NSFont.systemFont(ofSize: baseFontSize), range: range)
-                        storage.addAttribute(.foregroundColor, value: NSColor.white, range: range)
+        /// 撤销 / 重做不会走 textDidChange，文本视图回了退、模型却没跟上。盯着文本视图的撤销栈，
+        /// 撤销或重做之后把模型同步回来。（视图进窗口后才有撤销栈，所以每次内容变化都来看一眼）
+        private func trackUndoManager(of textView: NSTextView) {
+            let manager = textView.undoManager
+            if let current = observedUndoManager, current === manager { return }
+            undoCancellables.removeAll()
+            observedUndoManager = manager
+            guard let manager else { return }
+
+            for name in [Notification.Name.NSUndoManagerDidUndoChange, Notification.Name.NSUndoManagerDidRedoChange] {
+                NotificationCenter.default.publisher(for: name, object: manager)
+                    .sink { [weak self, weak textView] _ in
+                        guard let textView = textView else { return }
+                        self?.handleTextChanged(in: textView)
                     }
-                }
+                    .store(in: &undoCancellables)
             }
-            storage.endEditing()
         }
-        
-        /// 在 NSTextStorage 中原地替换 Markdown 待办前缀为图标，确保实时渲染
-        private func renderTodoIconsInPlace(_ textView: NSTextView) {
-            guard let storage = textView.textStorage else { return }
-            let content = storage.string as NSString
-            let pattern = "- \\[( |x)\\]"
-            guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else { return }
-            
-            let matches = regex.matches(in: content as String, options: [], range: NSRange(location: 0, length: content.length))
-            if matches.isEmpty { return }
-            
-            let selectedRange = textView.selectedRange()
-            var cursorOffset = 0
-            var currentOffset = 0
-            let baseFontSize: CGFloat = 12
-            
-            // 基础样式
-            let baseFont = NSFont.systemFont(ofSize: baseFontSize)
-            let baseTextColor = NSColor.white
-            let paragraphStyle = NSMutableParagraphStyle()
-            paragraphStyle.lineSpacing = 4
-            paragraphStyle.minimumLineHeight = 18
-            paragraphStyle.maximumLineHeight = 18
-            
-            storage.beginEditing()
-            for match in matches {
-                let adjustedRange = NSRange(location: match.range.location + currentOffset, length: match.range.length)
-                let matchString = (storage.string as NSString).substring(with: adjustedRange)
-                let isChecked = matchString.contains("x")
-                
-                let iconString = isChecked ? "☑ " : "☐ "
-                let attrIcon = NSMutableAttributedString(string: iconString)
-                let iconFont = NSFont.systemFont(ofSize: baseFontSize + 2)
-                
-                attrIcon.addAttributes([
-                    .font: iconFont,
-                    .paragraphStyle: paragraphStyle,
-                    NSAttributedString.Key("isTodoIcon"): isChecked
-                ], range: NSRange(location: 0, length: 1))
-                
-                if isChecked {
-                    attrIcon.addAttribute(.foregroundColor, value: NSColor.themeGreen400.withAlphaComponent(0.9), range: NSRange(location: 0, length: 1))
-                } else {
-                    let secondaryColor = NSColor.themeGray400
-                    attrIcon.addAttribute(.foregroundColor, value: secondaryColor, range: NSRange(location: 0, length: 1))
-                }
-                
-                // 替换内容
-                storage.replaceCharacters(in: adjustedRange, with: attrIcon)
-                
-                // 关键：紧接着图标后的文字，强制重置回基础样式，防止污染后续输入
-                let nextCharRange = NSRange(location: adjustedRange.location + attrIcon.length, length: 0)
-                // 获取当前行的范围，重置该行剩余部分的样式
-                let lineRange = (storage.string as NSString).lineRange(for: nextCharRange)
-                let restOfLineRange = NSRange(location: nextCharRange.location, length: lineRange.location + lineRange.length - nextCharRange.location)
-                
-                if restOfLineRange.length > 0 {
-                    storage.addAttribute(.font, value: baseFont, range: restOfLineRange)
-                    storage.addAttribute(.foregroundColor, value: baseTextColor, range: restOfLineRange)
-                }
-                
-                let diff = attrIcon.length - adjustedRange.length
-                currentOffset += diff
-                
-                if adjustedRange.location < selectedRange.location {
-                    cursorOffset += diff
-                }
-            }
-            
-            // 重置 typingAttributes 确保新输入的文字正常
-            textView.typingAttributes = [
-                .font: baseFont,
-                .foregroundColor: baseTextColor,
-                .paragraphStyle: paragraphStyle
-            ]
-            
-            storage.endEditing()
-            
-            let newLocation = max(0, selectedRange.location + cursorOffset)
-            textView.setSelectedRange(NSRange(location: newLocation, length: 0))
-        }
-        
+
         func textView(_ textView: NSTextView, shouldChangeTextIn affectedCharRange: NSRange, replacementString: String?) -> Bool {
-            return true 
-        }
-        
-        func textView(_ textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
-            // 处理回车自动补全
-            if commandSelector == #selector(NSResponder.insertNewline(_:)) {
-                let string = textView.string as NSString
-                let range = textView.selectedRange()
-                let lineRange = string.lineRange(for: NSRange(location: range.location, length: 0))
-                let lineContent = string.substring(with: lineRange)
-                
-                let trimmedLine = lineContent.trimmingCharacters(in: .whitespaces)
-                let indent = String(lineContent.prefix(while: { $0.isWhitespace }))
-
-                // 1. 处理待办列表续传 (支持图标形式和 Markdown 形式)
-                let isTodoIcon = lineContent.contains("☐") || lineContent.contains("☑")
-                let isTodoMarkdown = trimmedLine.hasPrefix("- [ ]") || trimmedLine.hasPrefix("- [x]")
-                
-                if isTodoIcon || isTodoMarkdown {
-                    if trimmedLine == "☐" || trimmedLine == "☑" || trimmedLine == "- [ ]" || trimmedLine == "- [x]" {
-                        // 如果只有图标或前缀，回车则取消
-                        textView.insertText("", replacementRange: lineRange)
-                        textView.insertText("\n", replacementRange: NSRange(location: lineRange.location, length: 0))
-                    } else {
-                        // 统一续传为 Markdown 形式，由 renderTodoIconsInPlace 自动转为图标
-                        textView.insertText("\n\(indent)- [ ] ", replacementRange: range)
-                    }
-                    return true
-                }
-                
-                // 2. 处理无序列表续传 (排除掉待办的情况)
-                if trimmedLine.hasPrefix("- ") {
-                    if trimmedLine == "- " {
-                        textView.insertText("", replacementRange: lineRange)
-                        textView.insertText("\n", replacementRange: NSRange(location: lineRange.location, length: 0))
-                    } else {
-                        textView.insertText("\n\(indent)- ", replacementRange: range)
-                    }
-                    return true
-                }
-                
-                // 3. 处理有序列表续传
-                if let match = try? NSRegularExpression(pattern: "^(\\d+)\\. ").firstMatch(in: trimmedLine, options: [], range: NSRange(location: 0, length: trimmedLine.utf16.count)) {
-                    if let numRange = Range(match.range(at: 1), in: trimmedLine), let num = Int(trimmedLine[numRange]) {
-                        if trimmedLine == "\(num). " {
-                            textView.insertText("", replacementRange: lineRange)
-                            textView.insertText("\n", replacementRange: NSRange(location: lineRange.location, length: 0))
-                        } else {
-                            textView.insertText("\n\(indent)\(num + 1). ", replacementRange: range)
-                        }
-                        return true
-                    }
-                }
+            let pending = pendingSeparatorLocation
+            pendingSeparatorLocation = nil
+            if let pending, affectedCharRange.length == 0, affectedCharRange.location == pending,
+               replacementString == " " || replacementString == "\t" {
+                return false
             }
-            return false
+            return true
         }
-        
+
+        /// 回车：待办 / 无序列表 / 有序列表自动续传下一行；这一行只有前缀时再按回车取消——
+        /// 去掉前缀、留一个空行（光标停在空行上）。
+        ///
+        /// 行首前缀的识别统一走 currentLineInfo（待办图标、`- [ ]`、`- `、`N. `）。
+        /// 旧实现拿"去掉首尾空白后的行文本"做判断：`"- "` 被裁成 `"-"`，空列表项永远匹配不上，
+        /// 在空的列表项上按回车不会取消列表，只会多出一个换行
+        func textView(_ textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+            guard commandSelector == #selector(NSResponder.insertNewline(_:)),
+                  let line = currentLineInfo(in: textView),
+                  let text = textView.textStorage?.string else { return false }
+            let string = text as NSString
+            let indent = Self.indent(of: line, in: string)
+            let continuation: String
+            switch line.prefix {
+            case .none:
+                return false
+            case .todo:
+                // 续传为 Markdown 形式，由实时待办渲染转成图标
+                continuation = "\n\(indent)- [ ] "
+            case .bullet:
+                continuation = "\n\(indent)- "
+            case .number(let number):
+                continuation = "\n\(indent)\(number + 1). "
+            }
+
+            if Self.hasBodyAfterPrefix(line, in: string) {
+                textView.insertText(continuation, replacementRange: textView.selectedRange())
+            } else {
+                // 这一行只有前缀：去掉前缀，留一个空行
+                textView.insertText("", replacementRange: Self.emptyItemRange(line, in: string))
+            }
+            return true
+        }
+
+        /// 行首的缩进（空格 / 制表符）
+        private static func indent(of line: LineInfo, in string: NSString) -> String {
+            let length = line.prefixStart - line.range.location
+            return length > 0 ? string.substring(with: NSRange(location: line.range.location, length: length)) : ""
+        }
+
+        /// 这一行前缀之后还有没有正文（只有空白就算没有）
+        private static func hasBodyAfterPrefix(_ line: LineInfo, in string: NSString) -> Bool {
+            let start = line.prefixStart + line.prefixLength
+            return !string.substring(with: NSRange(location: start, length: NSMaxRange(line.range) - start))
+                .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+
+        /// 「只有前缀」的整行里要去掉的范围：前缀连同其后的空白（不含行尾换行）
+        private static func emptyItemRange(_ line: LineInfo, in string: NSString) -> NSRange {
+            let lineEnd = NSMaxRange(line.range) - terminatorLength(of: line.range, in: string)
+            var end = line.prefixStart + line.prefixLength
+            while end < lineEnd {
+                let unit = string.character(at: end)
+                if unit == 0x20 || unit == 0x09 { end += 1 } else { break }
+            }
+            return NSRange(location: line.prefixStart, length: end - line.prefixStart)
+        }
+
+        /// 行尾换行的长度（\n 为 1，\r\n 为 2，最后一行没有换行则为 0）
+        private static func terminatorLength(of lineRange: NSRange, in string: NSString) -> Int {
+            guard lineRange.length > 0, string.character(at: NSMaxRange(lineRange) - 1) == 0x0A else { return 0 }
+            return lineRange.length > 1 && string.character(at: NSMaxRange(lineRange) - 2) == 0x0D ? 2 : 1
+        }
+
         func textDidBeginEditing(_ notification: Notification) {
             parent.onFocusChange(true)
         }
-        
+
         func textDidEndEditing(_ notification: Notification) {
             parent.onFocusChange(false)
         }
 
-        // MARK: - Markdown Conversion
-        
+        // MARK: - Markdown Conversion（薄包装，纯逻辑在 StickyNoteMarkdown）
+
         func markdownToAttributed(_ markdown: String) -> NSAttributedString {
-               print("[DEBUG] markdownToAttributed called, length: \(markdown.count)")
-               let attributedString = NSMutableAttributedString(string: markdown)
-               let fullRange = NSRange(location: 0, length: (markdown as NSString).length)
-               
-               // 1. 设置基础一致样式 - 必须与 makeNSView 保持绝对一致
-               let baseFontSize: CGFloat = 12
-               let font = NSFont.systemFont(ofSize: baseFontSize)
-               let textColor = NSColor.white
-               
-               let paragraphStyle = NSMutableParagraphStyle()
-               paragraphStyle.lineSpacing = 4
-               paragraphStyle.minimumLineHeight = 18
-               paragraphStyle.maximumLineHeight = 18
-               
-               attributedString.addAttribute(.font, value: font, range: fullRange)
-               attributedString.addAttribute(.foregroundColor, value: textColor, range: fullRange)
-               attributedString.addAttribute(.paragraphStyle, value: paragraphStyle, range: fullRange)
-               
-               // 2. 处理图标 - [ ] 和 - [x]
-               let pattern = "- \\[( |x)\\]"
-               let regex = try? NSRegularExpression(pattern: pattern, options: [])
-               
-               let matches = regex?.matches(in: markdown, options: [], range: NSRange(location: 0, length: (markdown as NSString).length)) ?? []
-               
-               // 从后往前替换，避免 offset 问题
-               for match in matches.reversed() {
-                   let matchRange = match.range
-                   let matchString = (markdown as NSString).substring(with: matchRange)
-                   let isChecked = matchString.contains("x")
-                   
-                   let iconString = isChecked ? "☑ " : "☐ "
-                   let attrIcon = NSMutableAttributedString(string: iconString)
-                   // 统一图标字体和大小，确保尺寸一致
-                   let iconFont = NSFont.systemFont(ofSize: baseFontSize + 2)
-                   attrIcon.addAttribute(.font, value: iconFont, range: NSRange(location: 0, length: 1))
-                   // 已完成为绿色，未完成为次要文字颜色 (themeGray400)
-                   let secondaryColor = NSColor.themeGray400
-                   attrIcon.addAttribute(.foregroundColor, value: isChecked ? NSColor.systemGreen : secondaryColor, range: NSRange(location: 0, length: 1))
-                   attrIcon.addAttribute(NSAttributedString.Key("isTodoIcon"), value: isChecked, range: NSRange(location: 0, length: 1))
-                   // 也要给图标加上段落样式，防止行高变化
-                   attrIcon.addAttribute(.paragraphStyle, value: paragraphStyle, range: NSRange(location: 0, length: (iconString as NSString).length))
-                   
-                   attributedString.replaceCharacters(in: matchRange, with: attrIcon)
-               }
-            
-            // 2. 处理加粗 **text**
-            let boldPattern = "\\*\\*(.*?)\\*\\*"
-            if let boldRegex = try? NSRegularExpression(pattern: boldPattern, options: []) {
-                let boldMatches = boldRegex.matches(in: attributedString.string, options: [], range: NSRange(location: 0, length: attributedString.length))
-                print("[DEBUG] Found \(boldMatches.count) bold matches")
-                for match in boldMatches.reversed() {
-                    let contentRange = match.range(at: 1)
-                    if let font = attributedString.attribute(.font, at: contentRange.location, effectiveRange: nil) as? NSFont {
-                        let boldFont = NSFontManager.shared.convert(font, toHaveTrait: .boldFontMask)
-                        attributedString.addAttribute(.font, value: boldFont, range: contentRange)
-                        // 移除标记符
-                        attributedString.deleteCharacters(in: NSRange(location: match.range.location + match.range.length - 2, length: 2))
-                        attributedString.deleteCharacters(in: NSRange(location: match.range.location, length: 2))
-                        // 添加自定义属性以便转回 Markdown
-                        let newRange = NSRange(location: match.range.location, length: contentRange.length)
-                        attributedString.addAttribute(NSAttributedString.Key("isBold"), value: true, range: newRange)
-                    }
-                }
-            }
-            
-            // 3. 处理删除线 ~~text~~
-            let strikePattern = "~~(.*?)~~"
-            if let strikeRegex = try? NSRegularExpression(pattern: strikePattern, options: []) {
-                let strikeMatches = strikeRegex.matches(in: attributedString.string, options: [], range: NSRange(location: 0, length: attributedString.length))
-                for match in strikeMatches.reversed() {
-                    let contentRange = match.range(at: 1)
-                    attributedString.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: contentRange)
-                    // 移除标记符
-                    attributedString.deleteCharacters(in: NSRange(location: match.range.location + match.range.length - 2, length: 2))
-                    attributedString.deleteCharacters(in: NSRange(location: match.range.location, length: 2))
-                    // 添加自定义属性
-                    let newRange = NSRange(location: match.range.location, length: contentRange.length)
-                    attributedString.addAttribute(NSAttributedString.Key("isStrikethrough"), value: true, range: newRange)
-                }
-            }
-            
-            // 4. 处理下划线 <u>text</u>
-            let underlinePattern = "<u>(.*?)</u>"
-            if let underlineRegex = try? NSRegularExpression(pattern: underlinePattern, options: []) {
-                let underlineMatches = underlineRegex.matches(in: attributedString.string, options: [], range: NSRange(location: 0, length: attributedString.length))
-                for match in underlineMatches.reversed() {
-                    let contentRange = match.range(at: 1)
-                    attributedString.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: contentRange)
-                    // 移除标记符
-                    attributedString.deleteCharacters(in: NSRange(location: match.range.location + match.range.length - 4, length: 4))
-                    attributedString.deleteCharacters(in: NSRange(location: match.range.location, length: 3))
-                    // 添加自定义属性
-                    let newRange = NSRange(location: match.range.location, length: contentRange.length)
-                    attributedString.addAttribute(NSAttributedString.Key("isUnderline"), value: true, range: newRange)
-                }
-            }
-
-            // 5. 处理颜色 [c:hex]text[/c]
-            let colorPattern = "\\[c:(#?[0-9a-fA-F]{3,8})\\](.*?)\\[/c\\]"
-            if let colorRegex = try? NSRegularExpression(pattern: colorPattern, options: []) {
-                let colorMatches = colorRegex.matches(in: attributedString.string, options: [], range: NSRange(location: 0, length: attributedString.length))
-                for match in colorMatches.reversed() {
-                    let hex = (attributedString.string as NSString).substring(with: match.range(at: 1))
-                    let contentRange = match.range(at: 2)
-                    // 移除 # 前缀
-                    let sanitizedHex = hex.replacingOccurrences(of: "#", with: "")
-                    if let color = NSColor(hex: sanitizedHex) {
-                        attributedString.addAttribute(.foregroundColor, value: color, range: contentRange)
-                        // 移除标记符：先移除后面的 [/c]
-                        attributedString.deleteCharacters(in: NSRange(location: match.range.location + match.range.length - 4, length: 4))
-                        // 再移除前面的 [c:hex]
-                        let prefixLength = 3 + hex.count + 1 // [c: + hex + ]
-                        attributedString.deleteCharacters(in: NSRange(location: match.range.location, length: prefixLength))
-
-                        // 重新获取当前 range 并添加自定义属性
-                        let finalRange = NSRange(location: match.range.location, length: contentRange.length)
-                        attributedString.addAttribute(NSAttributedString.Key("customColor"), value: sanitizedHex, range: finalRange)
-                    } else {
-                        // 如果颜色解析失败，移除标记符，保留内容
-                        print("[DEBUG] Failed to parse color: \(hex)")
-                        // 移除标记符：先移除后面的 [/c]
-                        attributedString.deleteCharacters(in: NSRange(location: match.range.location + match.range.length - 4, length: 4))
-                        // 再移除前面的 [c:hex]
-                        let prefixLength = 3 + hex.count + 1
-                        attributedString.deleteCharacters(in: NSRange(location: match.range.location, length: prefixLength))
-                    }
-                }
-            }
-            
-            return attributedString
+            StickyNoteMarkdown.render(markdown)
         }
-        
+
         func attributedToMarkdown(_ attributedString: NSAttributedString) -> String {
-            print("[DEBUG] attributedToMarkdown called")
-            let result = NSMutableAttributedString(attributedString: attributedString)
-            
-            // 按照从后往前的顺序处理，避免索引偏移
-            var i = result.length - 1
-            while i >= 0 {
-                var range = NSRange()
-                
-                // 1. 处理自定义属性
-                
-                // 处理颜色 [c:hex]text[/c]
-                if let hex = result.attribute(NSAttributedString.Key("customColor"), at: i, effectiveRange: &range) as? String {
-                    result.insert(NSAttributedString(string: "[/c]"), at: range.location + range.length)
-                    result.insert(NSAttributedString(string: "[c:\(hex)]"), at: range.location)
-                    result.removeAttribute(NSAttributedString.Key("customColor"), range: range)
-                    // 注意：这里不需要 continue，因为颜色内部可能还有加粗
-                    i = range.location - 1
-                    continue
-                }
-                
-                // 处理删除线 ~~text~~
-                if let _ = result.attribute(NSAttributedString.Key("isStrikethrough"), at: i, effectiveRange: &range) {
-                    result.insert(NSAttributedString(string: "~~"), at: range.location + range.length)
-                    result.insert(NSAttributedString(string: "~~"), at: range.location)
-                    result.removeAttribute(NSAttributedString.Key("isStrikethrough"), range: range)
-                    i = range.location - 1
-                    continue
-                }
-                
-                // 处理下划线 <u>text</u>
-                if let _ = result.attribute(NSAttributedString.Key("isUnderline"), at: i, effectiveRange: &range) {
-                    result.insert(NSAttributedString(string: "</u>"), at: range.location + range.length)
-                    result.insert(NSAttributedString(string: "<u>"), at: range.location)
-                    result.removeAttribute(NSAttributedString.Key("isUnderline"), range: range)
-                    i = range.location - 1
-                    continue
-                }
-
-                // 处理加粗 **text**
-                if let _ = result.attribute(NSAttributedString.Key("isBold"), at: i, effectiveRange: &range) {
-                    result.insert(NSAttributedString(string: "**"), at: range.location + range.length)
-                    result.insert(NSAttributedString(string: "**"), at: range.location)
-                    result.removeAttribute(NSAttributedString.Key("isBold"), range: range)
-                    i = range.location - 1
-                    continue
-                }
-                
-                // 2. 处理图标 (属性或字面量)
-                
-                // 处理带属性的待办图标
-                if let isChecked = result.attribute(NSAttributedString.Key("isTodoIcon"), at: i, effectiveRange: &range) as? Bool {
-                    let markdown = isChecked ? "- [x]" : "- [ ]"
-                    result.replaceCharacters(in: range, with: markdown)
-                    i = range.location - 1
-                    continue
-                }
-                
-                // 处理字面量待办图标 (☐, ☑)
-                let char = (result.string as NSString).substring(with: NSRange(location: i, length: 1))
-                if char == "☐" {
-                    result.replaceCharacters(in: NSRange(location: i, length: 1), with: "- [ ]")
-                    i -= 1
-                    continue
-                } else if char == "☑" {
-                    result.replaceCharacters(in: NSRange(location: i, length: 1), with: "- [x]")
-                    i -= 1
-                    continue
-                }
-                
-                i -= 1
-            }
-
-            let markdown = result.string
-            print("[DEBUG] attributedToMarkdown output length: \(markdown.count)")
-            return markdown
+            StickyNoteMarkdown.serialize(attributedString)
         }
     }
 }
 
 /// 自定义 NSTextView 以处理特殊的交互和显示
 class StickyNoteTextView: NSTextView {
-    /// 覆盖粘贴方法，保留颜色格式，但清除其他富文本格式
-    override func paste(_ sender: Any?) {
-        // 从剪贴板读取数据
-        let pasteboard = NSPasteboard.general
+    /// 粘贴来源。默认系统剪贴板；单元测试注入独立命名的 pasteboard，避免覆盖用户剪贴板。
+    var pasteSource: NSPasteboard?
 
-        // 优先读取纯文本
-        guard let plainText = pasteboard.string(forType: .string) else {
+    /// 覆盖粘贴方法：纯文本按 Markdown 渲染后走可撤销插入（进撤销栈、广播 NSText.didChangeNotification）
+    override func paste(_ sender: Any?) {
+        guard let plainText = (pasteSource ?? .general).string(forType: .string) else {
             super.paste(sender)
             return
         }
-
-        // 获取当前选区
-        let selectedRange = self.selectedRange()
-
-        // 转换纯文本为带样式的 NSAttributedString，处理颜色标记
-        let baseFontSize: CGFloat = 12
-        let font = NSFont.systemFont(ofSize: baseFontSize)
-        let paragraphStyle = NSMutableParagraphStyle()
-        paragraphStyle.lineSpacing = 4
-        paragraphStyle.minimumLineHeight = 18
-        paragraphStyle.maximumLineHeight = 18
-
-        // 创建基础样式
-        let baseAttributes: [NSAttributedString.Key: Any] = [
-            .font: font,
-            .paragraphStyle: paragraphStyle
-        ]
-
-        // 使用 markdownToAttributed 来处理粘贴的文本
-        // 这样可以保留颜色、加粗、删除线等格式
         let coordinator = delegate as? StickyNoteEditor.Coordinator
-        let attributedString = coordinator?.markdownToAttributed(plainText) ?? NSMutableAttributedString(string: plainText, attributes: baseAttributes)
+        Self.insertPastedText(plainText, into: self, rendering: coordinator?.markdownToAttributed ?? StickyNoteMarkdown.render)
+    }
 
-        // 插入处理后的文本
-        textStorage?.beginEditing()
-        textStorage?.replaceCharacters(in: selectedRange, with: attributedString)
-        textStorage?.endEditing()
+    /// 粘贴的核心逻辑（可测，不碰剪贴板）：替换当前选区，光标落在粘贴内容之后
+    static func insertPastedText(_ plainText: String, into textView: NSTextView, rendering: (String) -> NSAttributedString) {
+        guard !plainText.isEmpty else { return }
+        textView.breakUndoCoalescing()
+        textView.insertText(rendering(plainText), replacementRange: textView.selectedRange())
+    }
 
-        // 设置新的光标位置
-        let newCursorLocation = selectedRange.location + attributedString.length
-        setSelectedRange(NSRange(location: newCursorLocation, length: 0))
-
-        // 通知代理内容已更改
-        delegate?.textDidChange?(Notification(name: NSText.didChangeNotification, object: self))
+    /// 切换 `location` 处待办图标的勾选状态（可撤销）。只有该位置确实是图标字符才生效。
+    @discardableResult
+    func toggleTodoIcon(at location: Int) -> Bool {
+        guard let storage = textStorage, location >= 0, location < storage.length else { return false }
+        let unit = (storage.string as NSString).character(at: location)
+        guard StickyNoteMarkdown.isTodoIconUnit(unit) else { return false }
+        let checked = unit == StickyNoteMarkdown.checkedIconUnit
+        let inherited = storage.attributes(at: location, effectiveRange: nil)
+        breakUndoCoalescing()
+        insertText(StickyNoteMarkdown.todoIcon(checked: !checked, inheriting: inherited), replacementRange: NSRange(location: location, length: 1))
+        return true
     }
 
     override func mouseDown(with event: NSEvent) {
-        let point = convert(event.locationInWindow, from: nil)
-        
         // 1. 先尝试检测是否点击在待办图标上
-        if let layoutManager = layoutManager, let textContainer = textContainer {
+        if let layoutManager = layoutManager, let textContainer = textContainer, let storage = textStorage {
+            let point = convert(event.locationInWindow, from: nil)
+
             // 关键：调整坐标以考虑 textContainerInset
             let adjustedPoint = NSPoint(
                 x: point.x - textContainerInset.width,
                 y: point.y - textContainerInset.height
             )
-            
+
             // 获取点击位置的字符索引
             var fraction: CGFloat = 0
             let glyphIndex = layoutManager.glyphIndex(for: adjustedPoint, in: textContainer, fractionOfDistanceThroughGlyph: &fraction)
             let charIndex = layoutManager.characterIndexForGlyph(at: glyphIndex)
-            
-            if charIndex < textStorage?.length ?? 0 {
-                let attrString = attributedString()
-                var effectiveRange = NSRange()
-                let value = attrString.attribute(NSAttributedString.Key("isTodoIcon"), at: charIndex, effectiveRange: &effectiveRange)
-                
-                // 关键校验：必须点击在图标字符（☐ 或 ☑）上才触发切换
-                let char = (attrString.string as NSString).substring(with: NSRange(location: charIndex, length: 1))
-                let isActuallyIcon = char == "☐" || char == "☑"
-                
-                if value != nil && isActuallyIcon {
-                        // 切换状态
-                        if let isChecked = value as? Bool {
-                            let newChecked = !isChecked
-                            let iconString = newChecked ? "☑ " : "☐ "
-                            
-                            let attrIcon = NSMutableAttributedString(string: iconString)
-                            // 统一图标字体和大小，确保尺寸一致
-                            let baseFontSize: CGFloat = 12
-                            let iconFont = NSFont.systemFont(ofSize: baseFontSize + 2)
-                            attrIcon.addAttribute(.font, value: iconFont, range: NSRange(location: 0, length: 1))
-                            let secondaryColor = NSColor.themeGray400
-                            attrIcon.addAttribute(.foregroundColor, value: newChecked ? NSColor.systemGreen : secondaryColor, range: NSRange(location: 0, length: 1))
-                            attrIcon.addAttribute(NSAttributedString.Key("isTodoIcon"), value: newChecked, range: NSRange(location: 0, length: 1))
-                            
-                            let paragraphStyle = NSMutableParagraphStyle()
-                            paragraphStyle.lineSpacing = 4
-                            paragraphStyle.minimumLineHeight = 18
-                            paragraphStyle.maximumLineHeight = 18
-                            attrIcon.addAttribute(.paragraphStyle, value: paragraphStyle, range: NSRange(location: 0, length: 1))
-                            
-                            // 获取协调器以设置标志位
-                            let coordinator = delegate as? StickyNoteEditor.Coordinator
-                            coordinator?.isUpdatingFromTextView = true
-                            
-                            textStorage?.beginEditing()
-                            textStorage?.replaceCharacters(in: NSRange(location: charIndex, length: 1), with: attrIcon)
-                            textStorage?.endEditing()
-                            
-                            coordinator?.isUpdatingFromTextView = false
-                        
-                        // 触发同步
-                        delegate?.textDidChange?(Notification(name: NSText.didChangeNotification, object: self))
-                        return 
-                    }
-                }
+
+            if charIndex < storage.length, toggleTodoIcon(at: charIndex) {
+                return
             }
         }
-        
+
         super.mouseDown(with: event)
     }
 
@@ -1100,37 +794,19 @@ class StickyNoteTextView: NSTextView {
     var onKeyDown: ((NSEvent) -> Bool)?
 
     override func keyDown(with event: NSEvent) {
-        print("[StickyNoteTextView] keyDown 被调用，keyCode=\(event.keyCode), onKeyDown=\(onKeyDown != nil)")
-
         // 先让回调处理事件
-        if let callback = onKeyDown {
-            let handled = callback(event)
-            print("[StickyNoteTextView] 回调返回: \(handled)")
-            if handled {
-                return // 事件已被处理，不继续传递
-            }
+        if let callback = onKeyDown, callback(event) {
+            return // 事件已被处理，不继续传递
         }
-
-        // 默认处理
-        print("[StickyNoteTextView] 传递给 super.keyDown")
         super.keyDown(with: event)
     }
 
     // 更彻底地拦截键盘事件，阻止 interpretKeyEvents
     override func interpretKeyEvents(_ eventArray: [NSEvent]) {
-        print("[StickyNoteTextView] interpretKeyEvents 被调用，事件数量: \(eventArray.count)")
-
         // 检查第一个事件是否被回调处理
-        if let event = eventArray.first,
-           let callback = onKeyDown {
-            let handled = callback(event)
-            print("[StickyNoteTextView] interpretKeyEvents 回调返回: \(handled)")
-            if handled {
-                return // 事件已被处理，不传递给 interpretKeyEvents
-            }
+        if let event = eventArray.first, let callback = onKeyDown, callback(event) {
+            return // 事件已被处理，不传递给 interpretKeyEvents
         }
-
-        print("[StickyNoteTextView] 传递给 super.interpretKeyEvents")
         super.interpretKeyEvents(eventArray)
     }
 }

@@ -21,4 +21,5 @@ final class CDRecord: NSManagedObject {
     @NSManaged var skipAI: Bool
     @NSManaged var size: Int64
     @NSManaged var noteFrameData: Data?  // 便签窗口位置（编码后的 NSRect）
+    @NSManaged var noteColor: String?    // 便签底色（StickyNoteColor 的 rawValue）
 }

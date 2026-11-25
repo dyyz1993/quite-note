@@ -68,6 +68,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         clipboard = ClipboardService(store: store)
         self.recordStore = store
         self.bluetoothManager = bluetooth
+        // 便利贴 ↔ 记录的保存/更新直接走 store（同步调用、用返回值判断成败）
+        StickyNoteManager.shared.recordStore = store
 
         let heatmapVM = HeatmapViewModel(store: store)
         let ai = AIService()
@@ -189,6 +191,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         shortcuts?.onOpenAppLauncher = {
             AppLauncherPanelController.shared.toggle()
         }
+        shortcuts?.onNewStickyNote = { StickyNoteManager.shared.createNewNote() }
+        shortcuts?.onToggleStickySpacePin = { StickyNoteManager.shared.toggleSpacePinning() }
         shortcuts?.start()
 
         // 剪贴板历史：接入闪记 + 加载历史 + 启动 OCR 队列 + 按设置同步监控

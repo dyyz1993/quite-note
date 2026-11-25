@@ -51,6 +51,14 @@ final class StatusBarController {
             .store(in: &cancellables)
     }
 
+    /// 「新建贴纸」菜单项的 keyEquivalent / keyEquivalentModifierMask——纯函数，单测钉死。
+    /// 由偏好计算（与 Carbon 热键注册同一套归一化：key 小写、修饰键只留 ⌘⌥⇧⌃）；
+    /// 禁用（空键）时 keyEquivalent 为空，菜单项不显示快捷键但仍可点击
+    static func newStickyNoteMenuShortcut(key: String, flags: Int) -> (keyEquivalent: String, modifierMask: NSEvent.ModifierFlags) {
+        let registration = KeyboardShortcutManager.hotkeyRegistration(key: key, flags: flags)
+        return (keyEquivalent: registration.key, modifierMask: registration.modifiers)
+    }
+
     /// 构建菜单与状态更新
     private func setupMenu() {
         // 尝试从多个来源加载图标
@@ -107,8 +115,14 @@ final class StatusBarController {
         force.isEnabled = true
         menu.addItem(force)
         
-        let newSticky = NSMenuItem(title: L("menu.newSticky", fallback: "New Sticky Note"), action: #selector(onNewStickyNote), keyEquivalent: "n")
-        newSticky.keyEquivalentModifierMask = [.command, .shift]
+        // 新建贴纸：快捷键动态读偏好（与设置 → 便利贴 共用同一组键，默认 ⌥⇧⌘N）；
+        // 禁用（空键）时 keyEquivalent 为空，菜单项不显示快捷键但仍可点击
+        let newStickyShortcut = Self.newStickyNoteMenuShortcut(
+            key: PreferencesManager.shared.stickyNoteShortcut,
+            flags: PreferencesManager.shared.stickyNoteShortcutFlags
+        )
+        let newSticky = NSMenuItem(title: L("menu.newSticky", fallback: "New Sticky Note"), action: #selector(onNewStickyNote), keyEquivalent: newStickyShortcut.keyEquivalent)
+        newSticky.keyEquivalentModifierMask = newStickyShortcut.modifierMask
         newSticky.target = self
         newSticky.isEnabled = true
         menu.addItem(newSticky)

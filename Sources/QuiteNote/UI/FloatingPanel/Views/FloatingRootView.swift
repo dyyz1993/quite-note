@@ -144,59 +144,6 @@ struct FloatingRootView: View {
         // 依赖系统默认色的文本，在系统浅色外观下会解析成黑色（panel.appearance 会被
         // NSHostingView 覆盖，SwiftUI 层的 preferredColorScheme 才能可靠生效）
         .preferredColorScheme(.dark)
-        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("StickyNoteSaveToRecord"))) { notification in
-            print("[DEBUG] FloatingRootView received StickyNoteSaveToRecord notification")
-            if let userInfo = notification.userInfo,
-               let content = userInfo["content"] as? String {
-
-                // 检查内容是否为空
-                guard !content.isEmpty else {
-                    print("[DEBUG] Content is empty, skipping save to record")
-                    return
-                }
-
-                let typeStr = userInfo["type"] as? String ?? "text"
-                let source = userInfo["source"] as? String ?? "Sticky Note"
-                let title = userInfo["title"] as? String
-                let noteFrame = userInfo["noteFrame"] as? NSRect
-                let noteId = userInfo["noteId"] as? UUID
-                let hash = ClipboardService.sha1(content + UUID().uuidString)
-
-                print("[DEBUG] Saving sticky note to store, title length: \(title?.count ?? 0), has frame: \(noteFrame != nil)")
-
-                // 保存记录（注意：需要先获取当前记录数来找到新添加的记录）
-                let beforeCount = store.records.count
-                store.addRecord(
-                    content: content,
-                    hash: hash,
-                    sourceApp: source,
-                    type: typeStr == "note" ? .note : (typeStr == "text" ? .text : .file),
-                    fileName: title,
-                    noteFrame: noteFrame
-                )
-
-                // 确保 UI 切换到主列表并显示新纪录
-                store.filterType = nil // 显示全部
-
-                // 修复：使用 DispatchQueue.main.async 确保在下一个 runloop 发送通知
-                // 这样可以确保 store.records 已经更新
-                DispatchQueue.main.async {
-                    if let noteId = noteId, store.records.count > beforeCount {
-                        let newRecord = store.records[0] // 新记录会插入到第一个位置
-                        print("[DEBUG] Sent stickyNoteSaveCompleted notification, recordId: \(newRecord.id)")
-                        // 直接发送通知而不是使用 QuiteNoteNotification.post
-                        NotificationCenter.default.post(
-                            name: NSNotification.Name("qn.stickynote.save.completed"),
-                            object: nil,
-                            userInfo: [
-                                "noteId": noteId,
-                                "recordId": newRecord.id
-                            ]
-                        )
-                    }
-                }
-            }
-        }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .ignoresSafeArea()
         .onHover { hovering in onHoverChanged?(hovering) }
@@ -216,21 +163,6 @@ struct FloatingRootView: View {
             if let recordId = notification.object as? UUID {
                 expandedId = recordId
                 showSettings = false // 确保不在设置界面
-            }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("StickyNoteUpdateRecord"))) { notification in
-            // 响应更新便签记录的通知
-            if let userInfo = notification.userInfo,
-               let recordId = userInfo["recordId"] as? UUID,
-               let content = userInfo["content"] as? String,
-               let title = userInfo["title"] as? String {
-                // 使用 RecordStore 的 updateContent 方法更新记录
-                store.updateContent(
-                    id: recordId,
-                    content: content,
-                    title: title,
-                    noteFrame: userInfo["noteFrame"] as? NSRect
-                )
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .escKeyPressed)) { _ in

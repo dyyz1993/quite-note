@@ -1,117 +1,217 @@
 import Foundation
 import CoreData
+import os
 
 final class CoreDataStack {
     static let shared = CoreDataStack()
+    private static let logger = Logger(subsystem: "com.quitenote.app", category: "CoreDataStack")
 
     let container: NSPersistentContainer
+    /// 持久化存储加载失败（文件损坏、目录不可写、旧库迁移不了）时非 nil。
+    /// 上层据此区分"查不到记录"和"数据库根本没打开"——后者绝不能当成记录已被删除
+    private(set) var loadError: Error?
 
-    init() {
+    /// 迁移失败的原因
+    enum StoreError: Error {
+        /// 库是某个不认识的历史模型建的
+        case unrecognizedStoreModel
+    }
+
+    /// 历史模型，旧 → 新。数据模型是代码手写的（没有 .xcdatamodeld 的版本文件），
+    /// Core Data 自己找不到旧模型，轻量迁移时要在这里把旧版本原样提供出来。
+    /// 加字段时：把"加之前"的模型追加到这个列表的末尾，再改 makeModel。
+    /// 用闭包是为了让旧模型只在真的需要迁移时才被实例化
+    private static let legacyModelBuilders: [() -> NSManagedObjectModel] = [
+        { makeModel(includesNoteColor: false) },   // 加 noteColor 字段之前（v1.6.0 及更早）
+    ]
+
+    convenience init() {
+        self.init(databaseURL: Self.defaultDatabaseURL())
+    }
+
+    /// 测试与迁移验证用：显式指定数据库文件
+    init(databaseURL url: URL) {
+        let opened = Self.open(model: Self.makeModel(includesNoteColor: true), at: url)
+        container = opened.container
+        loadError = opened.error
+    }
+
+    // MARK: - 打开与迁移
+
+    private static func open(model: NSManagedObjectModel, at url: URL) -> (container: NSPersistentContainer, error: Error?) {
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        // 下面 addStore 遇到旧模型的库会自动做轻量迁移——原地改库。动手之前先留一份原库
+        backupStoreIfNeeded(at: url, to: model)
+        let container = NSPersistentContainer(name: "QuiteNote", managedObjectModel: model)
+        container.viewContext.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy
+        container.viewContext.automaticallyMergesChangesFromParent = true
+        let description = NSPersistentStoreDescription(url: url)
+        container.persistentStoreDescriptions = [description]
+
+        if let error = addStore(to: container) {
+            // 文件损坏、目录不可写、不是旧模型建的情况，迁移也无能为力
+            guard FileManager.default.fileExists(atPath: url.path) else {
+                logger.error("记录数据库加载失败: \(error.localizedDescription, privacy: .public)")
+                return (container, error)
+            }
+            do {
+                guard try migrateStoreIfNeeded(at: url, to: model) else {
+                    logger.error("记录数据库加载失败: \(error.localizedDescription, privacy: .public)")
+                    return (container, error)
+                }
+            } catch {
+                logger.error("记录数据库迁移失败: \(error.localizedDescription, privacy: .public)")
+                return (container, error)
+            }
+            // 迁移后换一个干净的容器重开
+            let migrated = NSPersistentContainer(name: "QuiteNote", managedObjectModel: model)
+            migrated.viewContext.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy
+            migrated.viewContext.automaticallyMergesChangesFromParent = true
+            migrated.persistentStoreDescriptions = [NSPersistentStoreDescription(url: url)]
+            if let retryError = addStore(to: migrated) {
+                logger.error("记录数据库迁移后仍打不开: \(retryError.localizedDescription, privacy: .public)")
+                return (migrated, retryError)
+            }
+            logger.notice("记录数据库已迁移到当前模型")
+            return (migrated, nil)
+        }
+        return (container, nil)
+    }
+
+    private static func addStore(to container: NSPersistentContainer) -> Error? {
+        var loadError: Error?
+        container.loadPersistentStores { _, error in
+            loadError = error
+        }
+        return loadError
+    }
+
+    /// 库是旧模型建的（接下来 Core Data 会自动迁移它）：先把原库拷成 .pre-migration 备份。
+    /// 库不存在、或已经是当前模型时什么都不做（每次启动都拷一份就成了垃圾）。
+    /// 拷失败不挡迁移，只记日志
+    static func backupStoreIfNeeded(at url: URL, to model: NSManagedObjectModel) {
+        guard FileManager.default.fileExists(atPath: url.path),
+              let metadata = try? NSPersistentStoreCoordinator.metadataForPersistentStore(
+                ofType: NSSQLiteStoreType, at: url, options: nil
+              ),
+              !model.isConfiguration(withName: nil, compatibleWithStoreMetadata: metadata) else { return }
+        do {
+            try backupStore(at: url)
+            logger.notice("记录数据库是旧模型，迁移前已留原库备份")
+        } catch {
+            logger.warning("记录数据库迁移前的备份没留成: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    /// 把库拷成 .pre-migration 备份：主文件连同 WAL / SHM 一起拷（Core Data 的 WAL 是持久化的，
+    /// 只拷主文件会缺最后几笔写入）。已有备份先删掉——一次迁移只留最近一份
+    private static func backupStore(at url: URL) throws {
+        let backupURL = url.appendingPathExtension("pre-migration")
+        removeSQLiteStore(at: backupURL)
+        for suffix in ["", "-wal", "-shm"] {
+            let source = URL(fileURLWithPath: url.path + suffix)
+            guard FileManager.default.fileExists(atPath: source.path) else { continue }
+            try FileManager.default.copyItem(at: source, to: URL(fileURLWithPath: backupURL.path + suffix))
+        }
+    }
+
+    /// 数据库是旧模型建的就做一次轻量迁移到当前模型；已经兼容时返回 false
+    static func migrateStoreIfNeeded(at url: URL, to destinationModel: NSManagedObjectModel) throws -> Bool {
+        let metadata = try NSPersistentStoreCoordinator.metadataForPersistentStore(
+            ofType: NSSQLiteStoreType, at: url, options: nil
+        )
+        if destinationModel.isConfiguration(withName: nil, compatibleWithStoreMetadata: metadata) {
+            return false
+        }
+
+        var sourceModel: NSManagedObjectModel?
+        for build in legacyModelBuilders {
+            let candidate = build()
+            if candidate.isConfiguration(withName: nil, compatibleWithStoreMetadata: metadata) {
+                sourceModel = candidate
+                break
+            }
+        }
+        guard let sourceModel else {
+            throw StoreError.unrecognizedStoreModel
+        }
+
+        let mapping = try NSMappingModel.inferredMappingModel(forSourceModel: sourceModel, destinationModel: destinationModel)
+        let temporaryURL = url.deletingLastPathComponent().appendingPathComponent("migration-\(UUID().uuidString).sqlite")
+        defer { removeSQLiteStore(at: temporaryURL) }
+        try NSMigrationManager(sourceModel: sourceModel, destinationModel: destinationModel).migrateStore(
+            from: url, sourceType: NSSQLiteStoreType, options: nil, with: mapping,
+            toDestinationURL: temporaryURL, destinationType: NSSQLiteStoreType, destinationOptions: nil
+        )
+
+        // 替换前留一份原库：迁移后的数据要是有闪失，还能从这里找回
+        try backupStore(at: url)
+        // 旧库的 WAL/SHM 残留会盖掉迁移后的内容
+        removeSQLiteStore(at: url)
+        try NSPersistentStoreCoordinator(managedObjectModel: destinationModel).replacePersistentStore(
+            at: url, destinationOptions: nil, withPersistentStoreFrom: temporaryURL, sourceOptions: nil, ofType: NSSQLiteStoreType
+        )
+        return true
+    }
+
+    /// 删掉一个 SQLite 库文件连同它的边车文件（-wal / -shm / -journal）
+    private static func removeSQLiteStore(at url: URL) {
+        for suffix in ["", "-wal", "-shm", "-journal"] {
+            try? FileManager.default.removeItem(atPath: url.path + suffix)
+        }
+    }
+
+    // MARK: - 数据模型
+
+    /// 代码手写的数据模型。includesNoteColor = false 即加便签底色字段之前的模型，
+    /// 属性名、类型、可选性、默认值都不能动——版本哈希靠它们对上老库
+    static func makeModel(includesNoteColor: Bool) -> NSManagedObjectModel {
         let model = NSManagedObjectModel()
 
         let entity = NSEntityDescription()
         entity.name = "CDRecord"
         entity.managedObjectClassName = NSStringFromClass(CDRecord.self)
 
-        let idAttr = NSAttributeDescription()
-        idAttr.name = "id"
-        idAttr.attributeType = .UUIDAttributeType
-        idAttr.isOptional = false
+        var properties: [NSAttributeDescription] = []
 
-        let titleAttr = NSAttributeDescription()
-        titleAttr.name = "title"
-        titleAttr.attributeType = .stringAttributeType
-        titleAttr.isOptional = true
+        func attribute(_ name: String, _ type: NSAttributeType, optional: Bool, defaultValue: Any? = nil) {
+            let attr = NSAttributeDescription()
+            attr.name = name
+            attr.attributeType = type
+            attr.isOptional = optional
+            if let defaultValue { attr.defaultValue = defaultValue }
+            properties.append(attr)
+        }
 
-        let contentAttr = NSAttributeDescription()
-        contentAttr.name = "content"
-        contentAttr.attributeType = .stringAttributeType
-        contentAttr.isOptional = false
+        attribute("id", .UUIDAttributeType, optional: false)
+        attribute("title", .stringAttributeType, optional: true)
+        attribute("content", .stringAttributeType, optional: false)
+        attribute("createdAt", .dateAttributeType, optional: false)
+        attribute("digest", .stringAttributeType, optional: false)
+        attribute("aiStatus", .stringAttributeType, optional: true)
+        attribute("summary", .stringAttributeType, optional: true)
+        attribute("summaryConfidence", .doubleAttributeType, optional: true)
+        attribute("starred", .booleanAttributeType, optional: false, defaultValue: false)
+        attribute("copiedAt", .dateAttributeType, optional: true)
+        attribute("tagsRaw", .stringAttributeType, optional: true)
+        attribute("keywordsRaw", .stringAttributeType, optional: true)
+        attribute("sourceApp", .stringAttributeType, optional: true)
+        attribute("sourceUrl", .stringAttributeType, optional: true)
+        attribute("type", .stringAttributeType, optional: false, defaultValue: "text")
+        attribute("skipAI", .booleanAttributeType, optional: false, defaultValue: false)
+        attribute("size", .integer64AttributeType, optional: false, defaultValue: 0)
+        attribute("noteFrameData", .binaryDataAttributeType, optional: true)
+        if includesNoteColor {
+            attribute("noteColor", .stringAttributeType, optional: true)
+        }
 
-        let createdAtAttr = NSAttributeDescription()
-        createdAtAttr.name = "createdAt"
-        createdAtAttr.attributeType = .dateAttributeType
-        createdAtAttr.isOptional = false
-
-        let digestAttr = NSAttributeDescription()
-        digestAttr.name = "digest"
-        digestAttr.attributeType = .stringAttributeType
-        digestAttr.isOptional = false
-
-        let aiStatusAttr = NSAttributeDescription()
-        aiStatusAttr.name = "aiStatus"
-        aiStatusAttr.attributeType = .stringAttributeType
-        aiStatusAttr.isOptional = true
-
-        let summaryAttr = NSAttributeDescription()
-        summaryAttr.name = "summary"
-        summaryAttr.attributeType = .stringAttributeType
-        summaryAttr.isOptional = true
-
-        let summaryConfAttr = NSAttributeDescription()
-        summaryConfAttr.name = "summaryConfidence"
-        summaryConfAttr.attributeType = .doubleAttributeType
-        summaryConfAttr.isOptional = true
-
-        let starredAttr = NSAttributeDescription()
-        starredAttr.name = "starred"
-        starredAttr.attributeType = .booleanAttributeType
-        starredAttr.isOptional = false
-        starredAttr.defaultValue = false
-
-        let copiedAtAttr = NSAttributeDescription()
-        copiedAtAttr.name = "copiedAt"
-        copiedAtAttr.attributeType = .dateAttributeType
-        copiedAtAttr.isOptional = true
-
-        let tagsAttr = NSAttributeDescription()
-        tagsAttr.name = "tagsRaw"
-        tagsAttr.attributeType = .stringAttributeType
-        tagsAttr.isOptional = true
-
-        let keywordsAttr = NSAttributeDescription()
-        keywordsAttr.name = "keywordsRaw"
-        keywordsAttr.attributeType = .stringAttributeType
-        keywordsAttr.isOptional = true
-
-        let sourceAppAttr = NSAttributeDescription()
-        sourceAppAttr.name = "sourceApp"
-        sourceAppAttr.attributeType = .stringAttributeType
-        sourceAppAttr.isOptional = true
-
-        let sourceUrlAttr = NSAttributeDescription()
-        sourceUrlAttr.name = "sourceUrl"
-        sourceUrlAttr.attributeType = .stringAttributeType
-        sourceUrlAttr.isOptional = true
-
-        let typeAttr = NSAttributeDescription()
-        typeAttr.name = "type"
-        typeAttr.attributeType = .stringAttributeType
-        typeAttr.isOptional = false
-        typeAttr.defaultValue = "text"
-
-        let skipAIAttr = NSAttributeDescription()
-        skipAIAttr.name = "skipAI"
-        skipAIAttr.attributeType = .booleanAttributeType
-        skipAIAttr.isOptional = false
-        skipAIAttr.defaultValue = false
-
-        let sizeAttr = NSAttributeDescription()
-        sizeAttr.name = "size"
-        sizeAttr.attributeType = .integer64AttributeType
-        sizeAttr.isOptional = false
-        sizeAttr.defaultValue = 0
-
-        let noteFrameDataAttr = NSAttributeDescription()
-        noteFrameDataAttr.name = "noteFrameData"
-        noteFrameDataAttr.attributeType = .binaryDataAttributeType
-        noteFrameDataAttr.isOptional = true
-
-        entity.properties = [idAttr, titleAttr, contentAttr, createdAtAttr, digestAttr, aiStatusAttr, summaryAttr, summaryConfAttr, starredAttr, copiedAtAttr, tagsAttr, keywordsAttr, sourceAppAttr, sourceUrlAttr, typeAttr, skipAIAttr, sizeAttr, noteFrameDataAttr]
+        entity.properties = properties
         model.entities = [entity]
+        return model
+    }
 
-        container = NSPersistentContainer(name: "QuiteNote", managedObjectModel: model)
-
+    /// 按 Bundle ID / 构建路径分库，测试进程经 QN_TEST_STORAGE_ROOT 整体重定向
+    static func defaultDatabaseURL() -> URL {
         // 使用 Bundle Identifier 和可执行文件路径分离开发和生产环境的数据
         let bundleID = Bundle.main.bundleIdentifier ?? "com.quitenote.app"
         let executablePath = Bundle.main.executablePath ?? ""
@@ -126,29 +226,15 @@ final class CoreDataStack {
 
         // 数据隔离红线：测试进程通过 QN_TEST_STORAGE_ROOT 把数据库重定向到临时目录，
         // 绝不读写真实数据库（生产库 QuiteNote.sqlite / 开发库 QuiteNote-Debug.sqlite 都不碰）
-        let databaseURL: URL
         if let testRoot = ProcessInfo.processInfo.environment["QN_TEST_STORAGE_ROOT"] {
-            databaseURL = URL(fileURLWithPath: testRoot, isDirectory: true)
-                .appendingPathComponent(dbName)
-        } else {
-            databaseURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-                .appendingPathComponent(directoryName).appendingPathComponent(dbName)
+            return URL(fileURLWithPath: testRoot, isDirectory: true).appendingPathComponent(dbName)
         }
-        let url = databaseURL
-
-        #if DEBUG
-        print("[CoreDataStack] 数据库已配置: \(url.lastPathComponent)")
-        print("[CoreDataStack] Bundle ID: \(bundleID), isDebug: \(isDebug)")
-        print("[CoreDataStack] 调试存储隔离: \(isDebug ? "启用" : "关闭")")
-        #endif
-
-        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        let desc = NSPersistentStoreDescription(url: url)
-        container.persistentStoreDescriptions = [desc]
-        container.loadPersistentStores { _, _ in }
-        container.viewContext.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy
-        container.viewContext.automaticallyMergesChangesFromParent = true
+        return FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+            .appendingPathComponent(directoryName).appendingPathComponent(dbName)
     }
+
+    /// 记录库是否可用。加载失败时所有查询都会报错或返回空，上层不得据此做删除类决策
+    var isStoreUnavailable: Bool { loadError != nil }
 
     var context: NSManagedObjectContext { container.viewContext }
 

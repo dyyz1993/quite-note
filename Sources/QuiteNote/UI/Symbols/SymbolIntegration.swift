@@ -675,53 +675,13 @@ extension StickyNoteEditor.Coordinator {
         print("[SymbolIntegration] selectedIndex 已更新为: \(symbolSelectionState.selectedIndex)")
     }
 
+    /// 联想面板确认符号（回车 / Tab / 点击建议都会走到这里）。
+    /// 只替换「触发前缀 + 触发词」这一段：走可撤销插入，撤销栈、选区和行内格式都保得住；
+    /// 修复前是整段 setAttributedString 重建，撤销栈被清空、刚打好的格式也会丢。
     private func insertSelectedSymbol(_ item: MatchedSymbolItem) {
         guard let currentTextView = symbolTextView else { return }
 
-        let text = currentTextView.string
-        let cursorPosition = currentTextView.selectedRange().location
-        let logPath = "/tmp/quitenote-symbol-debug.log"
-
-        let symbol = item.symbol
-        appendLog("[SymbolIntegration] insertSelectedSymbol - symbolLength=\(symbol.content.count), cursorPosition=\(cursorPosition)\n", toPath: logPath)
-
-        // 获取替换后的文本和新光标位置
-        if let result = symbolDetector.insertSymbol(symbol, into: text, cursorPosition: cursorPosition) {
-            appendLog("[SymbolIntegration] insertSymbol 返回 - newText.count=\(result.newText.count), newCursorPos=\(result.newCursorPos)\n", toPath: logPath)
-
-            // ⭐ 关键修复：计算 NSString 长度（UTF-16 坐标系）
-            let newTextNSString = result.newText as NSString
-            let newTextLength = newTextNSString.length
-            appendLog("[SymbolIntegration] newText NSString 长度: \(newTextLength), String.count: \(result.newText.count)\n", toPath: logPath)
-
-            // 替换文本
-            isUpdatingFromTextView = true
-
-            let attrString = markdownToAttributed(result.newText)
-            currentTextView.textStorage?.setAttributedString(attrString)
-
-            // ⭐ 关键修复：确保光标位置在 NSString 长度范围内
-            // result.newCursorPos 已经是 NSString 坐标系，不需要转换
-            let newRange = NSRange(location: min(result.newCursorPos, newTextLength), length: 0)
-            appendLog("[SymbolIntegration] 设置光标位置: \(newRange.location) (min(\(result.newCursorPos), \(newTextLength)))\n", toPath: logPath)
-            currentTextView.setSelectedRange(newRange)
-
-            // 验证光标位置
-            let finalRange = currentTextView.selectedRange()
-            appendLog("[SymbolIntegration] 实际光标位置: \(finalRange.location)\n", toPath: logPath)
-
-            isUpdatingFromTextView = false
-
-            // 通知外部更新
-            let newText = attributedToMarkdown(currentTextView.attributedString())
-            if parent.text != newText {
-                parent.text = newText
-            }
-
-            currentTextView.didChangeText()
-        } else {
-            appendLog("[SymbolIntegration] insertSymbol 返回 nil\n", toPath: logPath)
-        }
+        insertSymbolFromTrigger(item.symbol, detectedBy: symbolDetector, into: currentTextView)
 
         // 隐藏面板并清除检测
         internalHideSymbolSuggestionPanel()

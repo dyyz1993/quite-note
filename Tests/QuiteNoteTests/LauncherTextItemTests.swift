@@ -76,6 +76,24 @@ final class LauncherTextItemTests: XCTestCase {
         XCTAssertEqual(LauncherTextSearch.stripStickyMarkup("无标记文本"), "无标记文本")
     }
 
+    /// 复制出去的备忘不该带着任何标记：落单的 [/c]、加粗、删除线、待办都要去掉
+    func test备忘文本不残留任何标记() {
+        XCTAssertEqual(LauncherTextSearch.stripStickyMarkup("[c:60A5FA]购物清单[/c]"), "购物清单")
+        XCTAssertEqual(LauncherTextSearch.stripStickyMarkup("购物清单[/c]"), "购物清单")
+        XCTAssertEqual(LauncherTextSearch.stripStickyMarkup("**加粗** ~~删除线~~"), "加粗 删除线")
+        XCTAssertEqual(LauncherTextSearch.stripStickyMarkup("- [ ] 买菜"), "☐ 买菜")
+        // 蒙层/备忘走宽松模式：hex 不合法的 [c:…] 也当作标记去掉，不让它露出来
+        XCTAssertEqual(LauncherTextSearch.stripStickyMarkup("[c:12345]位数不对的标记"), "位数不对的标记")
+    }
+
+    func test备忘取第一个有内容的页() {
+        XCTAssertNil(LauncherTextSearch.memoText(for: [StickyNotePage(content: " "), StickyNotePage(content: "\n")]))
+        XCTAssertEqual(
+            LauncherTextSearch.memoText(for: [StickyNotePage(), StickyNotePage(content: "[c:FACC15]写在第二页[/c]"), StickyNotePage(content: "第三页")]),
+            "写在第二页", "首页空着时取后面第一页有内容的，不是最后一页")
+        XCTAssertEqual(LauncherTextSearch.memoText(for: [StickyNotePage(content: "首页")]), "首页")
+    }
+
     // MARK: - 图片条目（用户收藏的多为截图）
 
     func test图片条目构造() throws {

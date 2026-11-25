@@ -83,6 +83,7 @@ struct SettingsOverlayView: View {
                 TabButtonLucide(key: "history", label: "记录", icon: .database, current: $tab)
                 TabButtonLucide(key: "clipboard", label: "剪贴板", icon: .clipboardList, current: $tab)
                 TabButtonLucide(key: "launcher", label: "启动器", icon: .appWindowMac, current: $tab)
+                TabButtonLucide(key: "sticky", label: L("sticky.settings.tab", fallback: "便利贴"), icon: .stickyNote, current: $tab)
                 TabButtonLucide(key: "window", label: "悬浮窗", icon: .layout, current: $tab)
                 TabButtonLucide(key: "screenshot", label: "截图", icon: .camera, current: $tab)
                 TabButtonLucide(key: "recording", label: "录屏", icon: .video, current: $tab)
@@ -108,6 +109,7 @@ struct SettingsOverlayView: View {
                 case "history": HistorySettingsTab(store: store)
                 case "clipboard": ClipboardSettingsTab()
                 case "launcher": LauncherSettingsTab()
+                case "sticky": StickyNoteSettingsTab()
                 case "window": WindowSettingsTab()
                 case "screenshot": ScreenshotSettingsTab()
                 case "recording": RecordingSettingsTab()
@@ -164,6 +166,13 @@ struct SettingsOverlayView: View {
                     Text("拼音转换: 本地 CoreFoundation · 不联网")
                         .font(.themeCaptionSmall)
                         .foregroundColor(.themeTextTertiary)
+                } else if tab == "sticky" {
+                    // 状态摘要：两个全局热键当前的生效值（即时写入的 Tab，右侧不放保存按钮）
+                    ForEach(Array(StickyNoteSettingsTab.footerStatusLines().enumerated()), id: \.offset) { _, line in
+                        Text(line)
+                            .font(.themeCaptionSmall)
+                            .foregroundColor(.themeTextTertiary)
+                    }
                 } else if tab == "feedback" {
                     Text("提交后开发者手机实时收到推送")
                         .font(.themeCaptionSmall)

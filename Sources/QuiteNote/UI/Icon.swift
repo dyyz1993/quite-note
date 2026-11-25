@@ -77,6 +77,7 @@ enum IconName: String {
     case crop = "crop"
     case arrowUpRight = "arrow-up-right"
     case grid3x3 = "grid-3x3"
+    case layoutGrid = "layout-grid"
     case dither = "dither"
     case hash = "hash"
     case mousePointer2 = "mouse-pointer-2"
@@ -103,6 +104,8 @@ enum IconName: String {
     case folderOpen = "folder-open"
     case shieldCheck = "shield-check"
     case timer = "timer"
+    // 便利贴设置
+    case stickyNote = "sticky-note"
 }
 
 /// SwiftUI 包装，渲染 Lucide 图标（不使用 SF Symbols 回退）

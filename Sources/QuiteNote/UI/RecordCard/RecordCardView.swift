@@ -65,6 +65,17 @@ struct RecordCardView: View, Equatable {
                 // 否则返回空 provider，不触发拖拽
                 return NSItemProvider()
             }
+
+            // 便签记录：左侧一条底色标识，和便利贴本身同一个颜色，方便按颜色认出这是哪张便签
+            if record.type == .note {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(StickyNoteColor.from(record.noteColor).accent)
+                    .frame(width: 3)
+                    .padding(.vertical, 8)
+                    .padding(.leading, 1)
+                    .frame(maxHeight: .infinity, alignment: .leading)
+                    .allowsHitTesting(false)
+            }
             
             // 左上角隐藏三角感应区 (仅折叠状态)
             if !isExpanded {
@@ -1003,27 +1014,9 @@ private extension RecordCardView {
     /// 用于 note 类型卡片显示，避免显示所有页面导致卡片过高
     /// 支持向后兼容：自动检测并转换旧格式
     private func extractFirstPageContent(_ content: String) -> String {
-        var processedContent = content
-        let newSeparator = "\n---NOTE_PAGE_BREAK---\n"
-
-        // 检测并转换旧格式 -------- Page X --------
-        if content.contains("-------- Page ") {
-            let oldPattern = "(?:\\n|^)\\s*-------- Page \\d+ --------\\s*(?:\\n|$)"
-            if let regex = try? NSRegularExpression(pattern: oldPattern) {
-                processedContent = regex.stringByReplacingMatches(
-                    in: content,
-                    options: [],
-                    range: NSRange(location: 0, length: content.utf16.count),
-                    withTemplate: newSeparator
-                )
-            }
-        }
-
-        // 提取第一页
-        if let firstPage = processedContent.components(separatedBy: newSeparator).first {
-            return firstPage.trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-        return content
+        // 与「从记录打开便签」用同一套分页规则（旧格式 -------- Page N -------- 以页眉开头，
+        // 直接按分隔符切会得到一个空页，卡片正文就显示不出来）
+        StickyNoteManager.firstPageContent(ofRecordContent: content)
     }
 
     /// 格式化日期显示

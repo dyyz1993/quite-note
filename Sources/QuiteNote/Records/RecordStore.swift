@@ -339,10 +339,15 @@ final class RecordStore: ObservableObject {
 
     // MARK: - Initialization
 
-    init() {
+    convenience init() {
+        self.init(repository: RecordRepository())
+    }
+
+    /// 显式指定数据访问层（测试里用来验证数据库不可用时的行为）
+    init(repository: RecordRepository) {
         // 初始化子组件
         self.searcher = RecordSearcher()
-        self.repository = RecordRepository()
+        self.repository = repository
         self.aiCoordinator = RecordAICOORDINATOR()
         self.notifier = RecordNotifier()
         self.searchHistoryManager = SearchHistory()
@@ -441,9 +446,8 @@ final class RecordStore: ObservableObject {
 
     private func cleanupStickyNotesAfterInitialLoad() {
         // 首屏只加载 100 条；贴纸是否僵尸必须查库，不能把第 100 条之后的记录误判为已删除。
-        StickyNoteManager.shared.cleanupZombieNotes { recordId in
-            (try? repository.find(id: recordId)) != nil
-        }
+        // 数据库没加载成功或查询出错时一律保留（见 stickyNoteRecordExists）
+        StickyNoteManager.shared.cleanupZombieNotes(recordExists: repository.stickyNoteRecordExists)
     }
 
     // MARK: - 核心操作：添加记录
@@ -460,7 +464,9 @@ final class RecordStore: ObservableObject {
         skipAI: Bool = false,
         fileName: String? = nil,
         fileCount: Int? = nil,
-        noteFrame: NSRect? = nil
+        noteFrame: NSRect? = nil,
+        noteColor: String? = nil,
+        synchronousSave: Bool = false
     ) -> Record? {
         print("[DEBUG] RecordStore.addRecord 被调用，内容长度: \(content.count), hash: \(hash), type: \(type)")
         // 1. 检查是否已存在相同哈希的记录
@@ -531,12 +537,25 @@ final class RecordStore: ObservableObject {
             skipAI: skipAI,
             fileCount: fileCount,
             size: calculatedSize,
-            noteFrame: noteFrame
+            noteFrame: noteFrame,
+            noteColor: noteColor
         )
 
-        do { try repository.save(record) }
-        catch {
-            Self.logger.error("保存记录失败: \(error.localizedDescription)")
+        // 默认后台落库（剪贴板采集这类高频路径不阻塞主线程）。synchronousSave = true 时同步落库并
+        // 校验结果、失败返回 nil：便利贴"保存到记录"用——便利贴拿到关联的那一刻，记录必须已经在库里
+        //（启动后的僵尸清理会按"关联的记录在不在库里"决定要不要删便利贴；写库失败也不能让
+        // 便利贴显示成已同步）
+        if synchronousSave {
+            do { try repository.saveSync(record) }
+            catch {
+                Self.logger.error("保存记录失败: \(error.localizedDescription)")
+                return nil
+            }
+        } else {
+            do { try repository.save(record) }
+            catch {
+                Self.logger.error("保存记录失败: \(error.localizedDescription)")
+            }
         }
         print("[DEBUG] 记录已插入数据库，ID: \(id)")
 
@@ -765,21 +784,19 @@ final class RecordStore: ObservableObject {
 
         // 3. 通知 StickyNoteManager 清理关联的便签
         if record.type == .note {
-            print("[DEBUG RecordStore.delete()] 发送 RecordDeleted 通知, ID: \(record.id)")
-            NotificationCenter.default.post(
-                name: NSNotification.Name("RecordDeleted"),
-                object: record.id
-            )
+            QuiteNoteNotification.post(.noteRecordDeleted, object: record.id)
             Self.logger.info("已发送记录删除通知，记录ID: \(record.id)")
         }
         print("[DEBUG RecordStore.delete()] 删除流程完成")
     }
 
-    /// 清空所有记录
+    /// 清空所有记录。已同步到记录的便利贴随之移除（与单条删除的行为一致），
+    /// 不用等到下次启动时的僵尸清理才消失
     func clearAll() {
         records.removeAll()
         aiCoordinator.markTagsNeedUpdate()
         repository.deleteAll()
+        QuiteNoteNotification.post(.recordsCleared)
     }
 
     // MARK: - 通知方法（委托给 notifier）
@@ -976,7 +993,8 @@ final class RecordStore: ObservableObject {
             skipAI: false,
             fileCount: old.fileCount,
             size: old.size,
-            noteFrame: old.noteFrame
+            noteFrame: old.noteFrame,
+            noteColor: old.noteColor
         )
         updated.skipAI = false
         records[index] = updated
@@ -1471,12 +1489,40 @@ final class RecordStore: ObservableObject {
         }
     }
 
+    /// 只更新便签底色。换颜色是即时生效的轻量操作，不必等下一次"更新记录"。
+    /// 同步执行：调用返回时数据库与内存一致（记录卡片随即变色）
+    /// - Returns: 是否写入成功（数据库不可用或写库失败时为 false）
+    @discardableResult
+    func updateNoteColor(id: UUID, color: String?) -> Bool {
+        guard !repository.isStoreUnavailable else { return false }
+        do {
+            try repository.updateNoteColor(id: id, color: color)
+        } catch {
+            Self.logger.error("更新便签底色失败: \(error.localizedDescription)")
+            return false
+        }
+        if let index = records.firstIndex(where: { $0.id == id }) {
+            records[index].noteColor = color   // @Published，卡片随之刷新
+        }
+        return true
+    }
+
     // MARK: - 便签内容更新
 
-    /// 更新便签记录的内容、标题和位置（同步执行，确保更新完成）
+    enum ContentUpdateResult: Equatable {
+        case updated
+        /// 记录已被删除（内存和数据库里都没有）
+        case recordNotFound
+        /// 数据库写入失败
+        case failed(String)
+    }
+
+    /// 更新便签记录的内容、标题和位置（同步执行，调用方拿到结果后再决定后续动作）
     /// - Parameters:
     ///   - skipHistory: 是否跳过历史记录（用于撤销/重做时避免循环）
-    /// - Returns: 是否成功更新（false 表示记录不存在）
+    /// - Returns: updated / recordNotFound / failed。内存里只保留最近 100~200 条记录，
+    ///   查不到时回退查库——便利贴关联的往往是几个月前的记录，不能把"滑出内存窗口"
+    ///   当成"记录不存在"
     @discardableResult
     func updateContent(
         id: UUID,
@@ -1484,76 +1530,77 @@ final class RecordStore: ObservableObject {
         title: String?,
         noteFrame: NSRect?,
         skipHistory: Bool = false
-    ) -> Bool {
-        var success = false
-        var recordExists = false
-
-        // 先检查记录是否存在
-        if let index = records.firstIndex(where: { $0.id == id }) {
-            recordExists = true
-            let oldRecord = records[index]
-
-            // P4.1: 如果内容改变，记录到历史栈（除非 skipHistory 为 true）
-            if !skipHistory && oldRecord.content != content {
-                HistoryManager.shared.push(.edit(recordId: id, oldContent: oldRecord.content, newContent: content))
-            }
-
-            // 创建新的 Record 对象
-            let updatedRecord = Record(
-                id: oldRecord.id,
-                title: title,
-                content: content,
-                createdAt: oldRecord.createdAt,
-                hash: oldRecord.hash,
-                aiStatus: oldRecord.aiStatus,
-                summary: oldRecord.summary,
-                summaryConfidence: oldRecord.summaryConfidence,
-                starred: oldRecord.starred,
-                copiedAt: oldRecord.copiedAt,
-                tags: oldRecord.tags,
-                keywords: oldRecord.keywords,
-                sourceApp: oldRecord.sourceApp,
-                sourceUrl: oldRecord.sourceUrl,
-                type: oldRecord.type,
-                skipAI: oldRecord.skipAI,
-                fileCount: oldRecord.fileCount,
-                size: oldRecord.size,
-                noteFrame: noteFrame ?? oldRecord.noteFrame
-            )
-
-            // 更新内存
-            records[index] = updatedRecord
-
-            // 同步保存到数据库（使用 updateSync 更新现有记录）
+    ) -> ContentUpdateResult {
+        // 库没加载成功时查询不会报错而是"查不到"，必须先拦住：否则会被当成记录已删除
+        guard !repository.isStoreUnavailable else {
+            return .failed("记录数据库未加载成功")
+        }
+        let memoryIndex = records.firstIndex { $0.id == id }
+        let existing: Record?
+        if let memoryIndex {
+            existing = records[memoryIndex]
+        } else {
             do {
-                try repository.updateSync(updatedRecord)
-                Self.logger.info("便签记录已更新: \(id)")
-
-                // 在主线程发送通知和提示
-                DispatchQueue.main.async {
-                    self.notifier.postToast("记录已更新", type: "success")
-                    // 发送记录更新通知，让UI刷新
-                    self.objectWillChange.send()
-                }
-                success = true
+                existing = try repository.find(id: id)
             } catch {
-                Self.logger.error("更新便签记录失败: \(error.localizedDescription)")
-                DispatchQueue.main.async {
-                    self.notifier.postToast("更新失败: \(error.localizedDescription)", type: "error")
-                }
+                Self.logger.error("查询便签记录失败: \(error.localizedDescription)")
+                return .failed(error.localizedDescription)
             }
         }
-
-        if !recordExists {
-            // 记录不存在，发送通知告知便签清除 syncRecordId
+        guard let oldRecord = existing else {
+            // 记录确实不存在：调用方（StickyNoteManager）据返回值解除便利贴的关联
             Self.logger.warning("尝试更新不存在的记录: \(id)")
-            NotificationCenter.default.post(
-                name: NSNotification.Name("StickyNoteUpdateFailed"),
-                object: id
-            )
+            return .recordNotFound
         }
 
-        return success
+        let updatedRecord = Record(
+            id: oldRecord.id,
+            title: title,
+            content: content,
+            createdAt: oldRecord.createdAt,
+            hash: oldRecord.hash,
+            aiStatus: oldRecord.aiStatus,
+            summary: oldRecord.summary,
+            summaryConfidence: oldRecord.summaryConfidence,
+            starred: oldRecord.starred,
+            copiedAt: oldRecord.copiedAt,
+            tags: oldRecord.tags,
+            keywords: oldRecord.keywords,
+            sourceApp: oldRecord.sourceApp,
+            sourceUrl: oldRecord.sourceUrl,
+            type: oldRecord.type,
+            skipAI: oldRecord.skipAI,
+            fileCount: oldRecord.fileCount,
+            size: oldRecord.size,
+            noteFrame: noteFrame ?? oldRecord.noteFrame,
+            noteColor: oldRecord.noteColor
+        )
+
+        // 先落库再更新内存：写库失败时两边不会各说各话
+        do {
+            try repository.updateSync(updatedRecord)
+            Self.logger.info("便签记录已更新: \(id)")
+        } catch {
+            Self.logger.error("更新便签记录失败: \(error.localizedDescription)")
+            DispatchQueue.main.async {
+                self.notifier.postToast("更新失败: \(error.localizedDescription)", type: "error")
+            }
+            return .failed(error.localizedDescription)
+        }
+
+        // P4.1: 内容改变才记历史栈（skipHistory 用于撤销/重做时避免循环）
+        if !skipHistory && oldRecord.content != content {
+            HistoryManager.shared.push(.edit(recordId: id, oldContent: oldRecord.content, newContent: content))
+        }
+        if let memoryIndex {
+            records[memoryIndex] = updatedRecord
+        }
+        DispatchQueue.main.async {
+            self.notifier.postToast("记录已更新", type: "success")
+            // 发送记录更新通知，让UI刷新
+            self.objectWillChange.send()
+        }
+        return .updated
     }
 
     // MARK: - AI 更新

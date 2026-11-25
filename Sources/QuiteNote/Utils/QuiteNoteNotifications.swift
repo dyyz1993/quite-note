@@ -39,13 +39,33 @@ enum QuiteNoteNotification {
     /// 展开/折叠记录卡片
     case expandRecord
 
+    /// 全部记录被清空（已同步到记录的便利贴随之移除）
+    case recordsCleared
+
     // MARK: - 便签相关
 
-    /// 便签保存完成（用于通知 StickyNoteManager 标记已同步）
-    case stickyNoteSaveCompleted
-
-    /// 从记录打开便签
+    /// 从记录打开便签（userInfo: record）
     case openStickyNoteFromRecord
+
+    /// 一条 note 类型的记录被删除，关联的便利贴随之移除（object: recordID）
+    case noteRecordDeleted
+
+    /// 便利贴与记录的关联变化（object: noteID；userInfo 的 recordId 缺省表示解除关联）
+    case stickyNoteSyncChanged
+
+    /// 管理器里的便利贴内容整体更新（object: noteID）
+    case stickyNoteContentUpdated
+
+    /// 鼠标悬停聚焦 / 移开失焦（object: noteID）
+    case stickyNoteFocus
+
+    case stickyNoteBlur
+
+    /// 固定到所有 Space 的状态变化（object: noteID, userInfo: pinned）
+    case stickyNotePinChanged
+
+    /// 在便利贴上显示一条短暂提示（object: noteID, userInfo: message）
+    case stickyNoteHint
 
     // MARK: - 浮动面板相关
 
@@ -120,10 +140,24 @@ enum QuiteNoteNotification {
             return Notification.Name("qn.record.deleted")
         case .expandRecord:
             return Notification.Name("qn.record.expand")
-        case .stickyNoteSaveCompleted:
-            return Notification.Name("qn.stickynote.save.completed")
+        case .recordsCleared:
+            return Notification.Name("qn.record.cleared")
         case .openStickyNoteFromRecord:
             return Notification.Name("qn.stickynote.open.from.record")
+        case .noteRecordDeleted:
+            return Notification.Name("qn.stickynote.record.deleted")
+        case .stickyNoteSyncChanged:
+            return Notification.Name("qn.stickynote.sync.changed")
+        case .stickyNoteContentUpdated:
+            return Notification.Name("qn.stickynote.content.updated")
+        case .stickyNoteFocus:
+            return Notification.Name("qn.stickynote.focus")
+        case .stickyNoteBlur:
+            return Notification.Name("qn.stickynote.blur")
+        case .stickyNotePinChanged:
+            return Notification.Name("qn.stickynote.pin.changed")
+        case .stickyNoteHint:
+            return Notification.Name("qn.stickynote.hint")
         case .restoreFromBall:
             return Notification.Name("qn.panel.restoreFromBall")
         case .updateBallPosition:
