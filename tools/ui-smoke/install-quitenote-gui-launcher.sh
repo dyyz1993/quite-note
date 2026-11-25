@@ -32,7 +32,11 @@ cat > "$PLIST" <<EOF
 EOF
 
 launchctl bootout gui/$(id -u)/$LABEL 2>/dev/null || true
-launchctl bootstrap gui/$(id -u) "$PLIST"
+# bootout 是异步的：KeepAlive 会立刻把旧实例拉回来占住标签，不等就 bootstrap
+# 会报 "Bootstrap failed: 5: Input/output error"（2026-11-25 CI 实锤；手工带间隔
+# 执行同一序列则稳定通过）。间隔 + 一次重试
+sleep 3
+launchctl bootstrap gui/$(id -u) "$PLIST" || { sleep 3; launchctl bootstrap gui/$(id -u) "$PLIST"; }
 launchctl kickstart -k gui/$(id -u)/$LABEL
 sleep 1
 pgrep -f "[g]ui_smoke_launcher.py"
