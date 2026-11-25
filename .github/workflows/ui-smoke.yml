@@ -210,12 +210,17 @@ jobs:
           python3 tools/ui-smoke/snapshot_ui_baseline.py "$RUN_DIR" "$GH_DIR" \
             || { echo "快照未生成（非 PASS？）"; exit 0; }
           cd "$GH_DIR"
+          # 本机到 GitHub 的链路慢且不稳：基线截图的包超过默认 1MB postBuffer 时
+          # 推送会被 400 拒（RPC failed; HTTP 400，2026-11-25 实锤）。放大缓冲 +
+          # 锁 HTTP/1.1 + 失败重试一次
+          git config http.postBuffer 524288000
+          git config http.version HTTP/1.1
           if git status --porcelain | grep -q .; then
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
             git add ui-baseline
             git commit -m "ui-baseline: ${GITHUB_SHA::8} [skip ci]"
-            git push origin gh-pages
+            git push origin gh-pages || { sleep 15; git push origin gh-pages; }
             echo "基线已推送到 gh-pages"
           else
             echo "基线无变化"
