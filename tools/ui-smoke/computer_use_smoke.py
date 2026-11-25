@@ -941,21 +941,11 @@ def smoke_screenshot_toolbar(run: Run, driver: AXDriver) -> str:
     print(f"[stage2] 撑开后 暗带右端 {band2:.0f}/1432 {'✓红钮屏内' if inside2 else '✗出屏'}")
     assert inside2, f"撑开后主栏出屏: {band2:.0f}"
 
-    # 点图形组展开二级（蓝钮-38pt）
-    _click_overlay(B2[0] - 38, B2[1])
-    p3 = _snap_overlay(run, "stage3_sub")
-    B3, _ = _toolbar_anchor(decode(p3), "二级面板", height)
-    sub = find_sub(p3, B3[1])
-    assert sub, "二级面板未展开"
-    gap = sub["gap"]
-    inside3 = sub["x0"] >= 8 and sub["x1"] <= 1432
-    anchored = abs((sub["x0"] + sub["x1"]) / 2 - B3[0] + 38) <= 40
-    print(f"[stage3] 二级 间隙={gap:.0f}pt 锚定偏差={abs((sub['x0']+sub['x1'])/2 - B3[0] + 38):.0f}pt 屏内={'Y' if inside3 else 'N'}")
-    assert inside3, "二级出屏"
-
+    # 二级栏阶段（点图形组展开二级 + find_sub 像素标定）已按 63774d0 移除：
+    # 右缘选中时工具条 pill 被钳制，像素带不可靠（当年删了实现漏了这个调用点，
+    # 导致该用例一直以 NameError 失败——2026-11-25 补齐删除）
     _press_escape()
-    return (f"edge layout ok: 默认带右端 {band1:.0f}→撑开 {band2:.0f} 均屏内, "
-            f"二级间隙 {gap:.0f}pt 锚定偏差 {abs((sub['x0']+sub['x1'])/2 - B3[0] + 38):.0f}pt")
+    return (f"edge layout ok: 默认带右端 {band1:.0f}→撑开 {band2:.0f} 均屏内")
 
 
 def dark_band_right(path, width, row_cy):
