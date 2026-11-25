@@ -7,7 +7,9 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  # write：PASS 后的基线快照要推 gh-pages 的 ui-baseline/（read 时 git 被 403 拒绝，
+  # 2026-11-25 实锤——冒烟 9/9 全过但归档步骤失败）
+  contents: write
 
 concurrency:
   group: ui-smoke-${{ github.ref }}
