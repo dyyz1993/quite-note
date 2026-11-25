@@ -21,6 +21,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # 本步骤曾裸连 GitHub 克隆依赖：大包在 ~80KB/s 下断流（"invalid index-pack
+      # output"），resolve 直接失败（b98935d 轮 UI Smoke 实锤）。test.yml /
+      # build-macos.yml 早已配好缓存 + 预热，这两段与之保持一致（2026-11-25 补齐）
+      - name: 缓存 SwiftPM 构建产物
+        uses: actions/cache@v4
+        with:
+          path: .build
+          key: swift-build-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
+
+      - name: 预热 SwiftPM 依赖缓存（自托管）
+        run: |
+          SRC="/Users/xuyingzhou/Library/Caches/org.swift.swiftpm"
+          DST="$HOME/Library/Caches/org.swift.swiftpm"
+          if [ -d "$SRC" ]; then
+            mkdir -p "$DST"
+            rsync -a --delete "$SRC/repositories/" "$DST/repositories/" 2>/dev/null || true
+            rsync -a "$SRC/artifacts/" "$DST/artifacts/" 2>/dev/null || true
+            echo "SwiftPM cache primed: $(ls "$DST/repositories" 2>/dev/null | wc -l | tr -d ' ') repos, $(ls "$DST/artifacts" 2>/dev/null | wc -l | tr -d ' ') artifacts"
+          else
+            echo "WARN: 开发机 SwiftPM 缓存不存在，回退网络下载"
+          fi
+
       - name: Prepare CI keychain for codesigning
         env:
           QN_UI_CERTIFICATE_P12_BASE64: ${{ secrets.MAC_CERTIFICATE_P12_BASE64 }}
