@@ -73,10 +73,20 @@ jobs:
           # rpath 必须与 build-app.sh 的构建路径一致（@executable_path/../Frameworks）：
           # Sparkle.framework 装在 Contents/Frameworks，二进制以 @rpath 引用——
           # 没有这条 dyld 找不到框架，启动即 SIGABRT（2026-11-19 xyz-mac 实锤）
+          # LEGACY_CI_SDK + solver 阈值与 build-app.sh 保持一致：GitHub 的 macos-15
+          # runner SDK 较老，语音 UI 需要这个编译条件（缺了在属性声明处直接编译失败）
           swift build -c release --arch x86_64 --arch arm64 --product QuiteNote \
+            -Xswiftc -D -Xswiftc LEGACY_CI_SDK \
+            -Xswiftc -Xfrontend -Xswiftc -solver-expression-time-threshold=1000 \
             -Xlinker -rpath -Xlinker @executable_path/../Frameworks
           mkdir -p .build/release
-          cp .build/apple/Products/Release/QuiteNote .build/release/QuiteNote
+          # 产物路径随构建系统漂移：老 SwiftPM 在 .build/apple/…，新 swiftbuild 在 .build/out/…
+          UNIVERSAL_BIN=""
+          for CAND in .build/apple/Products/Release/QuiteNote .build/out/Products/Release/QuiteNote; do
+            [ -f "$CAND" ] && UNIVERSAL_BIN="$CAND" && break
+          done
+          [ -n "$UNIVERSAL_BIN" ] || { echo "universal binary not found in .build"; exit 1; }
+          cp "$UNIVERSAL_BIN" .build/release/QuiteNote
           [[ -n "$APP_SIGN_IDENTITY" ]] || { echo "APP_SIGN_IDENTITY was not prepared"; exit 2; }
           ./build-app.sh --dev --no-build --no-launch
 
