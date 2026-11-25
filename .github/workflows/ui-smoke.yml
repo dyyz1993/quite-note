@@ -86,6 +86,9 @@ jobs:
             [ -f "$CAND" ] && UNIVERSAL_BIN="$CAND" && break
           done
           [ -n "$UNIVERSAL_BIN" ] || { echo "universal binary not found in .build"; exit 1; }
+          # .build/release 是指向 .build/out/Products/Release 的符号链接：源和目标可能是
+          # 同一个文件，直接 cp 会报 "are identical" 退出 1（2026-11-25 实锤）——先删再拷
+          rm -f .build/release/QuiteNote
           cp "$UNIVERSAL_BIN" .build/release/QuiteNote
           [[ -n "$APP_SIGN_IDENTITY" ]] || { echo "APP_SIGN_IDENTITY was not prepared"; exit 2; }
           ./build-app.sh --dev --no-build --no-launch
