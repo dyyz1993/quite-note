@@ -45,7 +45,7 @@ jobs:
       - name: 从 CHANGELOG 提取发版说明
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          awk -v v="$VERSION" \ '
+          awk -v v="$VERSION" '
             index($0, "## [" v "]") == 1 {f=1; next}
             index($0, "## [") == 1 && f {exit}
             f
