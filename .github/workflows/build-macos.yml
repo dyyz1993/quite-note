@@ -46,11 +46,6 @@ jobs:
         echo "APP_SIGN_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
         rm -f "$CERT"
 
-    - name: Cleanup CI keychain
-      if: always()
-      run: |
-        security delete-keychain "$RUNNER_TEMP/qn-build-signing.keychain-db" || true
-
     - name: 设置Xcode
       uses: maxim-lobanov/setup-xcode@v1
       with:
@@ -126,6 +121,11 @@ jobs:
           echo "❌ DMG 创建失败"
           exit 1
         fi
+
+    - name: Cleanup CI keychain
+      if: always()
+      run: |
+        security delete-keychain "$RUNNER_TEMP/qn-build-signing.keychain-db" || true
 
     - name: 上传构建产物
       uses: actions/upload-artifact@v4
