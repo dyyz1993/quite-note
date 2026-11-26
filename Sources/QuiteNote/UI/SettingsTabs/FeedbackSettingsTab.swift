@@ -196,7 +196,7 @@ struct FeedbackSettingsTab: View {
     // MARK: - 反馈内容
 
     private var contentSection: some View {
-        section(title: "反馈内容", icon: .bug) {
+        SettingsSectionCard(title: "反馈内容", icon: .bug) {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 8) {
                     ForEach(FeedbackKind.allCases) { k in
@@ -264,7 +264,7 @@ struct FeedbackSettingsTab: View {
     // MARK: - 截图附件
 
     private var attachmentSection: some View {
-        section(title: "截图附件（可选）", icon: .camera) {
+        SettingsSectionCard(title: "截图附件（可选）", icon: .camera) {
             VStack(alignment: .leading, spacing: 10) {
                 if model.attachments.isEmpty {
                     HStack(spacing: 12) {
@@ -352,7 +352,7 @@ struct FeedbackSettingsTab: View {
     // MARK: - 自动附带
 
     private var envSection: some View {
-        section(title: "自动附带", icon: .cpu) {
+        SettingsSectionCard(title: "自动附带", icon: .cpu) {
             VStack(alignment: .leading, spacing: 8) {
                 envRow("App 版本", "\(env.appVersion) · \(env.channelLabel)")
                 envRow("系统", env.osVersion)
@@ -436,22 +436,5 @@ struct FeedbackSettingsTab: View {
             accepted = true
         }
         return accepted
-    }
-
-    // MARK: - 容器
-
-    private func section<Content: View>(title: String, icon: IconName, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 8) {
-                LucideView(name: icon, size: 16, color: .themeBlue400)
-                Text(title)
-                    .font(.themeH2)
-                    .foregroundColor(.themeTextPrimary)
-            }
-            content()
-        }
-        .padding(16)
-        .background(Color.themeCard)
-        .cornerRadius(12)
     }
 }

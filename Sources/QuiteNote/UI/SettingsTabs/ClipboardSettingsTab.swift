@@ -39,7 +39,7 @@ struct ClipboardSettingsTab: View {
     // MARK: - 8.1 总开关
 
     private var masterSection: some View {
-        section(title: "剪贴板历史", icon: .clipboardList) {
+        SettingsSectionCard(title: "剪贴板历史", icon: .clipboardList) {
             VStack(spacing: 12) {
                 ToggleRow(
                     title: "启用剪贴板历史",
@@ -99,7 +99,7 @@ struct ClipboardSettingsTab: View {
     @ViewBuilder
     private var storageHealthSection: some View {
         if let storageError = store.storageErrorDescription {
-            section(title: "存储状态", icon: .database) {
+            SettingsSectionCard(title: "存储状态", icon: .database) {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 6) {
                         LucideView(name: .alertTriangle, size: 12, color: .themeStatusError)
@@ -125,7 +125,7 @@ struct ClipboardSettingsTab: View {
     private var devCoreSection: some View {
         #if DEBUG
         if coreMonitor.isDevBuild {
-            section(title: "常驻核心（Dev）", icon: .activity) {
+            SettingsSectionCard(title: "常驻核心（Dev）", icon: .activity) {
                 VStack(alignment: .leading, spacing: 10) {
                     if let snapshot = coreMonitor.snapshot, let pid = coreMonitor.launchdPID {
                         coreStatusRow("状态", snapshot.running ? "运行中" : "已停止")
@@ -202,7 +202,7 @@ struct ClipboardSettingsTab: View {
     // MARK: - 8.2 记录内容
 
     private var captureSection: some View {
-        section(title: "记录内容", icon: .filter) {
+        SettingsSectionCard(title: "记录内容", icon: .filter) {
             VStack(spacing: 12) {
                 ToggleRow(title: "记录文本", subtitle: "普通文字、代码、命令",
                           isOn: Binding(get: { prefs.clipboardRecordText }, set: { prefs.setClipboardRecordText($0) }))
@@ -221,7 +221,7 @@ struct ClipboardSettingsTab: View {
     // MARK: - 8.3 图片 OCR
 
     private var ocrSection: some View {
-        section(title: "图片文字识别（OCR）", icon: .scanText) {
+        SettingsSectionCard(title: "图片文字识别（OCR）", icon: .scanText) {
             VStack(spacing: 12) {
                 ToggleRow(title: "启用图片 OCR", subtitle: "本地 Vision 识别，不联网、不上传",
                           isOn: Binding(get: { prefs.clipboardEnableOCR }, set: { prefs.setClipboardEnableOCR($0) }))
@@ -250,7 +250,7 @@ struct ClipboardSettingsTab: View {
     // MARK: - 8.4 快捷键
 
     private var shortcutSection: some View {
-        section(title: "快捷键", icon: .keyboard) {
+        SettingsSectionCard(title: "快捷键", icon: .keyboard) {
             VStack(spacing: 12) {
                 HStack {
                     Text("打开历史面板")
@@ -297,7 +297,7 @@ struct ClipboardSettingsTab: View {
     // MARK: - 8.5 历史保留
 
     private var retentionSection: some View {
-        section(title: "历史保留", icon: .timer) {
+        SettingsSectionCard(title: "历史保留", icon: .timer) {
             VStack(spacing: 12) {
                 HStack {
                     Text("最大保存条数")
@@ -378,7 +378,7 @@ struct ClipboardSettingsTab: View {
     // MARK: - 8.6 隐私
 
     private var privacySection: some View {
-        section(title: "隐私", icon: .shieldCheck) {
+        SettingsSectionCard(title: "隐私", icon: .shieldCheck) {
             VStack(spacing: 12) {
                 HStack(spacing: 8) {
                     LucideView(name: .hardDrive, size: 13, color: .themeGreen500)
@@ -484,22 +484,5 @@ struct ClipboardSettingsTab: View {
     private func openDataDirectory() {
         let dir = FileCoordinator.shared.getDirectoryURL(for: .clipboard)
         NSWorkspace.shared.open(dir.deletingLastPathComponent()) // Attachments 根目录
-    }
-
-    // MARK: - 分区容器
-
-    private func section<Content: View>(title: String, icon: IconName, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 8) {
-                LucideView(name: icon, size: 16, color: .themeBlue400)
-                Text(title)
-                    .font(.themeH2)
-                    .foregroundColor(.themeTextPrimary)
-            }
-            content()
-        }
-        .padding(16)
-        .background(Color.themeCard)
-        .cornerRadius(12)
     }
 }

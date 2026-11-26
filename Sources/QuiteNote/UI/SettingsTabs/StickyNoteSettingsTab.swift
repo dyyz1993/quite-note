@@ -5,7 +5,7 @@ import Combine
 /// 设置 → 便利贴（快捷键配置 + 冲突提示 + 默认底色 + 使用说明）
 ///
 /// 本 Tab 的偏好全部即时写入（与启动器 Tab 同款），footer 不放保存按钮。
-/// 新增 section 的做法：写一个 `private var xxxSection: some View`（照 `section(title:icon:)` 的卡片样式），
+/// 新增 section 的做法：直接用共享卡片 `SettingsSectionCard(title:icon:content:)`，
 /// 再加进 `body` 的列表；文案一律 `L("sticky.settings.*", fallback:)` 并补两份 Localizable.strings。
 struct StickyNoteSettingsTab: View {
     @ObservedObject private var prefs = PreferencesManager.shared
@@ -41,7 +41,7 @@ struct StickyNoteSettingsTab: View {
     }
 
     private var shortcutSection: some View {
-        section(title: L("sticky.settings.shortcut.title", fallback: "快捷键"), icon: .keyboard) {
+        SettingsSectionCard(title: L("sticky.settings.shortcut.title", fallback: "快捷键"), icon: .keyboard) {
             VStack(alignment: .leading, spacing: 16) {
                 StickyShortcutRow(
                     title: L("sticky.settings.shortcut.newNote", fallback: "新建便利贴"),
@@ -94,7 +94,7 @@ struct StickyNoteSettingsTab: View {
 
     /// 新建便利贴用的底色。深色系柔和色，明度一致，正文始终是白色（对比度见 StickyNoteColorTests）
     private var defaultColorSection: some View {
-        section(title: L("sticky.settings.color.title", fallback: "默认颜色"), icon: .palette) {
+        SettingsSectionCard(title: L("sticky.settings.color.title", fallback: "默认颜色"), icon: .palette) {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 10) {
                     ForEach(StickyNoteColor.allCases) { color in
@@ -134,7 +134,7 @@ struct StickyNoteSettingsTab: View {
     // MARK: - 使用说明
 
     private var usageSection: some View {
-        section(title: L("sticky.settings.usage.title", fallback: "使用说明"), icon: .scroll) {
+        SettingsSectionCard(title: L("sticky.settings.usage.title", fallback: "使用说明"), icon: .scroll) {
             VStack(alignment: .leading, spacing: 10) {
                 explanationRow(L("sticky.settings.usage.hover", fallback: "鼠标悬停"),
                                L("sticky.settings.usage.hover.detail", fallback: "鼠标移到便利贴上即可直接输入，无需先点击"))
@@ -191,23 +191,6 @@ struct StickyNoteSettingsTab: View {
                     .foregroundColor(.themeTextTertiary)
             }
         }
-    }
-
-    // MARK: - 容器（与 LauncherSettingsTab 同款卡片）
-
-    private func section<Content: View>(title: String, icon: IconName, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 8) {
-                LucideView(name: icon, size: 16, color: .themeBlue400)
-                Text(title)
-                    .font(.themeH2)
-                    .foregroundColor(.themeTextPrimary)
-            }
-            content()
-        }
-        .padding(16)
-        .background(Color.themeCard)
-        .cornerRadius(12)
     }
 }
 
