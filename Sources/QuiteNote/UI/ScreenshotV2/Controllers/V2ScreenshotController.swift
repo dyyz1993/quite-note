@@ -112,7 +112,7 @@ class V2ScreenshotController {
             // 关键：确保面板在对应的屏幕上
             panel.setFrame(screen.frame, display: true)
 
-            let hostingView = V2ScreenshotHostingView(rootView: view)
+            let hostingView = NSHostingView(rootView: view)
             hostingView.frame = NSRect(origin: .zero, size: screen.frame.size)
             hostingView.wantsLayer = true
             hostingView.layer?.backgroundColor = NSColor.clear.cgColor
@@ -225,14 +225,12 @@ class V2ScreenshotController {
     }
 
     /// 会话存续期间强制保持 App 活跃与面板置顶。
-    /// 长图采集期间跳过：目标应用必须保持前台以接收滚动/点击，此时不能抢焦点。
     private static func refocusScreenshotSession() {
         guard !debugPanels.isEmpty else {
             focusWatchdogTimer?.invalidate()
             focusWatchdogTimer = nil
             return
         }
-        guard !V2PrimaryScreenStateManager.shared.isCapturing else { return }
         if !NSApp.isActive {
             NSApp.activate(ignoringOtherApps: true)
         }

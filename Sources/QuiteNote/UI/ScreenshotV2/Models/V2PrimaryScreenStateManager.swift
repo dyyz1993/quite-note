@@ -1,13 +1,5 @@
 import SwiftUI
 
-/// 绘图路径（保留用于简单画线）
-struct DrawingPath: Identifiable {
-    let id = UUID()
-    var points: [CGPoint]
-    var color: Color = .red
-    var lineWidth: CGFloat = 4.0
-}
-
 /// 主屏幕状态管理器 - 用于动态通知所有视图当前哪个是主屏幕
 @MainActor
 class V2PrimaryScreenStateManager: ObservableObject {
@@ -24,46 +16,6 @@ class V2PrimaryScreenStateManager: ObservableObject {
     var isEditing: Bool {
         !elements.isEmpty || selectedTool != .cursor
     }
-    
-    /// 是否正在执行长图采集 (用于隐藏 UI)
-    @Published var isCapturing: Bool = false
-
-    /// ✨ 新增：当前滚动偏移量（用于在预览面板上显示视口指示器）
-    @Published var currentScrollOffset: CGFloat = 0
-
-    /// ✨ 新增：每帧的滚动位置记录（用于精确的滚回引导）
-    /// Key: 帧索引, Value: 滚动偏移量（像素）
-    @Published var frameScrollPositions: [Int: CGFloat] = [:]
-
-    // ✨ 新增：质量监控相关状态（已移除拼接功能）
-
-    /// 是否显示质量警告面板（已移除）
-    @Published var showQualityWarning: Bool = false
-
-    // ✨ 新增：视觉引导相关状态
-
-    /// 是否显示滚回引导
-    @Published var isShowingScrollBackGuide: Bool = false
-
-    /// 引导目标帧索引
-    @Published var guideTargetFrameIndex: Int = 0
-
-    /// 引导目标滚动偏移
-    @Published var guideTargetScrollOffset: CGFloat = 0
-
-    /// 引导距离目标的像素距离
-    @Published var guideDistanceToTarget: CGFloat = 0
-
-    // ✨ 新增：像素检测相关状态
-
-    /// 上一次检测到的变化百分比（用于 UI 显示）
-    @Published var lastChangePercentage: CGFloat = 0
-
-    /// 像素检测是否启用
-    @Published var pixelDetectionEnabled: Bool = true
-
-    /// 检测到的静止帧数（连续未达到阈值的帧数）
-    @Published var staticFrameCount: Int = 0
 
     // MARK: - 完整标注系统状态
 
@@ -155,9 +107,6 @@ class V2PrimaryScreenStateManager: ObservableObject {
     /// ✨ 新增：Toast 消息
     @Published var toastMessage: String? = nil
     @Published var toastType: String = "info"
-
-    /// 绘图路径列表（保留兼容，但推荐使用 elements）
-    @Published var drawingPaths: [DrawingPath] = []
     
     /// 当前全局悬停的矩形（用于跨屏幕显示唯一黄色线框）
     @Published var globalHoveredRect: CGRect?
@@ -188,13 +137,6 @@ class V2PrimaryScreenStateManager: ObservableObject {
         primaryScreen = nil
         selectedArea = nil
         selectionScreen = nil
-        isCapturing = false
-        currentScrollOffset = 0  // ✅ 新增：清除滚动偏移
-        frameScrollPositions = [:]  // ✅ 新增：清除帧滚动位置记录
-        lastChangePercentage = 0  // ✅ 新增：清除像素变化百分比
-        pixelDetectionEnabled = true  // ✅ 新增：重置像素检测启用状态
-        staticFrameCount = 0  // ✅ 新增：清除静止帧计数
-        drawingPaths = []
         globalHoveredRect = nil
         globalHoveredLabel = nil
         hoverScreen = nil
@@ -246,21 +188,6 @@ class V2PrimaryScreenStateManager: ObservableObject {
         }
     }
 
-    /// 切换采集状态
-    func setCapturing(_ capturing: Bool) {
-        isCapturing = capturing
-    }
-    
-    /// 添加路径
-    func addPath(_ path: DrawingPath) {
-        drawingPaths.append(path)
-    }
-    
-    /// 清除路径
-    func clearPaths() {
-        drawingPaths = []
-    }
-    
     /// 更新全局悬停状态
     func updateHover(_ rect: CGRect?, label: String?, on screen: NSScreen?) {
         globalHoveredRect = rect

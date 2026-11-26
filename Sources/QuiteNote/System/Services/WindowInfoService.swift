@@ -98,14 +98,4 @@ class WindowInfoService {
 
         return .success(windows)
     }
-
-    /// 获取主屏幕尺寸
-    var mainScreenSize: CGSize {
-        return NSScreen.main?.frame.size ?? .zero
-    }
-
-    /// 获取主屏幕框架
-    var mainScreenFrame: CGRect {
-        return NSScreen.main?.frame ?? .zero
-    }
 }

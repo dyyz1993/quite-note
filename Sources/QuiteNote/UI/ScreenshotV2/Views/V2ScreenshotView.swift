@@ -423,12 +423,10 @@ struct V2ScreenshotView: View {
 
                 // 新增：截图工具栏 (仅在有选区时显示)
                 if let selection = localSelectedArea {
-                    if !primaryScreenManager.isCapturing {
-                        // 普通截图模式：显示标注工具栏
-                        V2FloatingToolbar(selection: selection, screen: screen)
-                            .zIndex(1000) // ⚠️ 最顶层：工具栏始终可点击
-                            .allowsHitTesting(true) // ⚠️ 关键：显式启用工具栏事件接收
-                    }
+                    // 普通截图模式：显示标注工具栏
+                    V2FloatingToolbar(selection: selection, screen: screen)
+                        .zIndex(1000) // ⚠️ 最顶层：工具栏始终可点击
+                        .allowsHitTesting(true) // ⚠️ 关键：显式启用工具栏事件接收
                 }
                 
                 // ✨ 新增：Toast 提示层
@@ -448,18 +446,12 @@ struct V2ScreenshotView: View {
                         .animation(.easeOut(duration: ThemeDuration._300.rawValue), value: message)
                 }
 
-                // 采集过程中的悬浮停止按钮由独立窗口承载，
-                // 这里保留 isCapturing 分支避免改动布局层级
-                if primaryScreenManager.isCapturing {
-                    // 空实现，UI 已经由独立窗口承载
-                }
-
                 // ⚠️ 放大镜预览 (隶属于 Layer 5)
                 // 约束规则：
                 // 1. 仅在鼠标当前所在的屏幕显示 (isCurrentlyPrimary)
                 // 2. 仅在尚未完成选区 (Phase 0) 且 未开始拖拽 时显示
                 // 3. 必须监测到鼠标移动过 (hasMouseMoved)
-                if isCurrentlyPrimary && !hasAnySelection && dragStartPoint == nil && hasMouseMoved && !primaryScreenManager.isCapturing {
+                if isCurrentlyPrimary && !hasAnySelection && dragStartPoint == nil && hasMouseMoved {
                     MagnifierView(
                         snapshot: snapshot,
                         location: mouseLocation,
