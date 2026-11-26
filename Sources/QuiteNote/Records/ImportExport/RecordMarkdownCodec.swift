@@ -2,8 +2,10 @@ import Foundation
 import os.log
 
 /// 记录的 Markdown 导出/导入编解码。纯类型，不依赖 RecordStore 与任何单例，
-/// RecordStore 只负责调用与落库。解析逻辑从原实现逐字搬运——宽松之处
-/// （总结行解析保留 "**总结**：" 前缀残留、内容里的裸 "---" 行会被丢掉）都是现状语义，不要顺手"修"
+/// RecordStore 只负责调用与落库。解析逻辑从 RecordStore 原实现搬出（2026-11-26），
+/// 导出格式没变；搬运时顺带修了三处让"导出再导入"不保真的地方——总结并进正文、
+/// 正文里的 "---" 被丢、以"标签 / 关键词"开头的正文首行被当成元数据（见 parse 的注释）。
+/// 仍然不保真的地方：正文里以 "## " 开头的行会被当成下一条记录的标题（格式的固有歧义）
 enum RecordMarkdownCodec {
     private static let logger = Logger(subsystem: "com.quitenote.app", category: "RecordMarkdownCodec")
 
@@ -147,8 +149,8 @@ enum RecordMarkdownCodec {
                     continue
                 }
 
-                // 标签
-                if line.hasPrefix("**标签**") || line.hasPrefix("标签") {
+                // 标签（前缀必须带到冒号：正文以"标签"两个字开头的记录，首行不是元数据）
+                if line.hasPrefix("**标签**：") || line.hasPrefix("标签：") {
                     let tagsStr = line.replacingOccurrences(of: "**标签**：", with: "")
                                   .replacingOccurrences(of: "标签：", with: "")
                     tags = tagsStr.components(separatedBy: "、").map { $0.trimmingCharacters(in: .whitespaces) }
@@ -156,8 +158,8 @@ enum RecordMarkdownCodec {
                     continue
                 }
 
-                // 关键词
-                if line.hasPrefix("**关键词**") || line.hasPrefix("关键词") {
+                // 关键词（同上，前缀必须带到冒号）
+                if line.hasPrefix("**关键词**：") || line.hasPrefix("关键词：") {
                     let keywordsStr = line.replacingOccurrences(of: "**关键词**：", with: "")
                                      .replacingOccurrences(of: "关键词：", with: "")
                     keywords = keywordsStr.components(separatedBy: "、").map { $0.trimmingCharacters(in: .whitespaces) }
@@ -166,7 +168,7 @@ enum RecordMarkdownCodec {
                 }
 
                 // 来源
-                if line.hasPrefix("**来源**") {
+                if line.hasPrefix("**来源**：") {
                     i += 1
                     continue
                 }
@@ -177,11 +179,16 @@ enum RecordMarkdownCodec {
                     continue
                 }
 
-                // 总结
+                // 总结（写在正文之前的手写文件）。只剥行首的引用符和"总结："标记——
+                // 标记后面才是总结正文，别把标记留在内容里
                 if line.hasPrefix(">") {
-                    summary = line.replacingOccurrences(of: "> ", with: "")
-                               .replacingOccurrences(of: ">**总结**：", with: "")
-                               .replacingOccurrences(of: "> 总结：", with: "")
+                    var text = line.drop(while: { $0 == ">" || $0 == " " })
+                    if text.hasPrefix("**总结**：") {
+                        text = text.dropFirst("**总结**：".count)
+                    } else if text.hasPrefix("总结：") {
+                        text = text.dropFirst("总结：".count)
+                    }
+                    summary = String(text)
                     i += 1
                     continue
                 }
@@ -190,14 +197,25 @@ enum RecordMarkdownCodec {
                 break
             }
 
-            // 收集剩余内容
-            while i < lines.count {
-                let line = lines[i]
-                if line != "---" {
-                    content += line + "\n"
-                }
-                i += 1
+            // 收集正文。导出格式是「正文 … 空行 … > **总结**：… 空行 … ---」：
+            // 只剥掉节末那一条分隔线（正文里的 "---" 是内容，要留着）；正文开始后，
+            // 前面隔了一个空行的 "> **总结**：" 行起到节末都是总结。旧实现把所有 "---"
+            // 都丢掉、也认不出正文之后的总结行——自己导出的文件再导入，正文被改写、
+            // 哈希对不上还会重复入库
+            var bodyLines = i < lines.count ? Array(lines[i...]) : []
+            if let lastText = bodyLines.lastIndex(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty }),
+               bodyLines[lastText].trimmingCharacters(in: .whitespaces) == "---" {
+                bodyLines.removeSubrange(lastText...)
             }
+            if summary == nil,
+               let marker = bodyLines.firstIndex(where: { $0.hasPrefix("> **总结**：") }),
+               marker > 0, bodyLines[marker - 1].trimmingCharacters(in: .whitespaces).isEmpty {
+                var summaryLines = Array(bodyLines[marker...])
+                summaryLines[0] = String(summaryLines[0].dropFirst("> **总结**：".count))
+                summary = summaryLines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+                bodyLines.removeSubrange(marker...)
+            }
+            content = bodyLines.joined(separator: "\n")
 
             // 去重后待落库
             let trimmedContent = content.trimmingCharacters(in: .whitespacesAndNewlines)

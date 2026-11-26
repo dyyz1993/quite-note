@@ -2,7 +2,7 @@ import XCTest
 @testable import QuiteNote
 
 /// RecordMarkdownCodec：导出 → 导入往返、三种日期格式、畸形输入不崩。
-/// 解析逻辑是从 RecordStore 原实现逐字搬运的现状语义，这里把行为钉住
+/// 解析逻辑从 RecordStore 原实现搬出；"导出再导入"必须保真（总结回 summary、正文一字不改）
 final class RecordMarkdownCodecTests: XCTestCase {
 
     // MARK: - 往返恒等
@@ -34,9 +34,9 @@ final class RecordMarkdownCodecTests: XCTestCase {
         XCTAssertEqual(parsed.createdAt, record.createdAt, "ISO8601 日期要精确往返")
     }
 
-    /// 现状语义（搬运钉死）：导出把"总结"写在正文之后，而解析器的元数据循环
-    /// 在第一行正文就 break——导出的总结回不到 summary 字段，会并进正文
-    func testExportedSummaryLandsInsideContentOnImport() {
+    /// 导出把"总结"写在正文之后：再导入时要回到 summary 字段，正文一字不改
+    /// （旧实现在第一行正文就停了元数据循环，总结并进正文——内容变了，哈希对不上还会重复入库）
+    func testExportedSummaryRoundTripsToSummaryField() {
         let record = QuiteNote.Record(
             id: UUID(),
             content: "正文",
@@ -49,14 +49,82 @@ final class RecordMarkdownCodecTests: XCTestCase {
         let result = RecordMarkdownCodec.parse(markdown, skippingExistingHashes: [])
 
         XCTAssertEqual(result.imported.count, 1)
-        XCTAssertNil(result.imported[0].summary, "导出的总结不会解析回 summary 字段（现状如此）")
-        XCTAssertTrue(result.imported[0].content.contains("> **总结**：要点总结"), "总结行并进正文")
+        XCTAssertEqual(result.imported[0].summary, "要点总结")
+        XCTAssertEqual(result.imported[0].content, "正文")
 
-        // 只有总结写在元数据区（正文之前）的手写文件才解析得出 summary，
-        // 且 "> **总结**：" 前缀处理有残留——同样是现状
+        // 总结写在正文之前的手写文件：引用符和"总结："标记不留在内容里
         let handwritten = "手写记录\n> **总结**：手写总结\n\n正文在此"
         let parsedHandwritten = RecordMarkdownCodec.parse(handwritten, skippingExistingHashes: [])
-        XCTAssertEqual(parsedHandwritten.imported[0].summary, "**总结**：手写总结")
+        XCTAssertEqual(parsedHandwritten.imported[0].summary, "手写总结")
+        XCTAssertEqual(parsedHandwritten.imported[0].content, "正文在此")
+    }
+
+    /// 多行总结也回到 summary 字段，正文不受影响
+    func testExportedMultilineSummaryRoundTrips() {
+        let record = QuiteNote.Record(
+            id: UUID(),
+            content: "第一行\n第二行",
+            createdAt: Date(timeIntervalSince1970: 1_742_000_000),
+            hash: "rt-summary-multi",
+            summary: "要点一\n要点二"
+        )
+
+        let result = RecordMarkdownCodec.parse(RecordMarkdownCodec.export([record]), skippingExistingHashes: [])
+
+        XCTAssertEqual(result.imported[0].summary, "要点一\n要点二")
+        XCTAssertEqual(result.imported[0].content, "第一行\n第二行")
+    }
+
+    /// 正文里的 "---" 是内容：只剥掉记录之间的分隔线，正文里的要留着
+    func testSeparatorLinesInsideContentSurviveRoundTrip() {
+        let record = QuiteNote.Record(
+            id: UUID(),
+            content: "上\n---\n下",
+            createdAt: Date(timeIntervalSince1970: 1_742_000_000),
+            hash: "rt-separator"
+        )
+
+        let result = RecordMarkdownCodec.parse(RecordMarkdownCodec.export([record]), skippingExistingHashes: [])
+
+        XCTAssertEqual(result.imported.count, 1)
+        XCTAssertEqual(result.imported[0].content, "上\n---\n下")
+    }
+
+    /// 正文以"标签 / 关键词"这类字样开头时，首行不是元数据（前缀必须带到冒号才算）
+    func testContentStartingWithMetadataLikeWordIsKept() {
+        let record = QuiteNote.Record(
+            id: UUID(),
+            title: "命名规范",
+            content: "标签体系说明\n关键词研究",
+            createdAt: Date(timeIntervalSince1970: 1_742_000_000),
+            hash: "rt-lookalike"
+        )
+
+        let result = RecordMarkdownCodec.parse(RecordMarkdownCodec.export([record]), skippingExistingHashes: [])
+
+        XCTAssertEqual(result.imported.count, 1)
+        XCTAssertEqual(result.imported[0].tags, [])
+        XCTAssertEqual(result.imported[0].keywords, [])
+        XCTAssertEqual(result.imported[0].content, "标签体系说明\n关键词研究")
+    }
+
+    /// 导出再导入的内容哈希与原内容一致：已有记录按内容去重，不会重复入库
+    func testExportedRecordIsSkippedWhenItsContentAlreadyExists() {
+        let record = QuiteNote.Record(
+            id: UUID(),
+            content: "已存在的正文",
+            createdAt: Date(timeIntervalSince1970: 1_742_000_000),
+            hash: "rt-dup",
+            summary: "已存在的总结"
+        )
+
+        let result = RecordMarkdownCodec.parse(
+            RecordMarkdownCodec.export([record]),
+            skippingExistingHashes: [RecordMarkdownCodec.contentHash("已存在的正文")]
+        )
+
+        XCTAssertTrue(result.imported.isEmpty)
+        XCTAssertEqual(result.skippedCount, 1)
     }
 
     /// 导出逆序（旧记录在前），导入保持文件顺序；无标题记录往返为 nil 标题
