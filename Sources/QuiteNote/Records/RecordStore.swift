@@ -589,9 +589,11 @@ final class RecordStore: ObservableObject {
                 return nil
             }
         } else {
-            do { try repository.save(record) }
-            catch {
-                Self.logger.error("保存记录失败: \(error.localizedDescription)")
+            // 后台落库；失败时记录只在内存里、重启即丢，必须让用户知道
+            repository.save(record) { [weak self] result in
+                if case .failure = result {
+                    self?.postToast("记录没能写进数据库，重启后会丢失", type: "error")
+                }
             }
         }
         print("[DEBUG] 记录已插入数据库，ID: \(id)")
@@ -680,42 +682,44 @@ final class RecordStore: ObservableObject {
             return
         }
 
-        // 保存到数据库
-        do { try repository.save(record) }
-        catch {
-            Self.logger.error("保存记录失败: \(error.localizedDescription)")
-            notifier.postToast("保存失败", type: "error")
-            return
-        }
-
-        // 更新 UI
-        DispatchQueue.main.async { [weak self] in
+        // 保存到数据库；失败就不进内存——内存与库各说各话会变成重启后"记录消失"
+        repository.save(record) { [weak self] result in
             guard let self = self else { return }
-            self.records.insert(record, at: 0)
-            self.sortRecordsInPlace()
-            self.notifier.postToast("已添加记录", type: "success")
+            if case .failure(let error) = result {
+                Self.logger.error("保存记录失败: \(error.localizedDescription)")
+                self.notifier.postToast("保存失败", type: "error")
+                return
+            }
 
-            // 触发 AI 总结（如果需要）
-            let isImage = record.type.isVisualRecord && record.sourceUrl != nil
-            if self.aiCoordinator.enableAI && !record.skipAI && (isImage || record.content.count >= self.aiCoordinator.summaryTrigger) {
-                let existingTags = self.aiCoordinator.getAllUniqueTags(from: self.records)
-                self.aiCoordinator.summarize(record: record, existingTags: existingTags) { [weak self] update in
-                    guard let self = self else { return }
-                    switch update {
-                    case .none:
-                        break
-                    case .failure:
-                        self.updateRecordAI(id: record.id, title: nil, summary: nil, confidence: nil, aiStatus: "fail")
-                    case .success(let title, let summary, let confidence, let tags, let keywords):
-                        self.updateRecordAI(
-                            id: record.id,
-                            title: title,
-                            summary: summary,
-                            confidence: confidence,
-                            aiStatus: "success",
-                            tags: tags,
-                            keywords: keywords
-                        )
+            // 更新 UI
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                self.records.insert(record, at: 0)
+                self.sortRecordsInPlace()
+                self.notifier.postToast("已添加记录", type: "success")
+
+                // 触发 AI 总结（如果需要）
+                let isImage = record.type.isVisualRecord && record.sourceUrl != nil
+                if self.aiCoordinator.enableAI && !record.skipAI && (isImage || record.content.count >= self.aiCoordinator.summaryTrigger) {
+                    let existingTags = self.aiCoordinator.getAllUniqueTags(from: self.records)
+                    self.aiCoordinator.summarize(record: record, existingTags: existingTags) { [weak self] update in
+                        guard let self = self else { return }
+                        switch update {
+                        case .none:
+                            break
+                        case .failure:
+                            self.updateRecordAI(id: record.id, title: nil, summary: nil, confidence: nil, aiStatus: "fail")
+                        case .success(let title, let summary, let confidence, let tags, let keywords):
+                            self.updateRecordAI(
+                                id: record.id,
+                                title: title,
+                                summary: summary,
+                                confidence: confidence,
+                                aiStatus: "success",
+                                tags: tags,
+                                keywords: keywords
+                            )
+                        }
                     }
                 }
             }
@@ -750,11 +754,8 @@ final class RecordStore: ObservableObject {
             let id = records[idx].id
             records[idx].createdAt = now
 
-            // 异步更新数据库
-            do { try repository.updateTimestamp(id: id, to: now) }
-            catch {
-                Self.logger.error("更新时间戳失败: \(error.localizedDescription)")
-            }
+            // 异步更新数据库（失败由 repository 记诊断日志）
+            repository.updateTimestamp(id: id, to: now)
 
             sortRecordsInPlace()
         }
@@ -816,7 +817,12 @@ final class RecordStore: ObservableObject {
         records.removeAll { $0.id == record.id }
         aiCoordinator.markTagsNeedUpdate()
         print("[DEBUG RecordStore.delete()] 调用 repository.delete()")
-        repository.delete(id: record.id)
+        // 删除失败要让用户知道：内存已删但库里还在，重启后记录会"回来"
+        repository.delete(id: record.id) { [weak self] result in
+            if case .failure = result {
+                self?.postToast("删除失败，请重试", type: "error")
+            }
+        }
         print("[DEBUG RecordStore.delete()] repository.delete() 返回")
 
         // 3. 通知 StickyNoteManager 清理关联的便签
@@ -1090,13 +1096,9 @@ final class RecordStore: ObservableObject {
     private func updateRecordSourceUrl(id: UUID, newUrl: String) {
         if let idx = records.firstIndex(where: { $0.id == id }) {
             records[idx].sourceUrl = newUrl
-            
-            // 更新数据库
-            do {
-                try repository.updateSourceUrl(id: id, sourceUrl: newUrl)
-            } catch {
-                Self.logger.error("更新数据库 sourceUrl 失败: \(error.localizedDescription)")
-            }
+
+            // 更新数据库（失败由 repository 记诊断日志）
+            repository.updateSourceUrl(id: id, sourceUrl: newUrl)
         }
     }
 
@@ -1124,12 +1126,8 @@ final class RecordStore: ObservableObject {
                 searchableRecords.removeAll { $0.id == toggled.id }
             }
 
-            // 异步更新数据库
-            do {
-                try repository.toggleStar(id: record.id)
-            } catch {
-                Self.logger.error("切换收藏状态失败: \(error.localizedDescription)")
-            }
+            // 异步更新数据库（失败由 repository 记诊断日志）
+            repository.toggleStar(id: record.id)
         }
     }
 
@@ -1469,8 +1467,8 @@ final class RecordStore: ObservableObject {
                 DispatchQueue.main.async { [weak self] in
                     if let idx = self?.records.firstIndex(where: { $0.id == record.id }) {
                         self?.records[idx].size = size
-                        // 这里可以考虑批量保存，或者直接单条保存
-                        try? self?.repository.updateSize(id: record.id, size: size)
+                        // 这里可以考虑批量保存，或者直接单条保存（失败由 repository 记诊断日志）
+                        self?.repository.updateSize(id: record.id, size: size)
                     }
                 }
             }
