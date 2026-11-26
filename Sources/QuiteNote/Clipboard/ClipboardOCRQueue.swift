@@ -67,22 +67,51 @@ final class ClipboardOCRQueue {
         DiagnosticCenter.info("Clipboard", "OCR 开始：条目 \(String(entry.id.uuidString.prefix(8)))（第 \(processedCount[entry.id] ?? 0) 次）")
         ClipboardHistoryStore.shared.updateOCR(id: entry.id, text: nil, status: .processing)
 
-        // 读取原图（后台）→ 主线程发起 Vision 识别
-        guard let virtualPath = entry.assetPath,
-              let url = FileCoordinator.shared.resolveVirtualPath(virtualPath),
-              let image = NSImage(contentsOf: url) else {
-            finish(entryID: entry.id, text: nil, success: false)
-            return
+        // 读盘 + 全分辨率解码挪到后台（此前 NSImage(contentsOf:) 与 cgImage 转换都在主线程，
+        // 整屏 Retina 图的同步解码会卡住捕获后的 UI）。加载实现与旧主线程路径完全同款
+        //（NSImage + cgImage(forProposedRect:)，不降采样、EXIF 方向行为一致，见 loadFullResolutionCGImage）。
+        // 后台读图期间条目可能被删除 / 改状态，结果由 finish 的存在性检查兜住。
+        let entryID = entry.id
+        let assetPath = entry.assetPath
+        Task.detached(priority: .userInitiated) { [weak self] in
+            let cgImage = assetPath
+                .flatMap { FileCoordinator.shared.resolveVirtualPath($0) }
+                .flatMap(Self.loadFullResolutionCGImage(at:))
+            await MainActor.run { [weak self] in
+                guard let self else { return }
+                guard let cgImage else {
+                    self.finish(entryID: entryID, text: nil, success: false)
+                    return
+                }
+                let languages = Self.resolvedLanguages()
+                V2OCRService.shared.recognizeText(in: cgImage, languages: languages) { text in
+                    self.finish(entryID: entryID, text: text, success: text != nil)
+                }
+            }
         }
+    }
 
-        let languages = Self.resolvedLanguages()
-        V2OCRService.shared.recognizeText(in: image, languages: languages) { [weak self] text in
-            self?.finish(entryID: entry.id, text: text, success: text != nil)
-        }
+    /// 后台读盘 + 全分辨率解码（与旧 NSImage 入口的转换逐字同款）：
+    /// NSImage(contentsOf:) + cgImage(forProposedRect:) 而不是 ImageIO 直接建图——
+    /// 后者不应用 EXIF 方向，会与截图 OCR 的 NSImage 路径产生识别差异；不降采样。
+    /// nonisolated + 显式 url 入参：单测（OCRImageLoadingTests）直接断言解出尺寸。
+    nonisolated static func loadFullResolutionCGImage(at url: URL) -> CGImage? {
+        guard let image = NSImage(contentsOf: url) else { return nil }
+        return image.cgImage(forProposedRect: nil, context: nil, hints: nil)
     }
 
     private func finish(entryID: UUID, text: String?, success: Bool) {
         isProcessing = false
+
+        // 读图 / 识别期间条目可能已被用户删除，或状态被改走（手动重试置回 waiting、
+        // 设置里关闭 OCR 置 disabled 等）：只把结果写回仍处于 processing 的条目，
+        // 避免覆盖用户操作，也不给已删条目复活状态
+        guard let entry = ClipboardHistoryStore.shared.entry(id: entryID),
+              entry.ocrStatus == .processing else {
+            DiagnosticCenter.info("Clipboard", "OCR 结束时条目已不在处理态，丢弃结果（\(String(entryID.uuidString.prefix(8)))）")
+            processNextIfIdle()
+            return
+        }
 
         if success {
             processedCount[entryID] = nil
