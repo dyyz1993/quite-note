@@ -43,12 +43,20 @@ final class RecordStoreMigrationTests: XCTestCase {
         }
     }
 
-    /// 用"加 noteColor 之前的模型"建库并写入样例记录。写完把容器和模型都放掉：
+    /// 用某个历史模型建库并写入样例记录。写完把容器和模型都放掉：
     /// 同一进程里两个模型都活着时，CDRecord 这个类会被两个实体声明认领
-    private func makeLegacyStore(at url: URL, record: Sample) throws {
+    private func makeLegacyStore(
+        at url: URL,
+        record: Sample,
+        includesNoteColor: Bool = false,
+        includesFileCount: Bool = false,
+        noteColor: String? = nil
+    ) throws {
         try autoreleasepool {
             let container = NSPersistentContainer(
-                name: "QuiteNote", managedObjectModel: CoreDataStack.makeModel(includesNoteColor: false)
+                name: "QuiteNote", managedObjectModel: CoreDataStack.makeModel(
+                    includesNoteColor: includesNoteColor, includesFileCount: includesFileCount
+                )
             )
             container.persistentStoreDescriptions = [NSPersistentStoreDescription(url: url)]
             var loadError: Error?
@@ -78,6 +86,9 @@ final class RecordStoreMigrationTests: XCTestCase {
                 cd.noteFrameData = try NSKeyedArchiver.archivedData(
                     withRootObject: NSValue(rect: value.noteFrame ?? .zero), requiringSecureCoding: true
                 )
+                if includesNoteColor {
+                    cd.noteColor = noteColor
+                }
                 try context.save()
             }
         }
@@ -89,15 +100,18 @@ final class RecordStoreMigrationTests: XCTestCase {
 
     // MARK: - 用例
 
-    func testCurrentModelHasTheColorFieldAndTheLegacyModelDoesNot() {
-        let current = CoreDataStack.makeModel(includesNoteColor: true)
-        let legacy = CoreDataStack.makeModel(includesNoteColor: false)
+    func testCurrentModelHasTheNewFieldsAndTheLegacyModelsDoNot() {
+        let current = CoreDataStack.makeModel(includesNoteColor: true, includesFileCount: true)
+        let beforeColor = CoreDataStack.makeModel(includesNoteColor: false, includesFileCount: false)
+        let beforeFileCount = CoreDataStack.makeModel(includesNoteColor: true, includesFileCount: false)
         let names: (NSManagedObjectModel) -> Set<String> = { model in
             Set(model.entitiesByName["CDRecord"]?.attributesByName.keys.map { $0 } ?? [])
         }
-        XCTAssertEqual(names(current).subtracting(names(legacy)), ["noteColor"])
-        XCTAssertTrue(names(legacy).subtracting(names(current)).isEmpty, "历史模型不得有现在没有的属性")
-        XCTAssertEqual(names(current).count, 19)
+        XCTAssertEqual(names(current).subtracting(names(beforeColor)), ["noteColor", "fileCount"])
+        XCTAssertEqual(names(current).subtracting(names(beforeFileCount)), ["fileCount"], "加 fileCount 之前的模型只少这一个字段")
+        XCTAssertTrue(names(beforeColor).subtracting(names(current)).isEmpty, "历史模型不得有现在没有的属性")
+        XCTAssertTrue(names(beforeFileCount).subtracting(names(current)).isEmpty, "历史模型不得有现在没有的属性")
+        XCTAssertEqual(names(current).count, 20)
     }
 
     func testFreshDatabaseOpensAndNeverNeedsMigration() throws {
@@ -106,7 +120,7 @@ final class RecordStoreMigrationTests: XCTestCase {
         let stack = CoreDataStack(databaseURL: url)
 
         XCTAssertNil(stack.loadError)
-        XCTAssertFalse(try CoreDataStack.migrateStoreIfNeeded(at: url, to: CoreDataStack.makeModel(includesNoteColor: true)))
+        XCTAssertFalse(try CoreDataStack.migrateStoreIfNeeded(at: url, to: CoreDataStack.makeModel(includesNoteColor: true, includesFileCount: true)))
     }
 
     /// 老用户的库是加 noteColor 之前的模型建的：升级后必须能直接打开，记录一条不丢
@@ -114,7 +128,7 @@ final class RecordStoreMigrationTests: XCTestCase {
         let url = tempDirectory.appendingPathComponent("legacy.sqlite")
         let sample = Sample()
         try makeLegacyStore(at: url, record: sample)
-        let currentModel = CoreDataStack.makeModel(includesNoteColor: true)
+        let currentModel = CoreDataStack.makeModel(includesNoteColor: true, includesFileCount: true)
         XCTAssertFalse(try CoreDataStack.migrateStoreIfNeeded(at: url, to: currentModel) == false,
                        "前置条件：旧库与当前模型不兼容，需要迁移")
 
@@ -142,6 +156,50 @@ final class RecordStoreMigrationTests: XCTestCase {
         XCTAssertEqual(try RecordRepository(stack: reopened).fetchRecords().compactMap(\.noteColor).sorted(), ["amber", "teal"])
     }
 
+    /// 加 fileCount 之前的库（已有 noteColor）：自动迁移后原有字段逐个都在，
+    /// fileCount 为空，且从此可以落库（文件夹记录重启后"文件数"不再消失）
+    func testStoreFromBeforeFileCountOpensAndCanStoreFileCounts() throws {
+        let url = tempDirectory.appendingPathComponent("pre-filecount.sqlite")
+        let sample = Sample()
+        try makeLegacyStore(at: url, record: sample, includesNoteColor: true, noteColor: "teal")
+
+        let stack = CoreDataStack(databaseURL: url)
+
+        XCTAssertNil(stack.loadError, "加 fileCount 之前的库应能自动迁移打开：\(String(describing: stack.loadError))")
+        let repository = RecordRepository(stack: stack)
+        let records = try repository.fetchRecords()
+        XCTAssertEqual(records.count, 1)
+        var expected = sample.asRecord
+        expected.noteColor = "teal"
+        XCTAssertEqual(records[0], expected, "迁移后记录的每个字段都要原样")
+        XCTAssertNil(records[0].fileCount, "迁移出来的 fileCount 应为空")
+
+        var withCount = records[0]
+        withCount.fileCount = 7
+        try repository.updateSync(withCount)
+        XCTAssertEqual(try repository.find(id: sample.id)?.fileCount, 7)
+    }
+
+    /// fileCount 往返：文件夹记录带文件数落库、读回一致；非文件夹记录保持 nil
+    func testFileCountRoundTripsThroughTheStore() throws {
+        let url = tempDirectory.appendingPathComponent("roundtrip.sqlite")
+        let repository = RecordRepository(stack: CoreDataStack(databaseURL: url))
+
+        let folder = QuiteNote.Record(
+            id: UUID(), title: "资料夹", content: "文件夹路径: /tmp/资料\n文件结构:\n.",
+            createdAt: Date(timeIntervalSince1970: 1_700_000_500), hash: "folder-1",
+            tags: ["folder"], keywords: ["资料"], sourceApp: "Folder Drag", type: .folder
+        )
+        var folderWithCount = folder
+        folderWithCount.fileCount = 7
+        try repository.saveSync(folderWithCount)
+        XCTAssertEqual(try repository.find(id: folder.id)?.fileCount, 7, "fileCount 要随记录落库")
+
+        let text = QuiteNote.Record(id: UUID(), content: "普通文本记录", createdAt: Date(timeIntervalSince1970: 1_700_000_400), hash: "text-1")
+        try repository.saveSync(text)
+        XCTAssertNil(try repository.find(id: text.id)?.fileCount, "非文件夹记录的文件数应为空")
+    }
+
     /// 正常升级走的是 Core Data 的自动迁移（原地改库），迁移函数根本不会被调到：
     /// 动手之前也要留原库备份，备份连同 WAL 一起拷，而且备份本身还是旧模型、记录还在
     /// （2026-11-25 实机验证发现：备份只在手工迁移那条兜底路径里做，正常升级其实没有备份）
@@ -158,13 +216,13 @@ final class RecordStoreMigrationTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: backup.path), "自动迁移之前也要留原库备份")
         XCTAssertEqual(FileManager.default.fileExists(atPath: backup.path + "-wal"), hadWAL, "备份要连同 WAL 一起拷")
         let backupMetadata = try NSPersistentStoreCoordinator.metadataForPersistentStore(ofType: NSSQLiteStoreType, at: backup, options: nil)
-        XCTAssertTrue(CoreDataStack.makeModel(includesNoteColor: false).isConfiguration(withName: nil, compatibleWithStoreMetadata: backupMetadata),
+        XCTAssertTrue(CoreDataStack.makeModel(includesNoteColor: false, includesFileCount: false).isConfiguration(withName: nil, compatibleWithStoreMetadata: backupMetadata),
                       "备份应该还是旧模型的库")
-        XCTAssertFalse(CoreDataStack.makeModel(includesNoteColor: true).isConfiguration(withName: nil, compatibleWithStoreMetadata: backupMetadata))
+        XCTAssertFalse(CoreDataStack.makeModel(includesNoteColor: true, includesFileCount: true).isConfiguration(withName: nil, compatibleWithStoreMetadata: backupMetadata))
 
         // 打开备份数记录。实体类名换成 NSManagedObject：当前模型的容器还活着，同一个类不能被两个实体认领
         try autoreleasepool {
-            let model = CoreDataStack.makeModel(includesNoteColor: false)
+            let model = CoreDataStack.makeModel(includesNoteColor: false, includesFileCount: false)
             model.entitiesByName["CDRecord"]?.managedObjectClassName = NSStringFromClass(NSManagedObject.self)
             let container = NSPersistentContainer(name: "QuiteNoteBackup", managedObjectModel: model)
             container.persistentStoreDescriptions = [NSPersistentStoreDescription(url: backup)]
@@ -200,7 +258,7 @@ final class RecordStoreMigrationTests: XCTestCase {
         let url = tempDirectory.appendingPathComponent("manual.sqlite")
         let sample = Sample()
         try makeLegacyStore(at: url, record: sample)
-        let currentModel = CoreDataStack.makeModel(includesNoteColor: true)
+        let currentModel = CoreDataStack.makeModel(includesNoteColor: true, includesFileCount: true)
 
         XCTAssertTrue(try CoreDataStack.migrateStoreIfNeeded(at: url, to: currentModel))
 
@@ -222,7 +280,7 @@ final class RecordStoreMigrationTests: XCTestCase {
     func testUnrecognizedStoreModelIsLeftUntouched() throws {
         let url = tempDirectory.appendingPathComponent("unknown.sqlite")
         try autoreleasepool {
-            let model = CoreDataStack.makeModel(includesNoteColor: true)
+            let model = CoreDataStack.makeModel(includesNoteColor: true, includesFileCount: true)
             let rogue = NSAttributeDescription()
             rogue.name = "somethingFromTheFuture"
             rogue.attributeType = .stringAttributeType
@@ -236,7 +294,7 @@ final class RecordStoreMigrationTests: XCTestCase {
         }
         let bytesBefore = try Data(contentsOf: url)
 
-        XCTAssertThrowsError(try CoreDataStack.migrateStoreIfNeeded(at: url, to: CoreDataStack.makeModel(includesNoteColor: true))) { error in
+        XCTAssertThrowsError(try CoreDataStack.migrateStoreIfNeeded(at: url, to: CoreDataStack.makeModel(includesNoteColor: true, includesFileCount: true))) { error in
             guard case CoreDataStack.StoreError.unrecognizedStoreModel = error else {
                 return XCTFail("应报「不认识的库」，实际 \(error)")
             }

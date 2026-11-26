@@ -26,7 +26,7 @@ final class RecordRepositoryResultTests: StickyNoteTestCase {
     /// 只读库注入：加载成功、写入必失败——比损坏库更可靠的失败开关
     /// （损坏库上后台 save 不一定报错）。模型按 makePrivateStore 的同款做法现做一份
     private func injectReadOnlyStoreFailure(into repository: RecordRepository) throws {
-        let model = CoreDataStack.makeModel(includesNoteColor: true)
+        let model = CoreDataStack.makeModel(includesNoteColor: true, includesFileCount: true)
         let storeURL = tempDirectory.appendingPathComponent("readonly-\(UUID().uuidString).sqlite")
         // 只读挂载要求库文件已存在：先读写建一个空库并干净关闭（WAL 一并收掉）
         try autoreleasepool {

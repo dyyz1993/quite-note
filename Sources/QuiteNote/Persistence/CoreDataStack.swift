@@ -22,7 +22,8 @@ final class CoreDataStack {
     /// 加字段时：把"加之前"的模型追加到这个列表的末尾，再改 makeModel。
     /// 用闭包是为了让旧模型只在真的需要迁移时才被实例化
     private static let legacyModelBuilders: [() -> NSManagedObjectModel] = [
-        { makeModel(includesNoteColor: false) },   // 加 noteColor 字段之前（v1.6.0 及更早）
+        { makeModel(includesNoteColor: false, includesFileCount: false) },   // 加 noteColor 字段之前（v1.6.0 及更早）
+        { makeModel(includesNoteColor: true, includesFileCount: false) },    // 加 fileCount 字段之前
     ]
 
     convenience init() {
@@ -31,7 +32,7 @@ final class CoreDataStack {
 
     /// 测试与迁移验证用：显式指定数据库文件
     init(databaseURL url: URL) {
-        let opened = Self.open(model: Self.makeModel(includesNoteColor: true), at: url)
+        let opened = Self.open(model: Self.makeModel(includesNoteColor: true, includesFileCount: true), at: url)
         container = opened.container
         loadError = opened.error
     }
@@ -163,9 +164,9 @@ final class CoreDataStack {
 
     // MARK: - 数据模型
 
-    /// 代码手写的数据模型。includesNoteColor = false 即加便签底色字段之前的模型，
-    /// 属性名、类型、可选性、默认值都不能动——版本哈希靠它们对上老库
-    static func makeModel(includesNoteColor: Bool) -> NSManagedObjectModel {
+    /// 代码手写的数据模型。两个开关分别表示"加便签底色字段之前"、"加文件数字段之前"的
+    /// 历史模型；历史形态的属性名、类型、可选性、默认值一个都不能动——版本哈希靠它们对上老库
+    static func makeModel(includesNoteColor: Bool, includesFileCount: Bool) -> NSManagedObjectModel {
         let model = NSManagedObjectModel()
 
         let entity = NSEntityDescription()
@@ -200,6 +201,9 @@ final class CoreDataStack {
         attribute("type", .stringAttributeType, optional: false, defaultValue: "text")
         attribute("skipAI", .booleanAttributeType, optional: false, defaultValue: false)
         attribute("size", .integer64AttributeType, optional: false, defaultValue: 0)
+        if includesFileCount {
+            attribute("fileCount", .integer64AttributeType, optional: true)
+        }
         attribute("noteFrameData", .binaryDataAttributeType, optional: true)
         if includesNoteColor {
             attribute("noteColor", .stringAttributeType, optional: true)

@@ -497,6 +497,7 @@ final class RecordRepository {
             sourceUrl: cd.sourceUrl,
             type: RecordType(rawValue: cd.type ?? "text") ?? .text,
             skipAI: cd.skipAI,
+            fileCount: cd.fileCount?.intValue,
             size: cd.size,
             noteFrame: noteFrame,
             noteColor: cd.noteColor
@@ -521,6 +522,7 @@ final class RecordRepository {
         cd.type = record.type.rawValue
         cd.skipAI = record.skipAI
         cd.size = record.size
+        cd.fileCount = record.fileCount.map { NSNumber(value: $0) }
 
         // 编码 noteFrame - 使用 NSValue 包装
         if let frame = record.noteFrame {
