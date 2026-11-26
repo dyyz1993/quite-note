@@ -337,7 +337,10 @@ final class KeyboardShortcutManager {
 
     /// 统一处理按键事件
     /// - Returns: 是否消费了该事件
-    private func handleKeyEvent(_ e: NSEvent, isGlobal: Bool) -> Bool {
+    ///
+    /// internal 而非 private：修饰键路由（⌥⌘ 与 ⌥⌘⇧ 分支）需要用合成 NSEvent
+    /// 做事件级单测（ShortcutModifierRouteTests），实例本身不 start()、不碰真实 Carbon。
+    func handleKeyEvent(_ e: NSEvent, isGlobal: Bool) -> Bool {
         // 获取修饰键，排除掉不相关的 flag
         let flags = e.modifierFlags.intersection([.command, .option, .shift, .control])
         
@@ -352,8 +355,11 @@ final class KeyboardShortcutManager {
             return true
         }
 
-        // 2. ⌥⌘ 快捷键组合
-        if flags.contains(.command) && flags.contains(.option) {
+        // 2. ⌥⌘ 快捷键组合（flags 已在上面收敛成 ⌘⌥⇧⌃ 四键，全等匹配与 Carbon
+        // 注册的组合一一对应。此前 contains 写法让 ⌥⌘ 分支先吞掉 ⌥⌘⇧*：Carbon
+        // 全局热键正常时被系统先拦住无感，一旦 ⌥⌘⇧R/⌥⌘⇧A 注册失败（与别的应用冲突）
+        // 走本地兜底，「强制居中」会错触发成「切换面板」、「批量提炼」错成「切换 AI」）
+        if flags == [.command, .option] {
             switch char {
             case "r": self.onTogglePanel?(); return true
             case "a": self.onToggleAI?(); return true
@@ -364,9 +370,9 @@ final class KeyboardShortcutManager {
             default: break
             }
         }
-        
+
         // 3. ⌥⌘⇧ 快捷键组合
-        if flags.contains(.command) && flags.contains(.option) && flags.contains(.shift) {
+        if flags == [.command, .option, .shift] {
             switch char {
             case "r": self.onForceCenter?(); return true
             case "a": self.onBulkSummarize?(); return true
