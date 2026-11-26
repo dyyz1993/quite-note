@@ -1131,206 +1131,34 @@ final class RecordStore: ObservableObject {
         }
     }
 
-    /// 导出全部记录为 Markdown
+    /// 导出全部记录为 Markdown（编解码在 RecordMarkdownCodec，这里只喂内存里的记录）
     func exportMarkdown() -> String {
-        let dateFormatter = ISO8601DateFormatter()
-        var md = "# QuiteNote 导出\n\n"
-        for r in records.reversed() {
-            // 标题
-            if let t = r.title {
-                md += "## \(t)\n\n"
-            } else {
-                md += "## 无标题\n\n"
-            }
-
-            // 元数据
-            md += "**创建时间**：\(dateFormatter.string(from: r.createdAt))\n\n"
-
-            // 标签
-            if !r.tags.isEmpty {
-                md += "**标签**：\(r.tags.joined(separator: "、"))\n\n"
-            }
-
-            // 关键词
-            if !r.keywords.isEmpty {
-                md += "**关键词**：\(r.keywords.joined(separator: "、"))\n\n"
-            }
-
-            // 来源信息
-            if let source = r.sourceApp {
-                md += "**来源**：\(source)"
-                if let url = r.sourceUrl {
-                    md += " ([\(url)](\(url)))"
-                }
-                md += "\n\n"
-            }
-
-            // 内容
-            md += "\(r.content)\n\n"
-
-            // 总结
-            if let s = r.summary {
-                md += "> **总结**：\(s)\n\n"
-            }
-
-            md += "---\n\n"
-        }
-        return md
+        RecordMarkdownCodec.export(records)
     }
 
-    /// 从 Markdown 内容导入记录
+    /// 从 Markdown 内容导入记录（解析在 RecordMarkdownCodec，这里负责落库与重载）
     func importFromMarkdown(_ markdown: String) -> Int {
-        var importedCount = 0
-        var skippedCount = 0
-        let sections = markdown.components(separatedBy: "\n## ")
-
-        // 先获取所有已存在的哈希值用于去重
         let existingHashes = Set(records.map { $0.hash })
+        let result = RecordMarkdownCodec.parse(markdown, skippingExistingHashes: existingHashes)
 
-        for section in sections {
-            let trimmed = section.trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmed.isEmpty { continue }
-
-            // 解析各个部分
-            var title: String?
-            var createdAt: Date?
-            var tags: [String] = []
-            var keywords: [String] = []
-            var content: String = ""
-            var summary: String?
-
-            let lines = trimmed.components(separatedBy: "\n")
-            var i = 0
-
-            // 第一行是标题
-            if i < lines.count {
-                let firstLine = lines[i].trimmingCharacters(in: .whitespacesAndNewlines)
-                if !firstLine.isEmpty && !firstLine.hasPrefix("---") {
-                    title = firstLine == "无标题" ? nil : firstLine
-                }
-                i += 1
-            }
-
-            // 解析元数据
-            while i < lines.count {
-                let line = lines[i].trimmingCharacters(in: .whitespaces)
-
-                // 空行跳过
-                if line.isEmpty {
-                    i += 1
-                    continue
-                }
-
-                // 创建时间
-                if line.hasPrefix("**创建时间**") || line.hasPrefix("创建时间：") {
-                    let dateStr = line.replacingOccurrences(of: "**创建时间**：", with: "")
-                                   .replacingOccurrences(of: "创建时间：", with: "")
-                    // 尝试多种日期格式
-                    let dateFormatter1 = ISO8601DateFormatter()
-                    var date = dateFormatter1.date(from: dateStr)
-
-                    if date == nil {
-                        // 尝试其他格式
-                        let dateFormatter2 = DateFormatter()
-                        dateFormatter2.dateFormat = "yyyy-MM-dd HH:mm:ss"
-                        date = dateFormatter2.date(from: dateStr)
-                    }
-
-                    if date == nil {
-                        let dateFormatter3 = DateFormatter()
-                        dateFormatter3.dateFormat = "yyyy-MM-dd'T'HH:mm:ssZ"
-                        date = dateFormatter3.date(from: dateStr)
-                    }
-
-                    createdAt = date ?? Date()
-                    Self.logger.info("导入记录日期解析: '\(dateStr)' -> \(createdAt ?? Date())")
-                    i += 1
-                    continue
-                }
-
-                // 标签
-                if line.hasPrefix("**标签**") || line.hasPrefix("标签") {
-                    let tagsStr = line.replacingOccurrences(of: "**标签**：", with: "")
-                                  .replacingOccurrences(of: "标签：", with: "")
-                    tags = tagsStr.components(separatedBy: "、").map { $0.trimmingCharacters(in: .whitespaces) }
-                    i += 1
-                    continue
-                }
-
-                // 关键词
-                if line.hasPrefix("**关键词**") || line.hasPrefix("关键词") {
-                    let keywordsStr = line.replacingOccurrences(of: "**关键词**：", with: "")
-                                     .replacingOccurrences(of: "关键词：", with: "")
-                    keywords = keywordsStr.components(separatedBy: "、").map { $0.trimmingCharacters(in: .whitespaces) }
-                    i += 1
-                    continue
-                }
-
-                // 来源
-                if line.hasPrefix("**来源**") {
-                    i += 1
-                    continue
-                }
-
-                // 分隔符或内容开始
-                if line == "---" {
-                    i += 1
-                    continue
-                }
-
-                // 总结
-                if line.hasPrefix(">") {
-                    summary = line.replacingOccurrences(of: "> ", with: "")
-                               .replacingOccurrences(of: ">**总结**：", with: "")
-                               .replacingOccurrences(of: "> 总结：", with: "")
-                    i += 1
-                    continue
-                }
-
-                // 内容开始
-                break
-            }
-
-            // 收集剩余内容
-            while i < lines.count {
-                let line = lines[i]
-                if line != "---" {
-                    content += line + "\n"
-                }
-                i += 1
-            }
-
-            // 保存记录
-            let trimmedContent = content.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmedContent.isEmpty {
-                // 计算哈希用于去重
-                let data = Data(trimmedContent.utf8)
-                let hash = data.reduce(into: "") { $0 += String(format: "%02x", $1) }
-
-                // 检查是否已存在
-                if existingHashes.contains(hash) {
-                    skippedCount += 1
-                } else {
-                    addImportedRecord(
-                        title: title,
-                        content: trimmedContent,
-                        summary: summary,
-                        tags: tags,
-                        keywords: keywords,
-                        createdAt: createdAt
-                    )
-                    importedCount += 1
-                }
-            }
+        for parsed in result.imported {
+            addImportedRecord(
+                title: parsed.title,
+                content: parsed.content,
+                summary: parsed.summary,
+                tags: parsed.tags,
+                keywords: parsed.keywords,
+                createdAt: parsed.createdAt
+            )
         }
 
         // 立即重新加载内存数据（CoreData 保存已在 addImportedRecord 中同步完成）。
         // 整表重载一次最多取 1000 条：取满即已超出内存窗口，不再继续翻页
-        if importedCount > 0 {
+        if !result.imported.isEmpty {
             fetchPageFromStore(pageSize: Self.importReloadPageSize, offset: 0)
         }
 
-        return importedCount
+        return result.imported.count
     }
 
     /// 添加单条导入的记录（同步保存）
@@ -1751,70 +1579,9 @@ extension RecordStore {
         let fileCount: Int
     }
 
-    /// 为文件夹生成 tree 结构的内容
+    /// 为文件夹生成 tree 结构的内容（生成逻辑在 FolderTreeRenderer，纯函数可单测）
     private func generateTreeStructure(for folderURL: URL) -> TreeResult {
-        let folderName = folderURL.lastPathComponent
-        let folderPath = folderURL.path
-
-        // 递归遍历文件夹，生成 tree 结构
-        func traverseDirectory(_ url: URL, level: Int = 0) -> (lines: [String], fileCount: Int) {
-            var lines: [String] = []
-            var fileCount = 0
-            let indent = String(repeating: "│  ", count: level)
-            _ = String(repeating: "└── ", count: 1)
-
-            do {
-                let contents = try FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: [.nameKey, .isDirectoryKey], options: [.skipsHiddenFiles])
-
-                // 排序：文件夹在前，文件在后
-                let sorted = contents.sorted { a, b in
-                    let aIsDir = (try? a.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
-                    let bIsDir = (try? b.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
-                    if aIsDir != bIsDir {
-                        return aIsDir && !bIsDir  // 文件夹排在前面
-                    }
-                    return a.lastPathComponent < b.lastPathComponent
-                }
-
-                for (index, item) in sorted.enumerated() {
-                    let name = item.lastPathComponent
-                    let isDirectory = (try? item.resourceValues(forKeys: [URLResourceKey.isDirectoryKey]))?.isDirectory ?? false
-
-                    let isLast = index == sorted.count - 1
-                    let prefix = isLast ? "└── " : "├── "
-                    let connector = isLast ? "    " : "│   "
-
-                    if isDirectory {
-                        lines.append("\(indent)\(prefix)\(name)/")
-                        let subResult = traverseDirectory(item, level: level + 1)
-                        fileCount += subResult.fileCount
-
-                        // 添加子项内容
-                        for subLine in subResult.lines {
-                            lines.append("\(indent)\(connector)\(subLine)")
-                        }
-                    } else {
-                        lines.append("\(indent)\(prefix)\(name)")
-                        fileCount += 1
-                    }
-                }
-            } catch {
-                lines.append("\(indent)└── (无法读取内容)")
-            }
-
-            return (lines, fileCount)
-        }
-
-        var resultLines: [String] = []
-        resultLines.append("文件夹路径: \(folderPath)")
-        resultLines.append("文件夹名: \(folderName)")
-        resultLines.append("文件结构:")
-        resultLines.append(".")
-
-        let (treeLines, totalFiles) = traverseDirectory(folderURL)
-        resultLines.append(contentsOf: treeLines)
-
-        let content = resultLines.joined(separator: "\n")
-        return TreeResult(content: content, fileCount: totalFiles)
+        let rendered = FolderTreeRenderer.renderLines(for: folderURL)
+        return TreeResult(content: rendered.lines.joined(separator: "\n"), fileCount: rendered.fileCount)
     }
 }
