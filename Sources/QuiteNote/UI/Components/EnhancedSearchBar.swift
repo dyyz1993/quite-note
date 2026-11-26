@@ -378,4 +378,3 @@ struct EnhancedSearchBar: View {
 
 
 }
-

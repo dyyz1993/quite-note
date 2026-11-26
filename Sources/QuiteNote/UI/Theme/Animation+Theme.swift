@@ -73,4 +73,3 @@ extension AnyTransition {
     static let expand = AnyTransition.scale.combined(with: .opacity)
     static let collapse = AnyTransition.scale.combined(with: .opacity)
 }
-
