@@ -193,8 +193,6 @@ struct HistorySettingsTab: View {
 
     /// 使用 NSSavePanel 导出记录（让用户选择保存位置）
     private func exportRecordsWithSavePanel() {
-        let markdownContent = store.exportMarkdown()
-
         let savePanel = NSSavePanel()
         savePanel.allowedContentTypes = [.plainText]
         let formatter = DateFormatter()
@@ -205,14 +203,10 @@ struct HistorySettingsTab: View {
 
         savePanel.begin { response in
             if response == .OK, let url = savePanel.url {
-                do {
-                    try markdownContent.write(to: url, atomically: true, encoding: .utf8)
-                    DispatchQueue.main.async {
+                // 整库导出是异步的：保存位置定下来之后才开始读库
+                self.store.exportMarkdown { result in
+                    RecordMarkdownExport.write(result, to: url, store: self.store) { url in
                         self.store.postToast("导出成功！文件已保存至: \(url.path)", type: "success")
-                    }
-                } catch {
-                    DispatchQueue.main.async {
-                        self.store.postToast("导出失败: \(error.localizedDescription)", type: "error")
                     }
                 }
             }

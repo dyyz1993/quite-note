@@ -81,6 +81,26 @@ final class RecordRepository {
         return records
     }
 
+    /// 读取整库（导出用，不受主列表内存窗口限制）。取数和对象映射都在后台上下文里做，
+    /// 不占主线程；结果在主线程回调。排序与分页查询一致（收藏在前、时间倒序）
+    func fetchAllRecords(completion: @escaping (Result<[Record], Error>) -> Void) {
+        runBackgroundTask { [weak self] context in
+            guard let self else { return }
+            let req = NSFetchRequest<CDRecord>(entityName: "CDRecord")
+            req.sortDescriptors = [
+                NSSortDescriptor(key: "starred", ascending: false),
+                NSSortDescriptor(key: "createdAt", ascending: false)
+            ]
+            do {
+                let records = try context.fetch(req).map { self.cdRecordToRecord($0) }
+                DispatchQueue.main.async { completion(.success(records)) }
+            } catch {
+                DiagnosticCenter.error("RecordStore", "读取整库失败: \(error.localizedDescription)")
+                DispatchQueue.main.async { completion(.failure(error)) }
+            }
+        }
+    }
+
     /// 启动器取用面语料（收藏记录 + 全部链接记录）：链接免点星全量可搜（用户
     /// 高频取用物、数量小），文本须点星防噪声。不受主列表内存分页窗口限制。
     func fetchSearchableRecords(limit: Int = 500) throws -> [Record] {

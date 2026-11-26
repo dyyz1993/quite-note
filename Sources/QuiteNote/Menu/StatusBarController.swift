@@ -324,11 +324,11 @@ final class StatusBarController {
 
         panel.begin { [weak self] response in
             guard response == .OK, let url = panel.url, let self else { return }
-            do {
-                try self.store.exportMarkdown().write(to: url, atomically: true, encoding: .utf8)
-                self.store.postLightHint("导出成功：\(url.lastPathComponent)")
-            } catch {
-                self.store.postToast("导出失败：\(error.localizedDescription)", type: "error")
+            // 整库导出是异步的：保存位置定下来之后才开始读库
+            self.store.exportMarkdown { result in
+                RecordMarkdownExport.write(result, to: url, store: self.store) { url in
+                    self.store.postLightHint("导出成功：\(url.lastPathComponent)")
+                }
             }
         }
     }

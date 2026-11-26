@@ -1131,9 +1131,22 @@ final class RecordStore: ObservableObject {
         }
     }
 
-    /// 导出全部记录为 Markdown（编解码在 RecordMarkdownCodec，这里只喂内存里的记录）
-    func exportMarkdown() -> String {
-        RecordMarkdownCodec.export(records)
+    /// 导出全部记录为 Markdown。读的是**整库**，不是主列表内存窗口里那 200 条——
+    /// 菜单项写着"导出所有记录"，旧实现却只导出内存里的记录，窗口之外的全丢
+    /// （而那些记录在主面板里本来就列不出来、搜不到）。取数与格式化都在后台，
+    /// 结果在主线程回调
+    func exportMarkdown(completion: @escaping (Result<String, Error>) -> Void) {
+        repository.fetchAllRecords { result in
+            switch result {
+            case .failure(let error):
+                completion(.failure(error))
+            case .success(let allRecords):
+                DispatchQueue.global(qos: .userInitiated).async {
+                    let markdown = RecordMarkdownCodec.export(allRecords)
+                    DispatchQueue.main.async { completion(.success(markdown)) }
+                }
+            }
+        }
     }
 
     /// 从 Markdown 内容导入记录（解析在 RecordMarkdownCodec，这里负责落库与重载）

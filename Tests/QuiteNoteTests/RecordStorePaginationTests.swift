@@ -95,6 +95,33 @@ final class RecordStorePaginationTests: StickyNoteTestCase {
         }
     }
 
+    /// 「导出所有记录」必须读整库：主列表是 200 条的内存窗口，窗口之外的记录列不出来
+    /// 也搜不到，导出是它们唯一的出口——旧实现只导出内存里的记录
+    func testExportMarkdownCoversTheWholeLibraryNotJustTheWindow() {
+        let (store, _, ids) = makeStore(initialRecordCount: 260)
+        withExtendedLifetime(store) {
+            XCTAssertEqual(store.records.count, 100, "前置：内存里只有首屏")
+
+            var exported: String?
+            var failure: Error?
+            store.exportMarkdown { result in
+                switch result {
+                case .success(let markdown): exported = markdown
+                case .failure(let error): failure = error
+                }
+            }
+            XCTAssertTrue(waitUntil { exported != nil || failure != nil }, "导出必须回调")
+            XCTAssertNil(failure)
+
+            let markdown = exported ?? ""
+            // 每条记录导出成一个「## 标题」小节（无标题记录是「## 无标题」），文件头占第一段
+            let sectionCount = markdown.components(separatedBy: "\n## ").count - 1
+            XCTAssertEqual(sectionCount, 260, "整库 260 条都要在导出里，不只是内存窗口")
+            XCTAssertTrue(markdown.contains("第 259 条"), "最旧的那条（内存窗口之外）也要导出")
+            XCTAssertEqual(ids.count, 260)
+        }
+    }
+
     /// offset 稳定性：两次翻页之间新进一条记录（库里 +1、内存顶部 +1），下一页
     /// 不能因为 offset 被顶偏而漏掉最旧的记录
     func testOffsetSurvivesARecordAddedBetweenPages() throws {

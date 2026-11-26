@@ -234,11 +234,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         panel.begin { [weak self] response in
             guard response == .OK, let url = panel.url, let self else { return }
-            do {
-                try self.recordStore.exportMarkdown().write(to: url, atomically: true, encoding: .utf8)
-                self.recordStore.postLightHint("导出成功：\(url.lastPathComponent)")
-            } catch {
-                self.recordStore.postToast("导出失败：\(error.localizedDescription)", type: "error")
+            // 整库导出是异步的：保存位置定下来之后才开始读库
+            self.recordStore.exportMarkdown { result in
+                RecordMarkdownExport.write(result, to: url, store: self.recordStore) { url in
+                    self.recordStore.postLightHint("导出成功：\(url.lastPathComponent)")
+                }
             }
         }
     }
