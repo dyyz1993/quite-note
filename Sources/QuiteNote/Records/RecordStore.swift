@@ -9,10 +9,26 @@ import SwiftUI
 final class RecordStore: ObservableObject {
     private static let logger = Logger(subsystem: "com.quitenote.app", category: "RecordStore")
 
+    // MARK: - 翻页常量
+
+    /// 主列表内存窗口上限：设计上只常驻最近的这么多条，翻页加载到这里为止
+    private static let maxInMemoryRecords = 200
+    /// 启动首屏条数
+    private static let initialPageSize = 100
+    /// 翻页每页条数
+    private static let pageSize = 50
+    /// 导入后的整表重载条数（旧 loadFromStore() 的行为）
+    private static let importReloadPageSize = 1000
+
     // MARK: - Published Properties
 
     /// 核心数据：记录列表
     @Published private(set) var records: [Record] = []
+    /// 数据库里还有没有主列表该继续加载的旧记录。翻页状态的唯一真值，
+    /// UI 只读这个（指示器的显隐、是否发起加载更多）
+    @Published private(set) var canLoadMoreRecords = false
+    /// 是否正在后台取下一页（防并发取页；同一时间只允许一个取页任务在跑）
+    @Published private(set) var isLoadingMoreRecords = false
     /// 启动器取用面语料（点星收藏的记录 + 全部链接记录），DB 直查不受主列表
     /// 内存分页窗口限制——老收藏/老链接也能被搜到。初始异步加载，toggleStar/delete 增量维护。
     @Published private(set) var searchableRecords: [Record] = []
@@ -94,6 +110,13 @@ final class RecordStore: ObservableObject {
     private var toastCancellable: AnyCancellable?
     private var lightHintCancellable: AnyCancellable?
     private var confirmCancellable: AnyCancellable?
+
+    /// 已从数据库取过的行数。翻页窗口计数，与 records.count 无关——两次翻页之间
+    /// 新进的记录会顶高 records.count，拿它当 offset 会漏掉旧记录
+    private var fetchedRowCount = 0
+    /// 内存窗口里最旧一条 DB 记录的排序键。取下一页前按它在库里重新对 offset：
+    /// 两次翻页之间落库的新记录在库内排序里排在窗口前面，会把未取区域整体顶后一行
+    private var oldestFetchedAnchor: (starred: Bool, createdAt: Date)?
 
     /// 暴露 AI 服务（用于 UI 访问）
     var ai: AIServiceProtocol? {
@@ -419,9 +442,10 @@ final class RecordStore: ObservableObject {
     /// 物化。这里先让 App 进入可交互状态；贴纸清理等依赖完整数据的任务挂到
     /// 首屏数据落地后执行，避免 records 尚未加载时误判记录不存在。
     private func loadInitialRecords() {
+        let pageSize = Self.initialPageSize
         let token = DiagnosticCenter.beginMeasure("RecordStore", "初始记录异步加载", threshold: 0.2)
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let loaded = (try? self?.repository.fetchRecords(limit: 100, offset: 0)) ?? []
+            let loaded = (try? self?.repository.fetchRecords(limit: pageSize, offset: 0)) ?? []
             let searchable = (try? self?.repository.fetchSearchableRecords()) ?? []
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
@@ -438,10 +462,23 @@ final class RecordStore: ObservableObject {
                 // 与 records 同款合并：保留首屏查询发出后、落地前新收藏/新链接的记录
                 let searchableIDs = Set(searchable.map(\.id))
                 self.searchableRecords = searchable + self.searchableRecords.filter { !searchableIDs.contains($0.id) }
+                // 首屏落地后翻页状态就位，之后 UI 按它加载更多
+                self.trackFetchedPage(loaded, pageSize: pageSize)
                 token.end()
                 self.cleanupStickyNotesAfterInitialLoad()
             }
         }
+    }
+
+    /// 取页落地后推进翻页状态（首屏与后续翻页共用）。canLoadMore 只在本页取满、
+    /// 且总取数还没到内存窗口上限时为真
+    private func trackFetchedPage(_ page: [Record], pageSize: Int) {
+        fetchedRowCount += page.count
+        if let oldest = page.last {
+            // 页面按库内顺序返回，最后一条即窗口里最旧的记录
+            oldestFetchedAnchor = (starred: oldest.starred, createdAt: oldest.createdAt)
+        }
+        canLoadMoreRecords = page.count == pageSize && fetchedRowCount < Self.maxInMemoryRecords
     }
 
     private func cleanupStickyNotesAfterInitialLoad() {
@@ -796,6 +833,10 @@ final class RecordStore: ObservableObject {
         records.removeAll()
         aiCoordinator.markTagsNeedUpdate()
         repository.deleteAll()
+        // 库已清空，翻页状态一并复位：不存在"还有更多"
+        fetchedRowCount = 0
+        oldestFetchedAnchor = nil
+        canLoadMoreRecords = false
         QuiteNoteNotification.post(.recordsCleared)
     }
 
@@ -1285,9 +1326,10 @@ final class RecordStore: ObservableObject {
             }
         }
 
-        // 立即重新加载内存数据（CoreData 保存已在 addImportedRecord 中同步完成）
+        // 立即重新加载内存数据（CoreData 保存已在 addImportedRecord 中同步完成）。
+        // 整表重载一次最多取 1000 条：取满即已超出内存窗口，不再继续翻页
         if importedCount > 0 {
-            loadFromStore()
+            fetchPageFromStore(pageSize: Self.importReloadPageSize, offset: 0)
         }
 
         return importedCount
@@ -1321,18 +1363,77 @@ final class RecordStore: ObservableObject {
 
     // MARK: - 数据加载
 
-    /// 从数据库加载所有记录
-    private func loadFromStore() {
-        do {
-            records = try repository.fetchRecords(limit: 1000, offset: 0)
-            print("[DEBUG] RecordStore 从数据库加载了 \(records.count) 条记录")
-            
-            // 异步补全缺失的 size 信息（针对旧数据）
-            DispatchQueue.global(qos: .utility).async { [weak self] in
-                self?.backfillMissingSizes()
+    /// 从数据库取一页记录并落地。翻页追加与导入后的整表重载共用这一个取页函数：
+    /// offset == 0 是整表重载（替换内存记录、顺带补全旧记录的 size），否则按 id 去重后追加。
+    /// 取数在后台线程，落地与翻页状态更新在主线程；出错记诊断日志并复位加载标志
+    private func fetchPageFromStore(pageSize: Int, offset: Int, completion: ((Bool) -> Void)? = nil) {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+
+            do {
+                let newRecords = try self.repository.fetchRecords(limit: pageSize, offset: offset)
+
+                // 如果有 pending 状态的记录，需要在后台更新数据库
+                let pendingIds = newRecords.filter { $0.aiStatus == "pending" }.map { $0.id }
+                if !pendingIds.isEmpty {
+                    self.repository.clearPendingStatus(for: pendingIds)
+                }
+
+                DispatchQueue.main.async {
+                    if offset == 0 {
+                        self.records = newRecords
+                    } else {
+                        let existingIds = Set(self.records.map { $0.id })
+                        let uniqueNewRecords = newRecords.filter { !existingIds.contains($0.id) }
+                        self.records.append(contentsOf: uniqueNewRecords)
+                    }
+                    self.sortRecordsInPlace()
+                    self.trackFetchedPage(newRecords, pageSize: pageSize)
+                    if offset == 0 {
+                        DispatchQueue.global(qos: .utility).async { [weak self] in
+                            self?.backfillMissingSizes()
+                        }
+                    }
+                    completion?(self.canLoadMoreRecords)
+                }
+            } catch {
+                Self.logger.error("加载记录失败: \(error.localizedDescription)")
+                DiagnosticCenter.error("RecordStore", "取记录页失败（pageSize \(pageSize)，offset \(offset)）：\(error.localizedDescription)")
+                DispatchQueue.main.async {
+                    self.isLoadingMoreRecords = false
+                    completion?(false)
+                }
             }
-        } catch {
-            Self.logger.error("从数据库加载记录失败: \(error.localizedDescription)")
+        }
+    }
+
+    /// 加载更多记录（后台取下一页，50 条）。completion 在主线程回调，传入值与落地后的
+    /// canLoadMoreRecords 一致；已有取页在跑时直接忽略（不会并发取页），
+    /// 没有更多记录时立即以 false 收尾
+    func loadMoreRecords(completion: ((Bool) -> Void)? = nil) {
+        guard !isLoadingMoreRecords else { return }
+        guard canLoadMoreRecords else {
+            completion?(false)
+            return
+        }
+        isLoadingMoreRecords = true
+
+        // 主线程先取锚点快照，后台按锚点对表算 offset（见 countRecordsBefore）。
+        // +1 跳过锚点自己——锚点已取过，取回来也只是被去重丢掉
+        let anchor = oldestFetchedAnchor
+        let fallbackOffset = fetchedRowCount
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+            let offset: Int
+            if let anchor {
+                offset = ((try? self.repository.countRecordsBefore(starred: anchor.starred, createdAt: anchor.createdAt)) ?? fallbackOffset - 1) + 1
+            } else {
+                offset = fallbackOffset
+            }
+            self.fetchPageFromStore(pageSize: Self.pageSize, offset: offset) { [weak self] canLoadMore in
+                self?.isLoadingMoreRecords = false
+                completion?(canLoadMore)
+            }
         }
     }
 
@@ -1373,48 +1474,6 @@ final class RecordStore: ObservableObject {
                     }
                 }
             }
-        }
-    }
-
-    /// 分页加载记录，提高性能
-    func loadFromStore(pageSize: Int = 50, offset: Int = 0) {
-        // 异步加载数据，避免阻塞主线程
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            guard let self = self else { return }
-
-            do {
-                let newRecords = try self.repository.fetchRecords(limit: pageSize, offset: offset)
-
-                // 如果有 pending 状态的记录，需要在后台更新数据库
-                let pendingIds = newRecords.filter { $0.aiStatus == "pending" }.map { $0.id }
-                if !pendingIds.isEmpty {
-                    self.repository.clearPendingStatus(for: pendingIds)
-                }
-
-                DispatchQueue.main.async {
-                    if offset == 0 {
-                        self.records = newRecords
-                    } else {
-                        let existingIds = Set(self.records.map { $0.id })
-                        let uniqueNewRecords = newRecords.filter { !existingIds.contains($0.id) }
-                        self.records.append(contentsOf: uniqueNewRecords)
-                    }
-                    self.sortRecordsInPlace()
-                }
-            } catch {
-                Self.logger.error("加载记录失败: \(error.localizedDescription)")
-            }
-        }
-    }
-
-    /// 加载更多记录
-    func loadMoreRecords() {
-        let currentCount = records.count
-        loadFromStore(pageSize: 50, offset: currentCount)
-
-        // 限制内存中的记录数量，保留最新的 200 条记录
-        if records.count > 200 {
-            records = Array(records.prefix(200))
         }
     }
 

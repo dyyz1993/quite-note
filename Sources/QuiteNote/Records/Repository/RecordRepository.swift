@@ -144,6 +144,29 @@ final class RecordRepository {
         return count
     }
 
+    /// 排在锚点前面的行数（同星标、创建时间晚于锚点）。主列表翻页用它对 offset：
+    /// 两次翻页之间新落库的记录在库内排序里排在已取窗口前面，固定 offset 会漏掉旧记录。
+    /// 与锚点同星标同时间的并列行不计入——取回来会被内存按 id 去重，不会丢也不会重
+    func countRecordsBefore(starred: Bool, createdAt: Date) throws -> Int {
+        var count = 0
+        var fetchError: Error?
+
+        stack.context.performAndWait {
+            do {
+                let req = NSFetchRequest<CDRecord>(entityName: "CDRecord")
+                req.predicate = starred
+                    ? NSPredicate(format: "starred == YES AND createdAt > %@", createdAt as CVarArg)
+                    : NSPredicate(format: "starred == YES OR (starred == NO AND createdAt > %@)", createdAt as CVarArg)
+                count = try stack.context.count(for: req)
+            } catch {
+                fetchError = error
+            }
+        }
+
+        if let error = fetchError { throw error }
+        return count
+    }
+
     // MARK: - 保存操作
 
     /// 保存新记录（异步，后台任务）
