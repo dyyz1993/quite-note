@@ -47,6 +47,8 @@ final class V2RecordingController: ObservableObject {
     /// 引擎正在运行（含启动中）；active=false 且 isFinalizing=true 是收尾窗口期
     private var active = false
     private var startTask: Task<Void, Never>?
+    /// 本次录制所在屏（停止后快剪窗口居中到该屏，避免 panel.center() 在多屏下甩屏）
+    private var sessionScreen: NSScreen?
 
     private init() {
         engine.onForcedStop = { [weak self] in
@@ -72,6 +74,7 @@ final class V2RecordingController: ObservableObject {
             ScreenshotService.shared.announceRecordingError("无法识别目标屏幕，录制未开始")
             return
         }
+        sessionScreen = screen
 
         let sourceRect = V2RecordingGeometry.clampedSourceRect(
             local: localRect, screenPointSize: screen.frame.size)
@@ -266,7 +269,7 @@ final class V2RecordingController: ObservableObject {
                         tempURL: tempURL,
                         directory: directory)
                     ScreenshotService.shared.announceRecordingSaved(path: finalURL.path)
-                    V2RecordingPreviewController.shared.show(fileURL: finalURL)
+                    V2RecordingPreviewController.shared.show(fileURL: finalURL, on: sessionScreen)
                 } else {
                     ScreenshotService.shared.announceRecordingError("录制时间太短，未生成文件")
                 }

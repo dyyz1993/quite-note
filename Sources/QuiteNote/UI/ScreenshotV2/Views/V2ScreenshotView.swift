@@ -353,7 +353,8 @@ struct V2ScreenshotView: View {
 
         DiagnosticCenter.info("OCR", "OCR 模式：退出截图会话，进入识别窗口，选区 \(Int(rect.width))x\(Int(rect.height))")
         V2ScreenshotController.close()
-        V2OCRResultPanelController.shared.show(image: finalImage)
+        // screen 是视图构造时持有的会话屏引用，会话关闭不影响传参（多屏铁律：不用 panel.center()）
+        V2OCRResultPanelController.shared.show(image: finalImage, on: screen)
     }
 
     // 区域录屏：选区的目的是录动态画面——

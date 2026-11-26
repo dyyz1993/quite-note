@@ -54,7 +54,10 @@ final class V2RecordingPreviewController: NSObject, NSWindowDelegate {
     private var panel: NSPanel?
     private var player: AVPlayer?
 
-    func show(fileURL: URL) {
+    /// - Parameters:
+    ///   - fileURL: 已落盘的录制文件
+    ///   - screen: 录制所在屏（传了就居中到该屏；nil 时退回面板当前屏，再退回 panel.center()）
+    func show(fileURL: URL, on screen: NSScreen? = nil) {
         if panel == nil {
             let p = V2RecordingPreviewPanel(
                 contentRect: NSRect(x: 0, y: 0, width: 980, height: 720),
@@ -84,7 +87,18 @@ final class V2RecordingPreviewController: NSObject, NSWindowDelegate {
         panel?.title = fileURL.deletingPathExtension().lastPathComponent
         panel?.contentView = NSHostingView(
             rootView: V2RecordingEditorView(fileURL: fileURL, player: player))
-        panel?.center()
+        // 居中到录制所在屏（panel.center() 在多屏下可能甩到别的屏）
+        if let panel = panel {
+            // 未显式传屏时回退到面板当前所在屏（导出重开场景），保持窗口不跳屏
+            if let frame = (screen ?? panel.screen)?.visibleFrame {
+                panel.setFrameOrigin(NSPoint(
+                    x: frame.midX - panel.frame.width / 2,
+                    y: frame.midY - panel.frame.height / 2
+                ))
+            } else {
+                panel.center()
+            }
+        }
         NSApp.activate(ignoringOtherApps: true)
         panel?.makeKeyAndOrderFront(nil)
 
