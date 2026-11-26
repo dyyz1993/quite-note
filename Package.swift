@@ -34,14 +34,6 @@ let package = Package(
                 .product(name: "Sparkle", package: "Sparkle")
             ],
             path: "Sources/QuiteNote",
-            exclude: [
-                "UI/FloatingPanel/Untitled-2.ini",
-                "UI/FloatingPanel/┌───────────────────────────────────────.ini",
-                "UI/ScreenshotV2/DEBUG_WIREFRAME_ISSUE.md",
-                "UI/ScreenshotV2/Docs",
-                "UI/ScreenshotV2/Views/Overlays/YellowWireframe_ANALYSIS.md",
-                "UI/ScreenshotV3"
-            ],
             resources: [
                 .process("Info-debug.plist"),
                 .process("Resources/Localization"),
