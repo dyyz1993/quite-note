@@ -350,20 +350,6 @@ final class ClipboardHistoryViewModel: ObservableObject {
     /// NSTableView 全表 reloadData（实测滚动卡顿的元凶）。⌘N 序号由列表的
     /// Coordinator 自绘（不依赖 SwiftUI），此值仅供 ⌘N 命中时静默读取
     private(set) var viewportTopIndex = 0
-    /// 各行在视口坐标里的位置（index → (minY, maxY)，由行上报）
-    private var rowFrames: [Int: (minY: CGFloat, maxY: CGFloat)] = [:]
-    private var viewportHeight: CGFloat = 0
-
-    /// 行位置上报（onAppear + onChange 双通道；滚动会更新 GeometryReader 读数）
-    func updateRowFrame(index: Int, minY: CGFloat, maxY: CGFloat) {
-        rowFrames[index] = (minY, maxY)
-        recomputeTopIndex()
-    }
-
-    func updateViewportHeight(_ height: CGFloat) {
-        viewportHeight = height
-        recomputeTopIndex()
-    }
 
     /// 可见首行变化（NSTableView 原生检测上报）
     func viewportTopChanged(_ top: Int) {
@@ -372,32 +358,13 @@ final class ClipboardHistoryViewModel: ObservableObject {
         }
     }
 
-    /// 顶行 = minY ≥ -15（容差）中最靠上的可见行
-    private func recomputeTopIndex() {
-        guard !rowFrames.isEmpty else { return }
-        let top = rowFrames
-            .filter { $0.value.minY > -15 && $0.value.maxY > 0 }
-            .min { $0.key < $1.key }?
-            .key ?? viewportTopIndex
-        if top != viewportTopIndex {
-            viewportTopIndex = top
-        }
-    }
-
     /// 视口重置（面板重开/搜索/筛选变化后视口回顶）
     func resetViewport() {
-        rowFrames.removeAll()
         viewportTopIndex = 0
     }
 
     /// ⌘N → 数据索引（视口顶 + N - 1）
     func dataIndex(forCommandDigit digit: Int) -> Int {
         viewportTopIndex + digit - 1
-    }
-
-    /// 行显示序号：视口内第 1–9 个返回 n；第 10 个及以后（一屏 >9 行时）返回 nil（淡化）
-    func displayNumber(forIndex index: Int) -> Int? {
-        let n = index - viewportTopIndex + 1
-        return (1...Self.pageSize).contains(n) ? n : nil
     }
 }

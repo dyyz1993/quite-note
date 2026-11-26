@@ -127,7 +127,6 @@ final class PreferencesManager: ObservableObject {
     func setSummaryLimit(_ v: Int) { d.set(v, forKey: "summaryLimit") }
     func setDedupEnabled(_ v: Bool) { d.set(v, forKey: "dedupEnabled") }
     func setMaxScreenshots(_ v: Int) { d.set(v, forKey: "maxScreenshots") }
-    func setDebounceSeconds(_ v: Int) { d.set(v, forKey: "debounceSeconds") }
     func setWindowLock(_ v: Bool) { d.set(v, forKey: "windowLock") }
     func setAnimationsEnabled(_ v: Bool) { d.set(v, forKey: "animationsEnabled") }
     func setRememberWindowPosition(_ v: Bool) { d.set(v, forKey: "rememberWindowPosition") }
@@ -160,14 +159,6 @@ final class PreferencesManager: ObservableObject {
         }
     }
     func setAttachmentsPath(_ v: String?) { d.set(v, forKey: "attachmentsPath") }
-    func setAttachmentsDirectory(_ url: URL?) {
-        setAttachmentsPath(url?.path)
-        if let url {
-            _ = SecurityScopedBookmarkStore.shared.save(url, forKey: "attachmentsDirectoryBookmark")
-        } else {
-            SecurityScopedBookmarkStore.shared.remove(forKey: "attachmentsDirectoryBookmark")
-        }
-    }
     func setPreferredEditor(_ v: String) {
         d.set(v, forKey: "preferredEditor")
         if !v.hasPrefix("/") {

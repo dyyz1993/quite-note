@@ -346,11 +346,6 @@ struct FileSettingsTab: View {
         }
     }
     
-    private func colorForIndex(_ index: Int) -> Color {
-        let colors: [Color] = [.themeBlue400, .themePurple400, .themeGreen400, .themeYellow400]
-        return colors[index % colors.count]
-    }
-    
     private func selectCustomApp() {
         let openPanel = NSOpenPanel()
         openPanel.canChooseFiles = true

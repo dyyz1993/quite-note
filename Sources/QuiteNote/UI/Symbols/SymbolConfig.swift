@@ -51,11 +51,6 @@ struct SymbolItem: Codable, Equatable, Identifiable, Hashable {
         let normalizedTrigger = trigger.lowercased().trimmingCharacters(in: .whitespaces)
         return triggers.contains { $0.lowercased() == normalizedTrigger }
     }
-
-    /// 获取主要触发词（第一个）
-    var primaryTrigger: String {
-        triggers.first ?? ""
-    }
 }
 
 /// 符号菜单分类

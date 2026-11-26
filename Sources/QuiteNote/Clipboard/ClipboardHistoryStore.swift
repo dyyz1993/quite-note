@@ -350,13 +350,6 @@ final class ClipboardHistoryStore: ObservableObject {
 
     // MARK: - 私有
 
-    private func moveToFront(_ index: Int) {
-        let entry = entries.remove(at: index)
-        entries.insert(entry, at: 0)
-        bumpVersion()
-        resortInPlace()
-    }
-
     private func resortInPlace() {
         entries.sort { a, b in
             if a.isPinned != b.isPinned { return a.isPinned }

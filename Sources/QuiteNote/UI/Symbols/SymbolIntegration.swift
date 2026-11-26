@@ -83,12 +83,6 @@ extension StickyNoteEditor.Coordinator {
         return state
     }
 
-    /// 当前选中的建议索引（保持兼容性）
-    private var symbolSelectedIndex: Int {
-        get { objc_getAssociatedObject(self, &AssociatedKeys.symbolSelectedIndex) as? Int ?? 0 }
-        set { objc_setAssociatedObject(self, &AssociatedKeys.symbolSelectedIndex, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC) }
-    }
-
     /// 键盘事件监听器
     private var symbolKeyMonitor: Any? {
         get { objc_getAssociatedObject(self, &AssociatedKeys.symbolKeyMonitor) }
@@ -668,13 +662,6 @@ extension StickyNoteEditor.Coordinator {
         return false // 不处理其他事件
     }
 
-    /// 刷新面板选择状态 - 由于使用了 @Published，SwiftUI 会自动更新
-    private func refreshPanelSelection() {
-        // 使用 @Published 后，SwiftUI 会自动检测到 selectedIndex 的变化
-        // 不需要手动刷新视图
-        print("[SymbolIntegration] selectedIndex 已更新为: \(symbolSelectionState.selectedIndex)")
-    }
-
     /// 联想面板确认符号（回车 / Tab / 点击建议都会走到这里）。
     /// 只替换「触发前缀 + 触发词」这一段：走可撤销插入，撤销栈、选区和行内格式都保得住；
     /// 修复前是整段 setAttributedString 重建，撤销栈被清空、刚打好的格式也会丢。
@@ -815,12 +802,6 @@ extension NSTextView {
         )
     }
 
-    /// 获取光标在屏幕中的位置（用于定位浮层面板）- 兼容旧版本
-    /// 返回屏幕坐标系下的光标位置（原点在屏幕左下角，Y向上为正）
-    func cursorLocationInScreen() -> NSPoint {
-        return cursorLocationInfo()?.cursorPosition ?? NSPoint.zero
-    }
-
     /// 将视图坐标转换为屏幕坐标
     private func convertPointToScreen(_ point: NSPoint) -> NSPoint {
         guard let window = window else {
@@ -884,14 +865,5 @@ class SymbolSuggestionPanelBridge {
         _isVisible = visible
         lock.unlock()
         print("[SymbolSuggestionPanelBridge] Panel visible: \(visible)")
-    }
-}
-
-// MARK: - Integration with StickyNoteEditor
-
-/// 在 StickyNoteEditor 的 makeNSView 中调用
-extension StickyNoteEditor.Coordinator {
-    func setupSymbolIntegration(for textView: StickyNoteTextView) {
-        setupSymbolDetection(for: textView)
     }
 }

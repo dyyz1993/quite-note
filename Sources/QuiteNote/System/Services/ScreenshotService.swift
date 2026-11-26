@@ -9,9 +9,6 @@ final class ScreenshotService {
     nonisolated(unsafe) static let shared = ScreenshotService()
     private let logger = Logger(subsystem: "com.quitenote.app.dev", category: "ScreenshotService")
 
-    // 用于通知模式的临时存储
-    private var pendingCompletion: ((NSImage?, CGRect?, NSScreen?) -> Void)?
-
     // 截图计数器
     private var screenshotCount = 0
 
@@ -29,16 +26,6 @@ final class ScreenshotService {
         self.recordStore = store
     }
     
-    /// 检查是否有辅助功能权限（用于全局快捷键监听）
-    /// - Parameter prompt: 是否在未获得权限时弹出系统申请弹窗
-    /// - Returns: 是否已获得权限
-    func checkAccessibilityPermission(prompt: Bool = false) -> Bool {
-        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: prompt]
-        let granted = AXIsProcessTrustedWithOptions(options as CFDictionary)
-        logger.debug("检查辅助功能权限: \(granted)")
-        return granted
-    }
-
     /// 检查屏幕录制权限状态（不触发弹窗）
     /// - Returns: 是否已获得权限
     func checkScreenCapturePermission() -> Bool {
@@ -145,11 +132,6 @@ final class ScreenshotService {
         // 直接调用 V2ScreenshotController
         // 截图完成后会通过 NotificationCenter 发送 "SaveScreenshot" 通知
         V2ScreenshotController.show()
-    }
-
-    /// 保存截图到闪记
-    func saveScreenshotToFlashNotes(image: NSImage) {
-        saveScreenshotRecord(image: image)
     }
 
     // MARK: - 录屏收尾提示（M1：文件 + 剪贴板路径 + 轻提示；预览/闪记入档在后续里程碑）

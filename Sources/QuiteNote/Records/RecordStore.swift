@@ -849,53 +849,11 @@ final class RecordStore: ObservableObject {
         searchHistoryManager.clear()
     }
 
-    /// 生成搜索结果总结
-    func generateSearchSummary(for query: String, completion: @escaping (String?) -> Void) {
-        guard aiCoordinator.enableAI, let ai = aiCoordinator.ai else {
-            completion(nil)
-            return
-        }
-
-        let results = search(query)
-        guard !results.isEmpty else {
-            completion("没有找到匹配的记录")
-            return
-        }
-
-        // 准备用于总结的内容
-        let content = results.prefix(10).map { record in
-            let title = record.title ?? "无标题"
-            let summary = record.summary ?? ""
-            return "标题: \(title)\n总结: \(summary)"
-        }.joined(separator: "\n\n")
-
-        let prompt = "请为以下搜索结果生成一个简短的总结，不超过100字。搜索关键词: \(query)\n\n搜索结果:\n\(content)"
-
-        let existingTags = aiCoordinator.getAllUniqueTags(from: records)
-        ai.summarize(contextId: "search-\(query)", titleLimit: 50, summaryLimit: 100, content: prompt, existingTags: existingTags) { result in
-            DispatchQueue.main.async {
-                switch result {
-                case .success(let summaryResult):
-                    completion(summaryResult.summary)
-                case .failure:
-                    completion("生成搜索总结失败")
-                }
-            }
-        }
-    }
-
     // MARK: - AI 操作
 
     /// 连接 AI 提炼服务
     func attachAI(service: AIServiceProtocol) {
         aiCoordinator.attachAI(service: service)
-    }
-
-    /// 配置 OpenAI 连接参数并写入 Keychain（仅密钥）
-    func configureOpenAI(apiKey: String, baseURL: String, model: String) {
-        KeychainHelper.shared.write(service: "QuiteNote", account: "openai_api_key", value: apiKey)
-        prefs.setOpenAIBaseURL(baseURL)
-        prefs.setOpenAIModel(model)
     }
 
     /// 批量对无标题记录触发重新提炼（每次最多处理 3 条）

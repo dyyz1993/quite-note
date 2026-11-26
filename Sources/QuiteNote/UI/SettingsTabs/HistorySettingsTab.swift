@@ -147,30 +147,6 @@ struct HistorySettingsTab: View {
 
     // MARK: - Methods
 
-    /// 选择附件存储目录
-    private func selectAttachmentsFolder() {
-        let openPanel = NSOpenPanel()
-        openPanel.canChooseFiles = false
-        openPanel.canChooseDirectories = true
-        openPanel.allowsMultipleSelection = false
-        openPanel.title = "选择附件存储目录"
-        openPanel.prompt = "选择"
-        openPanel.level = .modalPanel
-        
-        // 默认定位到当前存储位置
-        openPanel.directoryURL = store.currentAttachmentsDirectory
-
-        openPanel.begin { response in
-            if response == .OK, let url = openPanel.url {
-                DispatchQueue.main.async {
-                    _ = SecurityScopedBookmarkStore.shared.save(url, forKey: "attachmentsDirectoryBookmark")
-                    store.attachmentsPath = url.path
-                    store.savePreferences()
-                }
-            }
-        }
-    }
-
     /// 使用 NSOpenPanel 导入记录（让用户选择文件）
     private func importRecordsWithOpenPanel() {
         let openPanel = NSOpenPanel()

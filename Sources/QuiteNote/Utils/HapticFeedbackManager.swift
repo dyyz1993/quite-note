@@ -22,12 +22,7 @@ class HapticFeedbackManager {
     func mediumImpact() {
         performFeedback(.generic)
     }
-    
-    /// 执行强烈震动反馈
-    func heavyImpact() {
-        performFeedback(.generic)
-    }
-    
+
     /// 执行成功反馈
     func success() {
         performFeedback(.generic)
@@ -42,12 +37,7 @@ class HapticFeedbackManager {
     func warning() {
         performFeedback(.generic)
     }
-    
-    /// 执行选择反馈（用于滚动、选择等操作）
-    func selectionChanged() {
-        performFeedback(.generic)
-    }
-    
+
     /// 执行实际的触觉反馈
     private func performFeedback(_ pattern: NSHapticFeedbackManager.FeedbackPattern) {
         // 在主线程上执行触觉反馈

@@ -80,30 +80,6 @@ extension View {
         return self.shadow(color: color.opacity(0.5), radius: radius, x: x, y: y)
     }
 
-    /// Apply inset shadow (inner shadow effect)
-    /// - Parameters:
-    ///   - color: Shadow color
-    ///   - radius: Shadow blur radius
-    ///   - x: Horizontal offset (defaults to 0)
-    ///   - y: Vertical offset (defaults to 0)
-    /// - Returns: View with inset shadow applied
-    func insetShadow(color: Color = .black, radius: CGFloat, x: CGFloat = 0, y: CGFloat = 0) -> some View {
-        return self.overlay(
-            RoundedRectangle(cornerRadius: ThemeRadius.base.rawValue)
-                .fill(
-                    LinearGradient(
-                        gradient: Gradient(colors: [
-                            color.opacity(0.3),
-                            color.opacity(0.0)
-                        ]),
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .mask(RoundedRectangle(cornerRadius: ThemeRadius.base.rawValue))
-        )
-    }
-
     /// Clip view to rounded rectangle shape
     /// - Parameter radius: Corner radius
     /// - Returns: View clipped to rounded rectangle
@@ -115,19 +91,6 @@ extension View {
     /// - Returns: View clipped to circle
     func clipCircle() -> some View {
         return self.clipShape(Circle())
-    }
-
-    /// Apply theme-appropriate card styling
-    /// - Parameters:
-    ///   - cornerRadius: Corner radius (defaults to lg)
-    ///   - shadow: Whether to add shadow (defaults to true)
-    /// - Returns: View with card styling applied
-    func cardStyle(cornerRadius: ThemeRadius = .lg, shadow: Bool = true) -> some View {
-        return self
-            .background(Color.themeCard)
-            .cornerRadius(cornerRadius.rawValue)
-            .border(width: ThemeRadius.base.rawValue, color: Color.themeBorder)
-            .applyShadowIfNeeded(shadow: shadow, color: .black, radius: 20, x: 0, y: 10)
     }
 
     // Helper method to apply shadow conditionally
@@ -155,63 +118,6 @@ extension View {
             .cornerRadius(cornerRadius.rawValue)
             .border(width: ThemeRadius.base.rawValue, color: Color.themeBorder)
             .applyShadowIfNeeded(shadow: shadow, color: .black, radius: 8, x: 0, y: 2)
-    }
-
-    /// Apply theme-appropriate input field styling
-    /// - Parameters:
-    ///   - cornerRadius: Corner radius (defaults to base)
-    ///   - background: Background color (defaults to black/40)
-    /// - Returns: View with input styling applied
-    func inputStyle(
-        cornerRadius: ThemeRadius = .base,
-        background: Color = .themeInput
-    ) -> some View {
-        return self
-            .background(background)
-            .cornerRadius(cornerRadius.rawValue)
-            .border(width: ThemeRadius.base.rawValue, color: Color.themeBorder)
-    }
-
-    /// Apply theme-appropriate panel styling
-    /// - Parameters:
-    ///   - cornerRadius: Corner radius (defaults to xxl)
-    ///   - shadow: Whether to add shadow (defaults to true)
-    /// - Returns: View with panel styling applied
-    func panelStyle(
-        cornerRadius: ThemeRadius = .xxl,
-        shadow: Bool = true
-    ) -> some View {
-        return self
-            .background(Color.themeBackground)
-            .cornerRadius(cornerRadius.rawValue)
-            .border(width: ThemeRadius.base.rawValue, color: Color.themeBorder)
-            .applyShadowIfNeeded(shadow: shadow, color: .black, radius: 20, x: 0, y: 10)
-    }
-}
-
-// MARK: - Shape Extensions
-//
-// Additional shape utilities.
-
-struct ThemeShapes {
-    /// Create a rounded rectangle with theme corner radius
-    /// - Parameters:
-    ///   - cornerRadius: Corner radius (defaults to lg)
-    /// - Returns: RoundedRectangle
-    static func roundedRectangle(cornerRadius: ThemeRadius = .lg) -> RoundedRectangle {
-        return RoundedRectangle(cornerRadius: cornerRadius.rawValue)
-    }
-
-    /// Create a capsule shape (pill)
-    /// - Returns: Capsule
-    static func capsule() -> Capsule {
-        return Capsule()
-    }
-
-    /// Create a circle
-    /// - Returns: Circle
-    static func circle() -> Circle {
-        return Circle()
     }
 }
 
@@ -268,54 +174,4 @@ struct RectCorner: OptionSet {
     static let bottomRight = RectCorner(rawValue: 1 << 3)
     
     static let allCorners: RectCorner = [.topLeft, .topRight, .bottomLeft, .bottomRight]
-}
-
-// MARK: - Border Utilities
-//
-// Additional utilities for working with borders.
-
-struct Border {
-    /// Create a top border
-    /// - Parameters:
-    ///   - width: Border width (defaults to 1)
-    ///   - color: Border color (defaults to themeBorder)
-    /// - Returns: View with top border
-    static func top(width: CGFloat = ThemeRadius.base.rawValue, color: Color = .themeBorder) -> some View {
-        return Rectangle()
-            .fill(color)
-            .frame(height: width)
-    }
-
-    /// Create a bottom border
-    /// - Parameters:
-    ///   - width: Border width (defaults to 1)
-    ///   - color: Border color (defaults to themeBorder)
-    /// - Returns: View with bottom border
-    static func bottom(width: CGFloat = ThemeRadius.base.rawValue, color: Color = .themeBorder) -> some View {
-        return Rectangle()
-            .fill(color)
-            .frame(height: width)
-    }
-
-    /// Create a left border
-    /// - Parameters:
-    ///   - width: Border width (defaults to 1)
-    ///   - color: Border color (defaults to themeBorder)
-    /// - Returns: View with left border
-    static func left(width: CGFloat = ThemeRadius.base.rawValue, color: Color = .themeBorder) -> some View {
-        return Rectangle()
-            .fill(color)
-            .frame(width: width)
-    }
-
-    /// Create a right border
-    /// - Parameters:
-    ///   - width: Border width (defaults to 1)
-    ///   - color: Border color (defaults to themeBorder)
-    /// - Returns: View with right border
-    static func right(width: CGFloat = ThemeRadius.base.rawValue, color: Color = .themeBorder) -> some View {
-        return Rectangle()
-            .fill(color)
-            .frame(width: width)
-    }
 }

@@ -163,11 +163,6 @@ final class DevCoreServiceMonitor: ObservableObject {
         return status
     }
 
-    private func launchctlPID() throws -> Int32? {
-        let output = try Self.runLaunchctl(["print", "\(domain)/\(Self.label)"], queue: nil)
-        return Self.pid(fromLaunchctlOutput: output)
-    }
-
     nonisolated static func pid(fromLaunchctlOutput output: String) -> Int32? {
         for line in output.split(separator: "\n") {
             let trimmed = line.trimmingCharacters(in: .whitespaces)

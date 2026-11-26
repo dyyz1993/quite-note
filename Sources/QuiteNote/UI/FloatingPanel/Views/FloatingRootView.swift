@@ -820,46 +820,6 @@ struct SidebarFilterButton: View {
     }
 }
 
-// MARK: - 键盘事件处理修饰符
-
-/// 键盘事件处理修饰符，处理不同 macOS 版本的兼容性
-struct KeyboardHandlerModifier: ViewModifier {
-    @Binding var expandedId: UUID?
-    @Binding var showSettings: Bool
-    var onMinimize: (() -> Void)?
-
-    func body(content: Content) -> some View {
-        if #available(macOS 14.0, *) {
-            content
-                .onKeyPress(.escape) {
-                    // ⭐ 关键修复：检查符号联想面板是否正在显示
-                    // 如果符号面板可见，不处理 ESC，让符号面板处理
-                    if SymbolSuggestionPanelBridge.isPanelVisible {
-                        print("[DEBUG] Symbol panel is visible, not handling ESC")
-                        return .ignored
-                    }
-
-                    // ESC键缩小到浮球或取消展开
-                    print("[DEBUG] ESC pressed: expandedId=\(expandedId?.uuidString ?? "nil"), showSettings=\(showSettings)")
-                    if expandedId != nil {
-                        expandedId = nil
-                        return .handled
-                    } else if showSettings {
-                        showSettings = false
-                        return .handled
-                    } else {
-                        print("[DEBUG] ESC calling onMinimize")
-                        onMinimize?()
-                        return .handled
-                    }
-                }
-        } else {
-            // 对于旧版本 macOS，暂时不提供键盘快捷键支持
-            content
-        }
-    }
-}
-
 // MARK: - View Extensions
 
 extension View {

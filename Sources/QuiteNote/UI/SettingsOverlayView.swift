@@ -276,36 +276,6 @@ struct VariableBadge: View {
     }
 }
 
-struct TabButton: View {
-    let key: String
-    let label: String
-    let icon: String
-    @Binding var current: String
-    
-    var body: some View {
-        let isSelected = current == key
-        Button(action: { withAnimation(.easeInOut(duration: 0.2)) { current = key } }) {
-            HStack(spacing: 4) {
-                Image(systemName: icon)
-                    .font(.system(size: 12))
-                Text(label)
-                    .font(.system(size: 12, weight: isSelected ? .medium : .regular))
-            }
-            .padding(.horizontal, 12) // px-3
-            .padding(.vertical, 6) // py-1.5
-            .foregroundColor(isSelected ? .white : .themeTextSecondary)
-            .background(isSelected ? Color.themeSelected : Color.themeHoverLight)
-            .cornerRadius(16) // rounded-full
-            .overlay(
-                RoundedRectangle(cornerRadius: 16)
-                    .stroke(Color.themeBorder, lineWidth: isSelected ? 0 : 1)
-            )
-        }
-        .buttonStyle(.plain)
-        .pointingHandCursor()
-    }
-}
-
 struct TabButtonLucide: View {
     let key: String
     let label: String
@@ -355,27 +325,6 @@ struct CustomToggle: View {
                 isOn.toggle()
             }
         }
-        .pointingHandCursor()
-    }
-}
-
-struct ProviderButton: View {
-    let title: String
-    let isSelected: Bool
-    let action: () -> Void
-    
-    var body: some View {
-        Button(action: action) {
-            Text(title)
-                .font(.system(size: 10, weight: isSelected ? .bold : .regular))
-                .foregroundColor(isSelected ? .white : .themeTextSecondary)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(isSelected ? Color.themeSelected : Color.themeHoverLight)
-                .cornerRadius(4)
-                .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.themeBorder, lineWidth: 1).allowsHitTesting(false))
-        }
-        .buttonStyle(.plain)
         .pointingHandCursor()
     }
 }

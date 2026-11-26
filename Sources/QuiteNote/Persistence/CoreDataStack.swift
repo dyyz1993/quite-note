@@ -244,14 +244,6 @@ final class CoreDataStack {
         container.performBackgroundTask(block)
     }
 
-    func fetchRecords() throws -> [CDRecord] {
-        let req = NSFetchRequest<CDRecord>(entityName: "CDRecord")
-        let sortStarred = NSSortDescriptor(key: "starred", ascending: false)
-        let sortDate = NSSortDescriptor(key: "createdAt", ascending: false)
-        req.sortDescriptors = [sortStarred, sortDate]
-        return try context.fetch(req)
-    }
-    
     /// 分页查询记录，提高性能和内存效率
     /// - Parameters:
     ///   - limit: 每页记录数，默认50条
@@ -274,24 +266,6 @@ final class CoreDataStack {
         return try context.count(for: req)
     }
     
-    /// 根据日期范围查询记录
-    /// - Parameters:
-    ///   - startDate: 开始日期
-    ///   - endDate: 结束日期
-    ///   - limit: 每页记录数，默认50条
-    ///   - offset: 偏移量，默认0
-    /// - Returns: 指定日期范围内的记录数组
-    func fetchRecords(from startDate: Date, to endDate: Date, limit: Int = 50, offset: Int = 0) throws -> [CDRecord] {
-        let req = NSFetchRequest<CDRecord>(entityName: "CDRecord")
-        let sortStarred = NSSortDescriptor(key: "starred", ascending: false)
-        let sortDate = NSSortDescriptor(key: "createdAt", ascending: false)
-        req.sortDescriptors = [sortStarred, sortDate]
-        req.predicate = NSPredicate(format: "createdAt >= %@ AND createdAt <= %@", startDate as CVarArg, endDate as CVarArg)
-        req.fetchLimit = limit
-        req.fetchOffset = offset
-        return try context.fetch(req)
-    }
-
     /// 根据日期范围查询所有记录（不分页，用于热力图等统计功能）
     /// - Parameters:
     ///   - startDate: 开始日期
@@ -303,10 +277,4 @@ final class CoreDataStack {
         // 不设置 fetchLimit，获取所有记录
         return try context.fetch(req)
     }
-
-    func newRecord() -> CDRecord {
-        CDRecord(context: context)
-    }
-
-    func save() { if context.hasChanges { try? context.save() } }
 }
