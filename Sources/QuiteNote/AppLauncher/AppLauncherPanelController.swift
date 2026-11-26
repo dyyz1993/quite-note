@@ -87,48 +87,11 @@ final class AppLauncherPanelController {
             ClipboardHistoryPanelController.shared.hide()
         }
 
-        // key 就位补拉：makeKey 是异步的。用浮球验证过的激进方式（orderFrontRegardless
-        // + makeKey 直调），按固定间隔补拉直到就位
-        // 前密后疏重试（同剪贴板面板，macOS 26 激活归因窗口约束）+ 激活重锤兜底。
-        // 每轮重试后**无条件**补焦一拍：只在 makeKey 成功才补焦会让"晚到的 key"
-        // 无人聚焦（剪贴板面板实测过的坑——key✓ 但打不了字）
-        for delay in [0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.55, 0.7] {
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-                guard let self, let panel = self.panel, panel.isVisible else { return }
-                if !panel.isKeyWindow {
-                    NSApp.activate(ignoringOtherApps: true)
-                    panel.orderFrontRegardless()
-                    panel.makeKey()
-                }
-                DispatchQueue.main.async {
-                    self.focusSearchFieldNow()
-                }
-            }
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
-            guard let self, let panel = self.panel, panel.isVisible, !panel.isKeyWindow else { return }
-            DiagnosticCenter.warning("Launcher", "激活被拒（accessory 策略），启用 .regular 重锤")
-            NSApp.setActivationPolicy(.regular)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                NSApp.activate(ignoringOtherApps: true)
-                panel.makeKeyAndOrderFront(nil)
-                DispatchQueue.main.async {
-                    self.focusSearchFieldNow()
-                }
-            }
-            // 无论 key 是否成功，确认聚焦后切回 .accessory（否则 Dock 图标常驻）
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                if panel.isKeyWindow {
-                    NSApp.setActivationPolicy(.accessory)
-                } else {
-                    // 再试一次 makeKey
-                    panel.makeKey()
-                }
-                // 最终确保切回（不能让 Dock 图标常驻）
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    NSApp.setActivationPolicy(.accessory)
-                }
-            }
+        // key 就位补拉 + 激活重锤 + App Nap 断言：共用 KeyWindowLadder
+        // （剪贴板面板 2026-11-20 生产验证版：前密后疏重试 + 逐步计时熔断 +
+        // 0.35s 重锤 + userInitiated 断言防 App Nap；每轮重试后**无条件**补焦一拍）
+        ladder.begin(panel: panel, category: "Launcher") { [weak self] in
+            self?.focusSearchFieldNow()
         }
 
         installKeyMonitor()
@@ -157,10 +120,7 @@ final class AppLauncherPanelController {
 
     func hide() {
         InputSourceSwitcher.restore()
-        if policyDanced {
-            NSApp.setActivationPolicy(.accessory)
-            policyDanced = false
-        }
+        ladder.end()
         panel?.orderOut(nil)
         removeKeyMonitor()
         removeClickOutsideMonitor()
@@ -169,7 +129,8 @@ final class AppLauncherPanelController {
     }
 
     private var lastScreen: NSScreen?
-    private var policyDanced = false
+    /// key 就位梯子（补拉 + 重锤 + App Nap 断言，见 KeyWindowLadder）
+    private let ladder = KeyWindowLadder(napReason: "launcher-panel-visible")
 
     /// 高度自适应内容（视图在结果数/模式变化时调用）：顶边锚定不动、只改高度，
     /// 静态 setFrame（无逐帧动画，避开 NSHostingView 与窗口 resize 并发的崩溃红线）
