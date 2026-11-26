@@ -39,7 +39,10 @@ echo "📦 发布版本: $VERSION"
 # ------------------------------------------------------------------
 # 1. 前置检查: Developer ID Application 证书
 # ------------------------------------------------------------------
-SIGN_IDENTITY=$(security find-identity -v -p codesigning | awk -F'"' '/Developer ID Application/{print $2; exit}')
+# CI（release.yml）经 tools/ci-signing.sh 从临时钥匙串解析出 SHA-1 指纹并通过
+# APP_SIGN_IDENTITY 传入——优先用它（证书一律按 SHA-1 区分，不按名字选）；
+# 本机手动发版没传这个变量时，才按名字在钥匙串里找
+SIGN_IDENTITY="${APP_SIGN_IDENTITY:-$(security find-identity -v -p codesigning | awk -F'"' '/Developer ID Application/{print $2; exit}')}"
 if [ -z "$SIGN_IDENTITY" ]; then
     echo "❌ 钥匙串中没有 'Developer ID Application' 证书，无法对外分发"
     echo "   创建方法: Xcode → Settings → Accounts → 选中账号 → Manage Certificates… → ➕ → Developer ID Application"

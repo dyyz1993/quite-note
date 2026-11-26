@@ -50,24 +50,8 @@ jobs:
           QN_UI_CERTIFICATE_P12_BASE64: ${{ secrets.MAC_CERTIFICATE_P12_BASE64 }}
           QN_UI_CERTIFICATE_PASSWORD: ${{ secrets.MAC_CERTIFICATE_PASSWORD }}
         run: |
-          CERT="$RUNNER_TEMP/qn-ui-certificate.p12"
-          KEYCHAIN="$RUNNER_TEMP/qn-ui-signing.keychain-db"
-          echo -n "$QN_UI_CERTIFICATE_P12_BASE64" | base64 --decode -o "$CERT"
-          security create-keychain -p "$QN_UI_CERTIFICATE_PASSWORD" "$KEYCHAIN"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN"
-          security unlock-keychain -p "$QN_UI_CERTIFICATE_PASSWORD" "$KEYCHAIN"
-          security import "$CERT" -P "$QN_UI_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN"
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$QN_UI_CERTIFICATE_PASSWORD" "$KEYCHAIN"
-                    # 必须写完整路径：裸写 "login" 会被解析成 ~/Library/Keychains/login-db（不存在的文件），
-          # 把真正的 login.keychain-db 挤出搜索列表——runner 所在机器上所有本地构建从此查不到签名身份
-          # （2026-11-25 实锤，本机 macos-heavy 中招）。Cleanup 时 delete-keychain 会自动把自己移出列表
-          security list-keychains -d user -s "$KEYCHAIN" "$HOME/Library/Keychains/login.keychain-db"
-          # Resolve a Developer ID identity from the temporary keychain.
-          IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN" \
-            | awk -F'"' '/Developer ID Application/{print $1; exit}' | awk '{print $2}')
-          [[ -n "$IDENTITY" ]] || { echo "No Developer ID identity found"; exit 2; }
-          echo "APP_SIGN_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
-          rm -f "$CERT"
+          source "$GITHUB_WORKSPACE/tools/ci-signing.sh"
+          ci_signing_prepare "$QN_UI_CERTIFICATE_P12_BASE64" "$QN_UI_CERTIFICATE_PASSWORD" "$QN_UI_CERTIFICATE_PASSWORD"
 
       - name: Build universal Dev app
         run: |
@@ -99,7 +83,8 @@ jobs:
       - name: Cleanup CI keychain
         if: always()
         run: |
-          security delete-keychain "$RUNNER_TEMP/qn-ui-signing.keychain-db" || true
+          source "$GITHUB_WORKSPACE/tools/ci-signing.sh"
+          ci_signing_cleanup
 
       - name: Package artifact
         run: |
