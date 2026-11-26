@@ -39,8 +39,6 @@ let package = Package(
                 "UI/FloatingPanel/┌───────────────────────────────────────.ini",
                 "UI/ScreenshotV2/DEBUG_WIREFRAME_ISSUE.md",
                 "UI/ScreenshotV2/Docs",
-                "UI/ScreenshotV2/LongScreenshot/Docs",
-                "UI/ScreenshotV2/LongScreenshot/README.md",
                 "UI/ScreenshotV2/Views/Overlays/YellowWireframe_ANALYSIS.md",
                 "UI/ScreenshotV3"
             ],

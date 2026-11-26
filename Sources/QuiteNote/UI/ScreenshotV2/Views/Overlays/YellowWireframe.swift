@@ -7,7 +7,6 @@ struct YellowWireframe: View {
     let isDashed: Bool
     let showBackground: Bool
     let isEditing: Bool // 传入编辑状态
-    let isLongScreenshotMode: Bool // 传入长图模式
     var opacity: Double = 1.0
     var showHandles: Bool = false // 是否显示 8 个调整手柄
 
@@ -29,8 +28,8 @@ struct YellowWireframe: View {
                         )
                     )
 
-                // 8 个调整手柄 (仅在非编辑模式和非长图模式下显示)
-                if showHandles && !isEditing && !isLongScreenshotMode {
+                // 8 个调整手柄 (仅在非编辑模式下显示)
+                if showHandles && !isEditing {
                     ForEach(SelectionHandle.allCases, id: \.self) { handle in
                         Circle()
                             .fill(Color.yellow)

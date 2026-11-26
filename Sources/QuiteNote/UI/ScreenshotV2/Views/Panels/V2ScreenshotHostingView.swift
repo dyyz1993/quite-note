@@ -1,15 +1,15 @@
 import SwiftUI
 import AppKit
 
-/// 自定义 HostingView，用于在长图模式下实现选区内的事件穿透
+/// 自定义 HostingView，用于在采集模式下实现选区内的事件穿透
 class V2ScreenshotHostingView<Content: View>: NSHostingView<Content> {
     override func hitTest(_ point: NSPoint) -> NSView? {
         // 1. 先检查 SwiftUI 内部是否有组件需要拦截事件 (如按钮、工具栏)
         let hitView = super.hitTest(point)
 
         let stateManager = V2PrimaryScreenStateManager.shared
-        // ✅ 只在长截图采集模式下穿透，其他模式正常处理
-        guard stateManager.isLongScreenshotMode, stateManager.isCapturing else {
+        // ✅ 只在采集模式下穿透，其他模式正常处理
+        guard stateManager.isCapturing else {
             return hitView
         }
 

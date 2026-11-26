@@ -10,8 +10,6 @@ class V2ScreenshotController {
     static var debugPanels: [NSPanel] = []
     /// ✨ 新增：屏幕到 panel 的映射，用于快速查找对应屏幕的 panel
     static var screenPanelMap: [NSScreen: NSPanel] = [:]
-    static var longScreenshotControlPanel: LongScreenshotControlPanel?
-    static var longScreenshotPreviewPanel: LongScreenshotPreviewPanel?
     private static var localMonitor: Any?
     /// 失焦自动拉回监听器（cleanup 时必须移除，否则闭包持有旧面板数组，截图结束后失焦会把已关闭的"幽灵"面板拉回前台）
     private static var resignActiveObserver: NSObjectProtocol?
@@ -152,12 +150,6 @@ class V2ScreenshotController {
         debugPanels.removeAll()
         screenPanelMap.removeAll()
 
-        // 关闭长截图面板
-        longScreenshotControlPanel?.close()
-        longScreenshotControlPanel = nil
-        longScreenshotPreviewPanel?.close()
-        longScreenshotPreviewPanel = nil
-
         // ⚠️ 关闭调试模式时也重置全局状态
         V2PrimaryScreenStateManager.shared.reset()
     }
@@ -296,26 +288,8 @@ class V2ScreenshotController {
             // 重置工具和模式
             manager.updateTool(.cursor)
             manager.selectedElementId = nil
-            manager.isLongScreenshotMode = false
         case .exitNow:
             close()
-        }
-    }
-
-    /// 显示/隐藏长图采集预览面板
-    static func setLongScreenshotControlVisible(_ visible: Bool, selection: CGRect? = nil, screen: NSScreen? = nil) {
-        if visible {
-            // 只显示预览面板，控制按钮在工具栏上
-            if longScreenshotPreviewPanel == nil, let selection = selection, let screen = screen {
-                longScreenshotPreviewPanel = LongScreenshotPreviewPanel(selection: selection, screen: screen)
-            }
-            longScreenshotPreviewPanel?.orderFrontRegardless()
-        } else {
-            // 隐藏并清理面板
-            longScreenshotControlPanel?.close()
-            longScreenshotControlPanel = nil
-            longScreenshotPreviewPanel?.close()
-            longScreenshotPreviewPanel = nil
         }
     }
 

@@ -9,21 +9,6 @@ import OSLog
 struct V2CoordinateMapper {
     private static let logger = Logger(subsystem: "com.quitenote.app.dev", category: "V2CoordinateMapper")
 
-    /// ✅ AppKit 全局坐标转换为屏幕局部坐标
-    /// - Parameters:
-    ///   - rect: 全局矩形（AppKit坐标系，左下角原点）
-    ///   - screen: 目标屏幕
-    /// - Returns: 屏幕局部矩形
-    nonisolated static func appKitGlobalToLocal(rect: CGRect, on screen: NSScreen) -> CGRect {
-        let screenFrame = screen.frame
-        return CGRect(
-            x: rect.origin.x - screenFrame.origin.x,
-            y: rect.origin.y - screenFrame.origin.y,
-            width: rect.width,
-            height: rect.height
-        )
-    }
-
     /// ✅ 全局坐标（AppKit 坐标系）转换为屏幕局部坐标
     /// - Parameters:
     ///   - point: 全局坐标（AppKit 坐标系，左下角原点）
@@ -131,18 +116,6 @@ struct V2CoordinateMapper {
         )
     }
 
-    /// CoreGraphics 全局坐标转换为 AppKit 坐标
-    /// - Parameter cgPoint: CoreGraphics 坐标（左上角原点）
-    /// - Returns: AppKit 坐标（左下角原点）
-    static func coreGraphicsToAppKit(_ cgPoint: CGPoint) -> CGPoint {
-        // 算法：AppKit_Y = PrimaryScreenHeight - CG_Y
-        let primaryScreenHeight = NSScreen.screens.first?.frame.height ?? 0
-        return CGPoint(
-            x: cgPoint.x,
-            y: primaryScreenHeight - cgPoint.y
-        )
-    }
-
     /// 检查点是否在屏幕内
     /// - Parameters:
     ///   - point: 点（全局坐标）
@@ -165,23 +138,5 @@ struct V2CoordinateMapper {
             }
         }
         return nil
-    }
-
-    /// 打印坐标转换信息（调试用）
-    static func debugPrintCoordinates() {
-        print("[V2CoordinateMapper] ========== 坐标调试信息 ==========")
-        print("鼠标位置 (AppKit): \(NSEvent.mouseLocation)")
-        let cgPoint = appKitToCoreGraphics(NSEvent.mouseLocation)
-        print("鼠标位置 (CoreGraphics): \(cgPoint)")
-
-        for screen in NSScreen.screens {
-            if let bounds = V2ScreenCaptureService.shared.getScreenBounds(screen) {
-                print("\n屏幕: \(screen.localizedName)")
-                print("  NSScreen.frame (AppKit): \(screen.frame)")
-                print("  CGDisplayBounds (CoreGraphics): \(bounds)")
-                print("  包含鼠标: \(bounds.contains(cgPoint))")
-            }
-        }
-        print("==========================================")
     }
 }

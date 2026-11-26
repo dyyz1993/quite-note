@@ -62,33 +62,6 @@ enum V2ColorConstants {
     static let sourceDotAlpha: Double = 1.0
 }
 
-// MARK: - 阈值常量
-enum V2ThresholdConstants {
-    /// 窗口最小尺寸（宽高）
-    static let minWindowSize: CGFloat = 100
-
-    /// 点击判定距离阈值
-    static let clickDistanceThreshold: CGFloat = 5
-
-    /// 选区相关
-    static let minSelectionSize: CGFloat = 5
-    static let dragShowThreshold: CGFloat = 3
-
-    /// 放大镜热区
-    static let magnifierHotspotRadius: CGFloat = 15
-    static let magnifierHotspotDiameter: CGFloat = 30
-
-    /// 热区扩展
-    static let elementHitTestExpansion: CGFloat = 10
-    static let magnifierHitTestExpansion: CGFloat = 5
-
-    /// 缩放
-    static let zoomScale: CGFloat = 2.0
-
-    /// 全屏选区内缩值
-    static let insetValueForFullScreen: CGFloat = 2
-}
-
 // MARK: - 时间常量
 enum V2TimeConstants {
     /// 透明度动画时长

@@ -25,21 +25,11 @@ class V2PrimaryScreenStateManager: ObservableObject {
         !elements.isEmpty || selectedTool != .cursor
     }
     
-    /// 是否处于长图截取模式
-    @Published var isLongScreenshotMode: Bool = false
     /// 是否正在执行长图采集 (用于隐藏 UI)
     @Published var isCapturing: Bool = false
-    /// 长图截取的实时预览图列表 (这里暂时存图片，实际开发可能存路径或纹理)
-    @Published var longScreenshotPreviews: [NSImage] = []
-
-    /// ✨ 新增：长截图实时合成预览（用于预览面板显示拼接后的效果）
-    @Published var longScreenshotCompositePreview: NSImage?
 
     /// ✨ 新增：当前滚动偏移量（用于在预览面板上显示视口指示器）
     @Published var currentScrollOffset: CGFloat = 0
-
-    /// ✨ 新增：选区高度（用于计算视口指示器的高度）
-    @Published var longScreenshotSelectionHeight: CGFloat = 0
 
     /// ✨ 新增：每帧的滚动位置记录（用于精确的滚回引导）
     /// Key: 帧索引, Value: 滚动偏移量（像素）
@@ -60,9 +50,6 @@ class V2PrimaryScreenStateManager: ObservableObject {
 
     /// 引导目标滚动偏移
     @Published var guideTargetScrollOffset: CGFloat = 0
-
-    /// 引导滚动方向
-    @Published var guideScrollDirection: ScrollDirection = .up
 
     /// 引导距离目标的像素距离
     @Published var guideDistanceToTarget: CGFloat = 0
@@ -201,12 +188,8 @@ class V2PrimaryScreenStateManager: ObservableObject {
         primaryScreen = nil
         selectedArea = nil
         selectionScreen = nil
-        isLongScreenshotMode = false
         isCapturing = false
-        longScreenshotPreviews = []
-        longScreenshotCompositePreview = nil  // ✅ 新增：清除合成预览
         currentScrollOffset = 0  // ✅ 新增：清除滚动偏移
-        longScreenshotSelectionHeight = 0  // ✅ 新增：清除选区高度
         frameScrollPositions = [:]  // ✅ 新增：清除帧滚动位置记录
         lastChangePercentage = 0  // ✅ 新增：清除像素变化百分比
         pixelDetectionEnabled = true  // ✅ 新增：重置像素检测启用状态
@@ -252,7 +235,6 @@ class V2PrimaryScreenStateManager: ObservableObject {
     /// 切换编辑模式
     func setEditing(_ editing: Bool) {
         if editing {
-            isLongScreenshotMode = false
             // 如果当前是光标，切换到画笔
             if selectedTool == .cursor {
                 updateTool(.pen)
@@ -263,19 +245,7 @@ class V2PrimaryScreenStateManager: ObservableObject {
             updateTool(.cursor)
         }
     }
-    
-    /// 切换长图模式
-    func setLongScreenshotMode(_ active: Bool) {
-        isLongScreenshotMode = active
-        if active {
-            // 进入长图模式：清空标注并切回光标
-            elements = []
-            updateTool(.cursor)
-        } else {
-            isCapturing = false
-        }
-    }
-    
+
     /// 切换采集状态
     func setCapturing(_ capturing: Bool) {
         isCapturing = capturing

@@ -78,20 +78,3 @@ private struct SelectionRenderer: ElementRenderer {
         tool == .cursor
     }
 }
-
-// MARK: - Shared Rendering Utilities
-
-extension ElementRenderer {
-    /// 计算元素边界框
-    func boundingRect(for element: DrawingElement) -> CGRect {
-        guard !element.points.isEmpty else { return .zero }
-        let xs = element.points.map { $0.x }
-        let ys = element.points.map { $0.y }
-        return CGRect(
-            x: xs.min()!,
-            y: ys.min()!,
-            width: xs.max()! - xs.min()!,
-            height: ys.max()! - ys.min()!
-        )
-    }
-}
