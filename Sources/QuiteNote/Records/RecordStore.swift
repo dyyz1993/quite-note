@@ -9,10 +9,26 @@ import SwiftUI
 final class RecordStore: ObservableObject {
     private static let logger = Logger(subsystem: "com.quitenote.app", category: "RecordStore")
 
+    // MARK: - 翻页常量
+
+    /// 主列表内存窗口上限：设计上只常驻最近的这么多条，翻页加载到这里为止
+    private static let maxInMemoryRecords = 200
+    /// 启动首屏条数
+    private static let initialPageSize = 100
+    /// 翻页每页条数
+    private static let pageSize = 50
+    /// 导入后的整表重载条数（旧 loadFromStore() 的行为）
+    private static let importReloadPageSize = 1000
+
     // MARK: - Published Properties
 
     /// 核心数据：记录列表
     @Published private(set) var records: [Record] = []
+    /// 数据库里还有没有主列表该继续加载的旧记录。翻页状态的唯一真值，
+    /// UI 只读这个（指示器的显隐、是否发起加载更多）
+    @Published private(set) var canLoadMoreRecords = false
+    /// 是否正在后台取下一页（防并发取页；同一时间只允许一个取页任务在跑）
+    @Published private(set) var isLoadingMoreRecords = false
     /// 启动器取用面语料（点星收藏的记录 + 全部链接记录），DB 直查不受主列表
     /// 内存分页窗口限制——老收藏/老链接也能被搜到。初始异步加载，toggleStar/delete 增量维护。
     @Published private(set) var searchableRecords: [Record] = []
@@ -94,6 +110,13 @@ final class RecordStore: ObservableObject {
     private var toastCancellable: AnyCancellable?
     private var lightHintCancellable: AnyCancellable?
     private var confirmCancellable: AnyCancellable?
+
+    /// 已从数据库取过的行数。翻页窗口计数，与 records.count 无关——两次翻页之间
+    /// 新进的记录会顶高 records.count，拿它当 offset 会漏掉旧记录
+    private var fetchedRowCount = 0
+    /// 内存窗口里最旧一条 DB 记录的排序键。取下一页前按它在库里重新对 offset：
+    /// 两次翻页之间落库的新记录在库内排序里排在窗口前面，会把未取区域整体顶后一行
+    private var oldestFetchedAnchor: (starred: Bool, createdAt: Date)?
 
     /// 暴露 AI 服务（用于 UI 访问）
     var ai: AIServiceProtocol? {
@@ -419,9 +442,10 @@ final class RecordStore: ObservableObject {
     /// 物化。这里先让 App 进入可交互状态；贴纸清理等依赖完整数据的任务挂到
     /// 首屏数据落地后执行，避免 records 尚未加载时误判记录不存在。
     private func loadInitialRecords() {
+        let pageSize = Self.initialPageSize
         let token = DiagnosticCenter.beginMeasure("RecordStore", "初始记录异步加载", threshold: 0.2)
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let loaded = (try? self?.repository.fetchRecords(limit: 100, offset: 0)) ?? []
+            let loaded = (try? self?.repository.fetchRecords(limit: pageSize, offset: 0)) ?? []
             let searchable = (try? self?.repository.fetchSearchableRecords()) ?? []
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
@@ -438,10 +462,23 @@ final class RecordStore: ObservableObject {
                 // 与 records 同款合并：保留首屏查询发出后、落地前新收藏/新链接的记录
                 let searchableIDs = Set(searchable.map(\.id))
                 self.searchableRecords = searchable + self.searchableRecords.filter { !searchableIDs.contains($0.id) }
+                // 首屏落地后翻页状态就位，之后 UI 按它加载更多
+                self.trackFetchedPage(loaded, pageSize: pageSize)
                 token.end()
                 self.cleanupStickyNotesAfterInitialLoad()
             }
         }
+    }
+
+    /// 取页落地后推进翻页状态（首屏与后续翻页共用）。canLoadMore 只在本页取满、
+    /// 且总取数还没到内存窗口上限时为真
+    private func trackFetchedPage(_ page: [Record], pageSize: Int) {
+        fetchedRowCount += page.count
+        if let oldest = page.last {
+            // 页面按库内顺序返回，最后一条即窗口里最旧的记录
+            oldestFetchedAnchor = (starred: oldest.starred, createdAt: oldest.createdAt)
+        }
+        canLoadMoreRecords = page.count == pageSize && fetchedRowCount < Self.maxInMemoryRecords
     }
 
     private func cleanupStickyNotesAfterInitialLoad() {
@@ -552,9 +589,11 @@ final class RecordStore: ObservableObject {
                 return nil
             }
         } else {
-            do { try repository.save(record) }
-            catch {
-                Self.logger.error("保存记录失败: \(error.localizedDescription)")
+            // 后台落库；失败时记录只在内存里、重启即丢，必须让用户知道
+            repository.save(record) { [weak self] result in
+                if case .failure = result {
+                    self?.postToast("记录没能写进数据库，重启后会丢失", type: "error")
+                }
             }
         }
         print("[DEBUG] 记录已插入数据库，ID: \(id)")
@@ -643,42 +682,44 @@ final class RecordStore: ObservableObject {
             return
         }
 
-        // 保存到数据库
-        do { try repository.save(record) }
-        catch {
-            Self.logger.error("保存记录失败: \(error.localizedDescription)")
-            notifier.postToast("保存失败", type: "error")
-            return
-        }
-
-        // 更新 UI
-        DispatchQueue.main.async { [weak self] in
+        // 保存到数据库；失败就不进内存——内存与库各说各话会变成重启后"记录消失"
+        repository.save(record) { [weak self] result in
             guard let self = self else { return }
-            self.records.insert(record, at: 0)
-            self.sortRecordsInPlace()
-            self.notifier.postToast("已添加记录", type: "success")
+            if case .failure(let error) = result {
+                Self.logger.error("保存记录失败: \(error.localizedDescription)")
+                self.notifier.postToast("保存失败", type: "error")
+                return
+            }
 
-            // 触发 AI 总结（如果需要）
-            let isImage = record.type.isVisualRecord && record.sourceUrl != nil
-            if self.aiCoordinator.enableAI && !record.skipAI && (isImage || record.content.count >= self.aiCoordinator.summaryTrigger) {
-                let existingTags = self.aiCoordinator.getAllUniqueTags(from: self.records)
-                self.aiCoordinator.summarize(record: record, existingTags: existingTags) { [weak self] update in
-                    guard let self = self else { return }
-                    switch update {
-                    case .none:
-                        break
-                    case .failure:
-                        self.updateRecordAI(id: record.id, title: nil, summary: nil, confidence: nil, aiStatus: "fail")
-                    case .success(let title, let summary, let confidence, let tags, let keywords):
-                        self.updateRecordAI(
-                            id: record.id,
-                            title: title,
-                            summary: summary,
-                            confidence: confidence,
-                            aiStatus: "success",
-                            tags: tags,
-                            keywords: keywords
-                        )
+            // 更新 UI
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                self.records.insert(record, at: 0)
+                self.sortRecordsInPlace()
+                self.notifier.postToast("已添加记录", type: "success")
+
+                // 触发 AI 总结（如果需要）
+                let isImage = record.type.isVisualRecord && record.sourceUrl != nil
+                if self.aiCoordinator.enableAI && !record.skipAI && (isImage || record.content.count >= self.aiCoordinator.summaryTrigger) {
+                    let existingTags = self.aiCoordinator.getAllUniqueTags(from: self.records)
+                    self.aiCoordinator.summarize(record: record, existingTags: existingTags) { [weak self] update in
+                        guard let self = self else { return }
+                        switch update {
+                        case .none:
+                            break
+                        case .failure:
+                            self.updateRecordAI(id: record.id, title: nil, summary: nil, confidence: nil, aiStatus: "fail")
+                        case .success(let title, let summary, let confidence, let tags, let keywords):
+                            self.updateRecordAI(
+                                id: record.id,
+                                title: title,
+                                summary: summary,
+                                confidence: confidence,
+                                aiStatus: "success",
+                                tags: tags,
+                                keywords: keywords
+                            )
+                        }
                     }
                 }
             }
@@ -713,11 +754,8 @@ final class RecordStore: ObservableObject {
             let id = records[idx].id
             records[idx].createdAt = now
 
-            // 异步更新数据库
-            do { try repository.updateTimestamp(id: id, to: now) }
-            catch {
-                Self.logger.error("更新时间戳失败: \(error.localizedDescription)")
-            }
+            // 异步更新数据库（失败由 repository 记诊断日志）
+            repository.updateTimestamp(id: id, to: now)
 
             sortRecordsInPlace()
         }
@@ -779,7 +817,12 @@ final class RecordStore: ObservableObject {
         records.removeAll { $0.id == record.id }
         aiCoordinator.markTagsNeedUpdate()
         print("[DEBUG RecordStore.delete()] 调用 repository.delete()")
-        repository.delete(id: record.id)
+        // 删除失败要让用户知道：内存已删但库里还在，重启后记录会"回来"
+        repository.delete(id: record.id) { [weak self] result in
+            if case .failure = result {
+                self?.postToast("删除失败，请重试", type: "error")
+            }
+        }
         print("[DEBUG RecordStore.delete()] repository.delete() 返回")
 
         // 3. 通知 StickyNoteManager 清理关联的便签
@@ -796,6 +839,10 @@ final class RecordStore: ObservableObject {
         records.removeAll()
         aiCoordinator.markTagsNeedUpdate()
         repository.deleteAll()
+        // 库已清空，翻页状态一并复位：不存在"还有更多"
+        fetchedRowCount = 0
+        oldestFetchedAnchor = nil
+        canLoadMoreRecords = false
         QuiteNoteNotification.post(.recordsCleared)
     }
 
@@ -849,53 +896,11 @@ final class RecordStore: ObservableObject {
         searchHistoryManager.clear()
     }
 
-    /// 生成搜索结果总结
-    func generateSearchSummary(for query: String, completion: @escaping (String?) -> Void) {
-        guard aiCoordinator.enableAI, let ai = aiCoordinator.ai else {
-            completion(nil)
-            return
-        }
-
-        let results = search(query)
-        guard !results.isEmpty else {
-            completion("没有找到匹配的记录")
-            return
-        }
-
-        // 准备用于总结的内容
-        let content = results.prefix(10).map { record in
-            let title = record.title ?? "无标题"
-            let summary = record.summary ?? ""
-            return "标题: \(title)\n总结: \(summary)"
-        }.joined(separator: "\n\n")
-
-        let prompt = "请为以下搜索结果生成一个简短的总结，不超过100字。搜索关键词: \(query)\n\n搜索结果:\n\(content)"
-
-        let existingTags = aiCoordinator.getAllUniqueTags(from: records)
-        ai.summarize(contextId: "search-\(query)", titleLimit: 50, summaryLimit: 100, content: prompt, existingTags: existingTags) { result in
-            DispatchQueue.main.async {
-                switch result {
-                case .success(let summaryResult):
-                    completion(summaryResult.summary)
-                case .failure:
-                    completion("生成搜索总结失败")
-                }
-            }
-        }
-    }
-
     // MARK: - AI 操作
 
     /// 连接 AI 提炼服务
     func attachAI(service: AIServiceProtocol) {
         aiCoordinator.attachAI(service: service)
-    }
-
-    /// 配置 OpenAI 连接参数并写入 Keychain（仅密钥）
-    func configureOpenAI(apiKey: String, baseURL: String, model: String) {
-        KeychainHelper.shared.write(service: "QuiteNote", account: "openai_api_key", value: apiKey)
-        prefs.setOpenAIBaseURL(baseURL)
-        prefs.setOpenAIModel(model)
     }
 
     /// 批量对无标题记录触发重新提炼（每次最多处理 3 条）
@@ -1091,13 +1096,9 @@ final class RecordStore: ObservableObject {
     private func updateRecordSourceUrl(id: UUID, newUrl: String) {
         if let idx = records.firstIndex(where: { $0.id == id }) {
             records[idx].sourceUrl = newUrl
-            
-            // 更新数据库
-            do {
-                try repository.updateSourceUrl(id: id, sourceUrl: newUrl)
-            } catch {
-                Self.logger.error("更新数据库 sourceUrl 失败: \(error.localizedDescription)")
-            }
+
+            // 更新数据库（失败由 repository 记诊断日志）
+            repository.updateSourceUrl(id: id, sourceUrl: newUrl)
         }
     }
 
@@ -1125,214 +1126,52 @@ final class RecordStore: ObservableObject {
                 searchableRecords.removeAll { $0.id == toggled.id }
             }
 
-            // 异步更新数据库
-            do {
-                try repository.toggleStar(id: record.id)
-            } catch {
-                Self.logger.error("切换收藏状态失败: \(error.localizedDescription)")
-            }
+            // 异步更新数据库（失败由 repository 记诊断日志）
+            repository.toggleStar(id: record.id)
         }
     }
 
-    /// 导出全部记录为 Markdown
-    func exportMarkdown() -> String {
-        let dateFormatter = ISO8601DateFormatter()
-        var md = "# QuiteNote 导出\n\n"
-        for r in records.reversed() {
-            // 标题
-            if let t = r.title {
-                md += "## \(t)\n\n"
-            } else {
-                md += "## 无标题\n\n"
-            }
-
-            // 元数据
-            md += "**创建时间**：\(dateFormatter.string(from: r.createdAt))\n\n"
-
-            // 标签
-            if !r.tags.isEmpty {
-                md += "**标签**：\(r.tags.joined(separator: "、"))\n\n"
-            }
-
-            // 关键词
-            if !r.keywords.isEmpty {
-                md += "**关键词**：\(r.keywords.joined(separator: "、"))\n\n"
-            }
-
-            // 来源信息
-            if let source = r.sourceApp {
-                md += "**来源**：\(source)"
-                if let url = r.sourceUrl {
-                    md += " ([\(url)](\(url)))"
+    /// 导出全部记录为 Markdown。读的是**整库**，不是主列表内存窗口里那 200 条——
+    /// 菜单项写着"导出所有记录"，旧实现却只导出内存里的记录，窗口之外的全丢
+    /// （而那些记录在主面板里本来就列不出来、搜不到）。取数与格式化都在后台，
+    /// 结果在主线程回调
+    func exportMarkdown(completion: @escaping (Result<String, Error>) -> Void) {
+        repository.fetchAllRecords { result in
+            switch result {
+            case .failure(let error):
+                completion(.failure(error))
+            case .success(let allRecords):
+                DispatchQueue.global(qos: .userInitiated).async {
+                    let markdown = RecordMarkdownCodec.export(allRecords)
+                    DispatchQueue.main.async { completion(.success(markdown)) }
                 }
-                md += "\n\n"
             }
-
-            // 内容
-            md += "\(r.content)\n\n"
-
-            // 总结
-            if let s = r.summary {
-                md += "> **总结**：\(s)\n\n"
-            }
-
-            md += "---\n\n"
         }
-        return md
     }
 
-    /// 从 Markdown 内容导入记录
+    /// 从 Markdown 内容导入记录（解析在 RecordMarkdownCodec，这里负责落库与重载）
     func importFromMarkdown(_ markdown: String) -> Int {
-        var importedCount = 0
-        var skippedCount = 0
-        let sections = markdown.components(separatedBy: "\n## ")
-
-        // 先获取所有已存在的哈希值用于去重
         let existingHashes = Set(records.map { $0.hash })
+        let result = RecordMarkdownCodec.parse(markdown, skippingExistingHashes: existingHashes)
 
-        for section in sections {
-            let trimmed = section.trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmed.isEmpty { continue }
-
-            // 解析各个部分
-            var title: String?
-            var createdAt: Date?
-            var tags: [String] = []
-            var keywords: [String] = []
-            var content: String = ""
-            var summary: String?
-
-            let lines = trimmed.components(separatedBy: "\n")
-            var i = 0
-
-            // 第一行是标题
-            if i < lines.count {
-                let firstLine = lines[i].trimmingCharacters(in: .whitespacesAndNewlines)
-                if !firstLine.isEmpty && !firstLine.hasPrefix("---") {
-                    title = firstLine == "无标题" ? nil : firstLine
-                }
-                i += 1
-            }
-
-            // 解析元数据
-            while i < lines.count {
-                let line = lines[i].trimmingCharacters(in: .whitespaces)
-
-                // 空行跳过
-                if line.isEmpty {
-                    i += 1
-                    continue
-                }
-
-                // 创建时间
-                if line.hasPrefix("**创建时间**") || line.hasPrefix("创建时间：") {
-                    let dateStr = line.replacingOccurrences(of: "**创建时间**：", with: "")
-                                   .replacingOccurrences(of: "创建时间：", with: "")
-                    // 尝试多种日期格式
-                    let dateFormatter1 = ISO8601DateFormatter()
-                    var date = dateFormatter1.date(from: dateStr)
-
-                    if date == nil {
-                        // 尝试其他格式
-                        let dateFormatter2 = DateFormatter()
-                        dateFormatter2.dateFormat = "yyyy-MM-dd HH:mm:ss"
-                        date = dateFormatter2.date(from: dateStr)
-                    }
-
-                    if date == nil {
-                        let dateFormatter3 = DateFormatter()
-                        dateFormatter3.dateFormat = "yyyy-MM-dd'T'HH:mm:ssZ"
-                        date = dateFormatter3.date(from: dateStr)
-                    }
-
-                    createdAt = date ?? Date()
-                    Self.logger.info("导入记录日期解析: '\(dateStr)' -> \(createdAt ?? Date())")
-                    i += 1
-                    continue
-                }
-
-                // 标签
-                if line.hasPrefix("**标签**") || line.hasPrefix("标签") {
-                    let tagsStr = line.replacingOccurrences(of: "**标签**：", with: "")
-                                  .replacingOccurrences(of: "标签：", with: "")
-                    tags = tagsStr.components(separatedBy: "、").map { $0.trimmingCharacters(in: .whitespaces) }
-                    i += 1
-                    continue
-                }
-
-                // 关键词
-                if line.hasPrefix("**关键词**") || line.hasPrefix("关键词") {
-                    let keywordsStr = line.replacingOccurrences(of: "**关键词**：", with: "")
-                                     .replacingOccurrences(of: "关键词：", with: "")
-                    keywords = keywordsStr.components(separatedBy: "、").map { $0.trimmingCharacters(in: .whitespaces) }
-                    i += 1
-                    continue
-                }
-
-                // 来源
-                if line.hasPrefix("**来源**") {
-                    i += 1
-                    continue
-                }
-
-                // 分隔符或内容开始
-                if line == "---" {
-                    i += 1
-                    continue
-                }
-
-                // 总结
-                if line.hasPrefix(">") {
-                    summary = line.replacingOccurrences(of: "> ", with: "")
-                               .replacingOccurrences(of: ">**总结**：", with: "")
-                               .replacingOccurrences(of: "> 总结：", with: "")
-                    i += 1
-                    continue
-                }
-
-                // 内容开始
-                break
-            }
-
-            // 收集剩余内容
-            while i < lines.count {
-                let line = lines[i]
-                if line != "---" {
-                    content += line + "\n"
-                }
-                i += 1
-            }
-
-            // 保存记录
-            let trimmedContent = content.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmedContent.isEmpty {
-                // 计算哈希用于去重
-                let data = Data(trimmedContent.utf8)
-                let hash = data.reduce(into: "") { $0 += String(format: "%02x", $1) }
-
-                // 检查是否已存在
-                if existingHashes.contains(hash) {
-                    skippedCount += 1
-                } else {
-                    addImportedRecord(
-                        title: title,
-                        content: trimmedContent,
-                        summary: summary,
-                        tags: tags,
-                        keywords: keywords,
-                        createdAt: createdAt
-                    )
-                    importedCount += 1
-                }
-            }
+        for parsed in result.imported {
+            addImportedRecord(
+                title: parsed.title,
+                content: parsed.content,
+                summary: parsed.summary,
+                tags: parsed.tags,
+                keywords: parsed.keywords,
+                createdAt: parsed.createdAt
+            )
         }
 
-        // 立即重新加载内存数据（CoreData 保存已在 addImportedRecord 中同步完成）
-        if importedCount > 0 {
-            loadFromStore()
+        // 立即重新加载内存数据（CoreData 保存已在 addImportedRecord 中同步完成）。
+        // 整表重载一次最多取 1000 条：取满即已超出内存窗口，不再继续翻页
+        if !result.imported.isEmpty {
+            fetchPageFromStore(pageSize: Self.importReloadPageSize, offset: 0)
         }
 
-        return importedCount
+        return result.imported.count
     }
 
     /// 添加单条导入的记录（同步保存）
@@ -1363,18 +1202,77 @@ final class RecordStore: ObservableObject {
 
     // MARK: - 数据加载
 
-    /// 从数据库加载所有记录
-    private func loadFromStore() {
-        do {
-            records = try repository.fetchRecords(limit: 1000, offset: 0)
-            print("[DEBUG] RecordStore 从数据库加载了 \(records.count) 条记录")
-            
-            // 异步补全缺失的 size 信息（针对旧数据）
-            DispatchQueue.global(qos: .utility).async { [weak self] in
-                self?.backfillMissingSizes()
+    /// 从数据库取一页记录并落地。翻页追加与导入后的整表重载共用这一个取页函数：
+    /// offset == 0 是整表重载（替换内存记录、顺带补全旧记录的 size），否则按 id 去重后追加。
+    /// 取数在后台线程，落地与翻页状态更新在主线程；出错记诊断日志并复位加载标志
+    private func fetchPageFromStore(pageSize: Int, offset: Int, completion: ((Bool) -> Void)? = nil) {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+
+            do {
+                let newRecords = try self.repository.fetchRecords(limit: pageSize, offset: offset)
+
+                // 如果有 pending 状态的记录，需要在后台更新数据库
+                let pendingIds = newRecords.filter { $0.aiStatus == "pending" }.map { $0.id }
+                if !pendingIds.isEmpty {
+                    self.repository.clearPendingStatus(for: pendingIds)
+                }
+
+                DispatchQueue.main.async {
+                    if offset == 0 {
+                        self.records = newRecords
+                    } else {
+                        let existingIds = Set(self.records.map { $0.id })
+                        let uniqueNewRecords = newRecords.filter { !existingIds.contains($0.id) }
+                        self.records.append(contentsOf: uniqueNewRecords)
+                    }
+                    self.sortRecordsInPlace()
+                    self.trackFetchedPage(newRecords, pageSize: pageSize)
+                    if offset == 0 {
+                        DispatchQueue.global(qos: .utility).async { [weak self] in
+                            self?.backfillMissingSizes()
+                        }
+                    }
+                    completion?(self.canLoadMoreRecords)
+                }
+            } catch {
+                Self.logger.error("加载记录失败: \(error.localizedDescription)")
+                DiagnosticCenter.error("RecordStore", "取记录页失败（pageSize \(pageSize)，offset \(offset)）：\(error.localizedDescription)")
+                DispatchQueue.main.async {
+                    self.isLoadingMoreRecords = false
+                    completion?(false)
+                }
             }
-        } catch {
-            Self.logger.error("从数据库加载记录失败: \(error.localizedDescription)")
+        }
+    }
+
+    /// 加载更多记录（后台取下一页，50 条）。completion 在主线程回调，传入值与落地后的
+    /// canLoadMoreRecords 一致；已有取页在跑时直接忽略（不会并发取页），
+    /// 没有更多记录时立即以 false 收尾
+    func loadMoreRecords(completion: ((Bool) -> Void)? = nil) {
+        guard !isLoadingMoreRecords else { return }
+        guard canLoadMoreRecords else {
+            completion?(false)
+            return
+        }
+        isLoadingMoreRecords = true
+
+        // 主线程先取锚点快照，后台按锚点对表算 offset（见 countRecordsBefore）。
+        // +1 跳过锚点自己——锚点已取过，取回来也只是被去重丢掉
+        let anchor = oldestFetchedAnchor
+        let fallbackOffset = fetchedRowCount
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+            let offset: Int
+            if let anchor {
+                offset = ((try? self.repository.countRecordsBefore(starred: anchor.starred, createdAt: anchor.createdAt)) ?? fallbackOffset - 1) + 1
+            } else {
+                offset = fallbackOffset
+            }
+            self.fetchPageFromStore(pageSize: Self.pageSize, offset: offset) { [weak self] canLoadMore in
+                self?.isLoadingMoreRecords = false
+                completion?(canLoadMore)
+            }
         }
     }
 
@@ -1410,53 +1308,11 @@ final class RecordStore: ObservableObject {
                 DispatchQueue.main.async { [weak self] in
                     if let idx = self?.records.firstIndex(where: { $0.id == record.id }) {
                         self?.records[idx].size = size
-                        // 这里可以考虑批量保存，或者直接单条保存
-                        try? self?.repository.updateSize(id: record.id, size: size)
+                        // 这里可以考虑批量保存，或者直接单条保存（失败由 repository 记诊断日志）
+                        self?.repository.updateSize(id: record.id, size: size)
                     }
                 }
             }
-        }
-    }
-
-    /// 分页加载记录，提高性能
-    func loadFromStore(pageSize: Int = 50, offset: Int = 0) {
-        // 异步加载数据，避免阻塞主线程
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            guard let self = self else { return }
-
-            do {
-                let newRecords = try self.repository.fetchRecords(limit: pageSize, offset: offset)
-
-                // 如果有 pending 状态的记录，需要在后台更新数据库
-                let pendingIds = newRecords.filter { $0.aiStatus == "pending" }.map { $0.id }
-                if !pendingIds.isEmpty {
-                    self.repository.clearPendingStatus(for: pendingIds)
-                }
-
-                DispatchQueue.main.async {
-                    if offset == 0 {
-                        self.records = newRecords
-                    } else {
-                        let existingIds = Set(self.records.map { $0.id })
-                        let uniqueNewRecords = newRecords.filter { !existingIds.contains($0.id) }
-                        self.records.append(contentsOf: uniqueNewRecords)
-                    }
-                    self.sortRecordsInPlace()
-                }
-            } catch {
-                Self.logger.error("加载记录失败: \(error.localizedDescription)")
-            }
-        }
-    }
-
-    /// 加载更多记录
-    func loadMoreRecords() {
-        let currentCount = records.count
-        loadFromStore(pageSize: 50, offset: currentCount)
-
-        // 限制内存中的记录数量，保留最新的 200 条记录
-        if records.count > 200 {
-            records = Array(records.prefix(200))
         }
     }
 
@@ -1736,70 +1592,9 @@ extension RecordStore {
         let fileCount: Int
     }
 
-    /// 为文件夹生成 tree 结构的内容
+    /// 为文件夹生成 tree 结构的内容（生成逻辑在 FolderTreeRenderer，纯函数可单测）
     private func generateTreeStructure(for folderURL: URL) -> TreeResult {
-        let folderName = folderURL.lastPathComponent
-        let folderPath = folderURL.path
-
-        // 递归遍历文件夹，生成 tree 结构
-        func traverseDirectory(_ url: URL, level: Int = 0) -> (lines: [String], fileCount: Int) {
-            var lines: [String] = []
-            var fileCount = 0
-            let indent = String(repeating: "│  ", count: level)
-            _ = String(repeating: "└── ", count: 1)
-
-            do {
-                let contents = try FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: [.nameKey, .isDirectoryKey], options: [.skipsHiddenFiles])
-
-                // 排序：文件夹在前，文件在后
-                let sorted = contents.sorted { a, b in
-                    let aIsDir = (try? a.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
-                    let bIsDir = (try? b.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
-                    if aIsDir != bIsDir {
-                        return aIsDir && !bIsDir  // 文件夹排在前面
-                    }
-                    return a.lastPathComponent < b.lastPathComponent
-                }
-
-                for (index, item) in sorted.enumerated() {
-                    let name = item.lastPathComponent
-                    let isDirectory = (try? item.resourceValues(forKeys: [URLResourceKey.isDirectoryKey]))?.isDirectory ?? false
-
-                    let isLast = index == sorted.count - 1
-                    let prefix = isLast ? "└── " : "├── "
-                    let connector = isLast ? "    " : "│   "
-
-                    if isDirectory {
-                        lines.append("\(indent)\(prefix)\(name)/")
-                        let subResult = traverseDirectory(item, level: level + 1)
-                        fileCount += subResult.fileCount
-
-                        // 添加子项内容
-                        for subLine in subResult.lines {
-                            lines.append("\(indent)\(connector)\(subLine)")
-                        }
-                    } else {
-                        lines.append("\(indent)\(prefix)\(name)")
-                        fileCount += 1
-                    }
-                }
-            } catch {
-                lines.append("\(indent)└── (无法读取内容)")
-            }
-
-            return (lines, fileCount)
-        }
-
-        var resultLines: [String] = []
-        resultLines.append("文件夹路径: \(folderPath)")
-        resultLines.append("文件夹名: \(folderName)")
-        resultLines.append("文件结构:")
-        resultLines.append(".")
-
-        let (treeLines, totalFiles) = traverseDirectory(folderURL)
-        resultLines.append(contentsOf: treeLines)
-
-        let content = resultLines.joined(separator: "\n")
-        return TreeResult(content: content, fileCount: totalFiles)
+        let rendered = FolderTreeRenderer.renderLines(for: folderURL)
+        return TreeResult(content: rendered.lines.joined(separator: "\n"), fileCount: rendered.fileCount)
     }
 }

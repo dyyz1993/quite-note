@@ -16,10 +16,6 @@ enum ClipboardSearchService {
     private static var normalizedFieldsCache: [UUID: [String]] = [:]
     private static let cacheLock = NSLock()
 
-    static func invalidateFieldsCache() {
-        cacheLock.lock(); normalizedFieldsCache.removeAll(); cacheLock.unlock()
-    }
-
     static func cachedNormalizedFields(_ entry: ClipboardEntry) -> [String] {
         cacheLock.lock()
         if let hit = normalizedFieldsCache[entry.id] {

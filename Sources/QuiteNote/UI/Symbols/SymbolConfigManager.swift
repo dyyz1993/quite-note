@@ -189,11 +189,6 @@ class SymbolConfigManager: ObservableObject {
         return config
     }
 
-    /// 导出配置为 YAML
-    func exportConfig(_ config: SymbolConfig) -> String {
-        return config.toYaml()
-    }
-
     /// 重置为默认配置
     func resetToDefault() {
         // 删除所有配置文件后重建目录
@@ -227,17 +222,6 @@ class SymbolConfigManager: ObservableObject {
     /// 获取所有启用的配置
     var enabledConfigs: [SymbolConfig] {
         configs.filter { $0.metadata.enabled }
-    }
-
-    /// 获取合并后的触发词映射
-    var combinedTriggerMap: [String: SymbolItem] {
-        var map: [String: SymbolItem] = [:]
-        for config in enabledConfigs {
-            for (trigger, symbol) in config.triggerMap {
-                map[trigger] = symbol
-            }
-        }
-        return map
     }
 
     // MARK: - Private Methods

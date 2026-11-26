@@ -82,7 +82,10 @@ final class V2OCRResultPanelController {
     /// Enter 键触发的复制动作（由当前展示的视图注册，窗口关闭时清除）
     var copyAction: (() -> Void)?
 
-    func show(image: NSImage) {
+    /// - Parameters:
+    ///   - image: 含标注的选区最终图
+    ///   - screen: 截图会话所在屏（传了就居中到该屏；nil 时退回 panel.center()）
+    func show(image: NSImage, on screen: NSScreen? = nil) {
         if panel == nil {
             let p = V2OCRESCClosablePanel(
                 contentRect: NSRect(x: 0, y: 0, width: 780, height: 480),
@@ -106,7 +109,17 @@ final class V2OCRResultPanelController {
             V2OCRResultPanelController.shared.close()
         }
         panel?.contentView = NSHostingView(rootView: view)
-        panel?.center()
+        // 居中到截图会话所在屏（panel.center() 在多屏下可能甩到别的屏，遵循"结果跟截图走"）
+        if let panel = panel {
+            if let frame = screen?.visibleFrame {
+                panel.setFrameOrigin(NSPoint(
+                    x: frame.midX - panel.frame.width / 2,
+                    y: frame.midY - panel.frame.height / 2
+                ))
+            } else {
+                panel.center()
+            }
+        }
         NSApp.activate(ignoringOtherApps: true)
         panel?.makeKeyAndOrderFront(nil)
         DiagnosticCenter.info("OCR", "识别窗口已打开")

@@ -84,32 +84,6 @@ struct MagnifierRenderer: ElementRenderer {
         )
     }
 
-    /// 预览模式渲染（不显示源点圆圈）
-    func drawMagnifierPreview(
-        from start: CGPoint,
-        contentSource: CGPoint? = nil,
-        to end: CGPoint,
-        in context: inout GraphicsContext,
-        size: CGSize,
-        baseImage: NSImage?,
-        radius: CGFloat = 60,
-        scale: CGFloat = 2.0, // ✨ 新增倍率参数
-        color: Color = .white
-    ) {
-        drawMagnifier(
-            from: start,
-            contentSource: contentSource ?? start,
-            to: end,
-            in: &context,
-            size: size,
-            baseImage: baseImage,
-            radius: radius,
-            scale: scale, // ✨ 传递倍率
-            color: color,
-            isPreview: true
-        )
-    }
-
     // MARK: - Private Methods
 
     private func drawMagnifier(

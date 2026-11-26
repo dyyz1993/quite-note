@@ -65,15 +65,7 @@ final class MemoryManager: ObservableObject {
             memoryWarningLevel = .normal
         }
     }
-    
 
-    
-    /// 处理内存警告
-    private func handleMemoryWarning() {
-        memoryWarningLevel = .critical
-        performMemoryOptimization()
-    }
-    
     /// 执行轻度内存优化
     private func performLightOptimization() {
         guard !isOptimizing else { return }

@@ -288,23 +288,6 @@ struct EnhancedSearchBar: View {
         }
     }
     
-    /// 简单的流式布局容器
-    struct FlowLayout: View {
-        let spacing: CGFloat
-        let content: [AnyView]
-        
-        init<Views>(spacing: CGFloat, @ViewBuilder content: () -> Views) where Views: View {
-            self.spacing = spacing
-            // 这里为了简单，我们直接用 HStack。如果项很多，可以使用更复杂的 Flow 实现。
-            // 对于 3 个项，HStack 足够了。
-            self.content = [] // 这种方式在 SwiftUI 中不太好用，改用普通布局
-        }
-        
-        var body: some View {
-            EmptyView()
-        }
-    }
-    
     /// 搜索范围/选项选择行
     struct SelectionRow: View {
         let title: String
@@ -385,20 +368,6 @@ struct EnhancedSearchBar: View {
         }
     }
     
-    /// 搜索历史下拉视图 (保留兼容性，但不再直接使用)
-    @ViewBuilder
-    private var searchHistoryView: some View {
-        EmptyView()
-    }
-    
-    /// 高级搜索选项视图 (保留兼容性，但不再直接使用)
-    @ViewBuilder
-    private var advancedOptionsView: some View {
-        EmptyView()
-    }
-    
-
-    
     /// 执行搜索
     private func performSearch() {
         showHistory = false
@@ -406,19 +375,6 @@ struct EnhancedSearchBar: View {
         searchWorkItem?.cancel()
         debouncedSearchTerm = searchTerm
     }
-    
 
-}
 
-/// 扩展View以支持点击外部区域
-extension View {
-    func onOutsideTap(perform action: @escaping () -> Void) -> some View {
-        self.background(
-            Color.clear
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    action()
-                }
-        )
-    }
 }

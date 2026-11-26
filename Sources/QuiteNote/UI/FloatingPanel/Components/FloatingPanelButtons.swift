@@ -76,25 +76,3 @@ struct IconButton: View {
         .animation(.easeInOut(duration: 0.15), value: isHovering)
     }
 }
-
-/// 标签视图 - 可点击的标签
-struct TagView: View {
-    let text: String
-    let color: Color
-    let bgColor: Color
-    let action: () -> Void
-
-    var body: some View {
-        Text(text)
-            .font(.system(size: 9, weight: .bold))
-            .lineLimit(1)
-            .fixedSize(horizontal: true, vertical: false)
-            .padding(.horizontal, 4)
-            .padding(.vertical, 1)
-            .background(bgColor)
-            .foregroundColor(color)
-            .cornerRadius(3)
-            .onTapGesture(perform: action)
-            .pointingHandCursor()
-    }
-}

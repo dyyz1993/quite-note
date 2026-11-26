@@ -77,22 +77,13 @@ jobs:
           fi
           echo "✅ 签名材料齐全"
 
+      # 与 build-macos.yml / ui-smoke.yml 共用 tools/ci-signing.sh：临时钥匙串、保留登录钥匙串的
+      # 搜索列表、codesign 分区、按 SHA-1 解析签名身份。这里此前是一份独立拷贝，2026-11-25
+      # 修钥匙串搜索列表时漏了它（跑在云端 runner 上所以没出事）——同一件事不要再抄回 workflow 里
       - name: 导入签名证书到临时钥匙串（job 结束销毁，不落盘）
         run: |
-          CERTIFICATE_PATH=$RUNNER_TEMP/build_certificate.p12
-          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
-
-          echo -n "$MAC_CERTIFICATE_P12_BASE64" | base64 --decode -o "$CERTIFICATE_PATH"
-
-          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security import "$CERTIFICATE_PATH" -P "$MAC_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
-          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security list-keychain -d user -s "$KEYCHAIN_PATH"
-
-          rm -f "$CERTIFICATE_PATH"
-          echo "✅ 证书已导入临时钥匙串"
+          source "$GITHUB_WORKSPACE/tools/ci-signing.sh"
+          ci_signing_prepare "$MAC_CERTIFICATE_P12_BASE64" "$MAC_CERTIFICATE_PASSWORD" "$KEYCHAIN_PASSWORD"
 
       - name: 配置公证凭据（App Store Connect API Key）
         run: |
@@ -188,7 +179,8 @@ jobs:
       - name: 清理临时钥匙串
         if: always()
         run: |
-          security delete-keychain "$RUNNER_TEMP/app-signing.keychain-db" || true
+          source "$GITHUB_WORKSPACE/tools/ci-signing.sh"
+          ci_signing_cleanup
 
   feishu-notify:
     name: Feishu Notification

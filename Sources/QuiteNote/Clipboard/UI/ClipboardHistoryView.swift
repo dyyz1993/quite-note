@@ -390,16 +390,6 @@ struct ClipboardHistoryView: View {
         }
     }
 
-    private func deleteAt(_ index: Int) {
-        guard vm.visibleEntries.indices.contains(index) else { return }
-        let entry = vm.visibleEntries[index]
-        store.delete(id: entry.id)
-        if vm.selectedIndex >= vm.visibleEntries.count - 1 {
-            vm.selectedIndex = max(0, vm.visibleEntries.count - 2)
-        }
-        showHint("已删除")
-    }
-
     private func showHint(_ text: String) {
         hint = text
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {

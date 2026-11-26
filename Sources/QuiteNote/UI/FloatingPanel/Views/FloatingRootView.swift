@@ -84,8 +84,7 @@ struct FloatingRootView: View {
     @State private var expandedId: UUID? = nil
     @State private var searchTerm: String = ""
     @State private var searchResults: [Record] = [] // 缓存搜索结果
-    @State private var isLoadingMore: Bool = false // 是否正在加载更多
-    @State private var hasMoreRecords: Bool = true // 是否还有更多记录
+    @State private var isLoadingMore: Bool = false // 是否正在加载更多（发起侧防重入；"还有没有更多"的真值在 store.canLoadMoreRecords）
     @State private var isDroppingFiles: Bool = false // 是否正在拖入文件
     @State private var originalContentExpandedIds: Set<UUID> = [] // 跟踪展开原文的卡片 ID
 
@@ -389,8 +388,8 @@ struct FloatingRootView: View {
                                 emptyStateView
                             }
 
-                            // 加载更多指示器
-                            if hasMoreRecords {
+                            // 加载更多指示器（真值在 store：首屏/翻页落地后由 RecordStore 更新）
+                            if store.canLoadMoreRecords {
                                 loadMoreIndicatorView
                                     .onAppear {
                                         loadMoreRecords()
@@ -495,24 +494,16 @@ struct FloatingRootView: View {
             // 使用防抖搜索，避免频繁搜索
             store.debouncedSearch(newValue) { results in
                 searchResults = results
-                // 重置分页状态
-                hasMoreRecords = results.count >= 50
             }
         }
         .onAppear {
-            // 初始化时设置搜索结果
-            if searchTerm.isEmpty {
-                // 确保记录已加载
-                if store.records.isEmpty {
-                    store.loadFromStore(pageSize: 50, offset: 0)
-                }
-                // 检查是否还有更多记录
-                hasMoreRecords = store.records.count >= 50
-            } else {
+            // 首屏记录由 RecordStore.init 的 loadInitialRecords 异步加载，这里不再抢跑
+            //（以前这里 records 为空就自己 loadFromStore(50)，会在首屏 100 条落地前把它覆盖成 50 条）。
+            // 非空搜索词（面板重开）仍要刷新一次结果
+            if !searchTerm.isEmpty {
                 // 使用防抖搜索，避免频繁搜索
                 store.debouncedSearch(searchTerm) { results in
                     searchResults = results
-                    hasMoreRecords = results.count >= 50
                 }
             }
         }
@@ -710,19 +701,15 @@ struct FloatingRootView: View {
         }
     }
 
-    /// 加载更多记录的方法
+    /// 加载更多记录的方法。取页是异步的，是否还有更多由 store 落地后自行更新
+    /// （以前在这里同步比较 records.count，永远判定"没有更多"，翻页走一步就断）
     private func loadMoreRecords() {
-        guard !isLoadingMore && hasMoreRecords else { return }
+        guard !isLoadingMore && store.canLoadMoreRecords else { return }
 
         isLoadingMore = true
-
-        // 使用 RecordStore 的 loadMoreRecords 方法
-        let previousCount = store.records.count
-        store.loadMoreRecords()
-
-        // 检查是否还有更多记录
-        hasMoreRecords = store.records.count > previousCount && store.records.count >= 50
-        isLoadingMore = false
+        store.loadMoreRecords { _ in
+            isLoadingMore = false
+        }
     }
 
     /// 加载更多指示器视图
@@ -817,46 +804,6 @@ struct SidebarFilterButton: View {
         }
         .pointingHandCursor()
         .help(isSelected ? "取消筛选" : "筛选\(type.localizedName)")
-    }
-}
-
-// MARK: - 键盘事件处理修饰符
-
-/// 键盘事件处理修饰符，处理不同 macOS 版本的兼容性
-struct KeyboardHandlerModifier: ViewModifier {
-    @Binding var expandedId: UUID?
-    @Binding var showSettings: Bool
-    var onMinimize: (() -> Void)?
-
-    func body(content: Content) -> some View {
-        if #available(macOS 14.0, *) {
-            content
-                .onKeyPress(.escape) {
-                    // ⭐ 关键修复：检查符号联想面板是否正在显示
-                    // 如果符号面板可见，不处理 ESC，让符号面板处理
-                    if SymbolSuggestionPanelBridge.isPanelVisible {
-                        print("[DEBUG] Symbol panel is visible, not handling ESC")
-                        return .ignored
-                    }
-
-                    // ESC键缩小到浮球或取消展开
-                    print("[DEBUG] ESC pressed: expandedId=\(expandedId?.uuidString ?? "nil"), showSettings=\(showSettings)")
-                    if expandedId != nil {
-                        expandedId = nil
-                        return .handled
-                    } else if showSettings {
-                        showSettings = false
-                        return .handled
-                    } else {
-                        print("[DEBUG] ESC calling onMinimize")
-                        onMinimize?()
-                        return .handled
-                    }
-                }
-        } else {
-            // 对于旧版本 macOS，暂时不提供键盘快捷键支持
-            content
-        }
     }
 }
 

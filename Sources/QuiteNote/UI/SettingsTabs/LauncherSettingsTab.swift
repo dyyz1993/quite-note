@@ -39,7 +39,7 @@ struct LauncherSettingsTab: View {
     }
 
     private var shortcutSection: some View {
-        section(title: "快捷键", icon: .keyboard) {
+        SettingsSectionCard(title: "快捷键", icon: .keyboard) {
             VStack(spacing: 12) {
                 HStack {
                     Text("唤起应用启动器")
@@ -108,7 +108,7 @@ struct LauncherSettingsTab: View {
     // MARK: - 使用说明
 
     private var usageSection: some View {
-        section(title: "搜索说明", icon: .search) {
+        SettingsSectionCard(title: "搜索说明", icon: .search) {
             VStack(alignment: .leading, spacing: 10) {
                 explanationRow("输入应用名称", "如 Safari、微信")
                 explanationRow("输入全拼", "如 weixin → 微信")
@@ -139,22 +139,5 @@ struct LauncherSettingsTab: View {
                 .font(.themeCaption)
                 .foregroundColor(.themeTextTertiary)
         }
-    }
-
-    // MARK: - 容器（与 ClipboardSettingsTab 同款卡片）
-
-    private func section<Content: View>(title: String, icon: IconName, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 8) {
-                LucideView(name: icon, size: 16, color: .themeBlue400)
-                Text(title)
-                    .font(.themeH2)
-                    .foregroundColor(.themeTextPrimary)
-            }
-            content()
-        }
-        .padding(16)
-        .background(Color.themeCard)
-        .cornerRadius(12)
     }
 }

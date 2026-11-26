@@ -256,18 +256,3 @@ struct LucideView: View {
         return foundImage
     }
 }
-
-/// 图标 + 文本组合标签，统一尺寸与对齐
-struct LucideLabel: View {
-    let icon: IconName
-    let text: String
-    let size: CGFloat
-    let color: Color
-
-    var body: some View {
-        HStack(spacing: 4) {
-            LucideView(name: icon, size: size, color: color)
-            Text(text)
-        }
-    }
-}

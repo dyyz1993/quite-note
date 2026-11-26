@@ -45,13 +45,6 @@ final class BluetoothManager: NSObject, ObservableObject {
         central.connect(peripheral, options: nil)
     }
 
-    /// 断开当前连接并停止扫描
-    func disconnect() {
-        if let p = peripheral { central?.cancelPeripheralConnection(p) }
-        central?.stopScan()
-        connectedDeviceName = nil
-    }
-
     /// 处理按钮事件载荷并分发到应用
     private func handleButtonEvent(_ data: Data) {
         guard data.count >= 2 else { return }

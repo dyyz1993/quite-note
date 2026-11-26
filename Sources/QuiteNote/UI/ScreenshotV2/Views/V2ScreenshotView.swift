@@ -33,9 +33,6 @@ struct V2ScreenshotView: View {
     @State private var activeHandle: SelectionHandle? = nil
     @State private var currentCursor: NSCursor = .arrow
 
-    @State private var logEntries: [String] = ["Debug View Initialized"]
-    @State private var currentLayerName: String = "None"
-    @State private var currentLayerLevel: Int = 0
     @State private var mouseLocation: CGPoint = .zero
     @State private var hasMouseMoved: Bool = false // 记录鼠标是否移动过
 
@@ -88,16 +85,16 @@ struct V2ScreenshotView: View {
         return !isCurrentlyPrimary
     }
     
-    // 供外部使用的静态日志入口
-    static var onLog: ((String) -> Void)?
+    /// 供外部（HostingView.hitTest 等热路径）使用的调试日志入口。
+    /// 必须是无状态静态函数：带视图状态的闭包会在每个鼠标事件上改 @State，
+    /// 触发整棵 1400 行视图失效重算（截图拖选/悬停卡顿的元凶）。
+    static func debugLog(_ message: String) {
+        v2Logger.debug("\(message, privacy: .public)")
+    }
 
     private func addLog(_ message: String) {
-        let timestamp = Date().formatted(.dateTime.hour().minute().second())
-        let entry = "[\(timestamp)] \(message)"
-        logEntries.insert(entry, at: 0)
-        if logEntries.count > 10 { logEntries.removeLast() }
+        // 只落盘不改视图状态：改 @State 会整树失效重算
         v2Logger.debug("Screen \(screenIndex): \(message, privacy: .public)")
-        V2ScreenshotView.onLog = { self.addLog($0) }
     }
     
     // 获取当前屏幕上的可见窗口列表（不执行遮挡过滤，由悬停逻辑处理）
@@ -356,7 +353,8 @@ struct V2ScreenshotView: View {
 
         DiagnosticCenter.info("OCR", "OCR 模式：退出截图会话，进入识别窗口，选区 \(Int(rect.width))x\(Int(rect.height))")
         V2ScreenshotController.close()
-        V2OCRResultPanelController.shared.show(image: finalImage)
+        // screen 是视图构造时持有的会话屏引用，会话关闭不影响传参（多屏铁律：不用 panel.center()）
+        V2OCRResultPanelController.shared.show(image: finalImage, on: screen)
     }
 
     // 区域录屏：选区的目的是录动态画面——
@@ -399,58 +397,36 @@ struct V2ScreenshotView: View {
                     .scaledToFill()
                     .frame(width: screen.frame.width, height: screen.frame.height)
                 
-                // 2. 蒙层层：用于实现挖孔效果 (长图模式下隐藏)
-                if !primaryScreenManager.isLongScreenshotMode {
-                    V2MaskOverlayView(
-                        isReleased: isReleased,
-                        screenSize: screenSize,
-                        dragStartPoint: dragStartPoint,
-                        dragCurrentPoint: dragCurrentPoint,
-                        localSelectedArea: localSelectedArea,
-                        snappedRect: snappedWireframeRect,
-                        isCurrentlyPrimary: isCurrentlyPrimary,
-                        hasPrimaryScreen: primaryScreenManager.primaryScreen != nil
-                    )
-                }
-                
+                // 2. 蒙层层：用于实现挖孔效果
+                V2MaskOverlayView(
+                    isReleased: isReleased,
+                    screenSize: screenSize,
+                    dragStartPoint: dragStartPoint,
+                    dragCurrentPoint: dragCurrentPoint,
+                    localSelectedArea: localSelectedArea,
+                    snappedRect: snappedWireframeRect,
+                    isCurrentlyPrimary: isCurrentlyPrimary,
+                    hasPrimaryScreen: primaryScreenManager.primaryScreen != nil
+                )
+
                 // 3. 交互层：处理悬停和点击
                 buildInteractionLayer()
                     .allowsHitTesting(true) // ✨ 修复：始终允许点击，通过 contentShape 的 hole 穿透
-                    .onChange(of: primaryScreenManager.isLongScreenshotMode) { isLongMode in
-                        // 长图模式下，如果是当前屏幕有选区，则需要根据选区动态设置是否忽略鼠标事件
-                        if let panel = V2ScreenshotController.screenPanelMap[screen] {
-                            if isLongMode {
-                                // ⚠️ 核心修复：降到最低层级，且不抢占焦点
-                                panel.level = .normal
-                                // ⚠️ 重要：初始状态不忽略鼠标事件，由 HostingView 的 hitTest 动态控制
-                                panel.ignoresMouseEvents = false
-                                addLog("Long Screenshot Mode Active - Window level: .normal")
-                            } else {
-                                panel.level = .screenSaver + 1
-                                panel.ignoresMouseEvents = false
-                                addLog("Long Screenshot Mode Inactive - Restored level")
-                            }
-                        }
-                    }
-                
+
                 // 4. 框选层：显示正在拖拽的区域
                 buildDragOverlay()
                     .zIndex(50)  // ⚠️ 关键修复：提升层级确保线框始终可见（在标注层之上）
-                
-                // 4.5. 标注层：显示绘图内容 (长图模式下隐藏标注)
-                if !primaryScreenManager.isLongScreenshotMode {
-                    buildAnnotationLayer()
-                        .zIndex(60) // ⚠️ 确保在交互层之上，但低于工具栏
-                }
+
+                // 4.5. 标注层：显示绘图内容
+                buildAnnotationLayer()
+                    .zIndex(60) // ⚠️ 确保在交互层之上，但低于工具栏
 
                 // 新增：截图工具栏 (仅在有选区时显示)
-                if let selection = localSelectedArea, !primaryScreenManager.isLongScreenshotMode {
-                    if !primaryScreenManager.isCapturing {
-                        // 普通截图模式：显示标注工具栏
-                        V2FloatingToolbar(selection: selection, screen: screen)
-                            .zIndex(1000) // ⚠️ 最顶层：工具栏始终可点击
-                            .allowsHitTesting(true) // ⚠️ 关键：显式启用工具栏事件接收
-                    }
+                if let selection = localSelectedArea {
+                    // 普通截图模式：显示标注工具栏
+                    V2FloatingToolbar(selection: selection, screen: screen)
+                        .zIndex(1000) // ⚠️ 最顶层：工具栏始终可点击
+                        .allowsHitTesting(true) // ⚠️ 关键：显式启用工具栏事件接收
                 }
                 
                 // ✨ 新增：Toast 提示层
@@ -470,19 +446,12 @@ struct V2ScreenshotView: View {
                         .animation(.easeOut(duration: ThemeDuration._300.rawValue), value: message)
                 }
 
-                // 新增：长图采集过程中的悬浮停止按钮
-                // 此时按钮已经在独立的 V2LongScreenshotControlPanel 中显示
-                // 这里只需保留空逻辑或移除旧的内置 Toolbar
-                if primaryScreenManager.isCapturing {
-                    // 空实现，UI 已经由独立窗口承载
-                }
-
                 // ⚠️ 放大镜预览 (隶属于 Layer 5)
                 // 约束规则：
                 // 1. 仅在鼠标当前所在的屏幕显示 (isCurrentlyPrimary)
                 // 2. 仅在尚未完成选区 (Phase 0) 且 未开始拖拽 时显示
                 // 3. 必须监测到鼠标移动过 (hasMouseMoved)
-                if isCurrentlyPrimary && !hasAnySelection && dragStartPoint == nil && hasMouseMoved && !primaryScreenManager.isCapturing {
+                if isCurrentlyPrimary && !hasAnySelection && dragStartPoint == nil && hasMouseMoved {
                     MagnifierView(
                         snapshot: snapshot,
                         location: mouseLocation,
@@ -660,7 +629,7 @@ struct V2ScreenshotView: View {
             // MARK: 悬停监听层
             // ⚠️ 统一监听层：整个屏幕都是热区
             Color.white.opacity(0.0001)
-                .contentShape(InvertedRectangle(hole: primaryScreenManager.isLongScreenshotMode ? localSelectedArea : nil), eoFill: true)
+                .contentShape(InvertedRectangle(hole: nil), eoFill: true)
                 .onContinuousHover { phase in
                     switch phase {
                     case .active(let location):
@@ -703,17 +672,12 @@ struct V2ScreenshotView: View {
                         // 6. 核心逻辑：动态寻找最顶层窗口并更新全局状态
                         updateHoverState(at: location)
 
-                        // 7. 更新调试层级
-                        self.currentLayerName = "Interaction Area (Layer 3)"
-                        self.currentLayerLevel = 3
-
                     case .ended:
                         // ✨ 修复：不在 hover .ended 中清除 globalHoveredRect
                         // 原因：DragGesture.onEnded 需要读取 globalHoveredRect 来执行点击选择
                         // 如果在这里清除，会导致点击选择逻辑失败
                         // globalHoveredRect 会在鼠标移动时通过 updateHoverState 自动更新
                         // primaryScreenManager.updateHover(nil, label: nil, on: nil)
-                        self.currentLayerLevel = 0
                         NSCursor.arrow.set()
                     }
                 }
@@ -951,16 +915,16 @@ struct V2ScreenshotView: View {
                         // 如果还没开始移动/调整，检查起始点
                         if !isMovingSelection && activeHandle == nil {
                             if let handle = getHandle(at: value.startLocation, in: currentSelection) {
-                                // ⚠️ 编辑模式或长图模式下禁止调整选区
-                                if primaryScreenManager.isEditing || primaryScreenManager.isLongScreenshotMode {
+                                // ⚠️ 编辑模式下禁止调整选区
+                                if primaryScreenManager.isEditing {
                                     return
                                 }
                                 activeHandle = handle
                                 initialSelectionForMove = currentSelection
                                 addLog("Resizing Selection Started: \(handle)")
                             } else if currentSelection.contains(value.startLocation) {
-                                // ⚠️ 编辑模式或长图模式下禁止移动选区
-                                if primaryScreenManager.isEditing || primaryScreenManager.isLongScreenshotMode {
+                                // ⚠️ 编辑模式下禁止移动选区
+                                if primaryScreenManager.isEditing {
                                     return
                                 }
                                 isMovingSelection = true
@@ -1405,7 +1369,7 @@ struct V2ScreenshotView: View {
                 let _ = print("   screen.frame: \(screen.frame)")
 
                 if rect.width > 3 || rect.height > 3 {
-                    YellowWireframe(rect: rect, label: "\(Int(rect.width)) x \(Int(rect.height))", isDashed: true, showBackground: false, isEditing: primaryScreenManager.isEditing, isLongScreenshotMode: primaryScreenManager.isLongScreenshotMode)
+                    YellowWireframe(rect: rect, label: "\(Int(rect.width)) x \(Int(rect.height))", isDashed: true, showBackground: false, isEditing: primaryScreenManager.isEditing)
                 }
             }
 
@@ -1413,13 +1377,7 @@ struct V2ScreenshotView: View {
             if let rect = localSelectedArea, dragStartPoint == nil {
                 let _ = print("🐛 [buildDragOverlay] Creating YellowWireframe for selected area: \(rect)")
                 let _ = print("   screen\(screenIndex), localSelectedArea: \(rect)")
-                YellowWireframe(rect: rect, label: "\(Int(rect.width)) x \(Int(rect.height))", isDashed: false, showBackground: false, isEditing: primaryScreenManager.isEditing, isLongScreenshotMode: primaryScreenManager.isLongScreenshotMode, showHandles: true)
-                .onContinuousHover { phase in
-                    if case .active(_) = phase {
-                        self.currentLayerName = "Selection (Layer 4)"
-                        self.currentLayerLevel = 4
-                    }
-                }
+                YellowWireframe(rect: rect, label: "\(Int(rect.width)) x \(Int(rect.height))", isDashed: false, showBackground: false, isEditing: primaryScreenManager.isEditing, showHandles: true)
             }
 
             // ✅ 优先级3: 悬停预览（添加额外条件避免冲突）
@@ -1427,7 +1385,7 @@ struct V2ScreenshotView: View {
                dragStartPoint == nil,
                localSelectedArea == nil,
                !isReleased {
-                YellowWireframe(rect: rect, label: primaryScreenManager.globalHoveredLabel, isDashed: false, showBackground: false, isEditing: primaryScreenManager.isEditing, isLongScreenshotMode: primaryScreenManager.isLongScreenshotMode, opacity: 1.0)
+                YellowWireframe(rect: rect, label: primaryScreenManager.globalHoveredLabel, isDashed: false, showBackground: false, isEditing: primaryScreenManager.isEditing, opacity: 1.0)
                     .animation(.easeOut(duration: 0.15), value: rect)
             }
         }

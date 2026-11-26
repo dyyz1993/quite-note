@@ -149,66 +149,18 @@ final class ClipboardHistoryPanelController {
             AppLauncherPanelController.shared.hide()
         }
 
-        abortKeyLadder = false
-        // key 就位补拉：前密后疏（0.05~0.7s，深度审计建议——长间隔重试落在
-        // 激活归因窗口之外全部无效）。每次重试后**无条件**补焦一拍。
-        // 逐步计时 + 自适应熔断（2026-11-20 用户真机实锤：第二次唤起遭激活拒绝时
-        // 主线程冻 15.1s、0.35s 重锤都排不上队——嫌疑是 activate/makeKey 在被拒
-        // 状态下同步阻塞；某步 >0.8s 即停跳等重锤，别把主线程堵满）
-        for delay in [0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.55, 0.7] {
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-                guard let self, let panel = self.panel, panel.isVisible, !panel.isKeyWindow else { return }
-                if self.abortKeyLadder { return }
-                let t0 = DispatchTime.now()
-                NSApp.activate(ignoringOtherApps: true)
-                panel.orderFrontRegardless()
-                panel.makeKey()
-                let ms = Double(DispatchTime.now().uptimeNanoseconds - t0.uptimeNanoseconds) / 1_000_000
-                if ms > 80 {
-                    DiagnosticCenter.warning("Clipboard", String(format: "key 补拉一步耗时 %.0fms（activate/makeKey 疑似阻塞）", ms))
-                }
-                if ms > 800 {
-                    self.abortKeyLadder = true
-                    DiagnosticCenter.warning("Clipboard", String(format: "key 补拉熔断（该步 %.0fms，交由重锤接管）", ms))
-                }
-                DispatchQueue.main.async {
-                    self.focusSearchFieldNow()
-                }
-            }
-        }
-        // 激活重锤（Steinberger 2025 / macOS 26 文档方案）：补拉失败说明
-        // accessory 激活被系统拒绝——临时切 .regular（有 Dock 图标的应用激活可靠），
-        // 面板收起时切回。代价是 Dock 图标闪现 <1 秒。
-        // 0.35s（生产日志定标）：用户唤起后 0.2~0.5s 就开始打字/导航，0.8s 才重锤
-        // 意味着打字全漏；导航键已有 Carbon 兜底兜住，重锤只管打字进搜索框，越早越好
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
-            guard let self, let panel = self.panel, panel.isVisible, !panel.isKeyWindow else { return }
-            DiagnosticCenter.warning("Clipboard", "激活被拒（accessory 策略），启用 .regular 重锤")
-            self.policyDanced = true
-            let h0 = DispatchTime.now()
-            NSApp.setActivationPolicy(.regular)
-            let policyMs = Double(DispatchTime.now().uptimeNanoseconds - h0.uptimeNanoseconds) / 1_000_000
-            if policyMs > 80 {
-                DiagnosticCenter.warning("Clipboard", String(format: "重锤 setActivationPolicy 耗时 %.0fms", policyMs))
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                NSApp.activate(ignoringOtherApps: true)
-                panel.makeKeyAndOrderFront(nil)
-                DispatchQueue.main.async {
-                    self.focusSearchFieldNow()
-                    // 聚焦完成后立刻切回（缩短 Dock 图标闪现）
-                    if panel.isKeyWindow, self.policyDanced {
-                        NSApp.setActivationPolicy(.accessory)
-                        self.policyDanced = false
-                    }
-                }
-            }
+        // key 就位补拉 + 激活重锤 + App Nap 断言：共用 KeyWindowLadder
+        // （2026-11-20 生产验证版：前密后疏重试（0.05~0.7s）+ 逐步计时 + 自适应
+        // 熔断（用户真机实锤：第二次唤起遭激活拒绝时主线程冻 15.1s、0.35s 重锤
+        // 都排不上队——某步 >0.8s 即停跳等重锤）+ 0.35s 重锤 + userInitiated 断言；
+        // 每轮重试后**无条件**补焦一拍）
+        ladder.begin(panel: panel, category: "Clipboard") { [weak self] in
+            self?.focusSearchFieldNow()
         }
 
         installKeyMonitor()
         installClickOutsideMonitor()
         installGlobalKeyFallbacks()
-        beginWakeAssertion()
 
         // ESC Carbon 拦截（面板打开期间）：搜狗中文模式会吞裸 ESC，同启动器面板
         GlobalHotkeyManager.shared.register(key: "esc", modifiers: [], id: 5004) { [weak self] in
@@ -223,42 +175,14 @@ final class ClipboardHistoryPanelController {
         DiagnosticCenter.info("Clipboard", "历史面板打开（\(keyInfo)）")
     }
 
-    private var policyDanced = false
-
-    // MARK: App Nap 防护（2026-11-20 采样定罪）
-    // 激活被拒 → 应用跌回后台 → macOS 26 对后台 accessory 应用激进 App Nap：
-    // 主线程空闲挂起、主队列定时唤醒延迟 15s 量级（hang-sample 实锤：主线程
-    // mach_msg 空转、零计算零锁，用户面板冻结、心跳饿死）。面板可见期间持有
-    // userInitiated 活动断言，禁止系统 nap。
-    private var wakeAssertion: NSObjectProtocol?
-
-    private func beginWakeAssertion() {
-        guard wakeAssertion == nil else { return }
-        wakeAssertion = ProcessInfo.processInfo.beginActivity(
-            options: .userInitiatedAllowingIdleSystemSleep,
-            reason: "clipboard-panel-visible"
-        )
-        DiagnosticCenter.info("Clipboard", "App Nap 断言已持有（面板可见期间）")
-    }
-
-    private func endWakeAssertion() {
-        if let token = wakeAssertion {
-            ProcessInfo.processInfo.endActivity(token)
-            wakeAssertion = nil
-            DiagnosticCenter.info("Clipboard", "App Nap 断言已释放")
-        }
-    }
-    /// key 补拉熔断标志（show() 时复位；某步 activate/makeKey 阻塞 >0.8s 置位）
-    private var abortKeyLadder = false
+    /// key 就位梯子（补拉 + 重锤 + App Nap 断言，见 KeyWindowLadder；
+    /// 2026-11-20 生产验证版的共享实现）
+    private let ladder = KeyWindowLadder(napReason: "clipboard-panel-visible")
 
     func hide() {
-        if policyDanced {
-            NSApp.setActivationPolicy(.accessory)
-            policyDanced = false
-        }
+        ladder.end()
         DiagnosticCenter.info("Clipboard", "面板收起（当前 key: \(NSApp.keyWindow.map { String(describing: type(of: $0)) } ?? "nil")）")
         panel?.orderOut(nil)
-        endWakeAssertion()
         removeKeyMonitor()
         removeClickOutsideMonitor()
         removeGlobalKeyFallbacks()

@@ -310,17 +310,56 @@ final class ClipboardHistoryStore: ObservableObject {
 
     /// 保留策略（纯函数计算 + 应用，PRD 4.3）：
     /// 1. 未置顶且超过保留天数的条目过期；2. 超过数量上限时按最旧清理未置顶条目。
+    ///
+    /// 捕获热路径上不再无条件全库物化（applyRetention 内部 fetchPage(limit: .max)
+    /// 会绕过分页把整库读进内存，库越大每次复制越慢）——只在「总数超上限」或
+    /// 「距上次清理超过节流间隔」时才真正执行；启动 loadIfNeeded、6 小时定时器
+    /// 与设置页 cleanExpiredNow(force) 的既有节奏不变。
+    /// 节流间隔 60s：「按天过期」的兜底频率上限，天级精度下足够。
+    static let retentionThrottleInterval: TimeInterval = 60
+    /// 上一次真正执行保留策略的时间（nil = 本次会话还没清过）
+    private var lastRetentionRunAt: Date?
+
+    /// 判定是否需要跑一次全量保留策略（纯函数，可单测）。
+    /// - force：设置页「立即清理」无条件执行
+    /// - totalCount 超上限：马上会需要淘汰，每次捕获都值得查一次（count 是廉价查询）
+    /// - 距上次清理超过节流间隔：给「按天过期」留上限；没清过（nil）视为已到期
+    nonisolated static func shouldRunRetention(
+        force: Bool,
+        totalCount: Int,
+        maxEntries: Int,
+        lastRunAt: Date?,
+        now: Date,
+        throttle: TimeInterval
+    ) -> Bool {
+        if force { return true }
+        guard let lastRunAt else { return true }
+        if totalCount > maxEntries { return true }
+        return now.timeIntervalSince(lastRunAt) >= throttle
+    }
+
     private func applyRetentionIfNeeded(force: Bool = false) {
         guard !isApplyingRetention else { return }
+        let prefs = PreferencesManager.shared
+        let now = Date()
+        guard Self.shouldRunRetention(
+            force: force,
+            totalCount: repository.totalCount(),
+            maxEntries: prefs.clipboardMaxEntries,
+            lastRunAt: lastRetentionRunAt,
+            now: now,
+            throttle: Self.retentionThrottleInterval
+        ) else { return }
+
         isApplyingRetention = true
         defer { isApplyingRetention = false }
 
-        let prefs = PreferencesManager.shared
         let victims = repository.applyRetention(
-            now: Date(),
+            now: now,
             retentionDays: prefs.clipboardRetentionDays,
             maxEntries: prefs.clipboardMaxEntries
         )
+        lastRetentionRunAt = now
         guard !victims.isEmpty else { return }
         let ids = Set(victims.map(\.id))
         entries.removeAll { ids.contains($0.id) }
@@ -349,13 +388,6 @@ final class ClipboardHistoryStore: ObservableObject {
     }
 
     // MARK: - 私有
-
-    private func moveToFront(_ index: Int) {
-        let entry = entries.remove(at: index)
-        entries.insert(entry, at: 0)
-        bumpVersion()
-        resortInPlace()
-    }
 
     private func resortInPlace() {
         entries.sort { a, b in

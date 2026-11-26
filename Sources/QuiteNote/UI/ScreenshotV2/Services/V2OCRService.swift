@@ -19,12 +19,21 @@ final class V2OCRService {
 
     /// 对图片执行 OCR，结果在主线程回调；无文字时回调空字符串，失败回调 nil
     /// - Parameter languages: 识别语言（默认中简+英；传空数组时回落默认值）
+    ///
+    /// 截图 OCR 的入口：解码留在主线程（截图会话里图片已在内存，转换开销小）。
+    /// 剪贴板 OCR 队列这类"图在磁盘上"的调用方请走 CGImage 入口，读盘 + 解码
+    /// 在后台完成后进来，别把整屏 Retina 图的解码卡在主线程。
     func recognizeText(in image: NSImage, languages: [String]? = nil, completion: @escaping (String?) -> Void) {
         guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
             completion(nil)
             return
         }
+        recognizeText(in: cgImage, languages: languages, completion: completion)
+    }
 
+    /// CGImage 入口：调用方已在后台完成读盘与解码，这里只发起 Vision 识别
+    ///（识别本身在后台队列，completion 固定主线程回调，与 NSImage 入口一致）
+    func recognizeText(in cgImage: CGImage, languages: [String]? = nil, completion: @escaping (String?) -> Void) {
         let request = VNRecognizeTextRequest { request, error in
             if let error {
                 DiagnosticCenter.error("OCR", "Vision 请求失败: \(error.localizedDescription)")

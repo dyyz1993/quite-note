@@ -3,18 +3,6 @@ import AppKit
 
 // MARK: - Window Dragging Helper
 
-struct DraggableArea<Content: View>: View {
-    let content: Content
-
-    init(@ViewBuilder content: () -> Content) {
-        self.content = content()
-    }
-
-    var body: some View {
-        content.background(WindowDragHandler())
-    }
-}
-
 struct WindowDragHandler: NSViewRepresentable {
     func makeNSView(context: Context) -> DraggableNSView {
         return DraggableNSView()

@@ -20,6 +20,7 @@ final class CDRecord: NSManagedObject {
     @NSManaged var type: String?
     @NSManaged var skipAI: Bool
     @NSManaged var size: Int64
+    @NSManaged var fileCount: NSNumber?  // 文件夹记录包含的文件数量（非文件夹记录为空）
     @NSManaged var noteFrameData: Data?  // 便签窗口位置（编码后的 NSRect）
     @NSManaged var noteColor: String?    // 便签底色（StickyNoteColor 的 rawValue）
 }

@@ -147,30 +147,6 @@ struct HistorySettingsTab: View {
 
     // MARK: - Methods
 
-    /// 选择附件存储目录
-    private func selectAttachmentsFolder() {
-        let openPanel = NSOpenPanel()
-        openPanel.canChooseFiles = false
-        openPanel.canChooseDirectories = true
-        openPanel.allowsMultipleSelection = false
-        openPanel.title = "选择附件存储目录"
-        openPanel.prompt = "选择"
-        openPanel.level = .modalPanel
-        
-        // 默认定位到当前存储位置
-        openPanel.directoryURL = store.currentAttachmentsDirectory
-
-        openPanel.begin { response in
-            if response == .OK, let url = openPanel.url {
-                DispatchQueue.main.async {
-                    _ = SecurityScopedBookmarkStore.shared.save(url, forKey: "attachmentsDirectoryBookmark")
-                    store.attachmentsPath = url.path
-                    store.savePreferences()
-                }
-            }
-        }
-    }
-
     /// 使用 NSOpenPanel 导入记录（让用户选择文件）
     private func importRecordsWithOpenPanel() {
         let openPanel = NSOpenPanel()
@@ -217,8 +193,6 @@ struct HistorySettingsTab: View {
 
     /// 使用 NSSavePanel 导出记录（让用户选择保存位置）
     private func exportRecordsWithSavePanel() {
-        let markdownContent = store.exportMarkdown()
-
         let savePanel = NSSavePanel()
         savePanel.allowedContentTypes = [.plainText]
         let formatter = DateFormatter()
@@ -229,14 +203,10 @@ struct HistorySettingsTab: View {
 
         savePanel.begin { response in
             if response == .OK, let url = savePanel.url {
-                do {
-                    try markdownContent.write(to: url, atomically: true, encoding: .utf8)
-                    DispatchQueue.main.async {
+                // 整库导出是异步的：保存位置定下来之后才开始读库
+                self.store.exportMarkdown { result in
+                    RecordMarkdownExport.write(result, to: url, store: self.store) { url in
                         self.store.postToast("导出成功！文件已保存至: \(url.path)", type: "success")
-                    }
-                } catch {
-                    DispatchQueue.main.async {
-                        self.store.postToast("导出失败: \(error.localizedDescription)", type: "error")
                     }
                 }
             }

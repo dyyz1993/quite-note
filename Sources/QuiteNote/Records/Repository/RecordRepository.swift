@@ -7,12 +7,35 @@ final class RecordRepository {
     private static let logger = Logger(subsystem: "com.quitenote.app", category: "RecordRepository")
     private let stack: CoreDataStack
 
+    /// 后台写库任务执行入口。默认走容器的 performBackgroundTask；测试用它注入
+    /// 可靠的写库失败场景（只读库等——损坏库上后台 save 不一定报错）
+    var backgroundTaskHandler: ((@escaping (NSManagedObjectContext) -> Void) -> Void)?
+
     init(stack: CoreDataStack = .shared) {
         self.stack = stack
     }
 
     /// 持久化存储没加载成功。此时查询会报错或返回空，调用方不得据此做删除类决策
     var isStoreUnavailable: Bool { stack.loadError != nil }
+
+    /// 库不可用时的写操作做不了实事，按失败报告（不能让"没删成"伪装成成功）
+    enum StoreUnavailableError: Error {
+        case storeUnavailable
+    }
+
+    /// completion 统一在主线程回调（写库发生在后台线程，UI 状态只能在主线程动）
+    private static func finishOnMain(_ completion: ((Result<Void, Error>) -> Void)?, _ result: Result<Void, Error>) {
+        guard let completion else { return }
+        DispatchQueue.main.async { completion(result) }
+    }
+
+    private func runBackgroundTask(_ block: @escaping (NSManagedObjectContext) -> Void) {
+        if let backgroundTaskHandler {
+            backgroundTaskHandler(block)
+        } else {
+            stack.performBackgroundTask(block)
+        }
+    }
 
     /// 便利贴对应的记录是否还在。数据库没加载成功或查询出错时返回 true（保留便利贴）：
     /// 这类情况下"查不到"不等于"记录已删除"，不能据此清理
@@ -56,6 +79,26 @@ final class RecordRepository {
 
         if let error = fetchError { throw error }
         return records
+    }
+
+    /// 读取整库（导出用，不受主列表内存窗口限制）。取数和对象映射都在后台上下文里做，
+    /// 不占主线程；结果在主线程回调。排序与分页查询一致（收藏在前、时间倒序）
+    func fetchAllRecords(completion: @escaping (Result<[Record], Error>) -> Void) {
+        runBackgroundTask { [weak self] context in
+            guard let self else { return }
+            let req = NSFetchRequest<CDRecord>(entityName: "CDRecord")
+            req.sortDescriptors = [
+                NSSortDescriptor(key: "starred", ascending: false),
+                NSSortDescriptor(key: "createdAt", ascending: false)
+            ]
+            do {
+                let records = try context.fetch(req).map { self.cdRecordToRecord($0) }
+                DispatchQueue.main.async { completion(.success(records)) }
+            } catch {
+                DiagnosticCenter.error("RecordStore", "读取整库失败: \(error.localizedDescription)")
+                DispatchQueue.main.async { completion(.failure(error)) }
+            }
+        }
     }
 
     /// 启动器取用面语料（收藏记录 + 全部链接记录）：链接免点星全量可搜（用户
@@ -144,19 +187,46 @@ final class RecordRepository {
         return count
     }
 
+    /// 排在锚点前面的行数（同星标、创建时间晚于锚点）。主列表翻页用它对 offset：
+    /// 两次翻页之间新落库的记录在库内排序里排在已取窗口前面，固定 offset 会漏掉旧记录。
+    /// 与锚点同星标同时间的并列行不计入——取回来会被内存按 id 去重，不会丢也不会重
+    func countRecordsBefore(starred: Bool, createdAt: Date) throws -> Int {
+        var count = 0
+        var fetchError: Error?
+
+        stack.context.performAndWait {
+            do {
+                let req = NSFetchRequest<CDRecord>(entityName: "CDRecord")
+                req.predicate = starred
+                    ? NSPredicate(format: "starred == YES AND createdAt > %@", createdAt as CVarArg)
+                    : NSPredicate(format: "starred == YES OR (starred == NO AND createdAt > %@)", createdAt as CVarArg)
+                count = try stack.context.count(for: req)
+            } catch {
+                fetchError = error
+            }
+        }
+
+        if let error = fetchError { throw error }
+        return count
+    }
+
     // MARK: - 保存操作
 
-    /// 保存新记录（异步，后台任务）
-    func save(_ record: Record) throws {
-        stack.performBackgroundTask { [weak self] context in
+    /// 保存新记录（异步，后台任务）。写库结果经 completion 在主线程回调：
+    /// 落库失败时记录只在内存里，重启即丢——调用方（RecordStore）据此提示用户
+    func save(_ record: Record, completion: ((Result<Void, Error>) -> Void)? = nil) {
+        runBackgroundTask { [weak self] context in
             guard let self = self else { return }
             do {
                 let cd = CDRecord(context: context)
                 self.mapRecordToCDRecord(record, into: cd)
                 try context.save()
                 Self.logger.info("新记录已保存到数据库: \(record.id)")
+                Self.finishOnMain(completion, .success(()))
             } catch {
                 Self.logger.error("保存记录失败: \(error.localizedDescription)")
+                DiagnosticCenter.error("RecordStore", "保存记录失败: \(error.localizedDescription)")
+                Self.finishOnMain(completion, .failure(error))
             }
         }
     }
@@ -207,9 +277,10 @@ final class RecordRepository {
         if let error = updateError { throw error }
     }
 
-    /// 更新记录时间戳
-    func updateTimestamp(id: UUID, to date: Date) throws {
-        stack.performBackgroundTask { context in
+    /// 更新记录时间戳（异步，后台任务；结果经 completion 在主线程回调）
+    func updateTimestamp(id: UUID, to date: Date, completion: ((Result<Void, Error>) -> Void)? = nil) {
+        runBackgroundTask { [weak self] context in
+            guard let self = self else { return }
             let req = NSFetchRequest<CDRecord>(entityName: "CDRecord")
             req.predicate = NSPredicate(format: "id == %@", id as CVarArg)
             do {
@@ -217,15 +288,19 @@ final class RecordRepository {
                     cd.createdAt = date
                     try context.save()
                 }
+                Self.finishOnMain(completion, .success(()))
             } catch {
                 Self.logger.error("更新时间戳失败: \(error.localizedDescription)")
+                DiagnosticCenter.error("RecordStore", "更新时间戳失败: \(error.localizedDescription)")
+                Self.finishOnMain(completion, .failure(error))
             }
         }
     }
 
-    /// 更新记录的 sourceUrl
-    func updateSourceUrl(id: UUID, sourceUrl: String) throws {
-        stack.performBackgroundTask { context in
+    /// 更新记录的 sourceUrl（异步，后台任务；结果经 completion 在主线程回调）
+    func updateSourceUrl(id: UUID, sourceUrl: String, completion: ((Result<Void, Error>) -> Void)? = nil) {
+        runBackgroundTask { [weak self] context in
+            guard let self = self else { return }
             let req = NSFetchRequest<CDRecord>(entityName: "CDRecord")
             req.predicate = NSPredicate(format: "id == %@", id as CVarArg)
             do {
@@ -233,15 +308,19 @@ final class RecordRepository {
                     cd.sourceUrl = sourceUrl
                     try context.save()
                 }
+                Self.finishOnMain(completion, .success(()))
             } catch {
                 Self.logger.error("更新 sourceUrl 失败: \(error.localizedDescription)")
+                DiagnosticCenter.error("RecordStore", "更新 sourceUrl 失败: \(error.localizedDescription)")
+                Self.finishOnMain(completion, .failure(error))
             }
         }
     }
 
-    /// 更新记录的文件大小
-    func updateSize(id: UUID, size: Int64) throws {
-        stack.performBackgroundTask { context in
+    /// 更新记录的文件大小（异步，后台任务；结果经 completion 在主线程回调）
+    func updateSize(id: UUID, size: Int64, completion: ((Result<Void, Error>) -> Void)? = nil) {
+        runBackgroundTask { [weak self] context in
+            guard let self = self else { return }
             let req = NSFetchRequest<CDRecord>(entityName: "CDRecord")
             req.predicate = NSPredicate(format: "id == %@", id as CVarArg)
             do {
@@ -249,8 +328,11 @@ final class RecordRepository {
                     cd.size = size
                     try context.save()
                 }
+                Self.finishOnMain(completion, .success(()))
             } catch {
                 Self.logger.error("更新记录大小失败: \(error.localizedDescription)")
+                DiagnosticCenter.error("RecordStore", "更新记录大小失败: \(error.localizedDescription)")
+                Self.finishOnMain(completion, .failure(error))
             }
         }
     }
@@ -286,9 +368,10 @@ final class RecordRepository {
         }
     }
 
-    /// 切换收藏状态
-    func toggleStar(id: UUID) throws {
-        stack.performBackgroundTask { context in
+    /// 切换收藏状态（异步，后台任务；结果经 completion 在主线程回调）
+    func toggleStar(id: UUID, completion: ((Result<Void, Error>) -> Void)? = nil) {
+        runBackgroundTask { [weak self] context in
+            guard let self = self else { return }
             let req = NSFetchRequest<CDRecord>(entityName: "CDRecord")
             req.predicate = NSPredicate(format: "id == %@", id as CVarArg)
             do {
@@ -296,8 +379,11 @@ final class RecordRepository {
                     cd.starred = !cd.starred
                     try context.save()
                 }
+                Self.finishOnMain(completion, .success(()))
             } catch {
                 Self.logger.error("切换收藏状态失败: \(error.localizedDescription)")
+                DiagnosticCenter.error("RecordStore", "切换收藏状态失败: \(error.localizedDescription)")
+                Self.finishOnMain(completion, .failure(error))
             }
         }
     }
@@ -323,8 +409,8 @@ final class RecordRepository {
 
     // MARK: - 删除操作
 
-    /// 删除指定记录（同步执行，确保删除完成）
-    func delete(id: UUID) {
+    /// 删除指定记录（同步执行，确保删除完成；结果经 completion 在主线程回调）
+    func delete(id: UUID, completion: ((Result<Void, Error>) -> Void)? = nil) {
         print("[DEBUG RecordRepository.delete()] 开始删除记录, ID: \(id)")
         Self.logger.info("RecordRepository.delete() 开始删除, ID: \(id)")
 
@@ -342,13 +428,23 @@ final class RecordRepository {
                     try stack.context.save()
                     print("[DEBUG RecordRepository.delete()] save() 成功")
                     Self.logger.info("记录已删除: \(id)")
+                    Self.finishOnMain(completion, .success(()))
                 } else {
                     print("[DEBUG RecordRepository.delete()] 未找到要删除的记录")
                     Self.logger.warning("未找到要删除的记录: \(id)")
+                    // 库没加载成功时"查不到"不等于"没有"——这条删除什么都没删成，
+                    // 重启后记录会回来，必须按失败上报而不是成功
+                    if self.isStoreUnavailable {
+                        Self.finishOnMain(completion, .failure(StoreUnavailableError.storeUnavailable))
+                    } else {
+                        Self.finishOnMain(completion, .success(()))
+                    }
                 }
             } catch {
                 print("[DEBUG RecordRepository.delete()] 删除失败: \(error.localizedDescription)")
                 Self.logger.error("删除记录失败: \(error.localizedDescription)")
+                DiagnosticCenter.error("RecordStore", "删除记录失败: \(error.localizedDescription)")
+                Self.finishOnMain(completion, .failure(error))
             }
         }
         print("[DEBUG RecordRepository.delete()] performAndWait 完成")
@@ -421,6 +517,7 @@ final class RecordRepository {
             sourceUrl: cd.sourceUrl,
             type: RecordType(rawValue: cd.type ?? "text") ?? .text,
             skipAI: cd.skipAI,
+            fileCount: cd.fileCount?.intValue,
             size: cd.size,
             noteFrame: noteFrame,
             noteColor: cd.noteColor
@@ -445,6 +542,7 @@ final class RecordRepository {
         cd.type = record.type.rawValue
         cd.skipAI = record.skipAI
         cd.size = record.size
+        cd.fileCount = record.fileCount.map { NSNumber(value: $0) }
 
         // 编码 noteFrame - 使用 NSValue 包装
         if let frame = record.noteFrame {

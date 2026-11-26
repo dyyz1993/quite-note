@@ -73,30 +73,15 @@ enum TextCase {
 extension View {
     /// Apply text case transformation
     /// Note: SwiftUI doesn't have a direct textCase modifier
-    /// For Text views, use Text.styledText(_:caseType:) instead
-    /// Example: Text.styledText("hello world", caseType: .uppercase)
+    /// Example: Text("hello").textCase(.uppercase)
     func textCase(_ caseType: TextCase) -> some View {
         return self.modifier(TextCaseModifier(caseType: caseType))
-    }
-
-    /// Apply letter spacing (kerning)
-    /// Uses SwiftUI's tracking modifier as a workaround for kerning
-    /// Example: Text("Hello").kerning(2.0)
-    func kerning(_ value: CGFloat) -> some View {
-        return self.modifier(KerningModifier(value: value))
     }
 
     /// Apply font weight
     /// - Parameter weight: The desired font weight
     func fontWeight(_ weight: Font.Weight) -> some View {
         return self.font(.system(size: 14, weight: weight))
-    }
-
-    /// Apply monospace font
-    /// - Parameter size: Font size (optional)
-    func monospace(_ size: CGFloat? = nil) -> some View {
-        let fontSize = size ?? 14
-        return self.font(.system(size: fontSize, design: .monospaced))
     }
 
     /// Apply uppercase transformation
@@ -121,13 +106,6 @@ extension View {
 // These extensions make it easier to apply theme fonts to Text views.
 
 extension Text {
-    /// Apply theme font
-    /// - Parameter font: The theme font to apply
-    /// - Returns: Text with applied font
-    func themeFont(_ font: Font) -> Text {
-        return self.font(font)
-    }
-
     /// Apply theme heading 1 font
     /// - Returns: Text with H1 styling
     func themeH1() -> Text {
@@ -169,14 +147,6 @@ extension Text {
     func uppercase() -> Text {
         return Text(self.string.uppercased()).font(self.currentFont)
     }
-
-    /// Apply monospace font
-    /// - Parameter size: Font size (optional)
-    /// - Returns: Text with monospace font
-    func monospace(_ size: CGFloat? = nil) -> Text {
-        let fontSize = size ?? self.currentFontSize
-        return self.font(.system(size: fontSize, design: .monospaced))
-    }
 }
 
 // MARK: - Text Case Modifier
@@ -194,60 +164,6 @@ struct TextCaseModifier: ViewModifier {
     }
 }
 
-// MARK: - Kerning Modifier
-//
-// A SwiftUI view modifier that applies letter spacing (kerning) to Text views.
-
-struct KerningModifier: ViewModifier {
-    let value: CGFloat
-    
-    func body(content: Content) -> some View {
-        // SwiftUI doesn't have a direct kerning modifier
-        // We use tracking as a workaround for letter spacing
-        content.tracking(value)
-    }
-}
-
-// MARK: - Text Styling Extensions
-//
-// Extensions to apply text case transformations and kerning to Text views.
-
-extension Text {
-    /// Apply text case transformation with string parameter
-    /// - Parameters:
-    ///   - text: The text string to transform
-    ///   - caseType: The text case to apply
-    /// - Returns: Text with applied case transformation
-    static func styledText(_ text: String, caseType: TextCase = .normal) -> Text {
-        switch caseType {
-        case .uppercase:
-            return Text(text.uppercased())
-        case .lowercase:
-            return Text(text.lowercased())
-        case .normal:
-            return Text(text)
-        }
-    }
-    
-    /// Apply text case transformation to existing Text
-    /// - Parameter caseType: The text case to apply
-    /// - Returns: Text with applied case transformation
-    /// Note: This is a simplified implementation that works with basic Text views
-    func applyingTextCase(_ caseType: TextCase) -> some View {
-        // Since we can't easily extract the string from an existing Text view,
-        // this is a placeholder that would need to be implemented based on
-        // the specific use case
-        return self
-    }
-    
-    /// Apply letter spacing (kerning) to Text
-    /// - Parameter value: The kerning value
-    /// - Returns: Text with applied kerning
-    func kerning(_ value: CGFloat) -> some View {
-        return self.tracking(value)
-    }
-}
-
 // MARK: - Private Extensions for Text Font Access
 //
 // These extensions provide access to Text's current font for transformation.
@@ -256,11 +172,6 @@ private extension Text {
     var currentFont: Font {
         // Default font if not specified
         return .themeBody
-    }
-
-    var currentFontSize: CGFloat {
-        // Default font size if not specified
-        return 14
     }
 
     var string: String {

@@ -171,20 +171,6 @@ extension View {
     func spacing(_ spacing: ThemeSpacing) -> some View {
         return self.padding(.all, spacing.rawValue)
     }
-
-    /// Apply vertical spacing
-    /// - Parameter spacing: ThemeSpacing value
-    /// - Returns: View with vertical spacing applied
-    func verticalSpacing(_ spacing: ThemeSpacing) -> some View {
-        return self.padding(.vertical, spacing.rawValue)
-    }
-
-    /// Apply horizontal spacing
-    /// - Parameter spacing: ThemeSpacing value
-    /// - Returns: View with horizontal spacing applied
-    func horizontalSpacing(_ spacing: ThemeSpacing) -> some View {
-        return self.padding(.horizontal, spacing.rawValue)
-    }
 }
 
 // MARK: - VStack Extensions for Spacing
@@ -226,32 +212,5 @@ extension ZStack {
     ///   - content: View content
     init(spacing: ThemeSpacing, @ViewBuilder content: () -> Content) {
         self.init(content: content)
-    }
-}
-
-// MARK: - Spacing Utilities
-//
-// Additional utilities for working with spacing.
-
-struct Spacing {
-    /// Create a spacer with fixed height
-    /// - Parameter height: ThemeSpacing value
-    /// - Returns: Spacer with fixed height
-    static func vertical(_ height: ThemeSpacing) -> some View {
-        return Spacer().frame(height: height.rawValue)
-    }
-
-    /// Create a spacer with fixed width
-    /// - Parameter width: ThemeSpacing value
-    /// - Returns: Spacer with fixed width
-    static func horizontal(_ width: ThemeSpacing) -> some View {
-        return Spacer().frame(width: width.rawValue)
-    }
-
-    /// Create a fixed-size spacer
-    /// - Parameter size: ThemeSpacing value for both width and height
-    /// - Returns: Spacer with fixed size
-    static func fixed(_ size: ThemeSpacing) -> some View {
-        return Spacer().frame(width: size.rawValue, height: size.rawValue)
     }
 }

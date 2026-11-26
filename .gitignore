@@ -11,6 +11,7 @@ venv/
 Quite Note Dev.app/
 icons.xcassets/
 AGENTS.md
+AGENTS-*.md
 output/
 .playwright-cli/
 
