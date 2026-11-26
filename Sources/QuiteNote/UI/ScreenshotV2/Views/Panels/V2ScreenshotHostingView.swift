@@ -62,13 +62,13 @@ class V2ScreenshotHostingView<Content: View>: NSHostingView<Content> {
                     self.window?.ignoresMouseEvents = false
                 }
 
-                V2ScreenshotView.onLog?("Penetrating to desktop @ \(Int(localSwiftUIPoint.x)),\(Int(localSwiftUIPoint.y))")
+                V2ScreenshotView.debugLog("Penetrating to desktop @ \(Int(localSwiftUIPoint.x)),\(Int(localSwiftUIPoint.y))")
                 return nil // 穿透到桌面
             }
         }
 
         let hitViewDesc = hitView != nil ? "\(type(of: hitView!))" : "nil"
-        V2ScreenshotView.onLog?("HitTest - Blocking - Hit: \(hitViewDesc), Inside: \(isInsideSelection)")
+        V2ScreenshotView.debugLog("HitTest - Blocking - Hit: \(hitViewDesc), Inside: \(isInsideSelection)")
 
         return hitView
     }

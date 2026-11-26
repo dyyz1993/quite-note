@@ -33,9 +33,6 @@ struct V2ScreenshotView: View {
     @State private var activeHandle: SelectionHandle? = nil
     @State private var currentCursor: NSCursor = .arrow
 
-    @State private var logEntries: [String] = ["Debug View Initialized"]
-    @State private var currentLayerName: String = "None"
-    @State private var currentLayerLevel: Int = 0
     @State private var mouseLocation: CGPoint = .zero
     @State private var hasMouseMoved: Bool = false // 记录鼠标是否移动过
 
@@ -88,16 +85,16 @@ struct V2ScreenshotView: View {
         return !isCurrentlyPrimary
     }
     
-    // 供外部使用的静态日志入口
-    static var onLog: ((String) -> Void)?
+    /// 供外部（HostingView.hitTest 等热路径）使用的调试日志入口。
+    /// 必须是无状态静态函数：带视图状态的闭包会在每个鼠标事件上改 @State，
+    /// 触发整棵 1400 行视图失效重算（截图拖选/悬停卡顿的元凶）。
+    static func debugLog(_ message: String) {
+        v2Logger.debug("\(message, privacy: .public)")
+    }
 
     private func addLog(_ message: String) {
-        let timestamp = Date().formatted(.dateTime.hour().minute().second())
-        let entry = "[\(timestamp)] \(message)"
-        logEntries.insert(entry, at: 0)
-        if logEntries.count > 10 { logEntries.removeLast() }
+        // 只落盘不改视图状态：改 @State 会整树失效重算
         v2Logger.debug("Screen \(screenIndex): \(message, privacy: .public)")
-        V2ScreenshotView.onLog = { self.addLog($0) }
     }
     
     // 获取当前屏幕上的可见窗口列表（不执行遮挡过滤，由悬停逻辑处理）
@@ -682,17 +679,12 @@ struct V2ScreenshotView: View {
                         // 6. 核心逻辑：动态寻找最顶层窗口并更新全局状态
                         updateHoverState(at: location)
 
-                        // 7. 更新调试层级
-                        self.currentLayerName = "Interaction Area (Layer 3)"
-                        self.currentLayerLevel = 3
-
                     case .ended:
                         // ✨ 修复：不在 hover .ended 中清除 globalHoveredRect
                         // 原因：DragGesture.onEnded 需要读取 globalHoveredRect 来执行点击选择
                         // 如果在这里清除，会导致点击选择逻辑失败
                         // globalHoveredRect 会在鼠标移动时通过 updateHoverState 自动更新
                         // primaryScreenManager.updateHover(nil, label: nil, on: nil)
-                        self.currentLayerLevel = 0
                         NSCursor.arrow.set()
                     }
                 }
@@ -1393,12 +1385,6 @@ struct V2ScreenshotView: View {
                 let _ = print("🐛 [buildDragOverlay] Creating YellowWireframe for selected area: \(rect)")
                 let _ = print("   screen\(screenIndex), localSelectedArea: \(rect)")
                 YellowWireframe(rect: rect, label: "\(Int(rect.width)) x \(Int(rect.height))", isDashed: false, showBackground: false, isEditing: primaryScreenManager.isEditing, showHandles: true)
-                .onContinuousHover { phase in
-                    if case .active(_) = phase {
-                        self.currentLayerName = "Selection (Layer 4)"
-                        self.currentLayerLevel = 4
-                    }
-                }
             }
 
             // ✅ 优先级3: 悬停预览（添加额外条件避免冲突）
