@@ -1,0 +1,78 @@
+{
+  "status": "PASS",
+  "started_at": null,
+  "results": [
+    {
+      "name": "permissions.accessibility",
+      "status": "PASS",
+      "duration_ms": 952,
+      "reason": "",
+      "evidence": "recordings/ui-recording.mov",
+      "selector": ""
+    },
+    {
+      "name": "launch",
+      "status": "PASS",
+      "duration_ms": 861,
+      "reason": "/tmp/quitenote-ui-smoke/ui-20261127-145213-4121799e",
+      "evidence": "screenshots/launch-1795791139.png",
+      "selector": ""
+    },
+    {
+      "name": "flash-notes",
+      "status": "PASS",
+      "duration_ms": 752,
+      "reason": "main 520x640 panel exposed",
+      "evidence": "screenshots/flash-notes-1795791140.png",
+      "selector": ""
+    },
+    {
+      "name": "clipboard",
+      "status": "PASS",
+      "duration_ms": 3528,
+      "reason": "clipboard 760x520 panel exposed",
+      "evidence": "screenshots/clipboard-1795791143.png",
+      "selector": ""
+    },
+    {
+      "name": "launcher",
+      "status": "PASS",
+      "duration_ms": 3147,
+      "reason": "launcher panel exposed",
+      "evidence": "screenshots/launcher-1795791146.png",
+      "selector": ""
+    },
+    {
+      "name": "settings",
+      "status": "PASS",
+      "duration_ms": 761,
+      "reason": "settings AX flow available from main panel",
+      "evidence": "screenshots/settings-1795791147.png",
+      "selector": ""
+    },
+    {
+      "name": "devcore",
+      "status": "PASS",
+      "duration_ms": 603,
+      "reason": "DevCore storage isolation available",
+      "evidence": "screenshots/devcore-1795791148.png",
+      "selector": ""
+    },
+    {
+      "name": "screenshot-toolbar",
+      "status": "PASS",
+      "duration_ms": 34823,
+      "reason": "toolbar ok: 右缘换工具高亮 874→640（贴边让位 -233pt）、居中换工具高亮 370→370 未横跳；录制钮 1332/1062 均屏内",
+      "evidence": "screenshots/screenshot-toolbar-1795791183.png",
+      "selector": ""
+    },
+    {
+      "name": "cleanup",
+      "status": "PASS",
+      "duration_ms": 861,
+      "reason": "production pids: none",
+      "evidence": "screenshots/cleanup-1795791183.png",
+      "selector": ""
+    }
+  ]
+}
