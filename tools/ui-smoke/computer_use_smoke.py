@@ -44,7 +44,6 @@ except ImportError:  # The remote test Mac boots before pip dependencies are ins
 
 
 APP_NAME = "Quite Note Dev"
-SCREEN_PT = 1366 / 1440  # cua 截图像素 / 逻辑pt
 CUA = "/Applications/CuaDriver.app/Contents/MacOS/cua-driver"
 SETTLE_SECONDS = 0.35
 _target_ax_identifier = ""
@@ -843,9 +842,10 @@ def _snap_overlay(run, tag):
     if source is None:
         raise RuntimeError(f"screenshot stage capture failed: {tag} (app 证据服务 + cua×2 + screencapture 全部无产物)")
 
-    # 归一化到 1366 宽：管线的全部像素假设（SCREEN_PT 换算、decode 的 18-50pt 簇宽、
-    # dark_band 1432 上限）都按 cua 时代 1366px 截图标定；app 通道是原生 Retina 2880px，
-    # 不归一化则几何全部翻倍（2026-11-20 实锤 KeyError/簇宽过滤失效）
+    # 归一化到 1366 宽：管线的全部像素假设（decode 的 18-50pt 簇宽、dark_band 1432 上限）
+    # 都按 cua 时代 1366px 截图标定；app 通道是原生 Retina 2880px，
+    # 不归一化则几何全部翻倍（2026-11-20 实锤 KeyError/簇宽过滤失效）。decode 再按
+    # 1440pt 换算回逻辑坐标，所以断言里的坐标都是逻辑 pt
     os.makedirs("/tmp/qn-manual", exist_ok=True)  # 此前由 cua 落盘时顺带创建，app 通道需自建
     from PIL import Image
     im = Image.open(source)
@@ -860,92 +860,181 @@ def _snap_overlay(run, tag):
     return out
 
 
+_CUA_PX_PER_PT = None
+
+
+def _cua_px_per_pt() -> float:
+    """cua 桌面坐标的单位 = 主显示器的原生像素。测试机是 Retina：2880px / 1440pt = 2。
+
+    2026-11-27 实锤：按旧的 1366/1440 换算发过去 (1117,285)→(1326,455) 的拖拽，实际落在
+    逻辑坐标 (558,143)→(662,226)——正好除以 2。于是"贴右缘的选区"一直拖在屏幕中间，
+    点工具组的点击也一直落在别处，截图工具栏用例的两个阶段从来没真正执行过。
+    """
+    global _CUA_PX_PER_PT
+    if _CUA_PX_PER_PT is None:
+        from Quartz import (CGMainDisplayID, CGDisplayCopyDisplayMode,
+                            CGDisplayModeGetPixelWidth, CGDisplayModeGetWidth)
+        mode = CGDisplayCopyDisplayMode(CGMainDisplayID())
+        _CUA_PX_PER_PT = CGDisplayModeGetPixelWidth(mode) / CGDisplayModeGetWidth(mode)
+    return _CUA_PX_PER_PT
+
+
 def _click_overlay(lx, ly):
-    """cua desktop foreground 点击（逻辑坐标）"""
+    """cua desktop foreground 点击（入参是逻辑 pt）"""
+    k = _cua_px_per_pt()
     out = _cua_call("click", json.dumps({"scope": "desktop", "delivery_mode": "foreground",
-                                         "x": round(lx * SCREEN_PT), "y": round(ly * SCREEN_PT)}))
+                                         "x": round(lx * k), "y": round(ly * k)}))
     time.sleep(1.3)
 
 
 def _drag_overlay(lx1, ly1, lx2, ly2):
+    """cua desktop foreground 拖拽（入参是逻辑 pt）"""
+    k = _cua_px_per_pt()
     args = {"scope": "desktop", "delivery_mode": "foreground",
-            "from_x": round(lx1 * SCREEN_PT), "from_y": round(ly1 * SCREEN_PT),
-            "to_x": round(lx2 * SCREEN_PT), "to_y": round(ly2 * SCREEN_PT),
+            "from_x": round(lx1 * k), "from_y": round(ly1 * k),
+            "to_x": round(lx2 * k), "to_y": round(ly2 * k),
             "duration_ms": 500, "steps": 14}
     _cua_call("drag", json.dumps(args))
     time.sleep(1.4)
 
 
-def _toolbar_anchor(decoded: dict, stage: str, screen_h: float):
-    """工具栏锚定 = 同一横行（±25pt）内的蓝簇+红簇配对，取工作区最上方命中。
+RECORD_COLOR = (221, 82, 76)  # 录制钮圆点的实测色（app 证据通道，2026-11-27）
+RECORD_OFFSET_DEFAULT = 534   # 默认态：录制钮中心在选中高亮（光标钮）右侧 534pt
+TEXT_GROUP_OFFSET = 76        # 文字组钮在光标钮右侧第 3 个：+76pt
+WIDEN_DELTA = 234             # 选中带颜色的工具后主栏变宽 234pt（离屏实测 650→884）
+RECORD_OFFSET_WIDENED = RECORD_OFFSET_DEFAULT + WIDEN_DELTA - TEXT_GROUP_OFFSET  # 高亮挪到文字钮后：692pt
+RECORD_TO_RIGHT_EDGE = 99     # 录制钮中心到主栏外框右缘：玻璃面 87pt + 12pt 透明外边距（外框右缘贴边时 = 1432）
 
-    旧的"最左蓝簇"锚定会被 Dock 蓝色应用图标污染（2026-11-20 实锤：app 证据
-    通道的取图包含整个屏幕，Dock 图标 y≈840 与工具栏 y≈276 同时命中；且 Dock
-    行存在蓝红同排的合法配对）。工具栏的签名：蓝（选中组）红（录制）同 y 相邻、
-    且位于菜单栏（y<60）与 Dock 区（y>屏高-100）之外——截图选区悬于屏幕中上部，
-    工具栏随选区浮在同一带。
+
+def _looks_like_record(path, lx: float, ly: float) -> bool:
+    """图上 (lx, ly) 这个逻辑坐标处是不是录制钮的圆点。直接比对颜色，不走聚类：
+    工具栏压在橙红色壁纸上时，录制钮会和壁纸连成一簇被整簇丢弃（2026-11-27 实锤）"""
+    from PIL import Image
+    im = Image.open(path).convert("RGB")
+    W, H = im.size
+    px = im.load()
+    cx, cy = int(lx * W / 1440.0), int(ly * H / 900.0)
+    if not (4 <= cx < W - 4 and 4 <= cy < H - 4):
+        return False
+    for dx in (-3, 0, 3):
+        for dy in (-3, 0, 3):
+            r, g, b = px[cx + dx, cy + dy]
+            if abs(r - RECORD_COLOR[0]) > 16 or abs(g - RECORD_COLOR[1]) > 12 or abs(b - RECORD_COLOR[2]) > 12:
+                return False
+    return True
+
+
+def _locate_toolbar(frame, stage: str, screen_h: float, expect_widened: bool):
+    """在取证截图里找工具栏：返回 (选中高亮, 录制钮)。
+
+    候选 = 工作区（菜单栏以下、Dock 区以上）里的蓝簇，其中选中工具组的高亮满足
+    "录制钮在它右侧 534pt（默认态）或 692pt（选中带颜色的工具后）"，到图上核对颜色
+    才算数；背景窗口里的蓝色图标过不了这一关。核对不过 = 主栏宽度不符合预期。
+
+    蓝簇阈值按选中高亮的实测色定（themeOverlaySelected ≈ (60,89,184)，2026-11-27）：
+    旧阈值 b>185 恰好漏掉它，蓝簇就只剩右侧的钉图钮——此前"点文本组（蓝钮+76pt）"
+    实际点在复制和录制之间，两张阶段截图字节相同，从最早的基线起这个阶段就是空转。
     """
-    pairs = [(b, r) for b in decoded.get("B", []) for r in decoded.get("R", [])
-             if abs(b[1] - r[1]) <= 25 and 60 < b[1] < screen_h - 100]
-    assert pairs, f"{stage}: 工作区红蓝配对未检出 B={decoded.get('B')} R={decoded.get('R')}"
-    return min(pairs, key=lambda p: p[0][1])
+    blues = decode(frame)["B"]
+    candidates = sorted((b for b in blues if 60 < b[1] < screen_h - 100),
+                        key=lambda t: (round(t[1]), t[0]))
+    for highlight in candidates:
+        at_default = _looks_like_record(frame, highlight[0] + RECORD_OFFSET_DEFAULT, highlight[1])
+        at_widened = _looks_like_record(frame, highlight[0] + RECORD_OFFSET_WIDENED, highlight[1])
+        if at_default == at_widened or at_widened != expect_widened:
+            continue
+        offset = RECORD_OFFSET_WIDENED if expect_widened else RECORD_OFFSET_DEFAULT
+        return highlight, (highlight[0] + offset, highlight[1])
+    state = "变宽后" if expect_widened else "默认态"
+    assert False, (f"{stage}: 没找到{state}的工具栏（主栏宽度不符合预期，或点文字组没生效）"
+                   f" 蓝簇={[(round(t[0]), round(t[1])) for t in candidates]}")
 
 
 def smoke_screenshot_toolbar(run: Run, driver: AXDriver) -> str:
-    """Regression for the screenshot toolbar edge layout (2026-10-21 rewrite).
+    """截图工具栏回归（2026-10-21 重写；2026-11-27 把一直空转的阶段修成真测）。
 
-    Verification uses (a) blue selected-button clustering for anchoring and
-    (b) the dark-band right edge of the toolbar bar itself for width
-    assertions - the wallpaper on this host is orange-red and poisons red
-    pixel clustering (2026-10-22: 9055-point mega cluster swallowed the
-    record button). All cua input, screencapture-in-app evidence, screen
-    kept awake via caffeinate for the whole scenario.
+    用选中工具组的高亮（蓝簇）做像素锚定，录制钮位置由高亮推算后到图上核对颜色。
+    壁纸是橙红色、会污染红色聚类，暗带右端又会被工具栏背后的深色窗口污染，
+    所以这两样都不参与断言。全程 cua 输入 + 应用内取证截图 + caffeinate。
+
+    断言（坐标都是逻辑 pt）：
+    - 主栏宽度符合当前状态：默认态录制钮在"高亮 + 534"，选中带颜色的工具后在"高亮 + 692"
+      （换工具真的发生，主栏变宽 234）
+    - 出屏：录制钮 + 88 不超过屏幕右缘（主栏右缘贴边时等式正好成立）
+    - 换工具不横跳：选中高亮还在点击处——主栏左缘锚定、只向右生长；唯一允许的
+      位移是右缘放不下时的整体左移（阶段 2 的右缘选区 = 让位 234pt）
+    阶段 3 / 4 用屏幕中间的选区再测一遍：不存在贴边让位，才能区分"左缘锚定"和
+    旧行为"重新居中"（旧行为下高亮会左移 117pt）。
     """
     width, height = _main_display_size()
     pid = driver.pid
 
-    def _wake():
-        subprocess.Popen(["caffeinate", "-u", "-t", "25"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    def _start_session():
+        # ⚠️ 触发方式勿改（2026-10-22 3901435 重构曾误删触发行，套件永远"overlay did not
+        # appear"，直到 2026-11-20 才发现）：从状态菜单发起截图会话
+        _press_status_menu_item("捕获屏幕截图")
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline and _overlay_window_count(pid) == 0:
+            time.sleep(0.05)
+        assert _overlay_window_count(pid) > 0, "screenshot overlay did not appear"
         time.sleep(1.0)
 
-    _press_escape()  # clear any stale session
-    # ⚠️ 触发行勿删（2026-10-22 3901435 重构曾误删此行，套件永远"overlay did not
-    # appear"，直到 2026-11-20 才发现）：清场后必须从状态菜单发起截图会话
-    _press_status_menu_item("捕获屏幕截图")
-    deadline = time.monotonic() + 3
-    while time.monotonic() < deadline and _overlay_window_count(pid) == 0:
-        time.sleep(0.05)
-    if _overlay_window_count(pid) == 0:
-        raise RuntimeError("screenshot overlay did not appear")
-    time.sleep(1.0)
+    def _end_session_by_copy(record):
+        """点绿色「复制」钮结束会话。冒烟环境里键盘事件到不了应用，ESC 关不掉截图会话
+        （2026-11-27 复核测试机 11-25 以来每一轮冒烟日志：会话开始 1 次、结束 0 次），
+        所以换场景只能走鼠标。复制钮在录制钮左侧 45pt"""
+        _click_overlay(record[0] - 45, record[1])
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline and _overlay_window_count(pid) != 0:
+            time.sleep(0.05)
+        assert _overlay_window_count(pid) == 0, "点复制后截图遮罩没有收起"
 
-    # Selection hugging the right edge (logical 1178,300 -> 1398,480)
-    sel = (1178, 300, 1398, 480)
-    _drag_overlay(*sel)
+    def _locate(frame, stage: str, expect_widened: bool):
+        highlight, record = _locate_toolbar(frame, stage, height, expect_widened)
+        assert record[0] + RECORD_TO_RIGHT_EDGE <= 1432 + 2, f"{stage}: 主栏右端出屏（录制钮 {record[0]:.0f}）"
+        return highlight, record
 
+    # 阶段 1 / 2：贴右缘的选区（主栏被右缘钳住）
+    _start_session()
+    _drag_overlay(1178, 300, 1398, 480)
     p1 = _snap_overlay(run, "stage1_default")
-    d1 = decode(p1)
-    B1, R1 = _toolbar_anchor(d1, "默认态", height)
-    band1 = dark_band_right(p1, width, B1[1])
-    inside1 = band1 <= 1432
-    print(f"[stage1] 蓝钮 {B1} 红钮 {R1} 暗带右端 {band1:.0f}/1432 {'✓' if inside1 else '✗出屏'}")
-    assert inside1, f"默认态主栏右端出屏: {band1:.0f}"
+    B1, R1 = _locate(p1, "右缘默认态", expect_widened=False)
+    print(f"[stage1] 右缘默认态 高亮 {B1} 录制钮 {R1} 暗带右端 {dark_band_right(p1, width, B1[1]):.0f}/1432")
 
-    # 点文本组（蓝钮+76pt）
-    _click_overlay(B1[0] + 76, B1[1])
+    # 阶段 2：右缘选区上点文字组。主栏左缘锚定不动、只向右生长，唯一允许的位移是右缘
+    # 放不下时的整体左移：预期位移 = min(0, 1432 − (主栏右缘 + 234))，主栏右缘 = 录制钮 + 88
+    target2 = B1[0] + TEXT_GROUP_OFFSET
+    _click_overlay(target2, B1[1])
     p2 = _snap_overlay(run, "stage2_widened")
-    d2 = decode(p2)
-    B2, R2 = _toolbar_anchor(d2, "点T后", height)
-    band2 = dark_band_right(p2, width, B2[1])
-    inside2 = band2 <= 1432
-    print(f"[stage2] 撑开后 暗带右端 {band2:.0f}/1432 {'✓红钮屏内' if inside2 else '✗出屏'}")
-    assert inside2, f"撑开后主栏出屏: {band2:.0f}"
+    B2, R2 = _locate(p2, "右缘换工具后", expect_widened=True)
+    shift2 = min(0.0, 1432 - (R1[0] + RECORD_TO_RIGHT_EDGE + WIDEN_DELTA))
+    stayed2 = abs(B2[0] - (target2 + shift2)) <= 6 and abs(B2[1] - B1[1]) <= 4
+    print(f"[stage2] 右缘换工具 高亮 {B2} 录制钮 {R2}（点击 {target2:.0f}，预期高亮 {target2 + shift2:.0f}）"
+          f"暗带右端 {dark_band_right(p2, width, B2[1]):.0f}/1432 {'✓高亮未横跳' if stayed2 else '✗横跳'}")
+    assert stayed2, (f"换工具后选中高亮横跳：点击 {target2:.0f} → 高亮 {B2[0]:.0f}"
+                     f"（预期 {target2 + shift2:.0f}，贴边让位 {shift2:.0f}pt）")
+    _end_session_by_copy(R2)
 
-    # 二级栏阶段（点图形组展开二级 + find_sub 像素标定）已按 63774d0 移除：
-    # 右缘选中时工具条 pill 被钳制，像素带不可靠（当年删了实现漏了这个调用点，
-    # 导致该用例一直以 NameError 失败——2026-11-25 补齐删除）
-    _press_escape()
-    return (f"edge layout ok: 默认带右端 {band1:.0f}→撑开 {band2:.0f} 均屏内")
+    # 阶段 3 / 4：新会话、屏幕中间的选区。两种宽度都放得下，不存在贴边让位
+    _start_session()
+    _drag_overlay(420, 300, 760, 480)
+    p3 = _snap_overlay(run, "stage3_mid_default")
+    B3, R3 = _locate(p3, "居中默认态", expect_widened=False)
+    print(f"[stage3] 居中默认态 高亮 {B3} 录制钮 {R3}")
+    target4 = B3[0] + TEXT_GROUP_OFFSET
+    _click_overlay(target4, B3[1])
+    p4 = _snap_overlay(run, "stage4_mid_text")
+    B4, R4 = _locate(p4, "居中换工具后", expect_widened=True)
+    stayed4 = abs(B4[0] - target4) <= 6 and abs(B4[1] - B3[1]) <= 4
+    print(f"[stage4] 居中换工具 高亮 {B4} 录制钮 {R4}（点击 {target4:.0f}）"
+          f"暗带右端 {dark_band_right(p4, width, B4[1]):.0f}/1432 {'✓高亮未横跳' if stayed4 else '✗横跳'}")
+    assert stayed4, f"换工具后选中高亮横跳：点击 {target4:.0f} → 高亮 {B4[0]:.0f}"
+    _end_session_by_copy(R4)
+
+    return (f"toolbar ok: 右缘换工具高亮 {target2:.0f}→{B2[0]:.0f}（贴边让位 {shift2:.0f}pt）、"
+            f"居中换工具高亮 {target4:.0f}→{B4[0]:.0f} 未横跳；"
+            f"录制钮 {R2[0]:.0f}/{R4[0]:.0f} 均屏内")
+
 
 
 def dark_band_right(path, width, row_cy):
@@ -971,7 +1060,9 @@ def decode(path):
     im = Image.open(path).convert("RGB"); W, H = im.size; px = im.load()
     scale = W / 1440.0
     def classify(r, g, b):
-        if b > 185 and r < 70 and 80 < g < 160: return "B"
+        # 蓝阈值按选中组高亮的实测色定（themeOverlaySelected ≈ (60,89,184)，2026-11-27）：
+        # 旧阈值 b>185 恰好漏掉它，蓝簇就只剩右侧的钉图钮
+        if b > 160 and r < 80 and 70 < g < 150: return "B"
         if r > 170 and 40 < g < 130 and b < 110: return "R"
         return None
     cells = {}

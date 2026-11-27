@@ -107,6 +107,92 @@ final class ScreenshotToolbarLayoutTests: XCTestCase {
         XCTAssertTrue(withinScreen(mainFrame(mainCenter: out.mainCenter), screen: narrowScreen))
     }
 
+    // MARK: - 左缘锚定：换工具变宽时左缘钉死、右侧生长
+
+    /// 实测宽度（cursor 态 650 / 常用工具态 884）下的锚定行为：同一锚点共用左缘，
+    /// 宽出的 234pt 全部长在右侧——指针下的按钮不再横移
+    func testLeadingAnchor_WideBarKeepsLeftEdgeAndGrowsRight() {
+        let selection = CGRect(x: 600, y: 300, width: 240, height: 200)
+        let cursor = CGSize(width: 650, height: 66)
+        let widened = CGSize(width: 884, height: 66)
+        let baseHalf = cursor.width / 2
+        let anchor = selection.midX - baseHalf  // 默认态的现状居中位退回左缘
+
+        let outCursor = compute(selection: selection, mainSize: cursor, specs: .none, leadingAnchorX: anchor)
+        let outWidened = compute(selection: selection, mainSize: widened, specs: .none, leadingAnchorX: anchor)
+
+        // 两种宽度共用同一左缘
+        XCTAssertEqual(outCursor.mainCenter.x - cursor.width / 2, anchor, accuracy: 0.01)
+        XCTAssertEqual(outWidened.mainCenter.x - widened.width / 2, anchor, accuracy: 0.01)
+        // 右缘恰好外扩宽度差
+        XCTAssertEqual((outWidened.mainCenter.x + widened.width / 2) - (outCursor.mainCenter.x + cursor.width / 2),
+                       widened.width - cursor.width, accuracy: 0.01)
+        XCTAssertTrue(withinScreen(mainFrame(mainCenter: outWidened.mainCenter, size: widened)))
+    }
+
+    func testLeadingAnchor_RightOverflowClampsInsideScreen() {
+        // 锚点贴右：884 宽栏按锚点落位右缘越界 → 最小左移，恰好钳在右界
+        let selection = CGRect(x: 1380, y: 100, width: 40, height: 60)
+        let widened = CGSize(width: 884, height: 66)
+        let anchor = selection.midX - 325
+
+        let out = compute(selection: selection, mainSize: widened, specs: .none, leadingAnchorX: anchor)
+
+        let main = mainFrame(mainCenter: out.mainCenter, size: widened)
+        XCTAssertEqual(main.maxX, screen.maxX - margin, accuracy: 0.01)
+        XCTAssertTrue(withinScreen(main))
+    }
+
+    func testLeadingAnchor_LeftOverflowClampsInsideScreen() {
+        // 锚点贴左：884 宽栏按锚点落位左缘越界 → 最小右移，恰好钳在左界
+        let selection = CGRect(x: 10, y: 100, width: 60, height: 60)
+        let widened = CGSize(width: 884, height: 66)
+        let anchor = selection.midX - 325
+
+        let out = compute(selection: selection, mainSize: widened, specs: .none, leadingAnchorX: anchor)
+
+        let main = mainFrame(mainCenter: out.mainCenter, size: widened)
+        XCTAssertEqual(main.minX, screen.minX + margin, accuracy: 0.01)
+        XCTAssertTrue(withinScreen(main))
+    }
+
+    /// nil（缺省）= 现状选区居中：省略有参与显式传 nil 的输出完全一致
+    func testLeadingAnchor_NilReproducesLegacyCentering() {
+        let selection = CGRect(x: 200, y: 120, width: 300, height: 160)
+        let specs = specs(subAnchorIndex: 2, audio: true)
+        let omitted = compute(selection: selection, specs: specs)
+        let explicitNil = ScreenshotToolbarLayout.compute(.init(
+            screen: screen, selection: selection, mainSize: mainSize,
+            specs: specs, margin: margin, spacing: spacing, leadingAnchorX: nil))
+
+        XCTAssertEqual(omitted, explicitNil)
+        XCTAssertEqual(explicitNil.mainCenter.x, selection.midX, accuracy: 0.01)
+    }
+
+    /// 锚点定位下展开层 union 越界仍整体最小让位（锚定关系保持、主栏钳回自身合法区间）
+    func testLeadingAnchor_ExpansionUnionClampStillApplies() {
+        let narrowScreen = CGRect(x: 0, y: 0, width: 800, height: 600)
+        let selection = CGRect(x: 260, y: 80, width: 80, height: 60)  // midX = 300（与锚点无关）
+        let synthetic = ScreenshotToolbarLayout.Expansion(
+            size: CGSize(width: 200, height: 42),
+            anchor: .buttonCenter(xInMain: 500),
+            attachY: ScreenshotToolbarLayout.FixedGeometry.subToolbarAttachY)
+
+        // 锚点 200（来自此前默认态的居中位）→ 主栏基准中心 460；展开层右缘越界 8 → 整体左移到 452
+        let out = ScreenshotToolbarLayout.compute(.init(
+            screen: narrowScreen, selection: selection, mainSize: mainSize,
+            specs: .init(subToolbar: synthetic, audioPicker: nil),
+            margin: margin, spacing: spacing, leadingAnchorX: 200))
+
+        XCTAssertEqual(out.mainCenter.x, 452, accuracy: 0.01)
+        let frame = unwrap(out.subToolbarFrameInMain)
+        XCTAssertEqual(frame.midX, 500, accuracy: 0.01)  // 锚定关系保持
+        let subScreen = screenFrame(of: frame, mainCenter: out.mainCenter)
+        XCTAssertEqual(subScreen.maxX, narrowScreen.maxX - margin, accuracy: 0.01)
+        XCTAssertTrue(withinScreen(subScreen, screen: narrowScreen))
+        XCTAssertTrue(withinScreen(mainFrame(mainCenter: out.mainCenter), screen: narrowScreen))
+    }
+
     // MARK: - 音频弹层：右对齐 + 贴底翻转
 
     func testAudioPicker_RightAlignedBelowToolbar() {
@@ -259,10 +345,11 @@ final class ScreenshotToolbarLayoutTests: XCTestCase {
 
     private func compute(selection: CGRect,
                          mainSize: CGSize? = nil,
-                         specs: ScreenshotToolbarLayout.Specs) -> ScreenshotToolbarLayout.Output {
+                         specs: ScreenshotToolbarLayout.Specs,
+                         leadingAnchorX: CGFloat? = nil) -> ScreenshotToolbarLayout.Output {
         ScreenshotToolbarLayout.compute(.init(
             screen: screen, selection: selection, mainSize: mainSize ?? self.mainSize,
-            specs: specs, margin: margin, spacing: spacing))
+            specs: specs, margin: margin, spacing: spacing, leadingAnchorX: leadingAnchorX))
     }
 
     private func mainFrame(mainCenter: CGPoint, size: CGSize? = nil) -> CGRect {

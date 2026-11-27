@@ -91,6 +91,9 @@ enum ScreenshotToolbarLayout {
         var topInset: CGFloat = 0
         /// 用户拖拽主栏的偏移：只参与展开层最终贴边判断，不改变主栏基准位置（由调用方自行叠加）
         var mainDisplacement: CGPoint = .zero
+        /// 主栏左缘锚点（屏幕局部坐标）。给了就按它定左缘（换工具变宽时右侧生长，左侧工具组不动）；
+        /// nil = 以选区水平居中（现状）
+        var leadingAnchorX: CGFloat? = nil
     }
 
     // MARK: - 输出
@@ -130,8 +133,14 @@ enum ScreenshotToolbarLayout {
             centerY = availBottom - halfH
         }
 
-        // 2. 水平：主栏先按自身尺寸落位（选区居中 + 自身不出屏，现状行为）
-        var centerX = clamped(input.selection.midX, availLeft + halfW, availRight - halfW)
+        // 2. 水平：主栏先按自身尺寸落位（现状：选区居中 + 自身不出屏；
+        //    给了左缘锚点则按锚点定左缘——换工具变宽时右侧生长，左侧工具组不动，仍钳不出屏）
+        var centerX: CGFloat
+        if let anchorX = input.leadingAnchorX {
+            centerX = clamped(anchorX + halfW, availLeft + halfW, availRight - halfW)
+        } else {
+            centerX = clamped(input.selection.midX, availLeft + halfW, availRight - halfW)
+        }
 
         // 3. union 整体水平 clamp：主栏 + 全部展开层的理想 hull 越左右界 → 整体平移最小补偿量
         //    （锚定关系随整体平移保持；平移后主栏仍回钳自身合法区间，保证主栏永不越界）

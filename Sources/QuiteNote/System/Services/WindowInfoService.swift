@@ -67,7 +67,12 @@ class WindowInfoService {
             
             // ⚠️ 过滤掉自己的窗口 (QuiteNote)
             // 这里的 ownerName 可能是 "QuiteNote" 或 "quite-note"
+            // 进程号兜底：名字过滤认不出开发变体，自家全屏遮罩一旦漏进来会被当成可吸附的窗口
             if ownerName == "QuiteNote" || ownerName == "quite-note" {
+                continue
+            }
+            if let ownerPID = windowInfo[kCGWindowOwnerPID as String] as? Int,
+               ownerPID == ProcessInfo.processInfo.processIdentifier {
                 continue
             }
             

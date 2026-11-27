@@ -43,6 +43,9 @@ final class DiagnosticCenter {
     private var lastHeartbeat = Date()
     private var hangEpisodeReported = false
     private var hangStartTime: Date?
+    /// 卡死判定阈值（秒）：超过就报 [Hang] 并自动 sample 主线程。默认 5s；截图会话期间调低
+    /// （见 `DiagnosticCenter.screenshotHangThreshold`）。看门狗线程读、主线程写，统一走 watchdogLock
+    private var hangThreshold: TimeInterval
 
     private(set) var isStarted = false
 
@@ -51,6 +54,7 @@ final class DiagnosticCenter {
     private static var crashDirectoryPath: String = ""
 
     init(logDirectory: URL? = nil) {
+        hangThreshold = DiagnosticCenter.stallMajorThreshold
         if let dir = logDirectory {
             self.logDirectory = dir
         } else if let testRoot = ProcessInfo.processInfo.environment["QN_TEST_STORAGE_ROOT"] {
@@ -337,6 +341,28 @@ final class DiagnosticCenter {
     /// 卡顿分级阈值：超过 minor 归为"卡顿"（[PERF]，滚动/渲染类），超过 major 归为"卡死"（[Hang]）
     static let stallMinorThreshold: TimeInterval = 0.5
     static let stallMajorThreshold: TimeInterval = 5.0
+    /// 截图会话期间的卡死判定阈值：会话本身只有几秒，卡 1 秒用户已经能感知；
+    /// 用 5s 的话实测到的 0.5~2 秒卡顿永远够不到，主线程调用栈一直拿不到（2026-11-27）
+    static let screenshotHangThreshold: TimeInterval = 1.0
+
+    /// 当前卡死判定阈值（秒）
+    var currentHangThreshold: TimeInterval {
+        watchdogLock.lock()
+        defer { watchdogLock.unlock() }
+        return hangThreshold
+    }
+
+    /// 设置卡死判定阈值；不低于卡顿阈值（否则 [Hang] 会比 [PERF] 先报，分级失去意义）。
+    /// 调用方负责在场景结束时调回 `DiagnosticCenter.stallMajorThreshold`
+    func setHangThreshold(_ seconds: TimeInterval) {
+        watchdogLock.lock()
+        hangThreshold = max(seconds, DiagnosticCenter.stallMinorThreshold)
+        watchdogLock.unlock()
+    }
+
+    static func setHangThreshold(_ seconds: TimeInterval) {
+        shared.setHangThreshold(seconds)
+    }
 
     /// 卡死时用 sample(1) 抓本进程主线程栈（写 logDirectory/hang-sample-<时间戳>.txt，
     /// 与文件日志同目录、同 QN_TEST_STORAGE_ROOT 重定向）。看门狗线程执行；
@@ -362,7 +388,7 @@ final class DiagnosticCenter {
         DispatchQueue.main.async { beat() }
 
         // 看门狗线程：每 0.25s 监测心跳滞后，episode 状态机分级上报：
-        //   滞后 > 5s → 立即 [Hang] ERROR（卡死，只报一次）
+        //   滞后 > 卡死阈值（默认 5s，截图会话 1s）→ 立即 [Hang] ERROR（卡死，只报一次）
         //   episode（>0.5s 的滞后段）恢复时 → [PERF] WARN 记录持续时长（卡顿）
         Thread.detachNewThread {
             var perfEpisodeStart: Date?
@@ -370,14 +396,15 @@ final class DiagnosticCenter {
                 Thread.sleep(forTimeInterval: 0.25)
                 self.watchdogLock.lock()
                 let lag = Date().timeIntervalSince(self.lastHeartbeat)
+                let hangThreshold = self.hangThreshold
                 self.watchdogLock.unlock()
 
                 // 卡死级（立即报，一次）
-                if lag > Self.stallMajorThreshold {
+                if lag > hangThreshold {
                     if !self.hangEpisodeReported {
                         self.hangEpisodeReported = true
                         self.hangStartTime = Date().addingTimeInterval(-lag)
-                        self.writeLine(level: .error, category: "Hang", message: "⚠️ 主线程无响应 \(Int(lag)) 秒（疑似卡死，超过 \(Int(Self.stallMajorThreshold)) 秒阈值）")
+                        self.writeLine(level: .error, category: "Hang", message: "⚠️ 主线程无响应 \(Int(lag)) 秒（疑似卡死，超过 \(Int(hangThreshold)) 秒阈值）")
                         // 卡死自动采样：sample(1) 抓主线程栈（同用户进程无需 sudo）——
                         // 看门狗线程跑的，不依赖被堵死的主线程。一次 episode 采一次。
                         // 背景：2026-11-20 剪贴板面板第二次唤起后 15-17s 主线程冻结×2，
@@ -400,8 +427,8 @@ final class DiagnosticCenter {
                     }
                 }
 
-                // 卡死 episode 恢复（保留原语义）
-                if self.hangEpisodeReported && lag < 2.0 {
+                // 卡死 episode 恢复（保留原语义；默认阈值 5s 时即原来的 lag < 2.0）
+                if self.hangEpisodeReported && lag < max(0.4, hangThreshold * 0.4) {
                     self.hangEpisodeReported = false
                     if let start = self.hangStartTime {
                         let duration = Date().timeIntervalSince(start)
