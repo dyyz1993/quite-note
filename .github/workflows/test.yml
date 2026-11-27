@@ -21,12 +21,6 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@v4
 
-      - name: 缓存 SwiftPM 构建产物
-        uses: actions/cache@v4
-        with:
-          path: .build
-          key: swift-build-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
-
       # 自托管 runner 依赖预热（2026-11-20）：GitHub runner 每个 job 覆盖 HOME，
       # SwiftPM 用户级缓存（lucide 镜像仓库 + Sparkle 二进制产物）不可见，而本机
       # 直连 GitHub releases/codeload 不稳（大包断流）。从真实用户的缓存目录拷入
@@ -61,8 +55,13 @@ jobs:
         # SpeechAnalyzer/SpeechTranscriber require the macOS 26 SDK; GitHub's
         # macos-15 runner stays on the older SDK. Compile the speech path down
         # to an unavailable stub there while retaining production availability.
+        # --scratch-path 指到工作区外面（自托管机器常驻，目录不会被下一次检出清掉）：
+        # 构建状态一直在磁盘上，每次只重编改过的文件。此前用 actions/cache 还原一份按
+        # Package.resolved 做键的 .build 快照——还原要 1 分 45 秒，且快照只在依赖变化时
+        # 更新，等于每次都从旧状态重编（2026-11-27 实测：单测 job 6 分钟里测试本身 25 秒）
         run: >-
           swift test
+          --scratch-path /Users/xuyingzhou/runners/qn-build/debug-tests
           -Xswiftc -D -Xswiftc LEGACY_CI_SDK
           -Xswiftc -Xfrontend -Xswiftc -solver-expression-time-threshold=1000
 

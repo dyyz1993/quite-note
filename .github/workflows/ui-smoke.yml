@@ -23,20 +23,19 @@ jobs:
     name: Build Dev UI Artifact
     # The app now requires the macOS 26 SDK; use GitHub's hosted macOS image.
     runs-on: [self-hosted, macos-heavy]
+    outputs:
+      artifact: ${{ steps.package.outputs.artifact }}
     # A pull request from a fork must never run on the self-hosted runners.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     steps:
       - uses: actions/checkout@v4
 
-      # 本步骤曾裸连 GitHub 克隆依赖：大包在 ~80KB/s 下断流（"invalid index-pack
-      # output"），resolve 直接失败（b98935d 轮 UI Smoke 实锤）。test.yml /
-      # build-macos.yml 早已配好缓存 + 预热，这两段与之保持一致（2026-11-25 补齐）
-      - name: 缓存 SwiftPM 构建产物
-        uses: actions/cache@v4
-        with:
-          path: .build
-          key: swift-build-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
-
+      # 不再走 actions/cache 还原 .build：还原一份旧快照要 1 分 45 秒，而通用架构的
+      # release 构建每次都得整体重编（常驻 .build 会让 build-app.sh 的产物发现逻辑捡到
+      # 上一个 job 的旧二进制，所以这个 job 保持检出即清）。依赖靠下面的预热从本机缓存拿
+      # 自托管 runner 依赖预热（2026-11-20）：这个 job 曾裸连 GitHub 克隆依赖，大包在
+      # ~80KB/s 下断流（"invalid index-pack output"），resolve 直接失败（b98935d 轮 UI Smoke
+      # 实锤）；预热后 resolve 全程零网络（2026-11-25 补齐，与 test.yml / build-macos.yml 一致）
       - name: 预热 SwiftPM 依赖缓存（自托管）
         run: |
           SRC="/Users/xuyingzhou/Library/Caches/org.swift.swiftpm"
@@ -92,11 +91,26 @@ jobs:
           ci_signing_cleanup
 
       - name: Package artifact
+        id: package
         run: |
           ARTIFACT_NAME="QuiteNoteDev-${GITHUB_SHA::8}-universal.zip"
           ditto -c -k --keepParent "Quite Note Dev.app" "$ARTIFACT_NAME"
           shasum -a 256 "$ARTIFACT_NAME" > "$ARTIFACT_NAME.sha256"
           echo "UI_ARTIFACT=$ARTIFACT_NAME" >> "$GITHUB_ENV"
+          echo "artifact=$ARTIFACT_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: 把产物经局域网交给测试机
+        # 测试机从 GitHub 下这个包只有几十 KB/s（11MB 实测要 10 分钟，是整个冒烟 job 里
+        # 最大的一块）。构建机和测试机在同一局域网，直接 scp 过去；测试机那边找不到
+        # 局域网副本时仍会回退到从 GitHub 下载，所以这一步失败不拦 job
+        continue-on-error: true
+        env:
+          UI_SMOKE_HOST: xyz-mac
+          UI_SMOKE_DIR: /Users/xyz/QuitenoteUITest/artifacts
+        run: |
+          ssh -o BatchMode=yes -o ConnectTimeout=15 "$UI_SMOKE_HOST" "mkdir -p '$UI_SMOKE_DIR'"
+          scp -q -o BatchMode=yes "$UI_ARTIFACT" "$UI_ARTIFACT.sha256" "$UI_SMOKE_HOST:$UI_SMOKE_DIR/"
+          ssh -o BatchMode=yes "$UI_SMOKE_HOST" "shasum -a 256 '$UI_SMOKE_DIR/$UI_ARTIFACT'"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -119,7 +133,24 @@ jobs:
       - name: Test screenshot evidence tooling
         run: python3 -m unittest discover -s tools/ui-smoke -p 'test_evidence.py' -v
 
+      - name: 取产物（局域网副本优先）
+        id: fetch
+        env:
+          ARTIFACT_NAME: ${{ needs.build-dev-artifact.outputs.artifact }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/ui-artifact"
+          LAN="$HOME/QuitenoteUITest/artifacts/$ARTIFACT_NAME"
+          if [ -f "$LAN" ] && [ -f "$LAN.sha256" ]; then
+            cp "$LAN" "$LAN.sha256" "$RUNNER_TEMP/ui-artifact/"
+            echo "source=lan" >> "$GITHUB_OUTPUT"
+            echo "已从局域网副本取到 $ARTIFACT_NAME"
+          else
+            echo "source=github" >> "$GITHUB_OUTPUT"
+            echo "局域网副本不存在（构建机没交过来），改从 GitHub 下载"
+          fi
+
       - uses: actions/download-artifact@v4
+        if: steps.fetch.outputs.source != 'lan'
         with:
           pattern: QuiteNoteDev-*.zip
           merge-multiple: true
