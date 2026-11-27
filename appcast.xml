@@ -55,5 +55,14 @@
         <sparkle:releaseNotesLink>https://github.com/dyyz1993/quite-note/releases/tag/v1.7.1</sparkle:releaseNotesLink>
         <enclosure url="https://github.com/dyyz1993/quite-note/releases/download/v1.7.1/QuiteNote-1.7.1.dmg" length="12074091" type="application/x-bzip2" sparkle:edSignature="ScUmxBamSyDuPj+EN6yBxwObtE+dPfdM6US+WklndYtJ2doB5anIQyb+MehFi5NA5MdKsUUboV5XX7G07Hj2Bw=="/>
     </item>
+    <item>
+        <title>Version 1.7.2</title>
+        <pubDate>Fri, 27 Nov 2026 16:49:18 +0000</pubDate>
+        <sparkle:version>1.7.2</sparkle:version>
+        <sparkle:shortVersionString>1.7.2</sparkle:shortVersionString>
+        <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+        <sparkle:releaseNotesLink>https://github.com/dyyz1993/quite-note/releases/tag/v1.7.2</sparkle:releaseNotesLink>
+        <enclosure url="https://github.com/dyyz1993/quite-note/releases/download/v1.7.2/QuiteNote-1.7.2.dmg" length="12095127" type="application/x-bzip2" sparkle:edSignature="oxNwf2mkVGUy7q9UKufqC55tSzU+5G8OrUviXmRPoqKET0ve9cGjVHY8JOKsSjiggr6ABnjFtMz2QvFrnEYiCA=="/>
+    </item>
 </channel>
 </rss>
