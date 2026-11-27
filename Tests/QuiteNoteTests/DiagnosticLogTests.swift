@@ -58,6 +58,23 @@ final class DiagnosticLogTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: recent.path), "保留期内的日志不应被删除")
     }
 
+    /// 卡死判定阈值：默认 5 秒；截图会话调到 1 秒；不能被调到卡顿阈值以下（否则 [Hang] 比 [PERF] 先报）
+    func test_hangThresholdDefaultsToMajorAndNeverDropsBelowMinor() {
+        let dc = DiagnosticCenter(logDirectory: tempDir)
+        XCTAssertEqual(dc.currentHangThreshold, DiagnosticCenter.stallMajorThreshold, accuracy: 0.001)
+
+        dc.setHangThreshold(DiagnosticCenter.screenshotHangThreshold)
+        XCTAssertEqual(dc.currentHangThreshold, DiagnosticCenter.screenshotHangThreshold, accuracy: 0.001)
+        XCTAssertGreaterThan(DiagnosticCenter.screenshotHangThreshold, DiagnosticCenter.stallMinorThreshold,
+                             "截图会话阈值必须高于卡顿阈值，两级日志才有先后")
+
+        dc.setHangThreshold(0.1)
+        XCTAssertEqual(dc.currentHangThreshold, DiagnosticCenter.stallMinorThreshold, accuracy: 0.001)
+
+        dc.setHangThreshold(DiagnosticCenter.stallMajorThreshold)
+        XCTAssertEqual(dc.currentHangThreshold, DiagnosticCenter.stallMajorThreshold, accuracy: 0.001)
+    }
+
     /// 上次会话标记为 running（无正常退出）→ 判为异常退出并写入告警；clean_exit 不告警
     func test_abnormalPreviousSessionDetected() {
         let dc = DiagnosticCenter(logDirectory: tempDir)
