@@ -1,0 +1,18 @@
+{"timestamp": "2026-11-27T04:55:24Z", "event": "metadata_resolved", "mode": "full", "suites": ["launch", "flash-notes", "clipboard", "launcher", "settings", "devcore", "screenshot-toolbar", "cleanup"]}
+{"timestamp": "2026-11-27T04:55:27.912761Z", "event": "suite.start", "name": "launch"}
+{"timestamp": "2026-11-27T04:55:28.643645Z", "event": "suite.end", "name": "launch"}
+{"timestamp": "2026-11-27T04:55:28.643952Z", "event": "suite.start", "name": "flash-notes"}
+{"timestamp": "2026-11-27T04:55:29.312914Z", "event": "suite.end", "name": "flash-notes"}
+{"timestamp": "2026-11-27T04:55:29.313098Z", "event": "suite.start", "name": "clipboard"}
+{"timestamp": "2026-11-27T04:55:32.865740Z", "event": "suite.end", "name": "clipboard"}
+{"timestamp": "2026-11-27T04:55:32.866048Z", "event": "suite.start", "name": "launcher"}
+{"timestamp": "2026-11-27T04:55:36.054591Z", "event": "suite.end", "name": "launcher"}
+{"timestamp": "2026-11-27T04:55:36.055156Z", "event": "suite.start", "name": "settings"}
+{"timestamp": "2026-11-27T04:55:36.792561Z", "event": "suite.end", "name": "settings"}
+{"timestamp": "2026-11-27T04:55:36.792753Z", "event": "suite.start", "name": "devcore"}
+{"timestamp": "2026-11-27T04:55:37.558783Z", "event": "suite.end", "name": "devcore"}
+{"timestamp": "2026-11-27T04:55:37.559308Z", "event": "suite.start", "name": "screenshot-toolbar"}
+{"timestamp": "2026-11-27T04:55:53.438517Z", "event": "suite.end", "name": "screenshot-toolbar"}
+{"timestamp": "2026-11-27T04:55:53.439618Z", "event": "suite.start", "name": "cleanup"}
+{"timestamp": "2026-11-27T04:55:54.017931Z", "event": "suite.end", "name": "cleanup"}
+{"timestamp": "2026-11-27T04:55:54.018341Z", "event": "video.stop", "evidence": "recordings/ui-recording.mov"}
