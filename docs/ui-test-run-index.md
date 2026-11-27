@@ -40,11 +40,13 @@ gh run download <run-id> \
 | 2026-10-20 | - | [d06557907356e9c63042eb178bb9877afc5646db](https://github.com/dyyz1993/quite-note/actions/runs/39315217013) | `d065579` | 39315217013 | `ui-20261019-200317-d0655790` | full | PASS | 首个带隔离剪贴板夹具的绿色 UI run：Dev 1.0.0、macOS 13.7.8；8/8 PASS。注入 4 条 `QNUI_SMOKE_CLIP` 记录，搜索 `QNUI_SMOKE_CLIP` 后过滤为 3 条且右侧详情可见；16 帧截图 + 动态 WebP 门禁通过。Tests run [39315218216](https://github.com/dyyz1993/quite-note/actions/runs/39315218216) 绿色。Actions Annotations 有历史 `ScrollSnap` gitlink 无 `.gitmodules` 错误，checkout 自动重建后所有步骤成功；该非阻塞问题另行跟踪，不构成本次 UI 验收失败 |
 | 2026-11-25 | v1.7.0 | [abb691bfb5ec48af79fc44c0f0a96c7f3588e286](https://github.com/dyyz1993/quite-note/actions/runs/45609218896) | `v1.7.0-8-gabb691b` | 45609218896 | `ui-20261125-102241-c0d36494` | full | PASS | 9/9 用例全过（含 screenshot-toolbar；修复链见错题本 2026-11-25 CI 修复链条目）；基线已归档 gh-pages ui-baseline/abb691bf |
 | 2026-11-27 | - | [4c4ddcd99ceb8a2f1dad7a0d3c43bd068fa4aa76](https://github.com/dyyz1993/quite-note/actions/runs/45861506702) | `v1.7.0-38-g4c4ddcd` | 45861506702 | `ui-20261126-171018-4c4ddcd9` | full | PASS | 9/9 用例全过；PR #7（22 个提交：删约 6,000 行不可达代码 + 翻页 / 启动器 key 梯子 / 写库失败提示 / 导出读整库等修复）合并后的首轮。report.md 与截图取自测试机 runner 工作目录（GitHub 证据包在本机下载断流），逐张与基线 `ui-baseline/1.2.0-1b95ec15` 同一用例比对，构图一致。基线快照步骤在本行写入时仍在进行（测试机到 GitHub 约 35KB/s），是否归档以 `ui-baseline/latest.json` 为准。Tests run [45861507912](https://github.com/dyyz1993/quite-note/actions/runs/45861507912)、Build macOS App run [45861506793](https://github.com/dyyz1993/quite-note/actions/runs/45861506793) 绿色 |
+| 2026-11-27 | - | [5d7ccd610f622c142ae59ead61537ff7ec016dfb](https://github.com/dyyz1993/quite-note/actions/runs/45980999236) | `v1.7.1-8-g5d7ccd6` | 45980999236 | `ui-20261127-104551-5d7ccd61` | full | PASS | 9/9 用例全过；PR #8（截图启动改为后台并行截屏 + 工具栏换工具左缘锚定 + 焦点看门狗不再对调 key）合并后的首轮，套件升到 1.2.1：`screenshot-toolbar` 改成真测（右缘选区换工具高亮 874→640、居中选区 370→370 未横跳；此前该用例自最早基线起一直空转，见错题本 2026-11-27 条）。report.md 取自测试机 runner 工作目录，四张阶段截图逐张看过；八张收尾截图取自 gh-pages 基线 `ui-baseline/1.2.1-5d7ccd61`（`latest.json` 已指向它），与上一版基线同用例构图一致。Tests run [45981000403](https://github.com/dyyz1993/quite-note/actions/runs/45981000403)、Build macOS App run [45980999235](https://github.com/dyyz1993/quite-note/actions/runs/45980999235) 绿色 |
 
 ## 当前验收范围
 
-- permissions / launch / flash-notes / clipboard / launcher / settings / devcore / cleanup。
+- permissions / launch / flash-notes / clipboard / launcher / settings / devcore / screenshot-toolbar / cleanup。
 - Clipboard 和 Launcher 走真实用户路径：AX 点击菜单栏状态菜单，再点击 `剪贴板历史` / `应用启动器`。
+- screenshot-toolbar 走真鼠标：从状态菜单发起会话，拖出选区，点文字组换工具；断言选中高亮还停在点击处（右缘选区允许 234pt 贴边让位）且主栏真的变宽，最后点「复制」结束会话。冒烟环境里键盘事件到不了应用，ESC / ⌘C 不在覆盖范围内。
 - `flash-notes`、`settings` 当前仍是确定性面板存在性 / AX flow 可用性检查；搜索、输入和逐页设置巡检继续按 `operations.json` 增强。
 
 ## 维护规则
