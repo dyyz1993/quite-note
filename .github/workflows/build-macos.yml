@@ -44,7 +44,12 @@ jobs:
 
     - name: 安装ImageMagick（用于图标转换）
       run: |
-        brew install imagemagick
+        # 自托管机器是常驻的：装过就别再碰 brew（brew install 对已安装的包也要 30 多秒）
+        if command -v magick >/dev/null 2>&1 || command -v convert >/dev/null 2>&1; then
+          echo "ImageMagick 已安装：$(command -v magick || command -v convert)"
+        else
+          brew install imagemagick
+        fi
 
     # 自托管 runner 依赖预热（2026-11-20）：GitHub runner 每个 job 覆盖 HOME，
     # SwiftPM 用户级缓存（lucide 镜像仓库 + Sparkle 二进制产物）不可见，而本机
@@ -80,10 +85,8 @@ jobs:
       run: |
         swift package resolve
 
-    - name: 构建Release版本
-      run: |
-        swift build -c release --product QuiteNote
-
+    # 不在这里先 `swift build` 一次：编译条件（LEGACY_CI_SDK 等）和 build-app.sh 里的不一致，
+    # 之前这一步编出来的东西会被 build-app.sh 原样重编一遍，白花 1 分半（2026-11-27 实测）
     - name: 创建应用包结构
       run: |
         chmod +x build-app.sh
