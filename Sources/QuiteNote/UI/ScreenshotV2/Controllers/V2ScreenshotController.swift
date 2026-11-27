@@ -22,6 +22,16 @@ class V2ScreenshotController {
     /// ✨ 当前截图会话的唯一ID
     internal static var currentSessionID: UUID?
 
+    /// 当前会话的截屏就绪进度（show() 时重置）
+    private static var captureProgress = CaptureProgress(total: 0)
+    /// 会话期间的 App Nap 断言（show() 持有、cleanup 释放）
+    private static var sessionActivity: NSObjectProtocol?
+    /// 看门狗上一次尝试激活应用的时刻（限频用）
+    private static var lastWatchdogActivation: DispatchTime?
+    /// 看门狗两次激活尝试之间的最小间隔：被系统拒绝激活时 activate 会同步阻塞，
+    /// 每秒盲敲一次等于每秒堵一次主线程
+    static let watchdogActivationInterval: Double = 3.0
+
     static func show() {
         // ✨ 互斥锁逻辑：如果已经在显示中，则直接返回，防止重复触发
         guard !isShowing else {
@@ -40,39 +50,182 @@ class V2ScreenshotController {
         // ✨ 生成新的会话ID
         let sessionID = UUID()
         currentSessionID = sessionID
+        let sessionStart = DispatchTime.now()
+        let screens = NSScreen.screens
+        guard !screens.isEmpty else {
+            // 没有屏幕就立不了面板；不解除互斥锁的话之后的截图请求会被永远忽略
+            cleanup()
+            isShowing = false
+            currentSessionID = nil
+            return
+        }
         v2Logger.info("Controller - Starting new screenshot session: \(sessionID)")
-        DiagnosticCenter.info("Screenshot", "截图会话开始 \(sessionID.uuidString.prefix(8))，屏幕数 \(NSScreen.screens.count)")
+        DiagnosticCenter.info("Screenshot", "截图会话开始 \(sessionID.uuidString.prefix(8))，屏幕数 \(screens.count)")
 
         // 清理可能残留的状态
         cleanup()
-
-        // 恢复上次录屏区域：仅匹配同一显示器，使用归一化坐标适配分辨率变化。
-        // 这样用户可以打开截图后直接按 ⌘R 开始录制，也仍可像以前一样拖出新选区覆盖它。
-        if let reusableScreen = NSScreen.screens.first(where: {
-            PreferencesManager.shared.resolvedLastRecordingSelection(on: $0) != nil
-        }), let reusableRect = PreferencesManager.shared.resolvedLastRecordingSelection(on: reusableScreen) {
-            let manager = V2PrimaryScreenStateManager.shared
-            manager.updatePrimaryScreen(reusableScreen)
-            manager.updateSelection(reusableRect, on: reusableScreen)
-            DiagnosticCenter.info("Screenshot", "恢复上次录屏区域：\(reusableScreen.localizedName) \(Int(reusableRect.width))×\(Int(reusableRect.height))")
-        }
 
         // ✨ 设置全局键盘监听
         setupKeyboardMonitor()
 
         v2Logger.info("Controller - Starting multi-screen debug window with REAL windows...")
 
-        // 获取真实窗口列表
-        let windowResult = WindowInfoService.shared.fetchAllWindows()
-        let allWindows: [WindowInfo]
+        // 获取真实窗口列表（窗口吸附用）。必须在会话面板出现之前取：
+        // 否则自家的全屏遮罩会被当成可吸附的窗口
+        let allWindows = interactiveWindows()
 
-        switch windowResult {
+        // 1) 先铺"隐形护盾"：面板内容还是空的、背景透明——不画任何像素（不会被截进画面），
+        //    但已经接管鼠标和键盘，等待截屏期间点击不会穿到下面的应用
+        for (index, screen) in screens.enumerated() {
+            v2Logger.info("Creating debug window for Screen \(index): \(screen.frame.debugDescription, privacy: .public)")
+            let panel = makeSessionPanel(for: screen)
+            panel.orderFrontRegardless()
+            debugPanels.append(panel)
+            V2ScreenshotController.screenPanelMap[screen] = panel
+        }
+
+        // 即时反馈：光标先变十字；键盘落在鼠标所在屏的面板上，截屏完成前按 ESC 也能退出
+        NSCursor.crosshair.set()
+        let keyStepStart = DispatchTime.now()
+        panelForMouseLocation()?.makeKey()
+        logSlowStep("面板取 key", since: keyStepStart)
+
+        // 会话期间禁止 App Nap：和速查面板同一招（KeyWindowLadder）。 accessory 应用被系统拒绝激活后
+        // 跌回后台，App Nap 会给定时器和后台线程降速——截屏正是在后台线程上跑
+        if sessionActivity == nil {
+            sessionActivity = ProcessInfo.processInfo.beginActivity(
+                options: .userInitiatedAllowingIdleSystemSleep,
+                reason: "截图会话进行中（截屏与遮罩交互）")
+        }
+
+        // 2) 各屏并行截屏（后台线程），截好一块显示一块。
+        //    此前是在主线程上一块屏一块屏同步截完才出遮罩：系统截屏慢的时候（2026-11-27 实测
+        //    0.5~2 秒）遮罩整段冻住、点击全部迟到。现在主线程不等截屏。
+        captureProgress = CaptureProgress(total: screens.count)
+        DiagnosticCenter.setHangThreshold(DiagnosticCenter.screenshotHangThreshold)
+
+        for (index, screen) in screens.enumerated() {
+            // NSScreen 只在主线程读：先把截屏需要的显示 ID / 点尺寸取出来再进后台
+            let displayID = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID
+            let logicalSize = screen.frame.size
+            DispatchQueue.global(qos: .userInitiated).async {
+                let startedAt = DispatchTime.now()
+                let cgImage = displayID.flatMap { CGDisplayCreateImage($0) }
+                let captureSeconds = secondsSince(startedAt)
+                DispatchQueue.main.async {
+                    V2ScreenshotController.installCapturedScreen(
+                        cgImage, logicalSize: logicalSize, screen: screen, screenIndex: index,
+                        allWindows: allWindows, sessionID: sessionID,
+                        sessionStart: sessionStart, captureSeconds: captureSeconds)
+                }
+            }
+        }
+
+        // 激活应用放在截屏派发之后：系统拒绝激活时这一步会同步阻塞（KeyWindowLadder 实测，
+        // 单步可到 0.8 秒以上），放后面即使堵住主线程也不耽误后台截屏
+        let activateStart = DispatchTime.now()
+        NSApp.activate(ignoringOtherApps: true)
+        logSlowStep("激活应用", since: activateStart)
+    }
+
+    /// 会话启动 / 看门狗里的同步 AppKit 调用耗时超过 slowStepThreshold 就落日志——
+    /// 这些调用平时不到 1ms，慢了就是被系统阻塞（被拒状态下的 activate / makeKey）
+    static let slowStepThresholdMS: Double = 80
+
+    private static func logSlowStep(_ name: String, since start: DispatchTime) {
+        let ms = secondsSince(start) * 1000
+        if ms > slowStepThresholdMS {
+            DiagnosticCenter.warning("Screenshot", "\(name)耗时 \(Int(ms))ms（平时不到 1ms，疑似被系统阻塞）")
+        }
+    }
+
+    /// 某一屏截好了：把带冻结画面的视图装进该屏的面板。面板此前是隐形护盾，装完即可见、可交互。
+    /// 会话已结束（或被新会话取代）时丢弃这帧。
+    private static func installCapturedScreen(_ cgImage: CGImage?, logicalSize: CGSize, screen: NSScreen,
+                                              screenIndex: Int, allWindows: [WindowInfo], sessionID: UUID,
+                                              sessionStart: DispatchTime, captureSeconds: Double) {
+        guard currentSessionID == sessionID, let panel = screenPanelMap[screen] else { return }
+
+        let snapshot = snapshotImage(from: cgImage, logicalSize: logicalSize)
+        if cgImage == nil {
+            DiagnosticCenter.warning("Screenshot", "屏\(screenIndex) 截屏失败，界面使用纯色底图")
+        }
+        let view = V2ScreenshotView(screen: screen, snapshot: snapshot, screenIndex: screenIndex,
+                                    allWindows: allWindows, sessionID: sessionID)
+
+        DiagnosticCenter.measure("Screenshot", "遮罩安装 屏\(screenIndex)", threshold: 0.1) {
+            let hostingView = NSHostingView(rootView: view)
+            hostingView.frame = NSRect(origin: .zero, size: logicalSize)
+            hostingView.wantsLayer = true
+            hostingView.layer?.backgroundColor = NSColor.clear.cgColor
+            panel.contentView = hostingView
+        }
+
+        // 耗时落日志：下次再"截图慢"，直接看每块屏是截屏慢还是装遮罩慢
+        let sinceStart = secondsSince(sessionStart)
+        var progress = captureProgress
+        let complete = progress.markReady(at: sinceStart)
+        captureProgress = progress
+        let sinceStartMS = Int(sinceStart * 1000)
+        DiagnosticCenter.info("Screenshot", "截屏就绪 屏\(screenIndex)：截屏 \(Int(captureSeconds * 1000))ms · 距会话开始 \(sinceStartMS)ms")
+        if complete {
+            let firstMS = Int((progress.firstReadyAt ?? 0) * 1000)
+            DiagnosticCenter.info("Screenshot", "遮罩全部就绪：首屏 \(firstMS)ms · 全部 \(sinceStartMS)ms（共 \(progress.total) 屏）")
+        }
+    }
+
+    /// 截屏就绪进度：记总屏数与已就绪数，全部就绪时能报出首屏 / 全量耗时（纯值类型，可单测）
+    struct CaptureProgress: Equatable {
+        let total: Int
+        private(set) var ready = 0
+        /// 第一块屏就绪的时刻（秒，相对会话开始）
+        private(set) var firstReadyAt: TimeInterval?
+
+        /// 标记一屏就绪；返回是否刚好全部就绪
+        @discardableResult
+        mutating func markReady(at seconds: TimeInterval) -> Bool {
+            ready += 1
+            if firstReadyAt == nil { firstReadyAt = seconds }
+            return ready >= total
+        }
+
+        var isComplete: Bool { ready >= total }
+    }
+
+    /// 会话面板：screenSaver 级、透明、无边框。刚建出来时里面什么都还没画——这就是"隐形护盾"；
+    /// 截好的画面由 installCapturedScreen 装进来
+    private static func makeSessionPanel(for screen: NSScreen) -> V2TextInputPanel {
+        // ✅ 使用支持文本输入的 V2TextInputPanel
+        let panel = V2TextInputPanel(
+            contentRect: screen.frame,
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+
+        panel.level = .screenSaver  // ✨ 最高级别，确保在所有窗口（包括浮球）之上
+        panel.backgroundColor = .clear
+        panel.isOpaque = false
+        panel.hasShadow = false
+        panel.ignoresMouseEvents = false
+        panel.acceptsMouseMovedEvents = true
+        panel.isReleasedWhenClosed = false
+        panel.hidesOnDeactivate = false  // ✨ 防止失去焦点时自动隐藏
+
+        // 关键：确保面板在对应的屏幕上
+        panel.setFrame(screen.frame, display: false)
+        return panel
+    }
+
+    /// 窗口吸附用的窗口列表：去掉自家窗口和桌面 / 菜单栏 / Dock 等系统背景
+    private static func interactiveWindows() -> [WindowInfo] {
+        switch WindowInfoService.shared.fetchAllWindows() {
         case .success(let windows):
             // 过滤掉不需要的窗口：
             // 1. 当前应用自身的窗口
-            // 2. 桌面/墙纸 (Wallpaper/Desktop) - 这些通常覆盖全屏且由 Finder 或 WindowServer 拥有
+            // 2. 桌面/墙纸 (Wallpaper/Desktop) - 这些通常覆盖全屏且由 Finder 或 Window Server 拥有
             // 3. 菜单栏/Dock 栏等系统 UI
-            allWindows = windows.filter { window in
+            let list = windows.filter { window in
                 let name = window.ownerName
                 let isSelf = name == "Quite Note" || name == "QuiteNote"
                 let isSystemBackground = name == "Window Server" || name == "Dock" || (name == "Finder" && window.windowName == nil)
@@ -80,50 +233,49 @@ class V2ScreenshotController {
                 // 只有不是自身且不是系统背景的窗口才显示交互矩形
                 return !isSelf && !isSystemBackground
             }
-            v2Logger.info("Fetched \(allWindows.count) real windows (filtered system backgrounds)")
+            v2Logger.info("Fetched \(list.count) real windows (filtered system backgrounds)")
+            return list
         case .failure(let error):
             v2Logger.error("Failed to fetch real windows: \(error.localizedDescription)")
-            allWindows = []
+            return []
+        }
+    }
+
+    /// 鼠标所在屏的会话面板（鼠标不在任何屏上时退回第一块）
+    private static func panelForMouseLocation() -> NSPanel? {
+        let mouse = NSEvent.mouseLocation
+        let index = screenIndex(containing: mouse, frames: NSScreen.screens.map(\.frame))
+        let screen = index.map { NSScreen.screens[$0] }
+        return screen.flatMap { screenPanelMap[$0] } ?? debugPanels.first
+    }
+
+    /// 点落在哪块屏（纯函数，可单测）；都不包含返回 nil
+    static func screenIndex(containing point: CGPoint, frames: [CGRect]) -> Int? {
+        frames.firstIndex(where: { $0.contains(point) })
+    }
+
+    /// 由截得的位图生成界面用的 NSImage（逻辑尺寸 = 屏幕点尺寸，像素 = 实际像素）。
+    /// cgImage 为 nil（截屏失败）时退回纯色底图，界面仍可用
+    static func snapshotImage(from cgImage: CGImage?, logicalSize: CGSize) -> NSImage {
+        guard let cgImage = cgImage else {
+            let img = NSImage(size: logicalSize)
+            img.lockFocus()
+            NSColor(calibratedWhite: 0.2, alpha: 1.0).set()
+            NSRect(origin: .zero, size: logicalSize).fill()
+            img.unlockFocus()
+            return img
         }
 
-        for (index, screen) in NSScreen.screens.enumerated() {
-            v2Logger.info("Creating debug window for Screen \(index): \(screen.frame.debugDescription, privacy: .public)")
+        // ⚠️ 修复 Retina 模糊问题：确保图片尺寸与像素一致
+        let image = NSImage(cgImage: cgImage, size: logicalSize) // 逻辑尺寸
 
-            let snapshot = V2ScreenshotController.captureScreen(screen)
-            let view = V2ScreenshotView(screen: screen, snapshot: snapshot, screenIndex: index, allWindows: allWindows, sessionID: sessionID)
+        // 显式设置像素尺寸，避免缩放模糊
+        image.size = logicalSize
+        return image
+    }
 
-            // ✅ 使用支持文本输入的 V2TextInputPanel
-            let panel = V2TextInputPanel(
-                contentRect: screen.frame,
-                styleMask: [.borderless, .nonactivatingPanel],
-                backing: .buffered,
-                defer: false
-            )
-
-            panel.level = .screenSaver  // ✨ 最高级别，确保在所有窗口（包括浮球）之上
-            panel.backgroundColor = .clear
-            panel.isOpaque = false
-            panel.hasShadow = false
-            panel.ignoresMouseEvents = false
-            panel.acceptsMouseMovedEvents = true
-            panel.isReleasedWhenClosed = false
-            panel.hidesOnDeactivate = false  // ✨ 防止失去焦点时自动隐藏
-
-            // 关键：确保面板在对应的屏幕上
-            panel.setFrame(screen.frame, display: true)
-
-            let hostingView = NSHostingView(rootView: view)
-            hostingView.frame = NSRect(origin: .zero, size: screen.frame.size)
-            hostingView.wantsLayer = true
-            hostingView.layer?.backgroundColor = NSColor.clear.cgColor
-            panel.contentView = hostingView
-
-            panel.orderFront(nil)
-            debugPanels.append(panel)
-            V2ScreenshotController.screenPanelMap[screen] = panel
-        }
-
-        NSApp.activate(ignoringOtherApps: true)
+    private static func secondsSince(_ start: DispatchTime) -> Double {
+        Double(DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1_000_000_000
     }
 
     /// ✨ 内部清理逻辑，不重置 isShowing 锁
@@ -149,6 +301,14 @@ class V2ScreenshotController {
         }
         debugPanels.removeAll()
         screenPanelMap.removeAll()
+        captureProgress = CaptureProgress(total: 0)
+        lastWatchdogActivation = nil
+        // 会话结束：卡死判定阈值调回默认（截图会话期间是 1 秒）；释放 App Nap 断言
+        DiagnosticCenter.setHangThreshold(DiagnosticCenter.stallMajorThreshold)
+        if let activity = sessionActivity {
+            ProcessInfo.processInfo.endActivity(activity)
+            sessionActivity = nil
+        }
 
         // ⚠️ 关闭调试模式时也重置全局状态
         V2PrimaryScreenStateManager.shared.reset()
@@ -225,19 +385,40 @@ class V2ScreenshotController {
     }
 
     /// 会话存续期间强制保持 App 活跃与面板置顶。
+    /// - 已有会话面板是 key：什么都不动。此前每秒对所有面板挨个 becomeKey()：双屏下 key 每秒在
+    ///   两块屏之间对调，文字工具正在输入的那块屏会被抢走键盘。
+    /// - 没有面板是 key（被别的应用抢走 / 从未拿到）：补 key。系统拒绝激活时 activate / makeKey
+    ///   会同步阻塞，所以激活限频、每一步计时，别把主线程堵满。
     private static func refocusScreenshotSession() {
         guard !debugPanels.isEmpty else {
             focusWatchdogTimer?.invalidate()
             focusWatchdogTimer = nil
             return
         }
-        if !NSApp.isActive {
+        guard !sessionPanelIsKey(NSApp.keyWindow, in: debugPanels) else { return }
+
+        let stepStart = DispatchTime.now()
+        if !NSApp.isActive, shouldRetryActivation(now: stepStart, last: lastWatchdogActivation) {
+            lastWatchdogActivation = stepStart
             NSApp.activate(ignoringOtherApps: true)
         }
-        for panel in debugPanels {
-            panel.orderFrontRegardless()
-            panel.becomeKey()
-        }
+        let target = panelForMouseLocation() ?? debugPanels[0]
+        target.orderFrontRegardless()
+        target.makeKey()
+        logSlowStep("看门狗补 key", since: stepStart)
+    }
+
+    /// 看门狗这一拍要不要再试一次激活（纯函数，可单测）：距上次尝试满了间隔才试
+    static func shouldRetryActivation(now: DispatchTime, last: DispatchTime?,
+                                       interval: Double = watchdogActivationInterval) -> Bool {
+        guard let last = last else { return true }
+        return Double(now.uptimeNanoseconds - last.uptimeNanoseconds) / 1_000_000_000 >= interval
+    }
+
+    /// 已有本会话的面板是 key（纯函数，可单测）
+    static func sessionPanelIsKey(_ keyWindow: NSWindow?, in panels: [NSWindow]) -> Bool {
+        guard let keyWindow = keyWindow else { return false }
+        return panels.contains { $0 === keyWindow }
     }
     
     /// ESC 后退的阶段性决策（纯函数，可单测）
@@ -289,25 +470,6 @@ class V2ScreenshotController {
         case .exitNow:
             close()
         }
-    }
-
-    static func captureScreen(_ screen: NSScreen) -> NSImage {
-        guard let displayID = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID,
-              let cgImage = CGDisplayCreateImage(displayID) else {
-            let img = NSImage(size: screen.frame.size)
-            img.lockFocus()
-            NSColor(calibratedWhite: 0.2, alpha: 1.0).set()
-            NSRect(origin: .zero, size: screen.frame.size).fill()
-            img.unlockFocus()
-            return img
-        }
-
-        // ⚠️ 修复 Retina 模糊问题：确保图片尺寸与像素一致
-        let image = NSImage(cgImage: cgImage, size: screen.frame.size) // 逻辑尺寸
-
-        // 显式设置像素尺寸，避免缩放模糊
-        image.size = screen.frame.size
-        return image
     }
 
     /// 支持文本输入的 NSPanel 子类
