@@ -62,7 +62,7 @@ class V2ScreenshotController {
         v2Logger.info("Controller - Starting new screenshot session: \(sessionID)")
         DiagnosticCenter.info("Screenshot", "截图会话开始 \(sessionID.uuidString.prefix(8))，屏幕数 \(screens.count)")
 
-        // 清理可能残留的状态
+        // 清理可能残留的状态。上一轮的面板必须先收掉，否则会被截进画面
         cleanup()
 
         // ✨ 设置全局键盘监听
@@ -74,23 +74,7 @@ class V2ScreenshotController {
         // 否则自家的全屏遮罩会被当成可吸附的窗口
         let allWindows = interactiveWindows()
 
-        // 1) 先铺"隐形护盾"：面板内容还是空的、背景透明——不画任何像素（不会被截进画面），
-        //    但已经接管鼠标和键盘，等待截屏期间点击不会穿到下面的应用
-        for (index, screen) in screens.enumerated() {
-            v2Logger.info("Creating debug window for Screen \(index): \(screen.frame.debugDescription, privacy: .public)")
-            let panel = makeSessionPanel(for: screen)
-            panel.orderFrontRegardless()
-            debugPanels.append(panel)
-            V2ScreenshotController.screenPanelMap[screen] = panel
-        }
-
-        // 即时反馈：光标先变十字；键盘落在鼠标所在屏的面板上，截屏完成前按 ESC 也能退出
-        NSCursor.crosshair.set()
-        let keyStepStart = DispatchTime.now()
-        panelForMouseLocation()?.makeKey()
-        logSlowStep("面板取 key", since: keyStepStart)
-
-        // 会话期间禁止 App Nap：和速查面板同一招（KeyWindowLadder）。 accessory 应用被系统拒绝激活后
+        // 会话期间禁止 App Nap：和速查面板同一招（KeyWindowLadder）。accessory 应用被系统拒绝激活后
         // 跌回后台，App Nap 会给定时器和后台线程降速——截屏正是在后台线程上跑
         if sessionActivity == nil {
             sessionActivity = ProcessInfo.processInfo.beginActivity(
@@ -98,7 +82,7 @@ class V2ScreenshotController {
                 reason: "截图会话进行中（截屏与遮罩交互）")
         }
 
-        // 2) 各屏并行截屏（后台线程），截好一块显示一块。
+        // 1) 截屏最先派发：它最慢，而且不依赖面板。各屏并行（后台线程），截好一块显示一块。
         //    此前是在主线程上一块屏一块屏同步截完才出遮罩：系统截屏慢的时候（2026-11-27 实测
         //    0.5~2 秒）遮罩整段冻住、点击全部迟到。现在主线程不等截屏。
         captureProgress = CaptureProgress(total: screens.count)
@@ -121,7 +105,23 @@ class V2ScreenshotController {
             }
         }
 
-        // 激活应用放在截屏派发之后：系统拒绝激活时这一步会同步阻塞（KeyWindowLadder 实测，
+        // 2) 再铺"隐形护盾"：面板内容还是空的、背景透明——不画任何像素（不会被截进画面），
+        //    但已经接管鼠标和键盘，等待截屏期间点击不会穿到下面的应用
+        for (index, screen) in screens.enumerated() {
+            v2Logger.info("Creating debug window for Screen \(index): \(screen.frame.debugDescription, privacy: .public)")
+            let panel = makeSessionPanel(for: screen)
+            panel.orderFrontRegardless()
+            debugPanels.append(panel)
+            V2ScreenshotController.screenPanelMap[screen] = panel
+        }
+
+        // 即时反馈：光标先变十字；键盘落在鼠标所在屏的面板上，截屏完成前按 ESC 也能退出
+        NSCursor.crosshair.set()
+        let keyStepStart = DispatchTime.now()
+        panelForMouseLocation()?.makeKey()
+        logSlowStep("面板取 key", since: keyStepStart)
+
+        // 激活应用放在最后：系统拒绝激活时这一步会同步阻塞（KeyWindowLadder 实测，
         // 单步可到 0.8 秒以上），放后面即使堵住主线程也不耽误后台截屏
         let activateStart = DispatchTime.now()
         NSApp.activate(ignoringOtherApps: true)
