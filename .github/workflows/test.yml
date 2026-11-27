@@ -3,7 +3,9 @@ name: Tests
 on:
   workflow_dispatch: {}
   push:
-    branches: ['**']
+    # 只在主干上跑 push 这一套；PR 分支由 pull_request 触发（两套都跑会让串行的
+    # 自托管 runner 时间翻倍，见 ui-smoke.yml 同处说明）
+    branches: [main, master]
   pull_request:
 
 concurrency:

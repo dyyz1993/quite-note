@@ -2,7 +2,10 @@ name: UI Smoke
 
 on:
   push:
-    branches: ['**']
+    # 只在主干上跑 push 这一套。PR 分支由下面的 pull_request 触发；两套都跑的话，
+    # 串行的自托管 runner（构建机 + 测试机各一）时间直接翻倍（2026-11-27 实测：
+    # 一次推送要等 1.5~4 小时，其中测试本身不到 1 分钟）
+    branches: [main, master]
   pull_request:
   workflow_dispatch:
 
@@ -189,14 +192,23 @@ jobs:
           RUN_DIR="$(find tools/ui-smoke/runs -maxdepth 1 -type d -name 'ui-*' -print -quit)"
           [[ -n "$RUN_DIR" ]] || { echo "UI run directory missing" >&2; exit 2; }
           GH_DIR="$RUNNER_TEMP/gh-pages-baseline"
+          rm -rf "$GH_DIR"
+          # 只取 latest.json，不取历史截图：基线每版 80 多 MB、已积累十几版，而测试机到
+          # GitHub 的 git 链路只有几十 KB/s——整分支克隆曾拖到几十分钟甚至几小时，
+          # 后面排队的 run 全被堵住（2026-11-27 实测 12 分钟只下了 33MB）。
+          #   --filter=blob:none  历史截图的文件内容不下（只拿目录树）
+          #   --sparse            克隆后先只铺顶层文件
+          #   sparse-checkout     工作区只留 ui-baseline/latest.json（快照脚本只写这一个
+          #                       文件，新基线目录是整目录新增，用不到旧截图的内容）
           # HTTP/1.1 必须在克隆前配置（HTTP/2 大传输在本机链路上会被中途掐断，
           # 2026-11-25 实锤 "HTTP/2 stream was not closed cleanly"）+ 失败重试一次；
           # 仍失败则跳过基线快照（冒烟结果与证据上传不受影响）
-          git -c http.version=HTTP/1.1 -c http.postBuffer=524288000 clone --depth 5 --branch gh-pages \
+          git -c http.version=HTTP/1.1 -c http.postBuffer=524288000 clone --depth 1 --filter=blob:none --sparse --branch gh-pages \
             "https://x-access-token:${GITHUB_TOKEN}@github.com/${REPO}.git" "$GH_DIR" \
-            || { sleep 10; git -c http.version=HTTP/1.1 -c http.postBuffer=524288000 clone --depth 5 --branch gh-pages \
+            || { sleep 10; rm -rf "$GH_DIR"; git -c http.version=HTTP/1.1 -c http.postBuffer=524288000 clone --depth 1 --filter=blob:none --sparse --branch gh-pages \
                    "https://x-access-token:${GITHUB_TOKEN}@github.com/${REPO}.git" "$GH_DIR"; } \
             || { echo "gh-pages 克隆失败（网络），跳过基线快照"; exit 0; }
+          git -C "$GH_DIR" sparse-checkout set --no-cone '/ui-baseline/latest.json'
           python3 tools/ui-smoke/snapshot_ui_baseline.py "$RUN_DIR" "$GH_DIR" \
             || { echo "快照未生成（非 PASS？）"; exit 0; }
           cd "$GH_DIR"
@@ -208,7 +220,8 @@ jobs:
           if git status --porcelain | grep -q .; then
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add ui-baseline
+            # --sparse：新基线目录在稀疏检出范围之外，不加这个 git 会拒绝添加
+            git add --sparse ui-baseline
             git commit -m "ui-baseline: ${GITHUB_SHA::8} [skip ci]"
             git push origin gh-pages || { sleep 15; git push origin gh-pages; }
             echo "基线已推送到 gh-pages"
