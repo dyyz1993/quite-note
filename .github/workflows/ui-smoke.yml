@@ -20,6 +20,8 @@ jobs:
     name: Build Dev UI Artifact
     # The app now requires the macOS 26 SDK; use GitHub's hosted macOS image.
     runs-on: [self-hosted, macos-heavy]
+    # A pull request from a fork must never run on the self-hosted runners.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     steps:
       - uses: actions/checkout@v4
 
@@ -106,6 +108,8 @@ jobs:
     name: Local UI Smoke on Dedicated Mac
     needs: build-dev-artifact
     runs-on: [self-hosted, quitenote-ui]
+    # A pull request from a fork must never run on the self-hosted runners.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     steps:
       - uses: actions/checkout@v4
 
