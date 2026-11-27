@@ -385,26 +385,33 @@ class V2ScreenshotController {
     }
 
     /// 会话存续期间强制保持 App 活跃与面板置顶。
-    /// - 已有会话面板是 key：什么都不动。此前每秒对所有面板挨个 becomeKey()：双屏下 key 每秒在
+    /// - 应用不活跃：夺回来（激活限频 + 计时——系统拒绝激活时 activate 会同步阻塞，
+    ///   每秒盲敲等于每秒堵一次主线程）。
+    /// - 已有会话面板是 key：key 不动。此前每秒对所有面板挨个 becomeKey()：双屏下 key 每秒在
     ///   两块屏之间对调，文字工具正在输入的那块屏会被抢走键盘。
-    /// - 没有面板是 key（被别的应用抢走 / 从未拿到）：补 key。系统拒绝激活时 activate / makeKey
-    ///   会同步阻塞，所以激活限频、每一步计时，别把主线程堵满。
+    /// - 没有面板是 key（被别的应用抢走 / 从未拿到）：给鼠标所在屏补 key。
     private static func refocusScreenshotSession() {
         guard !debugPanels.isEmpty else {
             focusWatchdogTimer?.invalidate()
             focusWatchdogTimer = nil
             return
         }
-        guard !sessionPanelIsKey(NSApp.keyWindow, in: debugPanels) else { return }
 
         let stepStart = DispatchTime.now()
         if !NSApp.isActive, shouldRetryActivation(now: stepStart, last: lastWatchdogActivation) {
             lastWatchdogActivation = stepStart
             NSApp.activate(ignoringOtherApps: true)
         }
-        let target = panelForMouseLocation() ?? debugPanels[0]
-        target.orderFrontRegardless()
-        target.makeKey()
+
+        for panel in debugPanels {
+            panel.orderFrontRegardless()
+        }
+
+        guard !sessionPanelIsKey(NSApp.keyWindow, in: debugPanels) else {
+            logSlowStep("看门狗保持活跃", since: stepStart)
+            return
+        }
+        (panelForMouseLocation() ?? debugPanels[0]).makeKey()
         logSlowStep("看门狗补 key", since: stepStart)
     }
 
