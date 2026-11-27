@@ -258,7 +258,9 @@ jobs:
             # --sparse：新基线目录在稀疏检出范围之外，不加这个 git 会拒绝添加
             git add --sparse ui-baseline
             git commit -m "ui-baseline: ${GITHUB_SHA::8} [skip ci]"
-            git push origin gh-pages || { sleep 15; git push origin gh-pages; }
+            # 推送直连：runner 进程配了代理后下载快、上传慢（基线 80 多 MB 实测经代理 42 秒、直连 25 秒），
+            # 这一条用空的 http.proxy 把环境变量里的代理顶掉
+            git -c http.proxy= push origin gh-pages || { sleep 15; git -c http.proxy= push origin gh-pages; }
             echo "基线已推送到 gh-pages"
           else
             echo "基线无变化"
