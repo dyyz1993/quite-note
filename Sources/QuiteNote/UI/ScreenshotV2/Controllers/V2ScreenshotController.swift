@@ -32,6 +32,22 @@ class V2ScreenshotController {
     /// 每秒盲敲一次等于每秒堵一次主线程
     static let watchdogActivationInterval: Double = 3.0
 
+    /// 当前会话开始的时刻（供视图层报"首帧"这类相对耗时；cleanup 时清空）
+    private(set) static var sessionStartedAt: DispatchTime?
+    /// 测试桩：单测不铺真面板、不走 show()，用它直接设置会话起点
+    static var sessionStartedAtForTesting: DispatchTime? {
+        get { sessionStartedAt }
+        set { sessionStartedAt = newValue }
+    }
+    /// "遮罩上屏"监听：面板第一次被窗口服务器合成到屏幕（occlusionState 变 visible）时落日志
+    private static var visibilityObservers: [NSObjectProtocol] = []
+
+    /// 距会话开始多少毫秒；没有进行中的会话返回 -1
+    static func msSinceSessionStart(now: DispatchTime = DispatchTime.now()) -> Int {
+        guard let startedAt = sessionStartedAt else { return -1 }
+        return Int(Double(now.uptimeNanoseconds - startedAt.uptimeNanoseconds) / 1_000_000)
+    }
+
     static func show() {
         // ✨ 互斥锁逻辑：如果已经在显示中，则直接返回，防止重复触发
         guard !isShowing else {
@@ -64,6 +80,7 @@ class V2ScreenshotController {
 
         // 清理可能残留的状态。上一轮的面板必须先收掉，否则会被截进画面
         cleanup()
+        sessionStartedAt = sessionStart
 
         // ✨ 设置全局键盘监听
         setupKeyboardMonitor()
@@ -171,6 +188,33 @@ class V2ScreenshotController {
         if complete {
             let firstMS = Int((progress.firstReadyAt ?? 0) * 1000)
             DiagnosticCenter.info("Screenshot", "遮罩全部就绪：首屏 \(firstMS)ms · 全部 \(sinceStartMS)ms（共 \(progress.total) 屏）")
+        }
+        logWhenOnScreen(panel, screenIndex: screenIndex, installedAtMS: sinceStartMS)
+    }
+
+    /// "装好视图"和"看得见"之间隔着首次布局 + 窗口服务器合成：面板的 occlusionState 变成 visible
+    /// 才算真上了屏。这段快的时候约 0.35 秒、慢的时候 1.2 秒（2026-11-27 系统日志实测），
+    /// 是"按下去到看见遮罩"里现在最大的一块，单独记一笔
+    private static func logWhenOnScreen(_ panel: NSPanel, screenIndex: Int, installedAtMS: Int) {
+        let message = { (at: DispatchTime) in
+            let ms = V2ScreenshotController.msSinceSessionStart(now: at)
+            DiagnosticCenter.info("Screenshot", "遮罩上屏 屏\(screenIndex)：距会话开始 \(ms)ms（装好视图后 \(ms - installedAtMS)ms）")
+        }
+        if panel.occlusionState.contains(.visible) {
+            message(DispatchTime.now())
+            return
+        }
+        var observer: NSObjectProtocol?
+        observer = NotificationCenter.default.addObserver(
+            forName: NSWindow.didChangeOcclusionStateNotification, object: panel, queue: .main
+        ) { _ in
+            guard panel.occlusionState.contains(.visible), let token = observer else { return }
+            NotificationCenter.default.removeObserver(token)
+            visibilityObservers.removeAll { $0 === token }
+            message(DispatchTime.now())
+        }
+        if let observer = observer {
+            visibilityObservers.append(observer)
         }
     }
 
@@ -303,6 +347,11 @@ class V2ScreenshotController {
         screenPanelMap.removeAll()
         captureProgress = CaptureProgress(total: 0)
         lastWatchdogActivation = nil
+        sessionStartedAt = nil
+        for observer in visibilityObservers {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        visibilityObservers.removeAll()
         // 会话结束：卡死判定阈值调回默认（截图会话期间是 1 秒）；释放 App Nap 断言
         DiagnosticCenter.setHangThreshold(DiagnosticCenter.stallMajorThreshold)
         if let activity = sessionActivity {

@@ -36,6 +36,23 @@ final class ScreenshotSessionStartupTests: XCTestCase {
         XCTAssertTrue(progress.isComplete)
     }
 
+    // MARK: - 距会话开始的毫秒数（"遮罩首帧 / 上屏"日志用）
+
+    func testMillisecondsSinceSessionStartIsNegativeWithoutSession() {
+        XCTAssertNil(V2ScreenshotController.sessionStartedAt)
+        XCTAssertEqual(V2ScreenshotController.msSinceSessionStart(), -1, "没有进行中的会话应返回 -1")
+    }
+
+    func testMillisecondsSinceSessionStartCountsFromSessionStart() {
+        let started = DispatchTime.now() - DispatchTimeInterval.milliseconds(1500)
+        V2ScreenshotController.sessionStartedAtForTesting = started
+        defer { V2ScreenshotController.sessionStartedAtForTesting = nil }
+
+        let later = started + DispatchTimeInterval.milliseconds(830)
+        XCTAssertEqual(V2ScreenshotController.msSinceSessionStart(now: later), 830)
+        XCTAssertEqual(V2ScreenshotController.msSinceSessionStart(now: started), 0)
+    }
+
     // MARK: - 看门狗激活限频（系统拒绝激活时 activate 会同步阻塞，不能每秒盲敲）
 
     func testWatchdogRetriesActivationOnlyAfterInterval() {

@@ -491,6 +491,9 @@ struct V2ScreenshotView: View {
         }
         .onAppear {
             addLog("Debug window appeared on Screen \(screenIndex)")
+            // SwiftUI 第一次渲染这块屏的遮罩：和"截屏就绪""遮罩上屏"两个时刻对照，
+            // 能分出按下去到看见之间的时间花在截屏、首次布局还是窗口服务器合成上
+            DiagnosticCenter.info("Screenshot", "遮罩首帧 屏\(screenIndex)：距会话开始 \(V2ScreenshotController.msSinceSessionStart())ms")
 
             // ✨ 修复：延迟激活 Panel，确保成为 key window
             // 解决"第一次点击无效"的问题（NSPanel 激活是异步的）
