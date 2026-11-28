@@ -287,20 +287,15 @@ struct FloatingRootView: View {
 
                 Spacer()
 
-                // 有新版本时显示蓝色上箭头更新按钮（点击触发 Sparkle 更新流程）
+                // 有新版本时显示更新按钮（点击触发 Sparkle 更新流程）；
+                // 下载 / 安装进行中变成圆环进度 + 百分比，不再响应点击
                 if updateVM.updateAvailable {
                     Button(action: { UpdateManager.shared.checkForUpdates() }) {
-                        ZStack {
-                            Circle()
-                                .fill(Color.themeOverlaySelected)
-                                .frame(width: 22, height: 22)
-                            Image(systemName: "arrow.up")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(.white)
-                        }
+                        UpdateProgressBadge(phase: updateVM.downloadPhase)
                     }
                     .buttonStyle(.plain)
-                    .help("发现新版本 \(updateVM.availableVersion ?? "")，点击更新")
+                    .disabled(updateVM.downloadPhase.isActive)
+                    .help(UpdateProgressMath.statusText(for: updateVM.downloadPhase, version: updateVM.availableVersion))
                     .transition(.scale.combined(with: .opacity))
                 }
 

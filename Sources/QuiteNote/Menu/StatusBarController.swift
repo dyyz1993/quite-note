@@ -400,7 +400,8 @@ final class StatusBarController {
         alert.runModal()
     }
 
-    /// 菜单：检查更新（Sparkle 手动检查，无新版弹「已是最新」提示）
+    /// 菜单：检查更新（Sparkle 手动检查，无新版弹「已是最新」提示）。菜单动作在主线程。
+    @MainActor
     @objc private func onCheckForUpdates() {
         UpdateManager.shared.checkForUpdates()
     }

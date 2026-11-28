@@ -5,15 +5,19 @@ import Combine
 /// 应用在线更新管理器（Sparkle 封装，单例）。
 ///
 /// 三个消费方：状态栏菜单「检查更新…」、设置页「检查更新」按钮、
-/// 主面板顶栏的蓝色更新按钮（有新版本时才出现）。
+/// 主面板顶栏的蓝色更新按钮（有新版本时才出现；下载/安装中变成圆环进度 + 百分比）。
 /// 更新清单 = https://dyyz1993.github.io/quite-note/appcast.xml（CI 发版时自动刷新）。
+@MainActor
 final class UpdateManager: NSObject, ObservableObject {
     static let shared = UpdateManager()
 
     /// Sparkle 核心驱动。懒创建：测试进程/单元测试上下文不触碰 updater。
     #if !APP_STORE
     private lazy var updater: SPUUpdater = {
-        let driver = SPUStandardUserDriver(hostBundle: Bundle.main, delegate: nil)
+        // 弹窗仍然是 Sparkle 的标准界面；外面这层转发壳只把下载进度抄送一份给顶栏按钮
+        let driver = UpdateProgressUserDriver(hostBundle: Bundle.main, delegate: nil) { [weak self] phase in
+            self?.downloadPhase = phase
+        }
         let updater = SPUUpdater(hostBundle: Bundle.main, applicationBundle: Bundle.main, userDriver: driver, delegate: self)
         do {
             try updater.start()
@@ -31,6 +35,8 @@ final class UpdateManager: NSObject, ObservableObject {
     @Published private(set) var availableVersion: String?
     /// 手动检查进行中（按钮转圈）
     @Published private(set) var checkInProgress = false
+    /// 更新包下载 / 安装进行到哪一步（顶栏按钮的圆环进度）
+    @Published private(set) var downloadPhase: UpdateDownloadPhase = .idle
 
     /// 当前版本号（与 Info.plist 同源）
     var currentVersion: String {
