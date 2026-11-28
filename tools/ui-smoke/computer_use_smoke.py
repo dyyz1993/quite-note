@@ -311,21 +311,71 @@ class AXDriver:
         if not items:
             raise RuntimeError("status menu is unavailable")
         item = items[0]
-        # Opening the transient menu is allowed to return actionFailed; the
-        # dropdown is still exposed for subsequent AX enumeration.
-        try:
-            self.press(item)
-        except RuntimeError as exc:
-            if "AX press failed" not in str(exc):
-                raise
-        time.sleep(0.3)
+        # A menu left open by a previous suite (launch discovery) exposes its
+        # dropdown already; pressing the extra again would toggle it closed.
         dropdowns = self.attribute("AXChildren", item) or []
         if not dropdowns:
-            raise RuntimeError("status menu dropdown did not open")
+            # Opening the transient menu is allowed to return actionFailed; the
+            # dropdown is still exposed for subsequent AX enumeration.
+            try:
+                self.press(item)
+            except RuntimeError as exc:
+                if "AX press failed" not in str(exc):
+                    raise
+            time.sleep(0.3)
+            dropdowns = self.attribute("AXChildren", item) or []
+            if not dropdowns:
+                raise RuntimeError("status menu dropdown did not open")
         for menu_item in self.attribute("AXChildren", dropdowns[0]) or []:
             if self.attribute("AXTitle", menu_item) == title:
                 return menu_item
         raise RuntimeError(f"status menu item not found: {title}")
+
+    def close_status_menu(self) -> bool:
+        """Best-effort dismiss of the transient status menu (toggle press)."""
+        children = self.attribute("AXChildren") or []
+        if not children:
+            return True
+        items = self.attribute("AXChildren", children[-1]) or []
+        if not items:
+            return True
+        item = items[0]
+        if not (self.attribute("AXChildren", item) or []):
+            return True
+        try:
+            self.press(item)
+        except RuntimeError:
+            pass
+        deadline = time.monotonic() + 1.5
+        while time.monotonic() < deadline:
+            if not (self.attribute("AXChildren", item) or []):
+                return True
+            time.sleep(0.1)
+        return False
+
+    def ax_windows(self) -> list[dict]:
+        """Windows as reported by the app's own AX hierarchy.
+
+        The main 520x640 NSPanel is exposed through AXWindows from process
+        start, while CGWindowListCopyWindowInfo may omit it for the first
+        seconds (measured on xyz-mac 2026-11-28: AX had it at launch, CG only
+        listed the status item until the first menu interaction woke the
+        WindowServer ordering). Launch assertions therefore poll both channels.
+        """
+        ref = self.attribute("AXWindows")
+        if ref is None:
+            return []
+        found = []
+        for window in list(ref):
+            frame = self.bounding_frame(window)
+            if frame:
+                found.append({"title": str(self.attribute("AXTitle", window) or ""), "frame": list(frame)})
+        return found
+
+    def ax_window_elements(self) -> list:
+        """Live AX element refs for the app's windows (for subtree walks)."""
+        ref = self.attribute("AXWindows")
+        return list(ref) if ref is not None else []
 
     def attribute(self, name: str, element=None):
         from ApplicationServices import AXUIElementCopyAttributeValue
@@ -344,6 +394,86 @@ def app_pid() -> int:
     if result.returncode == 0 and result.stdout.strip().isdigit():
         return int(result.stdout.strip())
     raise RuntimeError("Quite Note Dev is not running")
+
+
+# ---------------------------------------------------------------------------
+# Window / AX-tree assertion helpers. These are pure functions over plain data
+# (window frames, collected AX entries) so test_evidence.py can prove each
+# assertion red with known-bad samples without any AX session.
+# ---------------------------------------------------------------------------
+
+# Measured on xyz-mac (2026-11-28, artifact a4911402): main panel AXWindow and
+# CG window both report exactly 520x640; the interval mirrors smoke_flash_notes
+# and leaves room for window chrome deltas across macOS versions.
+MAIN_PANEL_WIDTH_RANGE = (480, 560)
+MAIN_PANEL_HEIGHT_RANGE = (600, 680)
+
+# Settings opens as an overlay INSIDE the main panel window (FloatingRootView
+# swaps the content; the 520x640 window frame does not change).
+SETTINGS_OPEN_MARKER = "偏好设置"            # settings overlay header (AXValue of AXStaticText)
+SETTINGS_TAB_DESCS = ("AI", "记录", "剪贴板")  # TabButtonLucide buttons expose AXDescription
+SETTINGS_CLOSE_DESC = "chevron left"          # header back button (Lucide icon description)
+SETTINGS_GEAR_DESC = "settings"               # panel header gear toggling showSettings
+AI_TAB_MARKER_PREFIX = "AI 自动提炼"           # initial tab content (AI settings intro card)
+CLIPBOARD_TAB_MARKER = "启用剪贴板历史"        # clipboard tab content, absent on every other tab
+
+
+def window_of_size(frames, width_range, height_range):
+    """First [x, y, w, h] frame whose size falls inside both ranges (inclusive)."""
+    for frame in frames or []:
+        if len(frame) != 4:
+            continue
+        width, height = frame[2], frame[3]
+        if width_range[0] <= width <= width_range[1] and height_range[0] <= height <= height_range[1]:
+            return list(frame)
+    return None
+
+
+def find_panel_frame(frames):
+    return window_of_size(frames, MAIN_PANEL_WIDTH_RANGE, MAIN_PANEL_HEIGHT_RANGE)
+
+
+def find_entry(entries, role=None, desc=None, title=None, value_prefix=None, value_equals=None):
+    """First collected AX entry matching all given criteria; None when absent."""
+    for entry in entries or []:
+        if role is not None and entry.get("role") != role:
+            continue
+        if desc is not None and entry.get("desc") != desc:
+            continue
+        if title is not None and entry.get("title") != title:
+            continue
+        if value_prefix is not None and not str(entry.get("value") or "").startswith(value_prefix):
+            continue
+        if value_equals is not None and entry.get("value") != value_equals:
+            continue
+        return entry
+    return None
+
+
+def require_entry(entries, what, **match):
+    entry = find_entry(entries, **match)
+    if entry is None:
+        raise RuntimeError(f"{what} not found in AX tree (match={match})")
+    return entry
+
+
+def settings_overlay_present(entries) -> bool:
+    """True when the settings overlay content is in the tree.
+
+    Any settings-only marker counts (header text or a tab button), so a
+    half-rendered overlay still reads as present; the notes view exposes none
+    of these labels."""
+    if find_entry(entries, role="AXStaticText", value_equals=SETTINGS_OPEN_MARKER):
+        return True
+    return any(find_entry(entries, role="AXButton", desc=desc) for desc in SETTINGS_TAB_DESCS)
+
+
+def summarize_entries(entries, limit=8):
+    parts = []
+    for entry in (entries or [])[:limit]:
+        label = entry.get("desc") or entry.get("title") or entry.get("value") or entry.get("role")
+        parts.append(str(label)[:24])
+    return "[" + ", ".join(parts) + "]"
 
 
 def validate_accessibility() -> str:
@@ -366,10 +496,42 @@ def validate_storage(run: Run) -> str:
 
 def smoke_launch(run: Run, driver: AXDriver) -> str:
     # Menu-bar apps may start collapsed; process + isolated storage are the launch
-    # contract. Panel visibility is asserted by dedicated suites.
+    # contract. Panel visibility is asserted here with the "windows by size, not
+    # count" rule: at least one app-owned known-size window must be resolvable,
+    # and the status menu must expose its items through AX (discovery only).
     if app_pid() <= 0:
         raise RuntimeError("Dev process missing")
-    return validate_storage(run)
+    storage = validate_storage(run)
+    frame = None
+    channel = ""
+    cg_frames: list = []
+    ax_frames: list = []
+    deadline = time.monotonic() + 8
+    while time.monotonic() < deadline:
+        cg_frames = [w["frame"] for w in driver.windows()]
+        ax_frames = [w["frame"] for w in driver.ax_windows()]
+        frame = find_panel_frame(cg_frames)
+        channel = "cgwindow"
+        if frame is None:
+            frame = find_panel_frame(ax_frames)
+            channel = "ax"
+        if frame is not None:
+            break
+        time.sleep(0.2)
+    if frame is None:
+        raise RuntimeError(
+            f"no app-owned window sized {MAIN_PANEL_WIDTH_RANGE[0]}-{MAIN_PANEL_WIDTH_RANGE[1]}x"
+            f"{MAIN_PANEL_HEIGHT_RANGE[0]}-{MAIN_PANEL_HEIGHT_RANGE[1]} visible after launch; "
+            f"cgwindows={cg_frames} axwindows={ax_frames}")
+    # Discovery only: AX must be able to locate the fixed menu item without any
+    # key presses. The transient menu is closed again right after.
+    driver.status_menu_item("剪贴板历史")
+    menu_closed = driver.close_status_menu()
+    detail = f"main {int(frame[2])}x{int(frame[3])} panel exposed via {channel}; status menu item 剪贴板历史 discoverable"
+    if not menu_closed:
+        detail += " (menu stays open; later suites tolerate it)"
+    detail += f"; storage={storage}"
+    return detail
 
 
 def ensure_manifest(run: Run) -> None:
@@ -562,6 +724,152 @@ def _find_ax_element_by_identifier(identifier: str):
     return None
 
 
+def collect_ax_entries(element, max_depth: int = 18, _depth: int = 0) -> list[dict]:
+    """Snapshot an AX subtree as plain-data entries for label assertions.
+
+    Collects only labeled, assertion-relevant controls (buttons, texts,
+    checkboxes, fields) plus their live `ref` for AX presses. Transient status
+    menus (AXMenu) are pruned: the status-item dropdown can add hundreds of
+    nodes while open and is irrelevant to panel content assertions.
+    """
+    if _depth > max_depth:
+        return []
+    role = _ax_string(_ax_attribute(element, "AXRole"))
+    if role == "AXMenu":
+        return []
+    entries: list[dict] = []
+    title = _ax_string(_ax_attribute(element, "AXTitle"))
+    value = _ax_string(_ax_attribute(element, "AXValue"))
+    desc = _ax_string(_ax_attribute(element, "AXDescription"))
+    help_text = _ax_string(_ax_attribute(element, "AXHelp"))
+    labeled_role = role in ("AXButton", "AXStaticText", "AXCheckBox", "AXTextField", "AXPopUpButton")
+    if labeled_role and (title or value or desc or help_text):
+        frame = driver_global.bounding_frame(element) if driver_global is not None else None
+        entries.append({
+            "role": role,
+            "title": title,
+            "value": value[:120],
+            "desc": desc,
+            "help": help_text,
+            "frame": list(frame) if frame else None,
+            "ref": element,
+        })
+    for child in _ax_children(element):
+        entries += collect_ax_entries(child, max_depth, _depth + 1)
+    return entries
+
+
+def collect_window_entries(driver: AXDriver) -> list[dict]:
+    entries: list[dict] = []
+    for window in driver.ax_window_elements():
+        entries += collect_ax_entries(window)
+    return entries
+
+
+def smoke_settings(run: Run, driver: AXDriver) -> str:
+    """Open the settings overlay, verify it is actually visible, switch one tab,
+    close it again. Read-only: no toggle, no preference is written; the tab
+    switch is transient UI state that dies with the panel.
+
+    Settings is an overlay inside the fixed 520x640 main panel (the window
+    frame does not change), so visibility is asserted through its content:
+    header text, tab bar buttons, and per-tab content markers, all measured on
+    xyz-mac 2026-11-28 (artifact a4911402).
+    """
+    # The launcher/clipboard quick panels of earlier suites may still be on
+    # screen and would cover the main panel. They hide on focus loss; click a
+    # neutral desktop spot and wait them out.
+    dismissed = _dismiss_quick_panels()
+
+    _press_status_menu_item("偏好设置")
+
+    # 1. Visible: header static text + tab bar buttons + main-panel window.
+    entries: list[dict] = []
+    panel = None
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        entries = collect_window_entries(driver)
+        panel = find_panel_frame([w["frame"] for w in driver.windows()]) \
+            or find_panel_frame([w["frame"] for w in driver.ax_windows()])
+        header = find_entry(entries, role="AXStaticText", value_equals=SETTINGS_OPEN_MARKER)
+        tabs = [find_entry(entries, role="AXButton", desc=desc) for desc in SETTINGS_TAB_DESCS]
+        if header is not None and panel is not None and all(tab is not None for tab in tabs):
+            break
+        time.sleep(0.2)
+    else:
+        raise RuntimeError(
+            f"settings overlay not visible after opening: header="
+            f"{find_entry(entries, role='AXStaticText', value_equals=SETTINGS_OPEN_MARKER) is not None}, "
+            f"panel={panel}, tabs="
+            f"{[find_entry(entries, role='AXButton', desc=d) is not None for d in SETTINGS_TAB_DESCS]}, "
+            f"tree={summarize_entries(entries)}")
+    if find_entry(entries, role="AXStaticText", value_prefix=AI_TAB_MARKER_PREFIX) is None:
+        raise RuntimeError(
+            f"settings opened but initial AI tab content missing ({AI_TAB_MARKER_PREFIX}…); "
+            f"tree={summarize_entries(entries)}")
+
+    # 2. Switch to the clipboard tab and assert the content really changed.
+    tab = require_entry(entries, "clipboard settings tab button", role="AXButton", desc="剪贴板")
+    driver.press(tab["ref"])
+    switched = False
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        switched_entries = collect_window_entries(driver)
+        marker = find_entry(switched_entries, role="AXStaticText", value_equals=CLIPBOARD_TAB_MARKER)
+        ai_gone = find_entry(switched_entries, role="AXStaticText", value_prefix=AI_TAB_MARKER_PREFIX) is None
+        if marker is not None and ai_gone:
+            switched = True
+            break
+        time.sleep(0.2)
+    if not switched:
+        raise RuntimeError(
+            f"switching to clipboard tab did not change settings content "
+            f"(marker={CLIPBOARD_TAB_MARKER} absent or AI content still present)")
+
+    # 3. Close: header back chevron first, panel-header gear as fallback.
+    switched_entries = collect_window_entries(driver)
+    close = find_entry(switched_entries, role="AXButton", desc=SETTINGS_CLOSE_DESC)
+    if close is None:
+        raise RuntimeError("settings close button (chevron left) not found")
+    driver.press(close["ref"])
+    deadline = time.monotonic() + 4
+    while time.monotonic() < deadline and settings_overlay_present(collect_window_entries(driver)):
+        time.sleep(0.2)
+    if settings_overlay_present(collect_window_entries(driver)):
+        gear = find_entry(collect_window_entries(driver), role="AXButton", desc=SETTINGS_GEAR_DESC)
+        if gear is None:
+            raise RuntimeError("settings still open after close press and no gear fallback available")
+        driver.press(gear["ref"])
+        deadline = time.monotonic() + 4
+        while time.monotonic() < deadline and settings_overlay_present(collect_window_entries(driver)):
+            time.sleep(0.2)
+    if settings_overlay_present(collect_window_entries(driver)):
+        raise RuntimeError("settings overlay still visible after close")
+    return (f"settings overlay visible in {int(panel[2])}x{int(panel[3])} panel, tab bar AX-reachable, "
+            f"clipboard tab switch verified by content markers, closed"
+            + (f" (dismissed quick panels first: {dismissed})" if dismissed else ""))
+
+
+def _dismiss_quick_panels() -> str:
+    """Hide launcher/clipboard quick panels (they auto-hide on focus loss)."""
+    assert driver_global is not None
+
+    def quick_panel_open() -> bool:
+        return any(
+            620 <= w["frame"][2] <= 660 or 700 <= w["frame"][2] <= 800
+            for w in driver_global.windows()
+        )
+
+    if not quick_panel_open():
+        return ""
+    width, height = _main_display_size()
+    _click_overlay(40.0, height / 2.0)  # neutral wallpaper spot, left edge
+    deadline = time.monotonic() + 3
+    while time.monotonic() < deadline and quick_panel_open():
+        time.sleep(0.2)
+    return "launcher/clipboard panels" if not quick_panel_open() else "quick panels (dismiss may have failed)"
+
+
 def smoke_flash_notes(run: Run, driver: AXDriver) -> str:
     # The floating panel is a non-titled NSPanel; its deterministic 520x640
     # frame is exposed on the GUI session at launch.
@@ -569,14 +877,6 @@ def smoke_flash_notes(run: Run, driver: AXDriver) -> str:
     if not any(480 <= w["frame"][2] <= 560 and 600 <= w["frame"][3] <= 680 for w in windows):
         raise RuntimeError(f"main panel not exposed; windows={windows}")
     return "main 520x640 panel exposed"
-
-
-def smoke_settings(run: Run, driver: AXDriver) -> str:
-    # Settings is reached without changing user data from the main panel.
-    window = driver.foreground_floating_window()
-    if window is None:
-        raise RuntimeError("settings invocation requires the main panel")
-    return "settings AX flow available from main panel"
 
 
 def smoke_devcore(run: Run, driver: AXDriver) -> str:
@@ -803,6 +1103,10 @@ def _snap_overlay(run, tag):
     把自己最高层级窗口（截图遮罩正是 screenSaver 级）写到 frames/frame-*.png。
     外部通道（cua / 系统 screencapture）依赖 runner 会话的屏幕录制授权——该授权
     周期性 re-consent 被踢（2026-11-20 实锤两通道同时无产物），只做兜底。
+
+    归档：断言用的这一帧同时落盘到 screenshots/screenshot-toolbar-frame-<tag>-<ts>.png，
+    让基线里能看到工具栏本身（2026-11-28 前帧只存在 /tmp/qn-manual，基线截图里
+    只有会话前后两张全屏，看不到工具栏）。
     """
     caffeinate(20)
     stem = f"frame-{tag}"
@@ -849,15 +1153,42 @@ def _snap_overlay(run, tag):
     os.makedirs("/tmp/qn-manual", exist_ok=True)  # 此前由 cua 落盘时顺带创建，app 通道需自建
     from PIL import Image
     im = Image.open(source)
+    archived = run.run_dir / "screenshots" / f"screenshot-toolbar-frame-{tag}-{int(time.time())}.png"
+    archived.parent.mkdir(parents=True, exist_ok=True)
     if im.width != 1366:
         normalized = im.resize((1366, round(im.height * 1366 / im.width)), Image.LANCZOS)
         im.close()
-        normalized.save(out)
-        return out
-    if source != out:
+        normalized.save(archived)
+    else:
         import shutil
-        shutil.copy(source, out)
-    return out
+        shutil.copy(source, archived)
+    return str(archived)
+
+
+def _annotate_toolbar_frame(frame, markers) -> None:
+    """在取证帧上画检测框和量到的数字（逻辑 pt 坐标）。
+
+    markers: [(label, (x, y), color), …]——label 只用 ASCII（PIL 默认字体没有 CJK）。
+    标注失败不阻塞断言：帧本身已经落盘，标注只是让基线可读。
+    """
+    try:
+        from PIL import Image, ImageDraw
+    except ImportError:
+        return
+    try:
+        im = Image.open(frame).convert("RGB")
+        width, height = im.size
+        scale_x, scale_y = width / 1440.0, height / 900.0
+        draw = ImageDraw.Draw(im)
+        for label, (x, y), color in markers:
+            cx, cy = x * scale_x, y * scale_y
+            half_w, half_h = 26 * scale_x, 20 * scale_y
+            draw.rectangle([cx - half_w, cy - half_h, cx + half_w, cy + half_h],
+                           outline=color, width=3)
+            draw.text((cx + half_w + 6, max(2, cy - 8)), label, fill=color)
+        im.save(frame)
+    except Exception as exc:
+        print(f"[annotate] skipped for {frame}: {exc}", file=sys.stderr)
 
 
 _CUA_PX_PER_PT = None
@@ -995,10 +1326,25 @@ def smoke_screenshot_toolbar(run: Run, driver: AXDriver) -> str:
         return highlight, record
 
     # 阶段 1 / 2：贴右缘的选区（主栏被右缘钳住）
+    archived_frames = []
+
+    def _archive(frame, stage_label, highlight, record, target=None):
+        # 断言用的帧已在 screenshots/ 落盘（_snap_overlay），这里补画检测框：
+        # 青色=选中高亮、红色=录制钮、黄色=点击目标，label 带量到的数字
+        markers = [
+            (f"hi {highlight[0]:.0f},{highlight[1]:.0f}", (highlight[0], highlight[1]), (0, 255, 255)),
+            (f"rec {record[0]:.0f},{record[1]:.0f}", (record[0], record[1]), (255, 60, 60)),
+        ]
+        if target is not None:
+            markers.append((f"click {target[0]:.0f}", (target[0], target[1]), (255, 220, 0)))
+        _annotate_toolbar_frame(frame, markers)
+        archived_frames.append(Path(frame).name)
+
     _start_session()
     _drag_overlay(1178, 300, 1398, 480)
     p1 = _snap_overlay(run, "stage1_default")
     B1, R1 = _locate(p1, "右缘默认态", expect_widened=False)
+    _archive(p1, "右缘默认态", B1, R1)
     print(f"[stage1] 右缘默认态 高亮 {B1} 录制钮 {R1} 暗带右端 {dark_band_right(p1, width, B1[1]):.0f}/1432")
 
     # 阶段 2：右缘选区上点文字组。主栏左缘锚定不动、只向右生长，唯一允许的位移是右缘
@@ -1007,6 +1353,7 @@ def smoke_screenshot_toolbar(run: Run, driver: AXDriver) -> str:
     _click_overlay(target2, B1[1])
     p2 = _snap_overlay(run, "stage2_widened")
     B2, R2 = _locate(p2, "右缘换工具后", expect_widened=True)
+    _archive(p2, "右缘换工具后", B2, R2, target=(target2, B1[1]))
     shift2 = min(0.0, 1432 - (R1[0] + RECORD_TO_RIGHT_EDGE + WIDEN_DELTA))
     stayed2 = abs(B2[0] - (target2 + shift2)) <= 6 and abs(B2[1] - B1[1]) <= 4
     print(f"[stage2] 右缘换工具 高亮 {B2} 录制钮 {R2}（点击 {target2:.0f}，预期高亮 {target2 + shift2:.0f}）"
@@ -1020,11 +1367,13 @@ def smoke_screenshot_toolbar(run: Run, driver: AXDriver) -> str:
     _drag_overlay(420, 300, 760, 480)
     p3 = _snap_overlay(run, "stage3_mid_default")
     B3, R3 = _locate(p3, "居中默认态", expect_widened=False)
+    _archive(p3, "居中默认态", B3, R3)
     print(f"[stage3] 居中默认态 高亮 {B3} 录制钮 {R3}")
     target4 = B3[0] + TEXT_GROUP_OFFSET
     _click_overlay(target4, B3[1])
     p4 = _snap_overlay(run, "stage4_mid_text")
     B4, R4 = _locate(p4, "居中换工具后", expect_widened=True)
+    _archive(p4, "居中换工具后", B4, R4, target=(target4, B3[1]))
     stayed4 = abs(B4[0] - target4) <= 6 and abs(B4[1] - B3[1]) <= 4
     print(f"[stage4] 居中换工具 高亮 {B4} 录制钮 {R4}（点击 {target4:.0f}）"
           f"暗带右端 {dark_band_right(p4, width, B4[1]):.0f}/1432 {'✓高亮未横跳' if stayed4 else '✗横跳'}")
@@ -1033,7 +1382,8 @@ def smoke_screenshot_toolbar(run: Run, driver: AXDriver) -> str:
 
     return (f"toolbar ok: 右缘换工具高亮 {target2:.0f}→{B2[0]:.0f}（贴边让位 {shift2:.0f}pt）、"
             f"居中换工具高亮 {target4:.0f}→{B4[0]:.0f} 未横跳；"
-            f"录制钮 {R2[0]:.0f}/{R4[0]:.0f} 均屏内")
+            f"录制钮 {R2[0]:.0f}/{R4[0]:.0f} 均屏内；"
+            f"frames={','.join(archived_frames)}")
 
 
 
