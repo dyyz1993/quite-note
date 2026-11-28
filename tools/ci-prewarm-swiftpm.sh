@@ -11,10 +11,13 @@
 #   source "$GITHUB_WORKSPACE/tools/ci-prewarm-swiftpm.sh"
 #   ci_swiftpm_prewarm
 #
-# 背景（为什么要预热）：GitHub runner 每个 job 覆盖 HOME，SwiftPM 用户级缓存（lucide 镜像
-# 仓库 + Sparkle 二进制产物）不可见，而本机直连 GitHub releases/codeload 不稳（大包断流，
-# ~80KB/s 下 resolve 直接失败 "invalid index-pack output"，b98935d 轮 UI Smoke 实锤）；
-# 预热后 resolve 全程零网络（2026-11-25 补齐）。
+# 背景（为什么有这一步）：GitHub 托管的 runner 每个 job 覆盖 HOME，SwiftPM 用户级缓存
+# （lucide 镜像仓库 + Sparkle 二进制产物）不可见，而本机直连 GitHub releases/codeload 不稳
+# （大包断流，~80KB/s 下 resolve 直接失败 "invalid index-pack output"，b98935d 轮 UI Smoke
+# 实锤），所以要先把缓存拷进 job HOME（2026-11-25 补齐）。
+# 注意：本仓库现在用的自托管 runner **不覆盖 HOME**——job 用的就是真实 HOME（2026-11-28 实测：
+# 缓存被清空后是构建 job 自己把依赖拉回了真实缓存目录，目录 mtime 就是它拉取的时刻）。所以在
+# 这两台机器上 rsync 那两行是空操作，真正起作用的是 Sparkle 镜像兜底和下面的冷缓存报警。
 #
 # 缓存冷必须如实报警：真实缓存会被 SwiftPM 在下载失败时清除（2026-11-20 实锤 artifacts=0；
 # 镜像目录见 /Users/xuyingzhou/runners/swiftpm-mirror），2026-11-28 整个缓存被清空后依赖
