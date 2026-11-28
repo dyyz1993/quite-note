@@ -112,7 +112,7 @@
 | flash-notes | 主面板 520x640 在屏 |
 | clipboard | 760x520 面板 + 搜索框可写入 |
 | launcher | 640 宽面板在屏 |
-| settings | 经状态栏菜单 `偏好设置` 真正打开设置 overlay：头部 `偏好设置` 文本、Tab 栏按钮（AXDescription）、面板尺寸区间三样齐备；切一次 `剪贴板` Tab 并以内容标记（`启用剪贴板历史` 出现、`AI 自动提炼…` 消失）验证切换生效；`chevron left` 关闭后断言 overlay 消失。**全程只读**：不碰任何开关、不写偏好 |
+| settings | 经状态栏菜单 `偏好设置` 真正打开设置 overlay：头部 `偏好设置` 文本、Tab 栏按钮（AXDescription）、面板尺寸区间三样齐备；切一次 `剪贴板` Tab 并以内容标记（`启用剪贴板历史` 出现、`AI 自动提炼…` 消失）验证切换生效；`chevron left` 关闭后断言 overlay 消失。**全程只读**：不碰任何开关、不写偏好。证据两帧：`settings-open-<ts>.png` 是打开且停稳（停在剪贴板 Tab）的样子，`settings-<ts>.png` 是关闭动画走完的样子——用例函数返回后 harness 才截后者，停稳前截到的只会是滑到一半的 overlay（2026-11-28 复核时发现） |
 | screenshot-toolbar | 四阶段像素断言（见错题本 2026-11-27）；断言所用帧逐阶段落盘 `screenshots/screenshot-toolbar-frame-<阶段>-<ts>.png` 并画检测框（青=选中高亮、红=录制钮、黄=点击目标），Evidence 列出文件名——基线里能看到工具栏本身 |
 
 设置界面的事实（2026-11-28 在 xyz-mac 以 a4911402 产物实测）：设置是**主面板内的 overlay**，窗口始终 520x640 不变，所以"窗口尺寸"证明不了设置打开过，必须断言内容标记；Tab 按钮暴露的是 `AXDescription`（不是 AXTitle）；关闭钮是 `chevron left`；打开设置前要先让上一轮用例遗留的启动器/剪贴板快速面板失焦收起（点一下空桌面），否则主面板被盖住。

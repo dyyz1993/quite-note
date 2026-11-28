@@ -416,6 +416,7 @@ SETTINGS_CLOSE_DESC = "chevron left"          # header back button (Lucide icon 
 SETTINGS_GEAR_DESC = "settings"               # panel header gear toggling showSettings
 AI_TAB_MARKER_PREFIX = "AI 自动提炼"           # initial tab content (AI settings intro card)
 CLIPBOARD_TAB_MARKER = "启用剪贴板历史"        # clipboard tab content, absent on every other tab
+SETTINGS_SETTLE_SECONDS = 0.5                 # overlay slide-in/out is a 300ms transition
 
 
 def window_of_size(frames, width_range, height_range):
@@ -825,6 +826,11 @@ def smoke_settings(run: Run, driver: AXDriver) -> str:
         raise RuntimeError(
             f"switching to clipboard tab did not change settings content "
             f"(marker={CLIPBOARD_TAB_MARKER} absent or AI content still present)")
+    # Evidence frame with the overlay open at rest: Run.record only shoots after
+    # this function returns (mid slide-out), so without this the baseline never
+    # shows the settings panel settled on the switched tab.
+    time.sleep(SETTINGS_SETTLE_SECONDS)
+    open_frame = run.capture("settings-open")
 
     # 3. Close: header back chevron first, panel-header gear as fallback.
     switched_entries = collect_window_entries(driver)
@@ -845,8 +851,12 @@ def smoke_settings(run: Run, driver: AXDriver) -> str:
             time.sleep(0.2)
     if settings_overlay_present(collect_window_entries(driver)):
         raise RuntimeError("settings overlay still visible after close")
+    # Let the slide-out finish so the after-frame shows the closed state, not a
+    # half-way overlay.
+    time.sleep(SETTINGS_SETTLE_SECONDS)
     return (f"settings overlay visible in {int(panel[2])}x{int(panel[3])} panel, tab bar AX-reachable, "
             f"clipboard tab switch verified by content markers, closed"
+            + (f"; open-frame={open_frame}" if open_frame else "")
             + (f" (dismissed quick panels first: {dismissed})" if dismissed else ""))
 
 
