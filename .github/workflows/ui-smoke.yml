@@ -33,21 +33,12 @@ jobs:
       # 不再走 actions/cache 还原 .build：还原一份旧快照要 1 分 45 秒，而通用架构的
       # release 构建每次都得整体重编（常驻 .build 会让 build-app.sh 的产物发现逻辑捡到
       # 上一个 job 的旧二进制，所以这个 job 保持检出即清）。依赖靠下面的预热从本机缓存拿
-      # 自托管 runner 依赖预热（2026-11-20）：这个 job 曾裸连 GitHub 克隆依赖，大包在
-      # ~80KB/s 下断流（"invalid index-pack output"），resolve 直接失败（b98935d 轮 UI Smoke
-      # 实锤）；预热后 resolve 全程零网络（2026-11-25 补齐，与 test.yml / build-macos.yml 一致）
+      # （预热背景与实现见 tools/ci-prewarm-swiftpm.sh 头注释；2026-11-28 从三份内联拷贝
+      # 收拢成一份，并补上本 workflow 一直缺的 Sparkle 镜像段）
       - name: 预热 SwiftPM 依赖缓存（自托管）
         run: |
-          SRC="/Users/xuyingzhou/Library/Caches/org.swift.swiftpm"
-          DST="$HOME/Library/Caches/org.swift.swiftpm"
-          if [ -d "$SRC" ]; then
-            mkdir -p "$DST"
-            rsync -a --delete "$SRC/repositories/" "$DST/repositories/" 2>/dev/null || true
-            rsync -a "$SRC/artifacts/" "$DST/artifacts/" 2>/dev/null || true
-            echo "SwiftPM cache primed: $(ls "$DST/repositories" 2>/dev/null | wc -l | tr -d ' ') repos, $(ls "$DST/artifacts" 2>/dev/null | wc -l | tr -d ' ') artifacts"
-          else
-            echo "WARN: 开发机 SwiftPM 缓存不存在，回退网络下载"
-          fi
+          source "$GITHUB_WORKSPACE/tools/ci-prewarm-swiftpm.sh"
+          ci_swiftpm_prewarm
 
       - name: Prepare CI keychain for codesigning
         env:
@@ -65,17 +56,35 @@ jobs:
           # 没有这条 dyld 找不到框架，启动即 SIGABRT（2026-11-19 xyz-mac 实锤）
           # LEGACY_CI_SDK + solver 阈值与 build-app.sh 保持一致：GitHub 的 macos-15
           # runner SDK 较老，语音 UI 需要这个编译条件（缺了在属性声明处直接编译失败）
+          # 失败要有声（2026-11-28 事故：冷缓存下 swift build 打完 "Build complete!"
+          # 之后 86ms 无声退出 1，日志里没有任何 error——显式记录退出码并打印产物目录）
+          set +e
           swift build -c release --arch x86_64 --arch arm64 --product QuiteNote \
             -Xswiftc -D -Xswiftc LEGACY_CI_SDK \
             -Xswiftc -Xfrontend -Xswiftc -solver-expression-time-threshold=1000 \
             -Xlinker -rpath -Xlinker @executable_path/../Frameworks
+          rc=$?
+          set -e
+          echo "swift build exit code: $rc"
+          if [ "$rc" -ne 0 ]; then
+            echo "产物目录："
+            ls -la .build/out/Products/Release .build/apple/Products/Release 2>&1 | head -20 || true
+            exit "$rc"
+          fi
           mkdir -p .build/release
           # 产物路径随构建系统漂移：老 SwiftPM 在 .build/apple/…，新 swiftbuild 在 .build/out/…
           UNIVERSAL_BIN=""
           for CAND in .build/apple/Products/Release/QuiteNote .build/out/Products/Release/QuiteNote .build/release/QuiteNote; do
             [ -f "$CAND" ] && UNIVERSAL_BIN="$CAND" && break
           done
-          [ -n "$UNIVERSAL_BIN" ] || { echo "universal binary not found in .build"; exit 1; }
+          [ -n "$UNIVERSAL_BIN" ] || {
+            echo "universal binary not found in .build"
+            echo "候选路径："
+            ls -la .build/apple/Products/Release .build/out/Products/Release .build/release 2>&1 | head -30 || true
+            echo ".build 顶层："
+            ls -la .build 2>&1 | head -30 || true
+            exit 1
+          }
           # 到这里产物已在位，交给 build-app.sh 的发现逻辑即可，**不要**再做任何复制/删除/
           # 重定向：.build/release 是指向产物的符号链接，源=目标，cp 报 "are identical"、
           # rm 顺着链接删源、cat 的 > 会先截断目标再读源（同文件=清空自己）——三种姿势
