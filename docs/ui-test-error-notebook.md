@@ -324,3 +324,19 @@
   - screenshot-toolbar：`_snap_overlay` 把归一化帧落盘 `screenshots/screenshot-toolbar-frame-<阶段>-<ts>.png`，`_annotate_toolbar_frame` 画框标数（PIL 默认字体没有 CJK，label 只用 ASCII）。
   - 新断言一律先红后绿：坏样本单测（错误尺寸区间、不含目标的窗口列表、无标记的树、notes 视图树）+ 测试机 sabotage 红跑（改坏 `MAIN_PANEL_WIDTH_RANGE` → settings 红 "panel=None"；改坏 `CLIPBOARD_TAB_MARKER` → 见下轮记录）。
 - Evidence: 测试机 `~/qn-smoke-lab/tools/ui-smoke/runs/ui-20261128-005849-be80b806/`（report 9/9、settings 截图 = 偏好设置 overlay + 剪贴板 Tab 选中、四张带标注的工具栏帧）；红证 `/Users/xyz/QuitenoteUITest/runs/red-proof-090227/`（settings FAIL: header=True panel=None）。
+
+## 2026-11-28 · 更新圆环 E2E：unzip 掉 AppleDouble 破坏 seal、Sparkle 错误弹窗不进 AXWindows、无签名 appcast 在解压阶段才失败
+
+- Version / Commit / Run: feat/update-progress-badge @ e80daba（产物 = PR merge commit 28f99d16，` QuiteNoteDev-28f99d16-universal.zip`）；测试机三轮手工 driver，run-20261128-112835 / -113157 / -113426（归档 `~/.agents/projects/quite-note/e2e-update/`）
+- Symptom: ① CI 产物 zip 解压后 `codesign --deep --strict` 报 "unsealed contents present in the root directory of an embedded framework / sealed resource is missing"，看似包坏了；② 验证"下载结束 Sparkle 显示什么"时，错误 alert 在像素里已在屏（整屏截图可见 "An er…" 片段），driver 按 pid 轮询 AXWindows 却连续 25s 抓不到任何窗口，launcher 随即 SIGTERM 把 alert 带走；③ appcast item 不写 `sparkle:edSignature`，预期"下载前被拒"或"下载完报签名错误"，实际日志里迟迟没有 abort。
+- Root cause / 通道事实:
+  1. `unzip` 解压 macOS zip 会在包里落 AppleDouble `._*` 文件，它们不在代码签名的 resource seal 里 → seal 校验失败。**不是包坏**：`find "<App>.app" -name "._*" -delete` 后 `codesign --deep --strict` 通过。`tar -cf - | ssh … tar -xf -`（deploy.sh 老路）不会产生这些文件。
+  2. Sparkle 2.10 的 post-download 结果 alert（NSAlert）**不出现在应用元素的 AXWindows 列表里**（25s × 17 次轮询皆空，主面板同时在列表里作对照），但三条替代通道全部可用：`AXFocusedWindow` / `AXMainWindow` 属性能取到窗口元素（可 walk 出按钮和静态文本全文）；`CGWindowListCopyWindowInfo` 按 owner pid 能看到 frame（含 layer）；`AXUIElementCopyElementAtPosition` 打在 CG frame 中心也能命中窗口元素。**只轮询 AXWindows 会把 Sparkle 的结果弹窗整个漏掉。**
+  3. 无签名 item：Sparkle 2.10 **不在下载前拒绝**，12MB 完整下载完才失败；签名校验回退到 "Apple Code Signing 等价"路径，要先解开归档，所以报错落在解压："An error occurred while extracting the archive. Please try again later."（alert 标题 "Update Error!"，唯一按钮 "Cancel Update"）。且 `updater:didAbortWithError:` 的 NSLog 比 alert 在屏**晚约 40s**（alert 11:35:03 已在屏，`[Sparkle] 检查中止` 11:35:45.373）——"还没有 abort 日志"不等于"没有出错"。
+  4. 时序：Sparkle 下载进度窗口关闭后，错误 alert 约 1~2s 才出现；driver 若在"窗口全消失"时就收尾，launcher 会 SIGTERM 掉 App 把 alert 带走（第一轮就是这样错过 C 的）。要给下载结束后的结果窗口留 ≥25s 的观察窗。
+- Fix / Prevention:
+  - 解压 CI zip 后（或部署前）一律 `find "<App>.app" -name "._*" -delete`，再 `codesign --deep --strict` 复验；校验完比二进制 SHA-256（本次 `032858422cca…`），别拿"codesign 过"判断是不是新包（旧包签名同样有效）。
+  - 检测宿主进程内的系统弹窗（Sparkle/NSAlert 等）用三通道合并：AXWindows + `AXFocusedWindow`/`AXMainWindow` + CGWindowList(按 pid)，按 frame 去重；读弹窗内容优先 focused window 的子树（按钮 AXTitle、静态文本 AXValue），比截屏可靠且不受遮挡影响（本次 alert 大半被 520x640 主面板盖住，全文是 AX 读出来的）。
+  - 更新类 E2E 的本地源不需要签名也不会被提前拒——流程能完整走到下载，正好适合验证下载 UI；失败断言别盯着"签名"字样，实际报 extraction。
+  - driver 侦测"下载结束"后必须继续轮询结果窗口（本driver：最长 25s、每 1.5s 一帧），确认 alert 处理完（AXPress 其按钮）再收尾，避免 launcher 的 SIGTERM 抢在取证前面。
+- Evidence: `~/.agents/projects/quite-note/e2e-update/`（README 有三轮时间线与清理清单；screenshots/2026-11-28-run3/ 有 baseline 无按钮 → 蓝色上箭头 → 圆环 20/45/70/95% → Update Error! alert → 关闭后回 idle 的全套裁片与整屏，及 driver/app/server 日志）
