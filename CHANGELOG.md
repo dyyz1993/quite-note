@@ -6,6 +6,17 @@
 
 ## [Unreleased]
 
+### 内部
+
+- UI 冒烟套件（tools/ui-smoke）升到 1.4.0：launch 用例现在断言"看得见"的主面板窗口
+  （520x640，CGWindowList / AX 双通道轮询）和状态栏菜单项可发现；settings 用例真正打开
+  偏好设置 overlay（走状态栏菜单，不碰键盘），断言头部 / Tab 栏 / 面板尺寸，切一次
+  剪贴板 Tab 并用内容标记验证切换生效，再关闭并断言消失（全程只读，不写任何偏好）；
+  screenshot-toolbar 用例把断言所用帧逐阶段落盘到 screenshots/ 并画上检测框，
+  基线里能看到工具栏本身。每条新断言都先以坏样本证明会红（单测 + 测试机 sabotage 红跑）
+- 修正套件版本漂移：run_ui_smoke.sh（1.2.1）与 selectors/operations.json（1.3.0）此前各自为政，
+  统一为 1.4.0，并新增单测锁定三处一致
+
 ## [1.7.2] - 2026-11-28
 
 ### 修复

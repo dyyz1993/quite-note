@@ -101,8 +101,21 @@
 - 检查 Accessibility 权限。
 - 使用 runner 传入的当前 run `--app-pid`，避免同 bundle id 残留实例干扰。
 - 检查隔离存储目录。
-- 用 `CGWindowList` 按当前 pid 检查真实 GUI 窗口。
+- 用 `CGWindowList` 按当前 pid 检查真实 GUI 窗口；launch 用例同时轮询应用自身的 `AXWindows`（主面板从进程启动就在 AX 里，CGWindowList 在显示器刚唤醒时可能晚几秒才收录，2026-11-28 实测）。
 - 收尾检查生产版进程未被脚本管理。
+
+### 用例覆盖（suite 1.4.0，2026-11-28 起）
+
+| 用例 | 断言的"看得见"证据 |
+|---|---|
+| launch | 至少一个应用自有窗口尺寸落在主面板区间（实测 520x640，区间 480-560 x 600-680，CG/AX 双通道）；状态栏菜单项 `剪贴板历史` 能经 AX 发现（只发现不按压，随后尽力收起菜单） |
+| flash-notes | 主面板 520x640 在屏 |
+| clipboard | 760x520 面板 + 搜索框可写入 |
+| launcher | 640 宽面板在屏 |
+| settings | 经状态栏菜单 `偏好设置` 真正打开设置 overlay：头部 `偏好设置` 文本、Tab 栏按钮（AXDescription）、面板尺寸区间三样齐备；切一次 `剪贴板` Tab 并以内容标记（`启用剪贴板历史` 出现、`AI 自动提炼…` 消失）验证切换生效；`chevron left` 关闭后断言 overlay 消失。**全程只读**：不碰任何开关、不写偏好。证据两帧：`settings-open-<ts>.png` 是打开且停稳（停在剪贴板 Tab）的样子，`settings-<ts>.png` 是关闭动画走完的样子——用例函数返回后 harness 才截后者，停稳前截到的只会是滑到一半的 overlay（2026-11-28 复核时发现） |
+| screenshot-toolbar | 四阶段像素断言（见错题本 2026-11-27）；断言所用帧逐阶段落盘 `screenshots/screenshot-toolbar-frame-<阶段>-<ts>.png` 并画检测框（青=选中高亮、红=录制钮、黄=点击目标），Evidence 列出文件名——基线里能看到工具栏本身 |
+
+设置界面的事实（2026-11-28 在 xyz-mac 以 a4911402 产物实测）：设置是**主面板内的 overlay**，窗口始终 520x640 不变，所以"窗口尺寸"证明不了设置打开过，必须断言内容标记；Tab 按钮暴露的是 `AXDescription`（不是 AXTitle）；关闭钮是 `chevron left`；打开设置前要先让上一轮用例遗留的启动器/剪贴板快速面板失焦收起（点一下空桌面），否则主面板被盖住。
 
 菜单栏应用的真实用户式操作流：
 
@@ -114,7 +127,8 @@
 6. 按 stable title 精确匹配 `剪贴板历史` 或 `应用启动器`。
 7. 对匹配的 `AXMenuItem` 执行 `AXPress`。
 8. 轮询当前 pid 的窗口尺寸：Clipboard 是 `760x520`，Launcher 是 `640x498`。
-9. 禁止递归遍历整棵 AX 树，也禁止用 System Events 作为主路径。
+9. 禁止递归遍历整棵 AX 树，也禁止用 System Events 作为主路径。设置用例的标签断言走有界深度的子树收集（`collect_ax_entries`，剪掉 AXMenu 瞬态节点），不违反本条。
+10. 菜单已经开着时（例如 launch 用例发现菜单项后没关掉），不要再按菜单栏 extra——那会把菜单**关上**；先读 `AXChildren`，已有下拉就直接枚举菜单项。
 
 场景内输入、搜索和键盘断言按 `operations.json` 继续增强。每次增强必须先接入 `selectors.json` 的稳定标识，再把实际可复用的 AX 查询回写 `operations.json`；不要在报告里散落一次性坐标。
 

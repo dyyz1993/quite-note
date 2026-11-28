@@ -1,5 +1,5 @@
 {
- "suite_version": "1.3.0",
+ "suite_version": "1.4.0",
  "strategy": "Use this cached operation sequence; do not rediscover UI paths when AX succeeds.",
  "operations": {
   "launch": [
@@ -12,6 +12,18 @@
     "action": "assert",
     "target": "storage_root",
     "value": "QN_TEST_STORAGE_ROOT must exist"
+   },
+   {
+    "action": "assert",
+    "target": "window",
+    "condition": "one app-owned window with width 480-560 and height 600-680 (main panel, measured 520x640) via CGWindowList or AXWindows, polled up to 8s",
+    "purpose": "launch must have visible evidence, not just a live process"
+   },
+   {
+    "action": "discover",
+    "selector": "menu.clipboard_history",
+    "value": "剪贴板历史",
+    "purpose": "status menu items reachable through AX; discovery only, no menu-item press; transient menu closed afterwards (best effort)"
    },
    {
     "action": "capture",
@@ -58,7 +70,7 @@
    {
     "action": "ax_press",
     "selector": "app.status_menu",
-    "purpose": "open menu bar extra; tolerate actionFailed and verify AXChildren"
+    "purpose": "open menu bar extra; tolerate actionFailed and verify AXChildren; skip the press when the menu is already open"
    },
    {
     "action": "ax_press",
@@ -161,22 +173,58 @@
   ],
   "settings": [
    {
-    "action": "open",
-    "selector": "settings.panel"
+    "action": "dismiss",
+    "selector": "quick_panels",
+    "purpose": "launcher/clipboard panels of earlier suites hide on focus loss; click a neutral desktop spot and wait them out so they cannot cover the settings overlay"
    },
    {
-    "action": "iterate_tabs",
-    "selector": "settings.tab_bar",
-    "policy": "read-only"
+    "action": "ax_press",
+    "selector": "menu.preferences",
+    "value": "偏好设置",
+    "purpose": "keyboard events do not reach the app in the smoke environment; the status menu item posts showSettings which opens the overlay inside the main panel"
    },
    {
     "action": "assert",
-    "condition": "no_error_dialog",
-    "capture_on_failure": true
+    "selector": "settings.panel",
+    "condition": "main-panel window 480-560x600-680 visible"
    },
    {
-    "action": "close",
-    "selector": "settings.close"
+    "action": "assert",
+    "selector": "settings.header_text",
+    "condition": "AXStaticText 偏好设置 present in the AX tree"
+   },
+   {
+    "action": "assert",
+    "selector": "settings.tab_bar",
+    "condition": "tab buttons AI/记录/剪贴板 exposed via AXDescription"
+   },
+   {
+    "action": "assert",
+    "selector": "settings.initial_tab_marker",
+    "condition": "AI tab content marker (AI 自动提炼…) present before switching"
+   },
+   {
+    "action": "ax_press",
+    "selector": "settings.tab_bar",
+    "value": "剪贴板",
+    "policy": "read-only: tab state is transient UI, no preference is written"
+   },
+   {
+    "action": "assert",
+    "selector": "settings.switched_tab_marker",
+    "condition": "启用剪贴板历史 present AND AI tab marker gone — content really changed",
+    "timeout_ms": 5000
+   },
+   {
+    "action": "ax_press",
+    "selector": "settings.close",
+    "value": "chevron left",
+    "note": "panel-header gear (desc settings) is the fallback toggle"
+   },
+   {
+    "action": "assert",
+    "condition": "settings overlay gone (no 偏好设置 header text, no tab buttons in AX tree)",
+    "timeout_ms": 4000
    }
   ],
   "devcore": [
@@ -210,11 +258,6 @@
   ],
   "screenshot-toolbar": [
    {
-    "action": "key",
-    "keys": "Escape",
-    "purpose": "clear any stale screenshot session"
-   },
-   {
     "action": "ax_press",
     "selector": "app.status_menu",
     "purpose": "open menu bar extra"
@@ -222,7 +265,8 @@
    {
     "action": "ax_press",
     "selector": "screenshot.trigger_menu",
-    "value": "捕获屏幕截图"
+    "value": "捕获屏幕截图",
+    "note": "do not replace with Escape/shortcut: keyboard events do not reach the app in the smoke environment (2026-11-27)"
    },
    {
     "action": "wait",
@@ -238,83 +282,73 @@
    {
     "action": "drag",
     "selector": "screenshot.selection_area",
-    "value": "right-edge selection: (W-262,300)->(W-42,480) on main display"
-   },
-   {
-    "action": "assert",
-    "selector": "screenshot.toolbar_record_button",
-    "condition": "pixel cluster found; cx+17+8 <= display width"
+    "value": "right-edge selection: (1178,300)->(1398,480) in logical pt (cua coords are native px = pt * px_per_pt)"
    },
    {
     "action": "assert",
     "selector": "screenshot.toolbar_selected_group_button",
-    "condition": "blue highlight cluster on toolbar row"
-   },
-   {
-    "action": "click",
-    "selector": "screenshot.group_button_2_text",
-    "value": "selected_group.cx + 76 (38pt group stride)"
+    "condition": "blue highlight cluster (b>160, r<80, 70<g<150) with record dot at highlight.x+534 on the archived frame stage1_default"
    },
    {
     "action": "assert",
     "selector": "screenshot.toolbar_record_button",
-    "condition": "still fully on screen after color controls widen the toolbar (the widening-clamp regression)",
-    "note": "main toolbar must yield left as a whole; record cx decreases >= 20pt"
+    "condition": "record.x + 99 <= 1432 (right edge inside screen)"
    },
    {
     "action": "click",
-    "selector": "screenshot.group_button_1_shape",
-    "value": "selected_group.cx - 38"
+    "selector": "screenshot.group_button_2_text",
+    "value": "highlight.x + 76"
    },
    {
     "action": "assert",
-    "selector": "screenshot.sub_toolbar",
-    "condition": "diff region above main toolbar exists; within [8, W-8]; center within 30pt of group button (anchoring)"
+    "selector": "screenshot.toolbar_record_button",
+    "condition": "toolbar widened by 234pt: record dot now at highlight.x+692; highlight stays at the click point minus edge yield — no jump to a re-centered position (stage2_widened)"
    },
    {
-    "action": "key",
-    "keys": "Escape"
+    "action": "click",
+    "selector": "screenshot.toolbar_copy_button",
+    "value": "record.x - 45",
+    "purpose": "end session by mouse; Escape never reaches the app in the smoke environment"
    },
    {
     "action": "assert",
     "condition": "overlay_window_count == 0",
-    "selector": "screenshot.overlay_windows",
-    "note": "no leftover overlay windows"
+    "selector": "screenshot.overlay_windows"
    },
    {
     "action": "drag",
     "selector": "screenshot.selection_area",
-    "value": "top-edge selection: (0.3W,8)->(0.55W,120); toolbar lands below"
-   },
-   {
-    "action": "click",
-    "selector": "screenshot.group_button_1_shape",
-    "value": "selected.cx + 38"
+    "value": "mid-screen selection: (420,300)->(760,480); no edge clamping"
    },
    {
     "action": "assert",
-    "selector": "screenshot.sub_toolbar",
-    "condition": "diff region on screen [8, W-8], anchored to group button (top-edge)"
-   },
-   {
-    "action": "drag",
-    "selector": "screenshot.selection_area",
-    "value": "bottom-edge selection: (0.3W,H-102)->(0.55W,H-22); toolbar lands above"
+    "selector": "screenshot.toolbar_selected_group_button",
+    "condition": "highlight found at default width on stage3_mid_default"
    },
    {
     "action": "click",
-    "selector": "screenshot.group_button_1_shape",
-    "value": "selected.cx + 38"
+    "selector": "screenshot.group_button_2_text",
+    "value": "highlight.x + 76"
    },
    {
     "action": "assert",
-    "selector": "screenshot.sub_toolbar",
-    "condition": "diff region on screen [8, W-8], anchored to group button (bottom-edge)"
+    "selector": "screenshot.toolbar_record_button",
+    "condition": "highlight stays exactly at the click point (no edge yield possible) — distinguishes left-edge anchoring from the old re-centering behavior (stage4_mid_text)"
    },
    {
-    "action": "key",
-    "keys": "Escape",
-    "note": "final cleanup, overlay count == 0"
+    "action": "click",
+    "selector": "screenshot.toolbar_copy_button",
+    "value": "record.x - 45"
+   },
+   {
+    "action": "assert",
+    "condition": "overlay_window_count == 0",
+    "selector": "screenshot.overlay_windows"
+   },
+   {
+    "action": "archive",
+    "selector": "screenshot.assertion_frames",
+    "value": "every stage frame the assertions ran on is saved to screenshots/screenshot-toolbar-frame-<stage>-<ts>.png with annotation boxes; report Evidence lists the file names"
    }
   ]
  },
