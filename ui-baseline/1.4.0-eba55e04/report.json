@@ -1,0 +1,78 @@
+{
+  "status": "PASS",
+  "started_at": null,
+  "results": [
+    {
+      "name": "permissions.accessibility",
+      "status": "PASS",
+      "duration_ms": 1126,
+      "reason": "",
+      "evidence": "recordings/ui-recording.mov",
+      "selector": ""
+    },
+    {
+      "name": "launch",
+      "status": "PASS",
+      "duration_ms": 4118,
+      "reason": "main 520x640 panel exposed via cgwindow; status menu item 剪贴板历史 discoverable (menu stays open; later suites tolerate it); storage=/tmp/quitenote-ui-smoke/ui-20261128-015620-eba55e04",
+      "evidence": "screenshots/launch-1795830989.png",
+      "selector": ""
+    },
+    {
+      "name": "flash-notes",
+      "status": "PASS",
+      "duration_ms": 744,
+      "reason": "main 520x640 panel exposed",
+      "evidence": "screenshots/flash-notes-1795830990.png",
+      "selector": ""
+    },
+    {
+      "name": "clipboard",
+      "status": "PASS",
+      "duration_ms": 1684,
+      "reason": "clipboard 760x520 panel exposed",
+      "evidence": "screenshots/clipboard-1795830991.png",
+      "selector": ""
+    },
+    {
+      "name": "launcher",
+      "status": "PASS",
+      "duration_ms": 3273,
+      "reason": "launcher panel exposed",
+      "evidence": "screenshots/launcher-1795830995.png",
+      "selector": ""
+    },
+    {
+      "name": "settings",
+      "status": "PASS",
+      "duration_ms": 8354,
+      "reason": "settings overlay visible in 520x640 panel, tab bar AX-reachable, clipboard tab switch verified by content markers, closed; open-frame=screenshots/settings-open-1795831002.png (dismissed quick panels first: launcher/clipboard panels)",
+      "evidence": "screenshots/settings-1795831003.png",
+      "selector": ""
+    },
+    {
+      "name": "devcore",
+      "status": "PASS",
+      "duration_ms": 683,
+      "reason": "DevCore storage isolation available",
+      "evidence": "screenshots/devcore-1795831004.png",
+      "selector": ""
+    },
+    {
+      "name": "screenshot-toolbar",
+      "status": "PASS",
+      "duration_ms": 37609,
+      "reason": "toolbar ok: 右缘换工具高亮 874→640（贴边让位 -233pt）、居中换工具高亮 370→370 未横跳；录制钮 1332/1062 均屏内；frames=screenshot-toolbar-frame-stage1_default-1795831012.png,screenshot-toolbar-frame-stage2_widened-1795831018.png,screenshot-toolbar-frame-stage3_mid_default-1795831030.png,screenshot-toolbar-frame-stage4_mid_text-1795831036.png",
+      "evidence": "screenshots/screenshot-toolbar-1795831041.png",
+      "selector": ""
+    },
+    {
+      "name": "cleanup",
+      "status": "PASS",
+      "duration_ms": 798,
+      "reason": "production pids: none",
+      "evidence": "screenshots/cleanup-1795831042.png",
+      "selector": ""
+    }
+  ]
+}
