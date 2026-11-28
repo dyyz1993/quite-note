@@ -306,3 +306,21 @@
   - 结束会话走鼠标点「复制」（录制钮左侧 45pt），不依赖 ESC。套件版本升到 1.2.1。
   - 冒烟里凡是"两张阶段截图字节相同"都要当异常查，不能只看 PASS。
 - Evidence: 测试机手工运行 `ui-20261127-061015-75b51750` / `ui-20261127-061438-75b51750`（连过两轮，数值逐位一致）：右缘 874→640（预期 641）、居中 370→370；应用日志里两个会话都有"截图会话结束"。四张阶段截图逐张看过：中间选区下主栏左缘不动，颜色 + 尺寸控件从右侧长出。
+
+## 2026-11-28 · launch/settings 用例空转修复：设置是 overlay 不是窗口、AX 菜单关不掉、CGWindowList 迟滞
+
+- Version / Commit / Run: ci/smoke-visible-assertions @ be80b80；测试机 lab run `ui-20261128-005849-be80b806`（9/9 PASS）+ 红证 `red-090311-a/b`、`red-proof-090227`
+- Symptom: settings 用例 PASS 但基线截图里是启动器面板（从未打开过设置）；launch PASS 的截图里可以什么面板都没有。
+- Root cause / 通道事实（xyz-mac，a4911402 产物实测）:
+  1. **设置是主面板内的 overlay**（FloatingRootView 换内容），窗口始终 520x640——"找到窗口"永远为真，证明不了设置打开过；必须断言内容（头部 `偏好设置` 静态文本、Tab 按钮、每 Tab 独有的内容标记）。
+  2. **Tab 按钮暴露 AXDescription 而非 AXTitle**；关闭钮是 `chevron left`（Lucide 图标 desc）；面板头部齿轮 desc=`settings`（showSettings 的 toggle，可当关闭 fallback）。
+  3. **上一轮用例遗留的启动器/剪贴板快速面板会盖住主面板**（全套件顺序里 settings 在 launcher 之后）；快速面板失焦即收起，点一下空桌面让位即可，主面板不会因失焦收起（基线截图里 Finder 前台时面板一直在）。
+  4. **AX 打开的状态栏瞬态菜单关不掉**：对菜单栏 extra 再 AXPress 一次并不总是收起（实测 `close_status_menu` 返回 False，菜单留到了 flash-notes 截图里）；无害（后续 clipboard 复用同一菜单反而成功），但截图里有菜单——凡断言"面板可见"的截图先看有没有无关 UI 叠加。
+  5. **CGWindowList 对刚启动/刚唤醒的面板有迟滞**：launch 时 AXWindows 已报 520x640，CGWindowList 只有状态图标（34x24），几秒后才收录；窗口断言双通道轮询（CG 优先、AX 兜底）。
+  6. **手动经 launcher 队列跑 driver 必须预写 `run/manifest.json`（至少 storage_root）**，否则 `ensure_manifest` 兜底到 `/tmp/quitenote-ui-manual`，launch 用例败在存储检查（红证第一轮就是这么红错地方的）。
+- Fix / Prevention:
+  - launch：双通道轮询 8s 找 480-560x600-680 窗口 + `status_menu_item("剪贴板历史")` 只发现不按压；`status_menu_item` 改成"先读下拉，已开就不再按 extra"（避免把菜单按关）。
+  - settings：状态栏菜单打开 → 头部/Tab/尺寸三断言 → AXPress `剪贴板` Tab → 内容标记（`启用剪贴板历史` 出现且 `AI 自动提炼…` 消失）→ `chevron left` 关闭 → overlay 消失断言（齿轮 fallback）。只看不改，不碰任何开关。
+  - screenshot-toolbar：`_snap_overlay` 把归一化帧落盘 `screenshots/screenshot-toolbar-frame-<阶段>-<ts>.png`，`_annotate_toolbar_frame` 画框标数（PIL 默认字体没有 CJK，label 只用 ASCII）。
+  - 新断言一律先红后绿：坏样本单测（错误尺寸区间、不含目标的窗口列表、无标记的树、notes 视图树）+ 测试机 sabotage 红跑（改坏 `MAIN_PANEL_WIDTH_RANGE` → settings 红 "panel=None"；改坏 `CLIPBOARD_TAB_MARKER` → 见下轮记录）。
+- Evidence: 测试机 `~/qn-smoke-lab/tools/ui-smoke/runs/ui-20261128-005849-be80b806/`（report 9/9、settings 截图 = 偏好设置 overlay + 剪贴板 Tab 选中、四张带标注的工具栏帧）；红证 `/Users/xyz/QuitenoteUITest/runs/red-proof-090227/`（settings FAIL: header=True panel=None）。
