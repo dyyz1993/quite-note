@@ -114,11 +114,17 @@ public final class ClipboardHistoryRepository {
         let context = makeBackgroundContext()
         context.performAndWait {
             let request = NSFetchRequest<CDClipboardEntry>(entityName: "CDClipboardEntry")
-            request.predicate = NSPredicate(
-                format: "contentHash == %@ OR plainText == %@",
-                input.contentHash,
-                input.plainText ?? UUID().uuidString
-            )
+            // A file reference and copied text can carry the same path but have
+            // different paste semantics, so deduplicate within one type only.
+            // The plainText clause stays for entries written with legacy hashes.
+            var contentPredicates = [NSPredicate(format: "contentHash == %@", input.contentHash)]
+            if let text = input.plainText {
+                contentPredicates.append(NSPredicate(format: "plainText == %@", text))
+            }
+            request.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
+                NSPredicate(format: "type == %@", input.type.rawValue),
+                NSCompoundPredicate(orPredicateWithSubpredicates: contentPredicates),
+            ])
             request.sortDescriptors = [NSSortDescriptor(key: "createdAt", ascending: false)]
             request.fetchLimit = 1
 
@@ -270,9 +276,10 @@ public final class ClipboardHistoryRepository {
         let evictable = entries
             .filter { !$0.isPinned && $0.savedRecordID == nil && !victims.contains($0.id) }
             .sorted { $0.createdAt < $1.createdAt }
-        let survivingEvictable = evictable.count - victims.count
-        if survivingEvictable > maxEntries {
-            let overflow = survivingEvictable - maxEntries
+        // Expired entries are already excluded from `evictable`; subtracting the
+        // victims again would leave ordinary history above its configured limit.
+        if evictable.count > maxEntries {
+            let overflow = evictable.count - maxEntries
             for entry in evictable.prefix(overflow) {
                 victims.insert(entry.id)
             }

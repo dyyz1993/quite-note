@@ -226,7 +226,10 @@ struct ClipboardHistoryView: View {
                     Rectangle()
                         .fill(ClipboardPalette.inputBorder)
                         .frame(width: 1)
-                    ClipboardDetailPane(entry: selectedEntry) {
+                    ClipboardDetailPane(
+                        entry: selectedEntry,
+                        contentRevision: vm.visibleEntriesVersion
+                    ) {
                         if let id = selectedEntry?.id {
                             ClipboardOCRQueue.shared.retry(entryID: id)
                             showHint("OCR 重试中…")
