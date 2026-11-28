@@ -358,8 +358,12 @@ final class ClipRowCell: NSTableCellView {
         refreshShortcutLabel()
 
         // 图标：图片缩略图异步 / favicon 异步 / 类型符号同步
+        // 单元格会被复用：先清掉旧图，迟到的缩略图只能更新它原本对应的那条。
+        iconView.image = nil
         ClipRowContent.icon(entry) { [weak self] image in
-            self?.iconView.image = image
+            guard let self, self.entry?.id == entry.id,
+                  self.entry?.assetPath == entry.assetPath else { return }
+            self.iconView.image = image
         }
         sourceIconView.image = ClipboardSourceAppIcon.icon(bundleID: entry.sourceBundleID)
         sourceIconView.isHidden = sourceIconView.image == nil
